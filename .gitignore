@@ -7,6 +7,8 @@ __pycache__/
 .pytest_cache/
 dist/
 **/RUN_DB/**
+**/TGLF_CASES/**
+**/tglf_multi/**
 **/OUTPUTS/**
 **/OUTPUTS_TEMP/**
 **/scanResults*/**

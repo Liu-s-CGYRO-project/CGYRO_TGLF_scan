@@ -2,13 +2,13 @@
 
 用于 Linux 桌面的 OMFIT 工程，包含已审计、修复和整理的 CGYRO/TGLF 工具，以及项目内置的 **OMFIT GitHub 模板管理器**。
 
-当前分发版为 **2026.09.12.1**，仅包含代码、输入模板和默认设置；计算案例、结果、缓存与旧命令记录不入库。原模块的输入示例保留在 `TEMPLATES` 中。执行计算前，需要导入自己的平衡/剖面或案例，并在 OMFIT 配置计算服务器与求解器路径。
+当前分发版为 **2026.09.13**，仅包含代码、输入模板和默认设置；计算案例、结果、缓存与旧命令记录不入库。原模块的输入示例保留在 `TEMPLATES` 中。执行计算前，需要导入自己的平衡/剖面或案例，并配置计算环境与求解器路径。
 
-本版重构了 **CGYRO_vs_CGYRO**：拆分选项、数据、本征函数、绘图和导出代码；统一图例/颜色，修复空参考值、无效 ky、稀疏扫描和 Linux 3D 图页排版。缺少保存的 E∥ 时明确显示无数据，不再使用旧的未校验推算公式。原 GUI / PLOTS 入口保留。
+本版新增 **TGLF 多 input.gacode 计算** 页面：多文件/目录导入、独立案例参数、指定半径生成输入、批量运行、失败重试、历史结果和谱对比。保留上一版的 CGYRO_vs_CGYRO 重构及 GitHub 模板管理功能。
 
 ## 在 OMFIT 打开
 
-推荐从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_2026.09.12.1.zip`，在 OMFIT 中打开。
+推荐从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_2026.09.13.zip`，在 OMFIT 中打开。
 
 也可直接加载本仓库的工程入口：
 
@@ -32,6 +32,20 @@ OMFIT['OMFITtemplates']['GUIS']['main'].run()
 
 这两条命令只添加管理模块，不替换已有 CGYRO/TGLF 数据。添加后保存自己的工程即可长期使用。
 
+## 多份 input.gacode 的 TGLF 计算
+
+在默认比较界面或原 main 界面点击 **TGLF 多 input.gacode 计算**，也可运行 `CGYRO_TGLF_scan → GUIS → TGLF_multi`。
+
+1. **文件与案例**：多选 `input.gacode`，或选目录递归导入。不同文件夹中的同名文件按独立案例保存。填写共用半径（例如 `0.3, 0.5, 0.7`）；单个案例的半径可覆盖共用值。坐标明确选择 `rho` 或 `r/a`。
+2. **计算设置**：设定 SAT_RULE、NKY、NMODES、电磁开关及离子选择。案例的“此案例参数”支持 `SAT_RULE=2; NKY=24`，优先于共用设置。“复制为新案例”可对同一份剖面运行不同模型参数，不复制历史结果。
+3. **执行环境**：默认本机 Linux。环境初始化中可填写 `source /path/to/gacode/shared/bin/gacode_setup` 等命令；需要能运行已安装的 TGYRO 和 TGLF。远程模式复用嵌套 TGYRO / TGLF 模块的服务器配置，顺序、同步执行；本页不自动提交排队任务，应使用已分配的计算节点。TGYRO / TGLF 命令支持按本地安装修改。
+4. **运行与结果**：可以先“生成输入”，查看 `TGLF_CASES` 中的 localdump 和实际 `input.tglf`，再“运行已生成输入”；也可“生成并运行”。更改半径或物理参数后需要重新生成输入。失败项可重试，完成项会跳过；准备阶段失败则重新生成。
+5. **比较**：每个案例选择一条运行记录，勾选参与对比，叠加显示各自 ky 网格上的频率和增长率。界面同时显示逐物种粒子/热通量。数值为各案例原始 TGLF 归一化单位；不同剖面的归一化参考量可能不同，物理单位比较需另行转换。
+
+输入转换使用 TGYRO 的 `-t` 测试模式和 `out.tglf.localdump`，指定半径使用 `DIR ... X=...`；`TGYRO_USE_RHO` 与所选坐标对应。单半径时会加入一个范围内的辅助转换点，最终 TGLF 计算只覆盖请求半径。参考 [TGYRO 命令源码](https://github.com/gafusion/gacode/blob/master/tgyro/bin/tgyro) 和 [TGYRO 参数说明](https://gafusion.github.io/doc/tgyro/tgyro_list.html)。
+
+案例保存于 `CGYRO_TGLF_scan['TGLF_CASES']`，包含导入文件副本、SHA-256、实际输入、转换/运行命令与日志、各次尝试及结果。每次生成创建新记录，每次重试使用新目录；不会替换现有扫描的 `FILES` / `scanResults`。保存当前 OMFIT 工程即可保存这些案例。更新模板时选择保留当前案例与结果；发布包不包含此数据分支的内容。
+
 ## GitHub 模板管理
 
 在实际运行 OMFIT 的 Linux 环境安装 [GitHub CLI](https://cli.github.com/)，执行 `gh auth login --hostname github.com --web`，或使用界面的登录按钮。私有库读取和发布分别需要 Contents 读、写权限；公开库可匿名读取，但可能遇到 API 限流。
@@ -41,7 +55,7 @@ OMFIT['OMFITtemplates']['GUIS']['main'].run()
 3. 预览变更后生成新工程。打开前可备份当前会话；原 ZIP 始终保留。
 4. 开发者准备模板包，核对文件清单、仓库与账号，再发布不可覆盖的新版本。
 
-当前模板包含 `CGYRO_TGLF_scan` 和 `OMFITtemplates` 两个模块，不带结果或计算案例。在管理器中拉取 **2026.09.12.1**，选择保留当前案例、结果和设置即可生成更新后的工程。旧工程如缺管理模块，可先按上面的两条命令添加，再另存为 ZIP 并进行版本更新。
+当前模板包含 `CGYRO_TGLF_scan` 和 `OMFITtemplates` 两个模块，不带结果或计算案例。在管理器中拉取 **2026.09.13**，选择保留当前案例、结果和设置即可生成更新后的工程。旧工程如缺管理模块，可先按上面的两条命令添加，再另存为 ZIP 并进行版本更新。
 
 Git 仓库保存可审查的源码；OMFIT 管理器通过 Release 附件分发模板。界面不会自动把附件内源码提交到 Git，源码改动仍通过正常的 commit / push 流程同步。
 
@@ -51,7 +65,7 @@ Git 仓库保存可审查的源码；OMFIT 管理器通过 Release 附件分发�
 python3 tools/build_project.py
 ```
 
-输出到 `dist/CGYRO_TGLF_scan_code_only_2026.09.12.1.zip`（版本号来自 `PROJECT_CONTENTS.json`）。构建仅收录 `OMFITsave.txt` 引用的代码、设置与输入模板，校验所有引用，并拒绝混入非空计算数据分支。
+输出到 `dist/CGYRO_TGLF_scan_code_only_2026.09.13.zip`（版本号来自 `PROJECT_CONTENTS.json`）。构建仅收录 `OMFITsave.txt` 引用的代码、设置与输入模板，校验所有引用，并拒绝混入非空计算数据分支。
 
 独立模板界面可执行 `sh OMFITtemplates/start_manager.sh`；OMFIT 内使用时复用 OMFIT 自己的 Python 和 Tk。
 

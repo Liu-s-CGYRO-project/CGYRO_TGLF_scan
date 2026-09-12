@@ -39,6 +39,8 @@ class ComparisonUI(CaseSelection):
         with self.ui.same_row():
             self.ui.Button('Plot selected data', self._plot)
             self.ui.Button('Check selection', self._refresh_check, updateGUI=True)
+            if 'TGLF_multi' in self.root.get('GUIS', {}):
+                self.ui.Button('TGLF 多 input.gacode 计算', lambda: self.root['GUIS']['TGLF_multi'].run())
             if open_templates is not None:
                 self.ui.Button('Templates / GitHub', open_templates)
         self.ui.Tab('1. Cases')

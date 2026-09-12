@@ -1,4 +1,15 @@
-# 验证记录 · 2026.09.12.1
+# 验证记录 · 2026.09.13
+
+本版增加 OMFIT 原生 **TGLF 多 input.gacode 计算** 页面，入口位于默认比较界面和原 main 页面，也可从 `GUIS/TGLF_multi` 打开。
+
+- 新增 23 项 Linux 回归测试：真实文件导入、同名文件区分、剖面快照、半径范围与坐标、单半径辅助点、参数覆盖、独立工作目录、分步生成/运行、失败继续与重试、中止、输入变更检测、执行命令更新、空工程 GUI、结果记录、绘图和双层 OMFITsave 注册。
+- 既有绘图/工程 74 项测试全部通过；新增 23 项全部通过，合计 97 项。测试环境为 Ubuntu 22.04 / Python 3.10 / NumPy 1.21.5 / Matplotlib 3.5.1。
+- 外部执行使用模拟 TGYRO localdump 和 TGLF 输出验证控制流程，未调用真实求解器。GUI 测试核对 OMFIT 控件绑定和回调；尚未在完整 OMFIT 桌面实例中联调。
+- 核对官方 GACODE 的 `tgyro` 命令、`tgyro_parse.py`、`tgyro_init_profiles.f90` 与 `tgyro_tglf_map.f90`：使用 `-t` 测试模式、`DIR ... X=...` 和明确的 `TGYRO_USE_RHO`；保留原始 profile，通过 TGYRO 生成每例的局部几何、物种及梯度，再应用显式 TGLF 参数。默认同步顺序运行，不自动提交队列。
+- 输入、输出、历史尝试和日志归入独立的 `TGLF_CASES` 数据分支。每次运行使用新子目录，并显式传递 `clean=False`；原有 `TGLF_scan` 的输入和扫描结果保持独立。
+- 工程与模板附件在发布前检查引用、Python 3.9 语法、ZIP CRC 和 SHA-256，并验证模板更新保留历史数据及用户设置。
+
+以下保留 2026.09.12.1 的验证背景：
 
 - 来源：此前审计、修复和重构后的 `CGYRO_99949_compare_refactored.zip` 的已校验代码/设置模板。
 - 新工程包含 CGYRO_TGLF_scan、OMFITtemplates 两个顶层模块；计算数据文件数为 0，仅保留空数据容器。所有 OMFITsave 文件引用可解析。

@@ -214,14 +214,18 @@
 ['CGYRO_TGLF_scan']['INPUTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['OUTPUTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['SCRIPTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['CGYRO_TGLF_scan']['SCRIPTS']['import_tglf_multi'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/SCRIPTS/import_tglf_multi.py <-:-:-> {}
+['CGYRO_TGLF_scan']['SCRIPTS']['run_tglf_multi'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/SCRIPTS/run_tglf_multi.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['PLOTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['PLOTS']['CGYRO_vs_TGLF'] <-:-:-> OMFITpythonPlot <-:-:-> ./CGYRO_TGLF_scan/PLOTS/CGYRO_vs_TGLF.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['PLOTS']['CGYRO_vs_CGYRO'] <-:-:-> OMFITpythonPlot <-:-:-> ./CGYRO_TGLF_scan/PLOTS/CGYRO_vs_CGYRO.py <-:-:-> {}
+['CGYRO_TGLF_scan']['PLOTS']['TGLF_multi'] <-:-:-> OMFITpythonPlot <-:-:-> ./CGYRO_TGLF_scan/PLOTS/TGLF_multi.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['GUIS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['GUIS']['main'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/main.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['GUIS']['CGYRO_vs_TGLF'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/CGYRO_vs_TGLF.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['GUIS']['CGYRO_vs_CGYRO'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/CGYRO_vs_CGYRO.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['GUIS']['Template_manager'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/Template_manager.py <-:-:-> {}
+['CGYRO_TGLF_scan']['GUIS']['TGLF_multi'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/TGLF_multi.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cases.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
@@ -241,6 +245,10 @@
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_tglf'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_tglf.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_widgets'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_widgets.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_multi_data'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_data.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_multi_run'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_run.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_multi_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_ui.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_multi_plot'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_plot.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./CGYRO_TGLF_scan/SettingsNamelist.txt <-:-:-> {}
 ['CGYRO_TGLF_scan']['SETTINGS']['SETUP']['workDir'] <-:-:-> OMFITexpression <-:-:-> _"OMFITworkDir(root,'')" <-:-:-> {}
 ['CGYRO_TGLF_scan']['help'] <-:-:-> OMFIThelp <-:-:-> ./CGYRO_TGLF_scan/help.rst <-:-:-> {}
@@ -359,6 +367,7 @@
 ['CGYRO_TGLF_scan']['Transfer_tool']['SETTINGS']['SETUP']['workDir'] <-:-:-> OMFITexpression <-:-:-> _"OMFITworkDir(root,'')" <-:-:-> {}
 ['CGYRO_TGLF_scan']['Transfer_tool']['help'] <-:-:-> OMFIThelp <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/help.rst <-:-:-> {}
 ['CGYRO_TGLF_scan']['Transfer_tool']['Transfer_file'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_CASES'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['OMFITtemplates'] <-:-:-> OMFITmodule <-:-:->  <-:-:-> {}
 ['OMFITtemplates']['GUIS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['OMFITtemplates']['GUIS']['main'] <-:-:-> OMFITpythonGUI <-:-:-> ./OMFITtemplates/GUIS/main.py <-:-:-> {}

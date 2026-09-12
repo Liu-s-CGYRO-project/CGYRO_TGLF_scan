@@ -3,6 +3,7 @@
 
 
 OMFITx.TitleGUI('CYTG GUI')
+OMFITx.Button('TGLF 多 input.gacode 计算', lambda: root['GUIS']['TGLF_multi'].run())
 
 #root.setdefault('scanResults', OMFITtree())
 #root.setdefault('scanResults2D', OMFITtree())

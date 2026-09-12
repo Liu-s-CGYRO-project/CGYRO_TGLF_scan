@@ -129,5 +129,22 @@
     "python3": "3.9",
     "comment": "Result-free project with integrated OMFIT GitHub template manager"
   },
-  "DEPENDENCIES": {}
+  "DEPENDENCIES": {},
+  "TGLF_MULTI": {
+    "radii": "0.5",
+    "coordinate": "rho",
+    "execution": "local",
+    "environment": "",
+    "tgyro_command": "tgyro -t . -n {n_radii}",
+    "tglf_command": "tglf -e .",
+    "SAT_RULE": 0,
+    "NKY": 12,
+    "NMODES": 2,
+    "USE_BPER": false,
+    "USE_BPAR": false,
+    "extra": "",
+    "continue_on_error": true,
+    "include_ions": "all",
+    "status": ""
+  }
 }

@@ -213,14 +213,18 @@
 ['INPUTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['OUTPUTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['SCRIPTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['SCRIPTS']['import_tglf_multi'] <-:-:-> OMFITpythonTask <-:-:-> ./SCRIPTS/import_tglf_multi.py <-:-:-> {}
+['SCRIPTS']['run_tglf_multi'] <-:-:-> OMFITpythonTask <-:-:-> ./SCRIPTS/run_tglf_multi.py <-:-:-> {}
 ['PLOTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['PLOTS']['CGYRO_vs_TGLF'] <-:-:-> OMFITpythonPlot <-:-:-> ./PLOTS/CGYRO_vs_TGLF.py <-:-:-> {}
 ['PLOTS']['CGYRO_vs_CGYRO'] <-:-:-> OMFITpythonPlot <-:-:-> ./PLOTS/CGYRO_vs_CGYRO.py <-:-:-> {}
+['PLOTS']['TGLF_multi'] <-:-:-> OMFITpythonPlot <-:-:-> ./PLOTS/TGLF_multi.py <-:-:-> {}
 ['GUIS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['GUIS']['main'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/main.py <-:-:-> {}
 ['GUIS']['CGYRO_vs_TGLF'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/CGYRO_vs_TGLF.py <-:-:-> {}
 ['GUIS']['CGYRO_vs_CGYRO'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/CGYRO_vs_CGYRO.py <-:-:-> {}
 ['GUIS']['Template_manager'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/Template_manager.py <-:-:-> {}
+['GUIS']['TGLF_multi'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/TGLF_multi.py <-:-:-> {}
 ['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cases.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
@@ -240,6 +244,10 @@
 ['LIB']['OMFITlib_compare_tglf'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_tglf.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_ui.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_widgets'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_widgets.py <-:-:-> {}
+['LIB']['OMFITlib_tglf_multi_data'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_multi_data.py <-:-:-> {}
+['LIB']['OMFITlib_tglf_multi_run'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_multi_run.py <-:-:-> {}
+['LIB']['OMFITlib_tglf_multi_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_multi_ui.py <-:-:-> {}
+['LIB']['OMFITlib_tglf_multi_plot'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_multi_plot.py <-:-:-> {}
 ['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./SettingsNamelist.txt <-:-:-> {}
 ['SETTINGS']['SETUP']['workDir'] <-:-:-> OMFITexpression <-:-:-> _"OMFITworkDir(root,'')" <-:-:-> {}
 ['help'] <-:-:-> OMFIThelp <-:-:-> ./help.rst <-:-:-> {}
@@ -358,3 +366,4 @@
 ['Transfer_tool']['SETTINGS']['SETUP']['workDir'] <-:-:-> OMFITexpression <-:-:-> _"OMFITworkDir(root,'')" <-:-:-> {}
 ['Transfer_tool']['help'] <-:-:-> OMFIThelp <-:-:-> ./Transfer_tool/help.rst <-:-:-> {}
 ['Transfer_tool']['Transfer_file'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['TGLF_CASES'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
