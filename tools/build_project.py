@@ -66,6 +66,7 @@ def build(output):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output', default=str(ROOT / 'dist/CGYRO_TGLF_scan_code_only_2026.09.12.zip'))
+    version = json.loads((ROOT / 'PROJECT_CONTENTS.json').read_bytes())['version']
+    parser.add_argument('--output', default=str(ROOT / ('dist/CGYRO_TGLF_scan_code_only_' + version + '.zip')))
     args = parser.parse_args()
     print(json.dumps(build(args.output), ensure_ascii=False, indent=2))

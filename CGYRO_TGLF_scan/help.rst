@@ -44,6 +44,29 @@ Selection and data behavior
   settings. Exported omega/gamma values precede display /ky scaling.
   Opening the GUI does not read frequency arrays or launch any solver.
 
+CGYRO self-comparison details
+----------------------------
+
+* A blank growth-rate reference uses the first valid selected scan value.
+  Explicit references and ky requests snap to the nearest saved value;
+  duplicate ky matches count once. Invalid ky input produces an error.
+* Spectra-only uses two panels. The optional fluctuation panels share case
+  colors with the frequency/growth-rate panels. Legends are finalized once
+  per page, using two columns for long lists and automatic height when needed.
+* The peak marker selects maximum raw gamma before /ky display scaling.
+  Signed spectra, population standard deviations and main-ion scaling retain
+  the existing conventions. Saved sample counts must match frequency arrays.
+* Single-ky scans preserve missing grid points as gaps. 3D scans use surfaces
+  only for complete rectangular grids; incomplete or one-point scans show
+  saved points. All 3D pages belong to the OMFIT figure notebook.
+* Eigenfunction selection reads balloon data only for the selected ky. Saved
+  complex fields are interpolated onto a common theta grid without amplitude
+  renormalization. Missing E-parallel data is explicitly labelled; no
+  second-derivative reconstruction or extra inductive term is added.
+* Raw spectrum export is independent of the selected plot view and writes
+  spectrum tables plus metadata.json in a new directory. Existing exports
+  remain intact. Missing/filtered samples are recorded in the metadata.
+
 Code organization
 -----------------
 
@@ -52,6 +75,19 @@ Code organization
 data access, numerical helpers, figure styling, spectra, TGLF flux plots,
 CGYRO self-comparison, status checks and dispatch/export. Libraries use
 explicit imports and are registered in the project save manifest.
+
+The CGYRO self-comparison implementation uses these files:
+
+* ``OMFITlib_compare_cgyro.py``: OMFIT entry, data preparation and page grouping.
+* ``OMFITlib_compare_cgyro_selection.py``: settings, parsing and legacy selections.
+* ``OMFITlib_compare_cgyro_data.py``: spectra, statistics, scan grids and ratios.
+* ``OMFITlib_compare_cgyro_eigen.py``: saved balloon-field extraction and selection.
+* ``OMFITlib_compare_cgyro_render.py``: five views, shared colors and page layout.
+* ``OMFITlib_compare_cgyro_export.py``: raw spectrum tables and export metadata.
+
+Only the entry depends on OMFIT's FigureNotebook global; the other libraries
+can be tested with ordinary Python, NumPy and Matplotlib. New files must be
+registered in both the full project and standalone module OMFITsave.txt files.
 
 Validation limits
 -----------------

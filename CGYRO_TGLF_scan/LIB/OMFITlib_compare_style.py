@@ -144,6 +144,7 @@ def reorder_legend(ax, ctx=None, fontsize=None):
     options = {'loc': location}
     if location == 'outside':
         options = {'loc': 'upper left', 'bbox_to_anchor': (1.02, 1.)}
+    options['ncol'] = ctx.get('_legend_columns', 1)
     legend_new = ax.legend(handles_sorted, labels_sorted, fontsize=fontsize, framealpha=.85, **options)
     try:
         legend_new.set_draggable(True)

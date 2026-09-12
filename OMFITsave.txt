@@ -225,6 +225,11 @@
 ['CGYRO_TGLF_scan']['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cases.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_selection'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_selection.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_data'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_data.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_eigen'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_eigen.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_render'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_render.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_export'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_export.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_core'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_core.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_dispatch'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_dispatch.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_flux'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_flux.py <-:-:-> {}

@@ -160,10 +160,10 @@ def initialize_settings(root):
     return physics
 
 
-def selection_check(root):
+def selection_check(root, mode=None):
     """Cheap selection/setting validation; never forces loading saved result objects."""
     physics = root.get('SETTINGS', {}).get('PHYSICS', {})
-    mode = physics.get('compare_mode', 'CGYRO_vs_TGLF')
+    mode = mode or physics.get('compare_mode', 'CGYRO_vs_TGLF')
     state = physics.get(mode, {})
     settings = state if mode == 'CGYRO_vs_CGYRO' else state.get('plot', {})
     errors, warnings = [], []
@@ -174,7 +174,10 @@ def selection_check(root):
     if mode != 'TGLF_vs_TGLF':
         if cg.get('runid') not in root.get('CGYRO_scan', {}).get('RUN_DB', {}):
             errors.append('Choose an available CGYRO run.')
-        if not any(has_values(v) for v in cg.get('selected_paras', {}).values()):
+        selections = [cg.get('selected_paras', {})]
+        if mode == 'CGYRO_vs_CGYRO' and cg.get('force_read_all_nr_items'):
+            selections = [cg.get('selected_paras_by_nr', {}).get(str(nr), {}) for nr in cg.get('nr_CGYRO', [])]
+        if not any(has_values(v) for selected in selections for v in selected.values()):
             errors.append('Select at least one CGYRO parameter and value.')
         if mode == 'CGYRO_vs_CGYRO' and not cg.get('nr_CGYRO'):
             errors.append('Select at least one CGYRO radius.')
@@ -203,6 +206,9 @@ def selection_check(root):
                     errors.append('Pair TGLF {} with a CGYRO radius.'.format(rho))
     if settings.get('divide_by_ky') and settings.get('divide_by_ky2'):
         errors.append('Choose one spectrum scaling: raw, /ky, or /ky².')
+    if mode == 'CGYRO_vs_CGYRO':
+        from OMFITlib_compare_cgyro_selection import validate_options
+        errors.extend(validate_options(settings))
     try:
         tol = float(settings.get('error_tolerance', 0.01))
         if not math.isfinite(tol) or tol <= 0:

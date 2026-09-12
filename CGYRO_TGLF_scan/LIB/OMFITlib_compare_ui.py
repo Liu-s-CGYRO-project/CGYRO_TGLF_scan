@@ -81,7 +81,7 @@ class ComparisonUI(CaseSelection):
 
     def _render_ratio(self, cross_model=False):
         self._combo('gamma_ref_mode', ['all ky', 'single ky'], 'Reference statistic', 'all ky')
-        self._entry('gamma_ref_value', 'Reference scan value (blank = first value)', '')
+        self._entry('gamma_ref_value', 'Reference scan value (blank = first valid selected value)', '')
         if self.plot_settings.get('gamma_ref_mode', 'all ky') == 'single ky':
             self._entry('gamma_ref_ky_values', 'ky values (comma-separated)', '')
         elif cross_model:
@@ -126,13 +126,16 @@ class ComparisonUI(CaseSelection):
         self._combo('plot_mode', modes, 'Plot content', 'Plot 2D')
         mode = settings.get('plot_mode', 'Plot 2D')
         ratio, eigen = mode == 'Plot γ/γ_ref', mode == 'Plot eigen ball'
-        if self_mode:
+        if self_mode and mode != 'Plot 3D':
             self._check('merge_all_nr_plot', 'Combine selected radii in one figure')
+        if self_mode:
+            self._check('abs_ky', 'Use absolute ky (combines +/- ky in scan views)')
         self.ui.Separator()
         self._entry('ave_window', 'Final fraction used for averaging (0.02 = 2%)', .02)
         if ratio:
             self._render_ratio(cross_model=not self_mode)
         elif eigen:
+            self.ui.Label('Uses saved balloon fields. Missing E-parallel is shown as unavailable.', align='left')
             self._combo('eigen_ky_mode', ['max gamma', 'single ky'], 'Choose ky by', 'max gamma')
             if settings.get('eigen_ky_mode', 'max gamma') == 'single ky':
                 self._entry('eigen_ky_values', 'ky values (comma-separated)', '')
@@ -141,7 +144,11 @@ class ComparisonUI(CaseSelection):
             self._check('eigen_abs', 'Show absolute field amplitude (otherwise Re / Im)')
         else:
             if mode == 'Plot single ky':
-                self._entry('single_ky_values', 'ky values (comma-separated)', '')
+                self._entry('single_ky_values', 'ky values (blank = all; nearest saved ky is used)', '')
+            if self_mode and mode == 'Plot 2D':
+                self._combo('error_flag', OrderedDict([
+                    ('Spectra + relative time fluctuation', 'CGYRO'), ('Spectra only', 'No_error')]),
+                    'Panels', 'CGYRO')
             if not self_mode:
                 self._combo('error_flag', OrderedDict([
                     ('Spectra only', 'No_error'),
@@ -157,7 +164,7 @@ class ComparisonUI(CaseSelection):
         if self_mode and not eigen:
             self._render_tolerance_toggle(self._plot_path, settings, 'error_filter', 'Filter unconverged points')
             if mode == 'Plot 2D':
-                self._check('highlight_max_gamma', 'Mark the maximum growth rate')
+                self._check('highlight_max_gamma', 'Mark maximum raw gamma (before /ky scaling)')
 
     def _render_style(self):
         style = self.state['style']
@@ -220,15 +227,15 @@ class ComparisonUI(CaseSelection):
         self.root['PLOTS'][key].plot()
 
     def _export(self):
-        self._assert_selection()
-        directory = self._select_export_directory(self.state.get('linear_export_dir', ''))
-        if directory is None:
-            return
-        self.state['linear_export_dir'] = directory
         flag = 'linear_export_now' if self.mode == 'CGYRO_vs_CGYRO' else 'comparison_export_now'
         old = self.state.get(flag, False)
         self.state[flag] = True
         try:
+            self._assert_selection()
+            directory = self._select_export_directory(self.state.get('linear_export_dir', ''))
+            if directory is None:
+                return
+            self.state['linear_export_dir'] = directory
             self._plot()
         finally:
             self.state[flag] = old

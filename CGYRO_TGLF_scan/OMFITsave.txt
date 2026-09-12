@@ -224,6 +224,11 @@
 ['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cases.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
+['LIB']['OMFITlib_compare_cgyro_selection'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro_selection.py <-:-:-> {}
+['LIB']['OMFITlib_compare_cgyro_data'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro_data.py <-:-:-> {}
+['LIB']['OMFITlib_compare_cgyro_eigen'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro_eigen.py <-:-:-> {}
+['LIB']['OMFITlib_compare_cgyro_render'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro_render.py <-:-:-> {}
+['LIB']['OMFITlib_compare_cgyro_export'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro_export.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_core'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_core.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_dispatch'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_dispatch.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_flux'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_flux.py <-:-:-> {}

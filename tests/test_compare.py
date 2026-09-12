@@ -24,7 +24,8 @@ PROJECT = BASE.parent
 MODULE = PROJECT/'CGYRO_TGLF_scan'
 sys.path.insert(0, str(MODULE/'LIB'))
 modules = {name: importlib.import_module('OMFITlib_compare_'+name) for name in
-           ('state','widgets','cases','ui','core','series','flux','style','spectra','tglf','dispatch','status','cgyro')}
+           ('state','widgets','cases','ui','core','series','flux','style','spectra','tglf','dispatch','status',
+            'cgyro_selection','cgyro_data','cgyro_eigen','cgyro_render','cgyro_export','cgyro')}
 state, core, series = (modules[k] for k in ('state','core','series'))
 
 
