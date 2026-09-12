@@ -128,7 +128,10 @@ def release_tag(metadata):
 
 
 def summary_from_body(body):
-    if not isinstance(body, str) or MARKER not in body:
+    if not isinstance(body, str):
+        return {}
+    body = body.replace('\r\n', '\n').replace('\r', '\n')
+    if MARKER not in body:
         return {}
     try:
         content = body.rsplit(MARKER, 1)[1].split('\n-->', 1)[0]

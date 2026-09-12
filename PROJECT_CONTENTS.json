@@ -441,7 +441,7 @@
     "OMFITsave.txt": "eb5145f8622df3d0cbc03d8df4bd201d557c62c52747afb8a9a6ff7349b3f32a",
     "OMFITtemplates/GUIS/main.py": "0f6e2412da4bfaff49a33963d97df6693e706d9faf50edc492758fdfebf5f857",
     "OMFITtemplates/LIB/OMFITlib_template_archive.py": "3614b16e6bccefb4a055bb80a36fb94d63b06d3d8bab7936de81d490a9736fdc",
-    "OMFITtemplates/LIB/OMFITlib_template_github.py": "d009dfe9948887b093c6ba2026444147edc4d4c476c097c3633e50d723fe9ed4",
+    "OMFITtemplates/LIB/OMFITlib_template_github.py": "caab02eba4d7c48f172dde7e646befb647753174f301669b59014f5e2a758415",
     "OMFITtemplates/LIB/OMFITlib_template_paths.py": "4ae183ec0e3ccbc8996e7068b33d9a34633a4dbc71a465436de3bb924aa7d264",
     "OMFITtemplates/LIB/OMFITlib_template_service.py": "31804f900fe6184ddbc56e424d20a5e4787ce208cba7b262887d700a009e001b",
     "OMFITtemplates/LIB/OMFITlib_template_session.py": "5cdb441b0164b85e48afb0e8c955f9f49b1f65ccc505fa3c74f48f15f395ebea",
@@ -452,10 +452,10 @@
     "OMFITtemplates/launch.py": "6c3773deb9e9a6029acde568a3c9140a6ac182fc768b5c623c278f65850f093c",
     "OMFITtemplates/omfit-templates.svg": "3a71b80ec0c9d60ddeb4a5a7dd2045c365b34a94b3528b84ffe6e0228f51d534",
     "OMFITtemplates/start_manager.sh": "e0f03b2b838bc1720d786fa08d8a7595491c6051a624ad3a0ad4bad68fc503d0",
-    "OMFITtemplates/tests/test_github.py": "275eb55bbce8eebcc02f9936e8e1e581bca20fa7006fc5a912412568e444f726",
+    "OMFITtemplates/tests/test_github.py": "f396648c2baf0a83d7f1dce446d3f0bddd7f243173b24bf243fd743b23014140",
     "OMFITtemplates/tests/test_linux.py": "4b2dfb39c09bb1d8702dd49b8498c05174a92353a69f6da98a232ee073660990",
     "OMFITtemplates/tests/test_templates.py": "ba8a1db2acfc0535f4017c677736c4f5dc0a121cbbe5ef78250b7a4d2004fee9",
     "OMFITtemplates/tests/test_ui.py": "8611325718130ebde2af0111e71d0d30dbca76985084a261c80859a540b4a623",
-    "VALIDATION.md": "16fb5021eb895045f5f501a4d8239a3303e02e5b38959c75e52efd5e931da916"
+    "VALIDATION.md": "a49bc7e4e89522f655847dd0f8d2d2df405ada0bd337b104b4eafb5c0c814d63"
   }
 }

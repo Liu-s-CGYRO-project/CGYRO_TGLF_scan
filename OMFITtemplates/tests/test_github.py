@@ -137,6 +137,18 @@ class GitHubTest(unittest.TestCase):
         self.state.releases.append(release)
         return self.client.list_releases()[0][0]
 
+    def test_release_metadata_accepts_line_endings(self):
+        expected = self.seed_release()
+        original = self.state.releases[0]['body']
+        for newline in ('\n', '\r\n', '\r'):
+            with self.subTest(newline=repr(newline)):
+                self.state.releases[0]['body'] = original.replace('\n', newline)
+                releases, errors = self.client.list_releases()
+                self.assertEqual(errors, [])
+                self.assertEqual(len(releases), 1)
+                for key in ('name', 'description', 'roots', 'examples', 'sha256'):
+                    self.assertEqual(releases[0][key], expected[key])
+
     def test_repository_normalization_and_untrusted_urls(self):
         for value in ('team/demo', 'https://github.com/team/demo.git', 'git@github.com:team/demo.git'):
             self.assertEqual(github.repository(value), 'team/demo')
