@@ -1,0 +1,128 @@
+{
+  "PHYSICS": {
+    "single_Ti": false,
+    "scanParameter": "MASS_2",
+    "scanParameterRange": null,
+    "scanParameterMin": 1.0,
+    "scanParameterMax": 3.0,
+    "scanParameterSteps": 3,
+    "scanParameter2D": "XNUE",
+    "scanParameter2DRange": null,
+    "scanParameter2DMin": 0.5,
+    "scanParameter2DMax": 5,
+    "scanParameter2DSteps": 10,
+    "combine_ions": true,
+    "parallelScan": 3,
+    "scanDimensions": 1,
+    "UQInputSamples": {
+      "__ndarray_tolist__": [
+        []
+      ],
+      "dtype": "float64",
+      "shape": [
+        1,
+        0
+      ]
+    },
+    "scanParameters": "RLTS_1",
+    "rho": 0.7,
+    "multiWindowDist": false,
+    "Turb_Model": "TGLF"
+  },
+  "SETUP": {
+    "workDir": null,
+    "executable": null,
+    "branch": null
+  },
+  "EXPERIMENT": {
+    "shot": null,
+    "time": null,
+    "device": null,
+    "shots": null,
+    "times": null,
+    "runid": ""
+  },
+  "REMOTE_SETUP": {
+    "serverPicker": null,
+    "workDir": null,
+    "server": null,
+    "tunnel": null,
+    "localhost": {
+      "executable": null,
+      "environment": "",
+      "batch": false
+    },
+    "cori": {
+      "executable": "",
+      "environment": ""
+    },
+    "shenma": {
+      "executable": "",
+      "environment": ""
+    },
+    "iris": {
+      "executable": null,
+      "environment": null
+    },
+    "portal": {
+      "executable": null,
+      "environment": null
+    },
+    "toki": {
+      "executable": null,
+      "environment": null
+    },
+    "saturn": {
+      "executable": null,
+      "environment": null
+    },
+    "swip_cluster": {
+      "executable": "",
+      "environment": ""
+    },
+    "iter_login": {
+      "executable": null,
+      "environment": null
+    },
+    "engaging": {
+      "executable": "",
+      "environment": ""
+    },
+    "ukstar": {
+      "batch": true,
+      "executable": "",
+      "n": 20,
+      "queue": "",
+      "environment": ""
+    },
+    "omega": {
+      "executable": "",
+      "environment": null
+    },
+    "environment": null,
+    "login114": {
+      "queue": "",
+      "batch": true,
+      "w": "",
+      "environment": "",
+      "executable": "",
+      "n": 20
+    }
+  },
+  "DEPENDENCIES": {},
+  "MODULE": {
+    "defaultGUI": "root['GUIS']['TGLF_GUI']",
+    "contact": [
+      "meneghini@fusion.gat.com",
+      "smithsp@fusion.gat.com",
+      "candy@fusion.gat.com",
+      "staebler@fusion.gat.com"
+    ],
+    "ID": "TGLF_GACODE",
+    "python3": "3.7",
+    "edited_by": "antti",
+    "date": "11 Oct 2024  19:29",
+    "commit": "efb693cdb1cdaa3f853a41164f264458829d4cf8",
+    "comment": ""
+  }
+}

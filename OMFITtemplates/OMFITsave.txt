@@ -1,0 +1,21 @@
+['GUIS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['GUIS']['main'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/main.py <-:-:-> {}
+['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['LIB']['OMFITlib_template_archive'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_archive.py <-:-:-> {}
+['LIB']['OMFITlib_template_service'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_service.py <-:-:-> {}
+['LIB']['OMFITlib_template_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_ui.py <-:-:-> {}
+['LIB']['OMFITlib_template_paths'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_paths.py <-:-:-> {}
+['LIB']['OMFITlib_template_github'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_github.py <-:-:-> {}
+['LIB']['OMFITlib_template_session'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_session.py <-:-:-> {}
+['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./SettingsNamelist.txt <-:-:-> {}
+['help'] <-:-:-> OMFIThelp <-:-:-> ./help.rst <-:-:-> {}
+['SOURCE'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['SOURCE']['install_desktop.py'] <-:-:-> OMFITascii <-:-:-> ./install_desktop.py <-:-:-> {}
+['SOURCE']['launch.py'] <-:-:-> OMFITascii <-:-:-> ./launch.py <-:-:-> {}
+['SOURCE']['omfit-templates.svg'] <-:-:-> OMFITascii <-:-:-> ./omfit-templates.svg <-:-:-> {}
+['SOURCE']['start_manager.sh'] <-:-:-> OMFITascii <-:-:-> ./start_manager.sh <-:-:-> {}
+['TESTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['TESTS']['test_github.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_github.py <-:-:-> {}
+['TESTS']['test_linux.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_linux.py <-:-:-> {}
+['TESTS']['test_templates.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_templates.py <-:-:-> {}
+['TESTS']['test_ui.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_ui.py <-:-:-> {}

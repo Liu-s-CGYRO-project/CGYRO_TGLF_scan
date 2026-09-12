@@ -1,0 +1,929 @@
+"""One Tk interface shared by the OMFIT module and the standalone launcher."""
+from builtins import all, any, bool, dict, float, int, len, list, max, min, open, range, set, sorted, str, sum, tuple, zip
+import os
+from pathlib import Path
+import queue
+import tempfile
+import threading
+import webbrowser
+import tkinter as tk
+from tkinter import filedialog, font as tkfont, messagebox, ttk
+
+from OMFITlib_template_archive import TemplateError, human_size, json_bytes, parse_json
+from OMFITlib_template_paths import default_library, legacy_preferences_path, preferences_path
+from OMFITlib_template_github import DEFAULT_REPOSITORY, INITIAL_README, GitHub, login, repository
+from OMFITlib_template_service import (
+    Cancelled, EXTENSION, Template, apply_update, inspect_project, list_library,
+    plan_update, publish, read_history, release_name, transfer,
+)
+
+DATA_OPTIONS = {'保留当前案例与结果': 'keep', '切换到模板示例': 'examples'}
+SETTING_OPTIONS = {'保留当前设置，补全新增项': 'keep', '使用模板设置': 'template'}
+
+
+class TemplateManager:
+    def __init__(self, window, current_project='', library=None, preferences=None, session=None):
+        self.window = window
+        self.session = session
+        self.last_output = None
+        self.publish_plan = None
+        self.package_path = None
+        self.preferences = Path(preferences) if preferences is not None else preferences_path()
+        read_preferences = self.preferences
+        if preferences is None and not self.preferences.exists():
+            read_preferences = legacy_preferences_path()
+        saved, preference_error = {}, ''
+        try:
+            if read_preferences.is_file():
+                saved = parse_json(read_preferences.read_bytes())
+                if not isinstance(saved, dict):
+                    raise TemplateError('偏好设置需要是 JSON 对象')
+        except (OSError, TemplateError) as exc:
+            saved, preference_error = {}, str(exc)
+        self.busy = False
+        self.plan = None
+        self.releases = []
+        self.selected_release = None
+        self.events = queue.Queue()
+        self.cancel = threading.Event()
+        self.widgets = []
+        self.close_requested = False
+        self.alive = True
+        self.library = tk.StringVar(window, str(library or saved.get('library') or default_library()))
+        self.shared = tk.StringVar(window, str(saved.get('shared', '')))
+        self.repository = tk.StringVar(window, str(saved.get('repository', DEFAULT_REPOSITORY)))
+        self.connection_info = tk.StringVar(window, '填写 GitHub 仓库地址后连接。公开模板可直接浏览；发布与私有仓库需要登录。')
+        self.upload_info = tk.StringVar(window, '先准备模板包，核对仓库、账号和上传文件后发布。')
+        self.view_source = tk.StringVar(window, '本地模板库' if library is not None else 'GitHub')
+        self.search = tk.StringVar(window, '')
+        current_project = session.project_path() if session is not None else (current_project or saved.get('current', ''))
+        self.current = tk.StringVar(window, current_project if str(current_project).lower().endswith('.zip') else '')
+        self.output = tk.StringVar(window, '')
+        self.template_path = tk.StringVar(window, '')
+        self.data_policy = tk.StringVar(window, next(iter(DATA_OPTIONS)))
+        self.settings_policy = tk.StringVar(window, next(iter(SETTING_OPTIONS)))
+        self.source = tk.StringVar(window, self.current.get())
+        self.roots = tk.StringVar(window, '')
+        self.include_examples = tk.BooleanVar(window, False)
+        self.publish_destination = tk.StringVar(window, '本地模板库' if library is not None else 'GitHub')
+        self.metadata = {k: tk.StringVar(window, '') for k in ('id', 'name', 'author', 'version', 'description')}
+        self.status = tk.StringVar(window, '连接 GitHub，选择版本；也可使用已下载的本地模板。')
+        self.release_info = tk.StringVar(window, '尚未选择模板。')
+        self.inspection_info = tk.StringVar(window, '先选择一个已保存的工程 ZIP，再读取模块和文件范围。')
+        self.plan_info = tk.StringVar(window, '预览后才可生成工程。原 ZIP 始终保留。')
+        self._configure()
+        self._render()
+        if preference_error:
+            self._log('上次库路径未能恢复：' + preference_error)
+        for variable in (self.current, self.template_path, self.data_policy, self.settings_policy):
+            variable.trace_add('write', lambda *args: self._invalidate())
+        self.search.trace_add('write', lambda *args: self._filter())
+        self.repository.trace_add('write', lambda *args: self._repository_changed())
+        for variable in (self.source, self.roots, self.include_examples, self.publish_destination, *self.metadata.values()):
+            variable.trace_add('write', lambda *args: self._invalidate_publish())
+        window.protocol('WM_DELETE_WINDOW', self.close)
+        self._poll_after = window.after(100, self._poll)
+        self._refresh_after = window.after(150, lambda: self.refresh() if self.view_source.get() != 'GitHub' else None)
+
+    def _configure(self):
+        w = self.window
+        w.title('OMFIT 模板管理器')
+        width = min(1180, max(940, w.winfo_screenwidth() - 80))
+        height = min(800, max(680, w.winfo_screenheight() - 100))
+        w.geometry('{}x{}'.format(width, height))
+        w.minsize(940, 680)
+        default = tkfont.nametofont('TkDefaultFont', root=w).actual()
+        available = set(tkfont.families(root=w))
+        family = next((candidate for candidate in ('Noto Sans CJK SC', 'Source Han Sans SC',
+                       'WenQuanYi Micro Hei', 'Noto Sans SC') if candidate in available), default['family'])
+        font = (family, max(10, default['size']))
+        self.font = font
+        self._metrics_font = tkfont.Font(root=w, family=font[0], size=font[1])
+        style = ttk.Style(w)
+        if isinstance(w, tk.Tk) and 'clam' in style.theme_names():
+            style.theme_use('clam')
+        style.configure('TM.TFrame', background='#f4f6fa')
+        style.configure('TM.TLabel', background='#f4f6fa', foreground='#17283d', font=font)
+        style.configure('TM.Muted.TLabel', background='#f4f6fa', foreground='#53647a', font=font)
+        style.configure('TM.Title.TLabel', background='#f4f6fa', foreground='#143454', font=(font[0], 22, 'bold'))
+        style.configure('TM.TButton', font=font, padding=(12, 7))
+        style.configure('TM.Treeview', font=font, rowheight=max(30, self._metrics_font.metrics('linespace') + 8))
+        style.configure('TM.Treeview.Heading', font=(font[0], font[1], 'bold'))
+        style.configure('TM.TNotebook', background='#f4f6fa', tabmargins=(0, 6, 0, 0))
+        style.configure('TM.TNotebook.Tab', font=font, padding=(18, 10))
+        w.configure(background='#f4f6fa')
+
+    def _frame(self, parent, **kwargs):
+        return ttk.Frame(parent, style='TM.TFrame', **kwargs)
+
+    def _label(self, parent, text='', variable=None, muted=False, **kwargs):
+        label = ttk.Label(parent, text=text, textvariable=variable, style='TM.Muted.TLabel' if muted else 'TM.TLabel', **kwargs)
+        if 'wraplength' in kwargs:
+            parent.bind('<Configure>', lambda event: label.configure(wraplength=max(180, event.width - 32)), add='+')
+        return label
+
+    def _button(self, parent, text, command):
+        widget = ttk.Button(parent, text=text, command=command, style='TM.TButton')
+        self.widgets.append((widget, 'normal'))
+        return widget
+
+    def _entry(self, parent, variable, width=None):
+        widget = ttk.Entry(parent, textvariable=variable, font=self.font, width=width)
+        self.widgets.append((widget, 'normal'))
+        return widget
+
+    def _combo(self, parent, variable, values, width=30):
+        widget = ttk.Combobox(parent, textvariable=variable, values=values, state='readonly', width=width, font=self.font)
+        self.widgets.append((widget, 'readonly'))
+        return widget
+
+    def _path_row(self, parent, label, variable, command):
+        row = self._frame(parent)
+        row.pack(fill='x', pady=5)
+        self._label(row, label, width=13).pack(side='left')
+        self._entry(row, variable).pack(side='left', fill='x', expand=True, padx=(0, 8))
+        self._button(row, '浏览…', command).pack(side='left')
+        return row
+
+    def _render(self):
+        main = self._frame(self.window, padding=(22, 16))
+        main.pack(fill='both', expand=True)
+        header = self._frame(main)
+        header.pack(fill='x')
+        ttk.Label(header, text='OMFIT 模板管理', style='TM.Title.TLabel').pack(side='left')
+        self._label(header, '代码与设置版本化 · 案例与结果按需切换', muted=True).pack(side='right', pady=10)
+        self.tabs = ttk.Notebook(main, style='TM.TNotebook')
+        self.tabs.pack(fill='both', expand=True, pady=(8, 10))
+        self.pages = [self._frame(self.tabs, padding=16) for _ in range(4)]
+        for page, title in zip(self.pages, ('1  GitHub 版本', '2  更新 / 切换', '3  发布模板', '4  设置与记录')):
+            self.tabs.add(page, text=title)
+        self._render_library(self.pages[0])
+        self._render_update(self.pages[1])
+        self._render_publish(self.pages[2])
+        self._render_help(self.pages[3])
+        footer = self._frame(main)
+        footer.pack(side='bottom', fill='x', before=self.tabs)
+        footer.columnconfigure(0, weight=1)
+        status_label = self._label(footer, variable=self.status, wraplength=750)
+        status_label.grid(row=0, column=0, sticky='w')
+        footer.bind('<Configure>', lambda event: status_label.configure(wraplength=max(200, event.width - 250)))
+        self.progress = ttk.Progressbar(footer, length=120, mode='determinate')
+        self.progress.grid(row=0, column=1, padx=10)
+        self.cancel_button = ttk.Button(footer, text='取消操作', command=self.cancel.set, state='disabled')
+        self.cancel_button.grid(row=0, column=2)
+
+    def _table(self, parent, columns, height=8):
+        frame = self._frame(parent)
+        frame.pack(fill='both', expand=True, pady=8)
+        table = ttk.Treeview(frame, columns=[c[0] for c in columns], show='headings', selectmode='browse',
+                             style='TM.Treeview', height=height)
+        scrollbar = ttk.Scrollbar(frame, orient='vertical', command=table.yview)
+        horizontal = ttk.Scrollbar(frame, orient='horizontal', command=table.xview)
+        table.configure(yscrollcommand=scrollbar.set, xscrollcommand=horizontal.set)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+        table.grid(row=0, column=0, sticky='nsew')
+        scrollbar.grid(row=0, column=1, sticky='ns')
+        horizontal.grid(row=1, column=0, sticky='ew')
+        for key, label, width in columns:
+            table.heading(key, text=label)
+            table.column(key, width=width, minwidth=65, stretch=(key in ('name', 'path')))
+        return table
+
+    def _render_library(self, page):
+        row = self._frame(page)
+        row.pack(fill='x')
+        self._label(row, 'GitHub 仓库', width=13).pack(side='left')
+        self._entry(row, self.repository).pack(side='left', fill='x', expand=True, padx=(0, 8))
+        self._button(row, '连接仓库', self._connect).pack(side='left', padx=(0, 8))
+        self._button(row, '登录 GitHub', self._login).pack(side='left')
+        self._label(page, variable=self.connection_info, muted=True, wraplength=1000).pack(fill='x', pady=(8, 4))
+        row = self._frame(page)
+        row.pack(fill='x', pady=(8, 0))
+        self._combo(row, self.view_source, ['GitHub', '本地模板库', '共享模板库'], 15).pack(side='left', padx=(0, 10))
+        self._label(row, '搜索').pack(side='left', padx=(0, 6))
+        self._entry(row, self.search).pack(side='left', fill='x', expand=True)
+        self._button(row, '刷新列表', self.refresh).pack(side='left', padx=(10, 0))
+        self.view_source.trace_add('write', lambda *args: self.refresh())
+        self.library_table = self._table(page, [('name', '模板', 260), ('author', '作者', 110),
+            ('version', '版本', 100), ('examples', '示例', 95), ('size', '包大小', 100), ('date', '发布时间', 160)])
+        self.library_table.bind('<<TreeviewSelect>>', self._select_release)
+        self.library_table.bind('<Double-1>', lambda event: self._use_selected())
+        self.empty_hint = ttk.Label(self.library_table, text='连接 GitHub 仓库，浏览团队模板版本。\n也可选择本地模板库使用已下载的版本。',
+                                   background='white', foreground='#53647a', font=self.font, justify='center')
+        self.empty_hint.place(relx=.5, rely=.45, anchor='center')
+        info = self._label(page, variable=self.release_info, wraplength=1000, muted=True)
+        actions = self._frame(page)
+        actions.pack(side='bottom', fill='x', pady=(6, 0), before=self.library_table.master)
+        info.pack(side='bottom', fill='x', pady=5, before=self.library_table.master)
+        self.library_actions = {}
+        for label, callback in [('拉取并使用 →', self._use_selected), ('在 GitHub 查看', self._browse_release),
+                                ('导入包', self._import), ('导出包', self._export), ('上传本地包', self._upload_selected)]:
+            button = self._button(actions, label, callback)
+            button.pack(side='left', padx=(0, 8))
+            self.library_actions[label] = button
+        self._library_states()
+
+    def _render_update(self, page):
+        heading = self._frame(page)
+        heading.pack(fill='x')
+        self._label(heading, '预览变更 → 生成新工程 → 在 OMFIT 打开', muted=True).pack(side='left')
+        if self.session is not None:
+            self._button(heading, '保存当前 OMFIT 会话…', self._save_session).pack(side='right')
+        self._path_row(page, '当前工程 ZIP', self.current, lambda: self._choose_zip(self.current))
+        self._path_row(page, '选用模板包', self.template_path, lambda: self._choose_zip(self.template_path, template=True))
+        self._path_row(page, '输出工程 ZIP', self.output, self._choose_output)
+        row = self._frame(page)
+        row.pack(fill='x', pady=7)
+        self._label(row, '案例与结果').pack(side='left', padx=(0, 8))
+        self._combo(row, self.data_policy, list(DATA_OPTIONS), 23).pack(side='left')
+        self._label(row, '设置').pack(side='left', padx=(24, 8))
+        self._combo(row, self.settings_policy, list(SETTING_OPTIONS), 28).pack(side='left')
+        self._label(page, '“切换到示例”替换模板模块内的全部案例与结果；未保存的修改需先在 OMFIT 保存。', muted=True).pack(anchor='w')
+        self.change_table = self._table(page, [('action', '变更', 85), ('path', '文件路径', 710), ('size', '大小', 100)], 5)
+        summary = self._label(page, variable=self.plan_info, wraplength=1000)
+        actions = self._frame(page)
+        actions.pack(side='bottom', fill='x', before=self.change_table.master)
+        summary.pack(side='bottom', fill='x', pady=5, before=self.change_table.master)
+        self._button(actions, '预览变更', self._preview).pack(side='left', padx=(0, 10))
+        self.apply_button = self._button(actions, '生成新工程', self._apply)
+        self.apply_button.pack(side='left', padx=(0, 10))
+        self.report_button = self._button(actions, '导出完整变更清单', self._save_report)
+        self.report_button.pack(side='left')
+        self.open_button = self._button(actions, '备份并在 OMFIT 打开', self._open_in_omfit)
+        if self.session is not None:
+            self.open_button.pack(side='left', padx=(10, 0))
+        self.open_button.configure(state='disabled')
+        self.apply_button.configure(state='disabled')
+        self.report_button.configure(state='disabled')
+
+    def _render_publish(self, page):
+        heading = self._frame(page)
+        heading.pack(fill='x')
+        self._label(heading, '每个开发者分别发布版本。默认只包含代码与设置。', muted=True).pack(side='left')
+        if self.session is not None:
+            self._button(heading, '保存当前 OMFIT 会话…', self._save_session).pack(side='right')
+        self._path_row(page, '来源工程 ZIP', self.source, lambda: self._choose_zip(self.source))
+        row = self._frame(page)
+        row.pack(fill='x', pady=4)
+        self._button(row, '读取工程范围', self._inspect).pack(side='left', padx=(0, 12))
+        self._label(row, '模块（逗号分隔）').pack(side='left', padx=(0, 8))
+        self._entry(row, self.roots).pack(side='left', fill='x', expand=True)
+        form = self._frame(page)
+        form.pack(fill='x', pady=10)
+        form.columnconfigure(1, weight=1)
+        form.columnconfigure(3, weight=1)
+        for index, (key, label) in enumerate([('name', '显示名称'), ('id', '模板 ID'), ('author', '作者 ID'),
+                                             ('version', '版本号'), ('description', '更新说明')]):
+            row, column = divmod(index, 2)
+            self._label(form, label).grid(row=row, column=column * 2, sticky='w', padx=(0, 10), pady=6)
+            self._entry(form, self.metadata[key]).grid(row=row, column=column * 2 + 1, sticky='ew',
+                                                      padx=(0, 18), pady=6, columnspan=3 if index == 4 else 1)
+        choices = self._frame(page)
+        choices.pack(fill='x', pady=7)
+        checkbox = ttk.Checkbutton(choices, text='包含所选模块的全部案例与结果，作为示例', variable=self.include_examples)
+        checkbox.pack(side='left', padx=(0, 25))
+        self.widgets.append((checkbox, 'normal'))
+        self._label(choices, '发布到').pack(side='left', padx=(0, 8))
+        self._combo(choices, self.publish_destination, ['GitHub', '本地模板库'], 14).pack(side='left')
+        self._label(page, '默认只打包代码、模板输入和设置；示例建议来自单独准备的小型工程。', muted=True).pack(anchor='w', pady=(4, 12))
+        self._label(page, variable=self.inspection_info, wraplength=1000, justify='left').pack(fill='x')
+        bottom = self._frame(page)
+        bottom.pack(side='bottom', fill='x', pady=(12, 0))
+        self._label(bottom, variable=self.upload_info, wraplength=1000).pack(fill='x', pady=(0, 10))
+        actions = self._frame(bottom)
+        actions.pack(fill='x')
+        self._button(actions, '准备模板包', self._publish).pack(side='left', padx=(0, 10))
+        self.files_button = self._button(actions, '查看上传文件', self._show_package)
+        self.files_button.pack(side='left', padx=(0, 10))
+        self.upload_button = self._button(actions, '发布到 GitHub', self._upload)
+        self.upload_button.pack(side='left')
+        self.files_button.configure(state='disabled')
+        self.upload_button.configure(state='disabled')
+
+    def _render_help(self, page):
+        self._path_row(page, '本地模板库', self.library, lambda: self._choose_dir(self.library))
+        self._path_row(page, '共享目录（可选）', self.shared, lambda: self._choose_dir(self.shared))
+        actions = self._frame(page)
+        actions.pack(fill='x')
+        self._button(actions, '读取当前工程的更新记录', self._history).pack(side='left')
+        self._button(actions, '初始化 GitHub 空仓库', self._initialize_repository).pack(side='left', padx=10)
+        self.log = tk.Text(page, wrap='word', font=self.font, background='#ffffff', foreground='#17283d',
+                           relief='flat', padx=16, pady=14, height=15)
+        scroll = ttk.Scrollbar(page, orient='vertical', command=self.log.yview)
+        scroll.pack(side='right', fill='y', pady=(12, 0))
+        self.log.configure(yscrollcommand=scroll.set)
+        self.log.pack(fill='both', expand=True, pady=(12, 0))
+        self._log('使用流程\n\n'
+            '1. 填写 GitHub 仓库并连接。登录按钮会打开 Linux 终端运行 gh auth login。\n'
+            '2. 选择开发者和版本，“拉取并使用”会下载并校验模板，然后进入更新页。\n'
+            '3. 在 OMFIT 保存当前会话为 ZIP，选择保留案例与结果或使用模板示例。\n'
+            '4. 默认保留当前设置，并补全新版新增项；模块身份与依赖说明随模板更新。\n'
+            '5. 生成新工程后，可“备份并在 OMFIT 打开”；此按钮会先保存当前会话的完整备份。\n'
+            '6. 发布时先准备模板包，查看文件清单与目标仓库，再发布到 GitHub Releases。\n\n'
+            '范围说明\n\n'
+            '支持自包含、未加密的 OMFIT 工程 ZIP，按顶层模块选择。更新要求模块名称匹配。\n'
+            '代码范围：SCRIPTS / PLOTS / GUIS / LIB / TEMPLATES / WORKFLOWS / SOURCE / DOCS / TESTS，'
+            '以及模块直属的 Python 脚本、help 与 license。其余内容按数据处理。\n'
+            '保留结果时不自动删除旧子模块；结构不兼容会停止并给出原因。\n'
+            'GitHub 版本使用 Release 附件分发。Git 分支合并和源码提交仍在原开发流程中完成。\n'
+            '登录复用 gh 的当前账号；也支持启动 OMFIT 时已有的 GH_TOKEN / GITHUB_TOKEN。凭据不写入本工具配置或日志。\n'
+            '已下载的模板保存在本地模板库，离线时可使用。共享目录也可作额外分发路径。\n'
+            '读取与校验模板不会执行其代码。应用生成的工程在 OMFIT 中运行时，才使用该版本代码。\n'
+            'SHA-256 用于验证文件完整性，作者字段由发布者填写。\n')
+
+    def _log(self, message):
+        self.log.configure(state='normal')
+        self.log.insert('end', message + '\n\n')
+        self.log.see('end')
+        self.log.configure(state='disabled')
+
+    def _choose_dir(self, variable):
+        chosen = filedialog.askdirectory(parent=self.window, initialdir=variable.get() or None)
+        if chosen:
+            variable.set(chosen)
+            self._save_preferences()
+            self.refresh()
+
+    def _save_preferences(self):
+        temporary = None
+        try:
+            self.preferences.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode='wb', prefix='.omfit-preferences-',
+                                             dir=self.preferences.parent, delete=False) as stream:
+                temporary = Path(stream.name)
+                stream.write(json_bytes({'library': self.library.get().strip(), 'shared': self.shared.get().strip(),
+                                         'current': self.current.get().strip(), 'repository': self.repository.get().strip()}))
+            os.replace(temporary, self.preferences)
+        except OSError as exc:
+            self._log('库路径未保存：' + str(exc))
+        finally:
+            if temporary is not None and temporary.exists():
+                temporary.unlink()
+
+    def _choose_zip(self, variable, template=False):
+        chosen = filedialog.askopenfilename(parent=self.window,
+            filetypes=[('OMFIT 模板', '*' + EXTENSION)] if template else [('OMFIT 工程 ZIP', '*.zip')])
+        if chosen:
+            variable.set(chosen)
+
+    def _choose_output(self):
+        chosen = filedialog.asksaveasfilename(parent=self.window, defaultextension='.zip', filetypes=[('OMFIT 工程 ZIP', '*.zip')],
+                                             initialfile=Path(self.output.get()).name or 'OMFIT_updated.zip')
+        if chosen:
+            self.output.set(chosen)
+
+    def _directory(self, shared=False):
+        value = self.shared.get().strip() if shared else self.library.get().strip()
+        if not value:
+            raise TemplateError('请先选择共享模板库目录' if shared else '请先选择本地模板库目录')
+        return Path(value).expanduser().resolve()
+
+    def _error(self, exc):
+        self.status.set(str(exc))
+        self._log('错误：' + str(exc))
+        messagebox.showerror('OMFIT 模板管理', str(exc), parent=self.window)
+
+    def _set_busy(self, value):
+        self.busy = value
+        for widget, normal_state in self.widgets:
+            widget.configure(state='disabled' if value else normal_state)
+        self.cancel_button.configure(state='normal' if value else 'disabled')
+        self.apply_button.configure(state='normal' if self.plan is not None and not value else 'disabled')
+        self.report_button.configure(state='normal' if self.plan is not None and not value else 'disabled')
+        self.upload_button.configure(state='normal' if self.publish_plan is not None and not value else 'disabled')
+        self.files_button.configure(state='normal' if self.package_path is not None and not value else 'disabled')
+        self.open_button.configure(state='normal' if self.session is not None and self.last_output and not value else 'disabled')
+        self._library_states()
+
+    def _library_states(self):
+        selected = self.selected_release
+        for label in ('拉取并使用 →', '导出包', '上传本地包'):
+            enabled = bool(selected) and not self.busy
+            if label != '拉取并使用 →' and selected and selected.get('remote'):
+                enabled = False
+            self.library_actions[label].configure(state='normal' if enabled else 'disabled')
+
+    def _run(self, title, work, success):
+        if self.busy:
+            return
+        self.cancel.clear()
+        self.status.set(title)
+        self.progress.configure(value=0)
+        self._set_busy(True)
+
+        def runner():
+            try:
+                result = work()
+                self.events.put(('success', success, result))
+            except Exception as exc:
+                self.events.put(('error', exc))
+        threading.Thread(target=runner, name='omfit-template-worker', daemon=True).start()
+
+    def _progress(self, label, done, total):
+        self.events.put(('progress', label, done, total))
+
+    def _poll(self):
+        if not self.alive:
+            return
+        try:
+            while True:
+                event = self.events.get_nowait()
+                if event[0] == 'progress':
+                    _, label, done, total = event
+                    self.status.set(label + (' · ' + human_size(done) + ' / ' + human_size(total) if total else '…'))
+                    self.progress.configure(value=min(100, 100 * done / total) if total else 0)
+                else:
+                    self._set_busy(False)
+                    if self.close_requested:
+                        if event[0] == 'error' and not isinstance(event[1], Cancelled):
+                            self._error(event[1])
+                        self.close()
+                        return
+                    if event[0] == 'success':
+                        self.progress.configure(value=100)
+                        try:
+                            event[1](event[2])
+                        except Exception as exc:
+                            self._error(exc)
+                    elif isinstance(event[1], Cancelled):
+                        self.status.set(str(event[1]))
+                    else:
+                        self._error(event[1])
+        except queue.Empty:
+            pass
+        self._poll_after = self.window.after(100, self._poll)
+
+    def refresh(self):
+        if self.busy:
+            return
+        if self.view_source.get() == 'GitHub':
+            self._connect()
+            return
+        try:
+            directory = self._directory(self.view_source.get() == '共享模板库')
+        except TemplateError as exc:
+            self.status.set(str(exc))
+            return
+        self._run('正在读取模板库…', lambda: list_library(directory), self._loaded)
+
+    def _repository_changed(self):
+        self.connection_info.set('仓库已更改，请重新连接。')
+        self._invalidate_publish()
+        if self.view_source.get() == 'GitHub':
+            self.releases = []
+            self._filter()
+
+    def _connect(self):
+        if self.busy:
+            return
+        try:
+            repo = repository(self.repository.get())
+        except TemplateError as exc:
+            self.status.set(str(exc))
+            return
+        self._save_preferences()
+        def work():
+            client = GitHub(repo, cancel=self.cancel, progress=self._progress)
+            return client.connect(), client.list_releases()
+        def connected(result):
+            info, releases = result
+            self.connection_info.set('{} · {} · {} · 默认分支 {}'.format(info['repository'],
+                '私有仓库' if info['private'] else '公开仓库',
+                '登录账号 ' + info['login'] if info['login'] else '未登录，只读访问', info['default_branch']))
+            # Switching the source must not start a second concurrent request.
+            self.busy = True
+            self.view_source.set('GitHub')
+            self.busy = False
+            self._loaded(releases)
+            if not self.releases:
+                self.status.set('仓库已连接，尚无模板 Release。可在“发布模板”页准备首个版本。')
+            if info.get('empty'):
+                self.status.set('仓库为空。登录后可在“设置与记录”页初始化，再发布首个模板版本。')
+            if not self.metadata['author'].get() and info['login']:
+                self.metadata['author'].set(info['login'])
+        self._run('正在连接 GitHub 并读取版本…', work, connected)
+
+    def _login(self):
+        try:
+            login()
+            self.status.set('已打开 GitHub 登录终端。完成登录后，点击“连接仓库”。')
+        except (TemplateError, OSError) as exc:
+            self._error(exc)
+
+    def _initialize_repository(self):
+        if self.busy:
+            return
+        try:
+            repo = repository(self.repository.get())
+        except TemplateError as exc:
+            self._error(exc)
+            return
+        dialog = tk.Toplevel(self.window)
+        dialog.title('初始化 GitHub 空仓库')
+        dialog.geometry('850x600')
+        self._label(dialog, '目标：' + repo + ' / README.md\n将创建下面的说明文件和首次提交。', wraplength=800).pack(fill='x', padx=15, pady=15)
+        content = tk.Text(dialog, wrap='word', font=self.font, padx=15, pady=10)
+        content.pack(fill='both', expand=True, padx=15)
+        content.insert('1.0', INITIAL_README)
+        content.configure(state='disabled')
+        def confirmed():
+            dialog.destroy()
+            self._run('正在初始化 GitHub 空仓库…', lambda: GitHub(repo, cancel=self.cancel).initialize_empty(),
+                      lambda url: (self._log('空仓库已初始化：' + url), self._connect()))
+        ttk.Button(dialog, text='确认创建 README 和首次提交', command=confirmed, style='TM.TButton').pack(pady=15)
+        dialog.transient(self.window)
+        dialog.grab_set()
+
+    def _browse_release(self):
+        try:
+            release = self.selected_release or {}
+            url = release.get('url') or 'https://github.com/' + repository(self.repository.get()) + '/releases'
+            webbrowser.open(url)
+        except TemplateError as exc:
+            self._error(exc)
+
+    def _loaded(self, result):
+        self.releases, errors = result
+        self._filter()
+        self.status.set('找到 {} 个版本。{}'.format(len(self.releases), '另有 {} 个包无法读取，详见记录。'.format(len(errors)) if errors else ''))
+        if errors:
+            self._log('\n'.join(errors))
+
+    def _filter(self):
+        self.library_table.delete(*self.library_table.get_children())
+        self.selected_release = None
+        self.release_info.set('选择一个版本可查看模块范围与更新说明；双击进入更新页。')
+        query = self.search.get().strip().casefold()
+        for index, release in enumerate(self.releases):
+            if query and query not in ' '.join(str(release.get(k, '')) for k in ('name', 'id', 'author', 'version')).casefold():
+                continue
+            self.library_table.insert('', 'end', iid=str(index), values=(release.get('name', release['id']), release['author'],
+                release['version'], '待拉取确认' if release['examples'] is None else '包含示例' if release['examples'] else '无示例',
+                human_size(release['archive_bytes']), release.get('created', '')[:16].replace('T', ' ')))
+        if self.library_table.get_children():
+            self.empty_hint.place_forget()
+        else:
+            self.empty_hint.configure(text='没有匹配的模板，请调整搜索词。' if query else
+                '暂无模板版本。\n在“发布模板”页准备首个版本，或导入已有模板包。')
+            self.empty_hint.place(relx=.5, rely=.45, anchor='center')
+        self._library_states()
+
+    def _select_release(self, event=None):
+        selected = self.library_table.selection()
+        self.selected_release = self.releases[int(selected[0])] if selected else None
+        if self.selected_release:
+            r = self.selected_release
+            self.release_info.set('{}  ·  模块：{}{}\n{}'.format(r['id'], ', '.join(r['roots']) or '拉取后确认',
+                ' · GitHub 发布账号 ' + r['publisher'] if r.get('publisher') else '', str(r.get('description', ''))[:250]))
+        self._library_states()
+
+    def _require_selection(self):
+        if not self.selected_release:
+            raise TemplateError('请先在模板库中选择一个版本')
+        return dict(self.selected_release)
+
+    def _use_selected(self):
+        if self.busy:
+            return
+        try:
+            release = self._require_selection()
+            if release.get('remote'):
+                library = self._directory()
+                self._run('正在拉取所选 GitHub 版本…',
+                    lambda: GitHub(release['repository'], cancel=self.cancel, progress=self._progress).pull(release, library),
+                    self._use_path)
+            else:
+                self._use_path(release['path'])
+        except TemplateError as exc:
+            self._error(exc)
+
+    def _use_path(self, path):
+        with Template(path) as template:
+            release = template.manifest
+            self.template_path.set(path)
+            if not release['examples']:
+                self.data_policy.set(next(iter(DATA_OPTIONS)))
+            if self.current.get():
+                path = Path(self.current.get())
+                self.output.set(str(path.with_name(path.stem + '__' + release['author'] + '_' + release['version'] + '.zip')))
+            self.tabs.select(self.pages[1])
+
+    def _transfer(self, source, directory):
+        def work():
+            with Template(source) as template:
+                target = directory / release_name(template.manifest)
+            return transfer(source, target, self.cancel, self._progress)
+        self._run('正在校验并传输模板…', work, self._transferred)
+
+    def _transferred(self, result):
+        self._log('模板已写入：' + result)
+        self.status.set('模板已写入：' + result)
+        self.refresh()
+
+    def _import(self):
+        try:
+            directory = self._directory()
+            filename = filedialog.askopenfilename(parent=self.window, filetypes=[('OMFIT 模板', '*' + EXTENSION)])
+            if filename:
+                self._transfer(filename, directory)
+        except TemplateError as exc:
+            self._error(exc)
+
+    def _export(self):
+        try:
+            release = self._require_selection()
+            if release.get('remote'):
+                raise TemplateError('请先“拉取并使用”，再从本地模板库导出')
+            filename = filedialog.asksaveasfilename(parent=self.window, initialfile=release_name(release),
+                defaultextension=EXTENSION, filetypes=[('OMFIT 模板', '*' + EXTENSION)])
+            if filename:
+                self._run('正在导出模板…', lambda: transfer(release['path'], filename, self.cancel, self._progress), self._transferred)
+        except TemplateError as exc:
+            self._error(exc)
+
+    def _save_session(self):
+        if self.session is None or self.busy:
+            return
+        path = filedialog.asksaveasfilename(parent=self.window, title='保存当前 OMFIT 会话为新的工程 ZIP',
+            initialfile='OMFIT_snapshot.zip', defaultextension='.zip', filetypes=[('OMFIT 工程 ZIP', '*.zip')])
+        if not path:
+            return
+        self._set_busy(True)
+        self.status.set('OMFIT 正在保存当前会话…')
+        self.window.update_idletasks()
+        try:
+            saved = self.session.save_as(path)
+            self.current.set(saved)
+            self.source.set(saved)
+            self.status.set('当前会话已保存：' + saved)
+            self._log('OMFIT 当前会话另存为：' + saved)
+        except Exception as exc:
+            self._error(exc)
+        finally:
+            self._set_busy(False)
+
+    def _open_in_omfit(self):
+        if self.session is None or not self.last_output or self.busy:
+            return
+        target = self.last_output
+        if not messagebox.askyesno('在 OMFIT 打开更新后的工程',
+            '目标工程：' + target + '\n\n将先把当前 OMFIT 会话保存到目标旁的独立备份 ZIP，再打开此工程。继续？', parent=self.window):
+            return
+        self._set_busy(True)
+        self.status.set('正在备份当前会话并在 OMFIT 打开工程…')
+        self.window.update_idletasks()
+        try:
+            backup = self.session.backup_and_open(target)
+            self.current.set(target)
+            self.source.set(target)
+            self.status.set('OMFIT 已打开更新后的工程。')
+            self._log('已在 OMFIT 打开：' + target + '\n切换前的会话备份：' + backup)
+        except Exception as exc:
+            self._error(exc)
+        finally:
+            self._set_busy(False)
+
+    def _invalidate(self):
+        self.plan = None
+        self.plan_info.set('选项已更改，请重新预览。原 ZIP 始终保留。')
+        self.apply_button.configure(state='disabled')
+        self.report_button.configure(state='disabled')
+        self.change_table.delete(*self.change_table.get_children())
+
+    def _preview(self):
+        self._invalidate()
+        args = (self.current.get().strip(), self.template_path.get().strip(),
+                DATA_OPTIONS[self.data_policy.get()], SETTING_OPTIONS[self.settings_policy.get()])
+        if not args[0] or not args[1]:
+            self._error(TemplateError('请选择当前工程 ZIP 和模板包'))
+            return
+        self._run('正在比较…', lambda: plan_update(*args, cancel=self.cancel, progress=self._progress), self._planned)
+
+    def _planned(self, plan):
+        self.plan = plan
+        labels = {'add': '新增', 'replace': '更新', 'delete': '删除'}
+        for change in plan['changes'][:1500]:
+            self.change_table.insert('', 'end', values=(labels[change['action']], change['path'], human_size(change['bytes'])))
+        counts = {action: sum(c['action'] == action for c in plan['changes']) for action in labels}
+        self.plan_info.set('新增 {add} · 更新 {replace} · 删除 {delete}；保留 {keep} 个文件，预计输出约 {size}。{tail}'.format(
+            **counts, keep=plan['preserved_files'], size=human_size(plan['output_bytes_estimate']),
+            tail='列表显示前 1500 项，可导出完整清单。' if len(plan['changes']) > 1500 else ''))
+        self.status.set('预览完成：{} / {} / {}'.format(plan['release']['author'], plan['release']['id'], plan['release']['version']))
+        self._set_busy(False)
+
+    def _apply(self):
+        if self.plan is None:
+            return
+        path = self.output.get().strip()
+        if not path:
+            self._choose_output()
+            path = self.output.get().strip()
+        if not path:
+            return
+        plan = self.plan
+        self._run('正在生成新工程…', lambda: apply_update(plan, path, self._progress, self.cancel), self._applied)
+
+    def _applied(self, path):
+        self.status.set('已生成新工程。' + ('可点击“备份并在 OMFIT 打开”。' if self.session else '请在 OMFIT 中打开此 ZIP。'))
+        self._log('工程生成完成：' + path + '\n原工程（回退用）：' + self.current.get())
+        messagebox.showinfo('新工程已生成', path + '\n\n请在 OMFIT 中打开此 ZIP。原工程已保留，可直接回退。', parent=self.window)
+        self._invalidate()
+        self.last_output = path
+        self._set_busy(False)
+
+    def _save_report(self):
+        if self.plan is None:
+            return
+        filename = filedialog.asksaveasfilename(parent=self.window, initialfile='template_changes.json', defaultextension='.json')
+        if filename:
+            try:
+                with open(filename, 'xb') as stream:
+                    stream.write(json_bytes(self.plan))
+                self.status.set('变更清单已导出：' + filename)
+            except OSError as exc:
+                self._error(exc)
+
+    def _inspect(self):
+        source = self.source.get().strip()
+        if not source:
+            self._error(TemplateError('请选择来源工程 ZIP'))
+            return
+        self._run('正在读取工程范围…', lambda: inspect_project(source), self._inspected)
+
+    def _inspected(self, result):
+        self.roots.set(', '.join(result['available_roots']))
+        self.inspection_info.set('可选模块：{}\n代码：{} / {}；设置：{} / {}；案例与结果：{} / {}。'.format(
+            ', '.join(result['available_roots']), result['files'].get('code', 0), human_size(result['bytes'].get('code', 0)),
+            result['files'].get('settings', 0), human_size(result['bytes'].get('settings', 0)),
+            result['files'].get('data', 0), human_size(result['bytes'].get('data', 0))))
+        self.status.set('工程范围已读取；请填写版本信息。')
+
+    def _publish(self):
+        try:
+            source = self.source.get().strip()
+            roots = sorted(set(x.strip() for x in self.roots.get().replace('，', ',').split(',') if x.strip()))
+            metadata = {k: v.get().strip() for k, v in self.metadata.items()}
+            release_name(metadata)
+            if not source or not roots:
+                raise TemplateError('请选择来源工程并读取／填写模块范围')
+            directory = self._directory()
+            examples = self.include_examples.get()
+            self._run('正在发布版本…', lambda: publish(source, directory, metadata, roots, examples,
+                                                       self._progress, self.cancel), self._package_built)
+        except TemplateError as exc:
+            self._error(exc)
+
+    def _published(self, path):
+        self._log('版本已发布：' + path)
+        self.status.set('版本已发布：' + Path(path).name)
+        self.tabs.select(self.pages[0])
+        self.view_source.set(self.publish_destination.get())
+        self.refresh()
+
+    def _invalidate_publish(self):
+        self.publish_plan = None
+        self.package_path = None
+        self.upload_info.set('内容或目标已改变，请重新准备模板包。')
+        self.upload_button.configure(state='disabled')
+        self.files_button.configure(state='disabled')
+
+    def _package_built(self, path):
+        self.package_path = path
+        self._log('模板包已准备：' + path)
+        self._set_busy(False)
+        if self.publish_destination.get() == 'GitHub':
+            self._prepare_upload(path)
+        else:
+            self._published(path)
+
+    def _upload_selected(self):
+        try:
+            release = self._require_selection()
+            if release.get('remote'):
+                raise TemplateError('请选择本地模板库中的包；GitHub 上已有的版本不能覆盖')
+            self.publish_destination.set('GitHub')
+            self.package_path = release['path']
+            self.tabs.select(self.pages[2])
+            self._prepare_upload(release['path'])
+        except TemplateError as exc:
+            self._error(exc)
+
+    def _prepare_upload(self, path):
+        try:
+            repo = repository(self.repository.get())
+        except TemplateError as exc:
+            self._error(exc)
+            return
+        def work():
+            return GitHub(repo, cancel=self.cancel, progress=self._progress).prepare_publish(path)
+        self._run('正在校验模板和 GitHub 发布目标…', work, self._prepared)
+
+    def _prepared(self, plan):
+        self.publish_plan = plan
+        self.package_path = plan['path']
+        metadata = plan['metadata']
+        self.upload_info.set('目标：{}（{}） · 账号：{}\n版本：{} · {} · 模块：{} · {}'.format(
+            plan['repository'], '私有' if plan['private'] else '公开', plan['login'], plan['tag'],
+            human_size(plan['bytes']), ', '.join(metadata['roots']), '包含示例' if metadata['examples'] else '仅代码与设置'))
+        self.status.set('模板包与发布目标已核对。可查看完整上传文件清单。')
+        self._set_busy(False)
+
+    def _show_package(self):
+        if not self.package_path:
+            return
+        try:
+            with Template(self.package_path) as template:
+                manifest = template.manifest
+                lines = ['模板包：' + self.package_path, '模块：' + ', '.join(manifest['roots']),
+                         '案例与结果：' + ('包含' if manifest['examples'] else '不包含'), '']
+                lines.extend('{}  {}  {}'.format(spec['kind'], human_size(spec['bytes']), name)
+                             for name, spec in sorted(manifest['files'].items()))
+            dialog = tk.Toplevel(self.window)
+            dialog.title('上传文件清单')
+            dialog.geometry('900x580')
+            text = tk.Text(dialog, wrap='none', font=self.font, padx=12, pady=12)
+            yscroll = ttk.Scrollbar(dialog, orient='vertical', command=text.yview)
+            yscroll.pack(side='right', fill='y')
+            xscroll = ttk.Scrollbar(dialog, orient='horizontal', command=text.xview)
+            xscroll.pack(side='bottom', fill='x')
+            text.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
+            text.pack(fill='both', expand=True)
+            text.insert('1.0', '\n'.join(lines))
+            text.configure(state='disabled')
+        except Exception as exc:
+            self._error(exc)
+
+    def _upload(self):
+        if self.publish_plan is None or self.busy:
+            return
+        plan = self.publish_plan
+        if not messagebox.askyesno('发布 GitHub 版本', self.upload_info.get()
+            + '\n\n将创建 Release 并上传已准备的模板包。发布此版本？', parent=self.window):
+            return
+        def work():
+            return GitHub(plan['repository'], cancel=self.cancel, progress=self._progress).publish_release(plan)
+        def uploaded(url):
+            self.publish_plan = None
+            self._set_busy(False)
+            self._log('GitHub 版本已发布：' + url)
+            self.status.set('GitHub 版本已发布。')
+            self.tabs.select(self.pages[0])
+            if self.view_source.get() != 'GitHub':
+                self.view_source.set('GitHub')
+            else:
+                self.refresh()
+        self._run('正在上传并发布 GitHub 版本…', work, uploaded)
+
+    def _history(self):
+        path = self.current.get().strip()
+        if not path:
+            self._error(TemplateError('请先在“更新 / 切换”页选择工程 ZIP'))
+            return
+        def loaded(records):
+            self._log('工程更新记录：' + path)
+            if not records:
+                self._log('此工程尚无模板管理器记录。')
+            for record in sorted(records, key=lambda r: r.get('completed_at', '')):
+                release = record.get('release', {})
+                self._log('{}\n{} / {} / {}\n原工程：{}\n案例策略：{}；设置策略：{}'.format(
+                    record.get('completed_at', ''), release.get('author', ''), release.get('id', ''), release.get('version', ''),
+                    record.get('current', ''), record.get('data_policy', ''), record.get('settings_policy', '')))
+            self.status.set('已读取 {} 条更新记录。'.format(len(records)))
+        self._run('正在读取更新记录…', lambda: read_history(path), loaded)
+
+    def close(self):
+        if self.busy:
+            self.close_requested = True
+            self.cancel.set()
+            self.status.set('正在取消操作并清理临时文件…')
+            return
+        self.alive = False
+        self._save_preferences()
+        for callback in (self._poll_after, self._refresh_after):
+            try:
+                self.window.after_cancel(callback)
+            except tk.TclError:
+                pass
+        self.window.update_idletasks()
+        self.window.destroy()
+
+
+def open_manager(current_project='', library=None, preferences=None, session=None):
+    """Reuse OMFIT's existing Tk interpreter; only standalone creates a root."""
+    parent = tk._default_root
+    if parent is not None:
+        previous = getattr(parent, '_omfit_template_manager', None)
+        if previous is not None and previous.alive and previous.window.winfo_exists():
+            previous.window.deiconify()
+            previous.window.lift()
+            return previous
+        window = tk.Toplevel(parent)
+    else:
+        window = tk.Tk(className='OMFITtemplates')
+    manager = TemplateManager(window, current_project=current_project, library=library, preferences=preferences, session=session)
+    if parent is not None:
+        parent._omfit_template_manager = manager
+    else:
+        window.mainloop()
+    return manager

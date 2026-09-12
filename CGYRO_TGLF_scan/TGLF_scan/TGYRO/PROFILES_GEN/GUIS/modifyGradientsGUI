@@ -1,0 +1,42 @@
+# -*-Python-*-
+# Created by avdeevag at 19 Apr 2022  16:44
+
+"""
+
+This script contains the GUI that drives the modify_gradients script
+that allows the user to scale gradients of plasma profiles at the core in input.gacode
+
+
+"""
+
+
+OMFITx.TitleGUI('Modify Gradients')
+
+OMFITx.ObjectPicker("root['OUTPUTS']['input.gacode.mod']", objectType=OMFITinputgacode)
+
+
+OMFITx.Entry("scratch['quants_modGrad']", 'Profiles should be scaled for', default=['Te', 'Ti_1', 'Ti_2'])
+OMFITx.Entry("scratch['bc_modGrad']", 'Boundary point', default=0.8)
+OMFITx.Entry("scratch['scale_modGrad']", 'Scale', default=0.5)
+OMFITx.Entry("scratch['ext_modGrad']", 'extention for a new input.gacode file name', default='mod')
+
+
+with OMFITx.same_row():
+    OMFITx.CheckBox(
+        "scratch['write_modGrad']",
+        lbl='Write new input.gacode file',
+        updateGUI=True,
+        default=True,
+    )
+    OMFITx.CheckBox(
+        "scratch['plot_modGrad']",
+        lbl='Plot profiles',
+        updateGUI=True,
+        default=True,
+    )
+if 'input.gacode.mod' in root['OUTPUTS']:
+
+    OMFITx.Button(
+        'Write modified  input.gacode file and/or plot profiles',
+        lambda: root['SCRIPTS']['modify_gradients'].run(inp=root['OUTPUTS']['input.gacode.mod']),
+    )

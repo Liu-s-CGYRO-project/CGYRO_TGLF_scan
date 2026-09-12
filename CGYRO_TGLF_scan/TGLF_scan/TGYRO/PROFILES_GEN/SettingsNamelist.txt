@@ -1,0 +1,162 @@
+{
+  "SETUP": {
+    "workDir": null,
+    "executable": null,
+    "branch": null
+  },
+  "PHYSICS": {
+    "start_from": "input.gacode",
+    "calcEr": false,
+    "blendEPED": false,
+    "vgen_N_XI": 15,
+    "vgen_N_THETA": {
+      "__ndarray_tolist__": [
+        17,
+        39
+      ],
+      "dtype": "int64",
+      "shape": [
+        2
+      ]
+    },
+    "vgen_N_ENERGY": 4,
+    "reorder_ion_names": [
+      "T",
+      "D",
+      "Be",
+      "Ni",
+      "D[fast]",
+      "T[fast]",
+      "H[fast]",
+      "He[fast]"
+    ],
+    "neglect_last_ions": 0,
+    "match_vtor_ion": null,
+    "rho_core": 0.3,
+    "rho_nml": 0.8,
+    "rho_ped": 0.9,
+    "use_trxpl": false,
+    "rotation_ordering": null,
+    "analytic_only": false,
+    "sim_model": 2
+  },
+  "EXPERIMENT": {
+    "shot": null,
+    "time": null,
+    "device": null,
+    "shots": null,
+    "times": null,
+    "runid": ""
+  },
+  "REMOTE_SETUP": {
+    "serverPicker": null,
+    "workDir": null,
+    "server": null,
+    "tunnel": null,
+    "localhost": {
+      "executable": null,
+      "environment": "",
+      "batch": false
+    },
+    "cori": {
+      "queue": "",
+      "repo": "",
+      "w": "",
+      "executable": "",
+      "batch": true,
+      "n": 2,
+      "environment": ""
+    },
+    "saturn": {
+      "batch": true,
+      "executable": null,
+      "n": 16,
+      "queue": "",
+      "environment": null
+    },
+    "iris": {
+      "batch": true,
+      "executable": "",
+      "n": 20,
+      "w": "",
+      "queue": null,
+      "environment": null
+    },
+    "omega": {
+      "batch": true,
+      "executable": "",
+      "n": 20,
+      "w": "",
+      "queue": null,
+      "environment": null
+    },
+    "portal": {
+      "batch": true,
+      "executable": null,
+      "n": 1,
+      "w": "",
+      "queue": "",
+      "environment": null
+    },
+    "shenma": {
+      "queue": null,
+      "batch": true,
+      "n": 64,
+      "environment": ""
+    },
+    "swip_cluster": {
+      "batch": false,
+      "environment": ""
+    },
+    "ukstar": {
+      "batch": false,
+      "n": 1,
+      "environment": ""
+    },
+    "iter_login": {
+      "batch": false,
+      "queue": "",
+      "n": 36,
+      "environment": null
+    },
+    "engaging": {
+      "batch": true,
+      "queue": "",
+      "w": "",
+      "environment": "",
+      "n": 64
+    },
+    "environment": null,
+    "login114": {
+      "queue": "",
+      "batch": true,
+      "w": "",
+      "environment": "",
+      "executable": "",
+      "n": 20
+    }
+  },
+  "DEPENDENCIES": {
+    "profpowbal": "root['INPUTS']['input.gacode']",
+    "gEQDSK": "root['INPUTS']['gEQDSK']",
+    "CER": "root['INPUTS']['CER']",
+    "EPED": null,
+    "EFITtime": "OMFITmodules[-2]['kineticEFITtime']['EFITtime']",
+    "ONETWOtime": "OMFITmodules[-2]['kineticEFITtime']['ONETWOtime']"
+  },
+  "MODULE": {
+    "defaultGUI": "root['GUIS']['standaloneGUI']",
+    "contact": [
+      "meneghini@fusion.gat.com",
+      "candy@fusion.gat.com",
+      "bellie@fusion.gat.com",
+      "smithsp@fusion.gat.com",
+      "g.snoep@student.tue.nl"
+    ],
+    "ID": "PROFILES_GEN_GACODE",
+    "edited_by": "antti",
+    "date": "11 Oct 2024  19:29",
+    "commit": "efb693cdb1cdaa3f853a41164f264458829d4cf8",
+    "comment": ""
+  }
+}

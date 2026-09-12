@@ -1,0 +1,240 @@
+# plot the kinetic profiles and profile gradient
+inputpro=root['INPUTS']['input.gacode']
+inputtgyro=root['INPUTS']['input.tgyro']
+rho=inputpro['rho']
+p_tgyro=len(inputtgyro['DIR'])
+rho_sparse=linspace(inputtgyro['TGYRO_RMIN'],inputtgyro['TGYRO_RMAX'],p_tgyro)
+lw=2
+aLTi=zeros([p_tgyro])
+aLTe=zeros([p_tgyro])
+aLne=zeros([p_tgyro])
+GammaE=zeros([p_tgyro])
+s=zeros([p_tgyro])
+alpha=zeros([p_tgyro])
+# tglfout=root['OUTPUTS']['TGYRO']['TGLF']
+for k in range(1,p_tgyro+1):
+    inputtglfk=root['OUTPUTS']['Profiles_gen']['input.tglf_'+str(k)]
+    aLTi[k-1]=inputtglfk['RLTS_2']
+    aLTe[k-1]=inputtglfk['RLTS_1']
+    aLne[k-1]=inputtglfk['RLNS_1']
+    GammaE[k-1]=inputtglfk['VEXB_SHEAR']
+    # s[k-1]=inputtglfk['SHAT_SA']
+    # alpha[k - 1] = inputtglfk['ALPHA_SA']
+    s[k-1]=inputtglfk['Q_PRIME_LOC']*inputtglfk['RMIN_LOC']**2/inputtglfk['Q_LOC']**2
+    alphaa = sum([inputtglfk['AS_' + str(k)] * inputtglfk['TAUS_' + str(k)] * (
+                inputtglfk['RLNS_' + str(k)] + inputtglfk['RLTS_' + str(k)]) for k in arange(1, inputtglfk['NS'] + 1)])
+    alpha[k-1] = alphaa * inputtglfk['Q_LOC'] ** 2 * inputtglfk['RMAJ_LOC'] * inputtglfk['BETAE']
+    inputtglfk['SHAT_SA']=s[k-1]
+    inputtglfk['ALPHA_SA'] = alpha[k - 1]
+#find the max a/LT&a/Ln for better visualization
+aLT_max=max([max(aLTi),max(aLTe),max(aLne)]);
+aLT_max=floor(aLT_max)+1
+aLT_min=min([min(aLTi),min(aLTe),min(aLne)]);
+aLT_min=floor(aLT_min)
+s_max=floor(max(s))+1
+s_min=floor(min(s))
+imatch=0; # 0: xlim 0~1; 1: xlim tgyro_rmin, tgyro_rmax
+ipltraw=0
+if 'rawdata.txt' in root['INPUTS'].keys():
+    ipltraw=1
+    rawdata=root['INPUTS']['rawdata.txt']
+figure(figsize=[24,10])
+fs1=24
+fs2=20
+fs3=16
+T_max=int(max(inputpro['Ti_1'][0],inputpro['Te'][0]))+1
+n_max=int(inputpro['ne'][0])+1
+xlim_left={0:0,1:rho_sparse[0]}
+xlim_right={0:1,1:rho_sparse[-1]}
+subplot(2,6,1)
+plot(rho,inputpro['Ti_1'],'-b',linewidth=lw)
+plot(array([rho_sparse[0],rho_sparse[-1]]),array([0,0]),'--k',linewidth=lw/2)
+if ipltraw==1:
+    errorbar(rawdata['Ti_rho'],rawdata['Ti_data'],rawdata['Ti_err'],fmt='*',alpha=0.3)
+xlim([xlim_left[imatch],xlim_right[imatch]])
+ylim([0,T_max])
+xticks([],fontsize=fs2)
+yticks(fontsize=fs2)
+title('$T_i(keV)$',fontsize=fs1,family='serif')
+subplot(2,6,7)
+plot(rho_sparse,aLTi,'-ko',linewidth=lw)
+#plot(array([0,1]),array([0,0]),'--k',linewidth=lw/2)
+plot(array([rho_sparse[0],rho_sparse[-1]]),array([0,0]),'--k',linewidth=lw/2)
+xlim([xlim_left[imatch],xlim_right[imatch]])
+#ylim([0,4.5])
+ylim([aLT_min,aLT_max])
+xticks(fontsize=fs2)
+yticks(fontsize=fs2)
+xlabel('$\\rho$',fontsize=fs1,family='serif')
+title('$a/L_{Ti}$',fontsize=fs1,family='serif')
+subplot(2,6,2)
+plot(rho,inputpro['Te'],'-b',linewidth=lw)
+if ipltraw==1:
+    errorbar(rawdata['Te_rho'],rawdata['Te_data'],rawdata['Te_err'],fmt='*',alpha=0.3)
+ylim([0,T_max])
+xlim([xlim_left[imatch],xlim_right[imatch]])
+xticks([],fontsize=fs2)
+yticks(fontsize=fs2)
+title('$T_e(keV)$',fontsize=fs1,family='serif')
+subplot(2,6,8)
+plot(rho_sparse,aLTe,'-ko',linewidth=lw)
+#ylim([0,4.5])
+ylim([aLT_min,aLT_max])
+#plot(array([0,1]),array([0,0]),'--k',linewidth=lw/2)
+plot(array([rho_sparse[0],rho_sparse[-1]]),array([0,0]),'--k',linewidth=lw/2)
+xlim([xlim_left[imatch],xlim_right[imatch]])
+xticks(fontsize=fs2)
+yticks(fontsize=fs2)
+xlabel('$\\rho$',fontsize=fs1,family='serif')
+title('$a/L_{Te}$',fontsize=fs1,family='serif')
+subplot(2,6,3)
+plot(rho,inputpro['ne'],'-b',linewidth=lw)
+if ipltraw==1:
+    errorbar(rawdata['ne_rho'],rawdata['ne_data']/1.e19,rawdata['ne_err']/1.e19,fmt='*',alpha=0.3)
+ylim([0,n_max])
+xlim([xlim_left[imatch],xlim_right[imatch]])
+xticks([],fontsize=fs2)
+yticks(fontsize=fs2)
+title('$n_e(10^{19}m^{-3})$',fontsize=fs1,family='serif')
+subplot(2,6,9)
+plot(rho_sparse,aLne,'-ko',linewidth=lw)
+#ylim([0,4.5])
+ylim([aLT_min,aLT_max])
+#plot(array([0,1]),array([0,0]),'--k',linewidth=lw/2)
+plot(array([rho_sparse[0],rho_sparse[-1]]),array([0,0]),'--k',linewidth=lw/2)
+xlim([xlim_left[imatch],xlim_right[imatch]])
+xticks(fontsize=fs2)
+yticks(fontsize=fs2)
+xlabel('$\\rho$',fontsize=fs1,family='serif')
+title('$a/L_{ne}$',fontsize=fs1,family='serif')
+subplot(2,6,4)
+plot(rho,inputpro['vtor_2']/inputpro['rmaj']/1.e3/2/pi,'-b',linewidth=lw,label='$\omega_{tor}$')
+plot(rho,inputpro['omega0']/1.e3/2/pi,'-k',linewidth=lw,label='$\omega_{ExB}$')
+if ipltraw==1:
+    errorbar(rawdata['omega_rho'],-1*rawdata['omega_data']/1.e3*sign(root['INPUTS']['input.profiles']['BT_EXP']),rawdata['omega_err']/1.e3,fmt='*',alpha=0.3)
+xlim([xlim_left[imatch],xlim_right[imatch]])
+xticks([],fontsize=fs2)
+yticks(fontsize=fs2)
+title('$\omega(kHz)$',fontsize=fs1,family='serif')
+#title('$\omega_{tor}(krad/s)$',fontsize=fs1,family='serif')
+legend(loc=0,fontsize=fs2).draggable(True)
+subplot(2,6,10)
+plot(rho_sparse,GammaE,'-ko',linewidth=lw)
+#ylim([0,4.5])
+#ylim([aLT_min,aLT_max])
+#plot(array([0,1]),array([0,0]),'--k',linewidth=lw/2)
+plot(array([rho_sparse[0],rho_sparse[-1]]),array([0,0]),'--k',linewidth=lw/2)
+xlim([xlim_left[imatch],xlim_right[imatch]])
+xticks(fontsize=fs2)
+yticks(fontsize=fs2)
+xlabel('$\\rho$',fontsize=fs1,family='serif')
+title('$\gamma_E$',fontsize=fs1,family='serif')
+subplot(2,6,5)
+plot(rho,sign(inputpro['q'][-1])*inputpro['q'],'-b',linewidth=lw)
+if 'gfile' in root['INPUTS'].keys():
+    gfile=root['INPUTS']['gfile']
+    q95=sign(gfile['BCENTR'])*interp(0.95,linspace(0,1,len(gfile['QPSI'])),gfile['QPSI'])
+    plot([0,1],[q95,q95],'--k',linewidth=lw/2)
+    ylim([max(0,int(min(abs(inputpro['q'])))-1),int(q95+1)])
+plot([0,1],[1,1],'--k',linewidth=lw/2)
+plot([0,1],[2,2],'--k',linewidth=lw/2)
+xlim([xlim_left[imatch],xlim_right[imatch]])
+#ylim([max(0,int(min(abs(inputpro['q'])))-1),int(q95+1)])
+xticks([],fontsize=fs2)
+yticks(fontsize=fs2)
+title('q',fontsize=fs1,family='serif')
+subplot(2,6,11)
+plot(rho_sparse,s,'-ko',linewidth=lw)
+plot(array([rho_sparse[0],rho_sparse[-1]]),array([0,0]),'--k',linewidth=lw/2)
+#plot(array([0,1]),array([0,0]),'--g',linewidth=lw/2)
+#ylim([-1,3])
+ylim([s_min,s_max])
+xlim([xlim_left[imatch],xlim_right[imatch]])
+xticks(fontsize=fs2)
+yticks(fontsize=fs2)
+xlabel('$\\rho$',fontsize=fs1,family='serif')
+title('s',fontsize=fs1,family='serif')
+subplot(2,6,10)
+plot(rho_sparse,GammaE,'-ko',linewidth=lw)
+#ylim([0,4.5])
+#ylim([aLT_min,aLT_max])
+#plot(array([0,1]),array([0,0]),'--k',linewidth=lw/2)
+plot(array([rho_sparse[0],rho_sparse[-1]]),array([0,0]),'--k',linewidth=lw/2)
+xlim([xlim_left[imatch],xlim_right[imatch]])
+xticks(fontsize=fs2)
+yticks(fontsize=fs2)
+xlabel('$\\rho$',fontsize=fs1,family='serif')
+title('$\gamma_E$',fontsize=fs1,family='serif')
+subplot(2,6,6)
+plot(rho,inputpro['ptot'],'-b',linewidth=lw)
+xlim([xlim_left[imatch],xlim_right[imatch]])
+#ylim([max(0,int(min(abs(inputpro['q'])))-1),int(q95+1)])
+xticks([],fontsize=fs2)
+yticks(fontsize=fs2)
+title('$p_{tot}$',fontsize=fs1,family='serif')
+subplot(2,6,12)
+plot(rho_sparse,alpha,'-ko',linewidth=lw)
+plot(array([rho_sparse[0],rho_sparse[-1]]),array([0,0]),'--k',linewidth=lw/2)
+#plot(array([0,1]),array([0,0]),'--g',linewidth=lw/2)
+#ylim([-1,3])
+xlim([xlim_left[imatch],xlim_right[imatch]])
+xticks(fontsize=fs2)
+yticks(fontsize=fs2)
+xlabel('$\\rho$',fontsize=fs1,family='serif')
+title('$\\alpha$',fontsize=fs1,family='serif')
+
+# plot some other important parameters,like BetaE, Collisionality, alpha
+BetaE=zeros([p_tgyro])
+Vu=zeros([p_tgyro])
+Alpha=zeros([p_tgyro])
+for k in range(1,p_tgyro+1):
+    inputtglfk = root['OUTPUTS']['Profiles_gen']['input.tglf_' + str(k)]
+    BetaE[k-1]=inputtglfk['BETAE']
+    Vu[k-1]=inputtglfk['XNUE']
+    Alpha[k-1]=inputtglfk['ALPHA_SA']
+figure(figsize=[10,8])
+subplot(1,3,1)
+plot(rho_sparse,BetaE,'-bo',linewidth=lw)
+# xlim([0,1])
+xticks(fontsize=fs3)
+yticks(fontsize=fs3)
+title('$\\beta_E$',fontsize=fs1,family='serif')
+xlabel('$\\rho$',fontsize=fs2,family='serif')
+subplot(1,3,2)
+semilogy(rho_sparse,Vu,'-bo',linewidth=lw)
+#plot(rho_sparse,Vu,'-bo',linewidth=lw)
+#xlim([0,1])
+xticks(fontsize=fs3)
+yticks(fontsize=fs3)
+xlabel('$\\rho$',fontsize=fs2,family='serif')
+title('$\\nu$',fontsize=fs1,family='serif')
+subplot(1,3,3)
+plot(rho_sparse,Alpha,'-bo',linewidth=lw)
+#plot(rho_sparse,Vu,'-bo',linewidth=lw)
+#xlim([0,1])
+xticks(fontsize=fs3)
+yticks(fontsize=fs3)
+xlabel('$\\rho$',fontsize=fs2,family='serif')
+title('$\\alpha$',fontsize=fs1,family='serif')
+# plot the gradient
+figure(figsize=[10,8])
+subplot(1,2,1)
+rmin=inputpro['rmin']
+plot(rho,-1*gradient(inputpro['Ti_1'])/gradient(rmin),'-b',linewidth=lw,label='ion')
+plot(rho,-1*gradient(inputpro['Te'])/gradient(rmin),'-r',linewidth=lw,label='electron')
+legend(loc=0,fontsize=fs1).draggable(True)
+xlim([rho_sparse[0],rho_sparse[-1]])
+xticks(fontsize=fs3)
+yticks(fontsize=fs3)
+title('$-dT/dr(keV/m)$',fontsize=fs1,family='serif')
+xlabel('$\\rho$',fontsize=fs2,family='serif')
+subplot(1,2,2)
+plot(rho,-1*gradient(inputpro['ne'])/gradient(rmin),'-r',linewidth=lw,label='electron')
+plot(rho,-1*gradient(inputpro['ni_1'])/gradient(rmin),'-b',linewidth=lw,label='ion')
+plot(rho,-1*gradient(inputpro['ni_2'])/gradient(rmin),'-m',linewidth=lw,label='carbon')
+xlim([rho_sparse[0],rho_sparse[-1]])
+legend(loc=0,fontsize=fs1).draggable(True)
+xticks(fontsize=fs3)
+yticks(fontsize=fs3)
+xlabel('$\\rho$',fontsize=fs2,family='serif')
+title('$-dn/dr(10^{19}m^{-4})$',fontsize=fs1,family='serif')

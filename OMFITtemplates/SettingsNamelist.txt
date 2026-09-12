@@ -1,0 +1,14 @@
+{
+  "EXPERIMENT": {},
+  "PHYSICS": {},
+  "SETUP": {},
+  "REMOTE_SETUP": {},
+  "DEPENDENCIES": {},
+  "MODULE": {
+    "ID": "OMFITtemplates",
+    "defaultGUI": "root['GUIS']['main']",
+    "python3": "3.9",
+    "contact": [],
+    "comment": "GitHub template manager inside OMFIT on Linux desktops, version 1.2.1"
+  }
+}

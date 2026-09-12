@@ -1,0 +1,117 @@
+{
+  "PHYSICS": {
+    "radial_distribution": "uniform_r",
+    "relaxProfiles": 1,
+    "runPROFILES_GEN": true,
+    "evolve_density": true,
+    "Turb_Model": "TGLF",
+    "n_rad": 6,
+    "reload": false,
+    "ZERO_DENS_GRAD_FLAG": 2,
+    "INCLUDE_IONS": "thermal",
+    "radii": {
+      "__ndarray_tolist__": [
+        0.3,
+        0.4,
+        0.5,
+        0.6000000000000001,
+        0.7,
+        0.8
+      ],
+      "dtype": "float64",
+      "shape": [
+        6
+      ]
+    },
+    "STRAHL_like_DV": true,
+    "extendedProfiles": true
+  },
+  "SETUP": {
+    "executable": "\n$GACODE_ROOT/tgyro/bin/tgyro -n 12 -e .",
+    "n_cpu_rad": 2
+  },
+  "REMOTE_SETUP": {
+    "localhost": {
+      "executable": null,
+      "environment": "",
+      "batch": false
+    },
+    "cori": {
+      "queue": "",
+      "repo": "",
+      "w": "",
+      "batch": true,
+      "environment": ""
+    },
+    "shenma": {
+      "queue": "",
+      "batch": true,
+      "w": "",
+      "environment": ""
+    },
+    "iris": {
+      "batch": true,
+      "queue": "",
+      "w": "",
+      "environment": ""
+    },
+    "portal": {
+      "batch": true,
+      "w": "",
+      "mem": "",
+      "environment": ""
+    },
+    "saturn": {
+      "batch": true,
+      "queue": "",
+      "environment": ""
+    },
+    "swip_cluster": {
+      "batch": true,
+      "queue": "",
+      "w": "",
+      "environment": ""
+    },
+    "iter_login": {
+      "batch": false,
+      "queue": "",
+      "w": "",
+      "environment": ""
+    },
+    "engaging": {
+      "batch": true,
+      "queue": "",
+      "w": "",
+      "environment": ""
+    },
+    "ukstar": {
+      "batch": true,
+      "n": 20,
+      "queue": "",
+      "environment": ""
+    },
+    "omega": {
+      "batch": true,
+      "w": "",
+      "environment": "",
+      "queue": "",
+      "executable": ""
+    }
+  },
+  "MODULE": {
+    "defaultGUI": "root['GUIS']['TGYROgui']",
+    "contact": [
+      "meneghini@fusion.gat.com",
+      "smithsp@fusion.gat.com",
+      "candy@fusion.gat.com",
+      "holland@fusion.gat.com",
+      "g.snoep@student.tue.nl"
+    ],
+    "ID": "TGYRO_GACODE",
+    "python3": "3.6",
+    "edited_by": "antti",
+    "date": "11 Oct 2024  19:29",
+    "commit": "efb693cdb1cdaa3f853a41164f264458829d4cf8",
+    "comment": ""
+  }
+}

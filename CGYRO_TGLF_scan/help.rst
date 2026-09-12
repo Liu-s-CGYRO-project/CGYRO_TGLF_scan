@@ -1,0 +1,63 @@
+CGYRO / TGLF comparison
+----------------------
+
+Compare saved CGYRO linear scans and TGLF spectra or integrated flux scans.
+The default panel is ``GUIS/CGYRO_vs_TGLF``. The legacy
+``GUIS/CGYRO_vs_CGYRO`` shortcut opens the same panel in CGYRO mode.
+
+Panel order
+-----------
+
+1. **Cases**: choose the run, source dimension, radii, pairings, and scan values.
+2. **Plot**: choose spectra, a growth-rate ratio, CGYRO eigenfunctions, or a
+   TGLF flux view. Only applicable controls are shown.
+3. **Style**: choose font/line sizes, figure dimensions, grid/log axes,
+   legend placement and legend ordering.
+4. **Export & checks**: inspect selection messages, export spectra, or show
+   the CGYRO status map. Figures can be saved through the figure toolbar.
+
+The Plot and Check selection buttons are above the tabs. In TGLF-only mode,
+choose Linear spectra or Integrated flux before choosing the source data.
+
+Selection and data behavior
+---------------------------
+
+* Radial and parameter checkboxes follow the underlying keys, not their
+  position in a changing list. Selections are retained separately per run
+  and TGLF source; a new source starts with an explicit selection.
+* The averaging fraction is between 0 and 1: 0.02 requests the final 2% of
+  the saved frequency samples (with the existing minimum-tail convention).
+* Raw, /ky and /ky-squared display scalings are mutually exclusive.
+  Gamma ratios always use gamma itself. Scaling at ky=0 is undefined and
+  is displayed as missing, not infinity or zero.
+* Model-difference panels require one reference curve in at least one model
+  on each page. The difference is normalized to abs(CGYRO), retaining the
+  existing 1e-6 denominator floor. CGYRO relative time fluctuation is the
+  population standard deviation divided by the absolute mean. It is not
+  a standard error or a model-difference estimate.
+* Negative gamma and signed omega are retained. Log axes cannot show
+  nonpositive values. TGLF has no CGYRO time-fluctuation estimate; no zero
+  error curve is invented for it.
+* TGLF labels include radius, parameter and mode. In 2D views, para1/para2
+  selects the varying scan parameter; the other parameter is held fixed.
+* Export creates a new folder and records the normalization and averaging
+  settings. Exported omega/gamma values precede display /ky scaling.
+  Opening the GUI does not read frequency arrays or launch any solver.
+
+Code organization
+-----------------
+
+``GUIS`` and ``PLOTS`` contain short OMFIT entry scripts. The
+``LIB/OMFITlib_compare_*`` libraries separate settings, widgets, cases,
+data access, numerical helpers, figure styling, spectra, TGLF flux plots,
+CGYRO self-comparison, status checks and dispatch/export. Libraries use
+explicit imports and are registered in the project save manifest.
+
+Validation limits
+-----------------
+
+The refactor is tested with saved setting structures, synthetic data,
+OMFIT boundary doubles and Matplotlib. Full OMFIT desktop integration,
+site-specific solver versions and physical convergence must be verified
+in the target environment. Historical calculation results are preserved;
+they were not recomputed by this UI/code refactor.

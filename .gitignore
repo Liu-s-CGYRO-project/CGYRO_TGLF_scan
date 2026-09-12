@@ -1,0 +1,24 @@
+# Projects and runtime outputs belong in local work directories or Release examples.
+*.zip
+*.tar.gz
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+dist/
+**/RUN_DB/**
+**/OUTPUTS/**
+**/OUTPUTS_TEMP/**
+**/scanResults*/**
+**/out.cgyro.*
+**/bin.cgyro.*
+**/out.tglf.*
+**/out.tgyro.*
+*.npy
+*.npz
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+*.nc
+*.partial

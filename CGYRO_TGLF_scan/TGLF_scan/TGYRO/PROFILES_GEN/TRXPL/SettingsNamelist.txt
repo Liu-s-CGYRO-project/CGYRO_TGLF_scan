@@ -1,0 +1,69 @@
+{
+  "PHYSICS": {
+    "directionBT": -1,
+    "directionIp": 1
+  },
+  "SETUP": {
+    "workDir": null,
+    "executable": null
+  },
+  "EXPERIMENT": {
+    "shot": null,
+    "time": null,
+    "device": null,
+    "shots": null,
+    "times": null,
+    "runid": "",
+    "server": null,
+    "tree": null,
+    "avgtim": 20,
+    "nzones": null,
+    "multiwindow": false
+  },
+  "REMOTE_SETUP": {
+    "workDir": null,
+    "server": null,
+    "tunnel": null,
+    "serverPicker": null,
+    "portal": {
+      "environment": ""
+    },
+    "heimdall": {
+      "environment": ""
+    },
+    "freia": {
+      "environment": ""
+    },
+    "iris": {
+      "environment": ""
+    },
+    "omega": {
+      "environment": ""
+    },
+    "saturn": {
+      "environment": ""
+    },
+    "venus": {
+      "environment": ""
+    },
+    "cmodws": {
+      "environment": ""
+    },
+    "environment": null
+  },
+  "DEPENDENCIES": {
+    "TRANSP": null
+  },
+  "MODULE": {
+    "defaultGUI": "root['GUIS']['TRXPLgui']",
+    "contact": [
+      "",
+      "bgriers@pppl.gov"
+    ],
+    "ID": "TRXPL",
+    "edited_by": "Sterling Smith",
+    "date": "10 Sep 2024  02:17",
+    "commit": "72e5922773693b64280ec75a5eb21197b6eda9be",
+    "comment": ""
+  }
+}

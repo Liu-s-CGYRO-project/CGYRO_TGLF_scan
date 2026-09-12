@@ -1,0 +1,46 @@
+{
+  "SETUP": {
+    "executable": null
+  },
+  "PHYSICS": {
+    "rho": 0.5,
+    "scanDimensions": 0,
+    "plot_mks": true,
+    "tglf_sign_convention": false,
+    "rho_scan": {
+      "__ndarray_tolist__": [
+        0.2,
+        0.25,
+        0.5,
+        0.75,
+        0.9
+      ],
+      "dtype": "float64",
+      "shape": [
+        5
+      ]
+    },
+    "exp_prob": false,
+    "multi_window_dist": true
+  },
+  "REMOTE_SETUP": {
+    "serverPicker": "",
+    "server": "",
+    "tunnel": ""
+  },
+  "MODULE": {
+    "defaultGUI": "root['GUIS']['tglf_scan_gui']",
+    "contact": [
+      "meneghini@fusion.gat.com",
+      "smithsp@fusion.gat.com",
+      "candy@fusion.gat.com",
+      "pvaezi@ucsd.edu"
+    ],
+    "ID": "TGLF_scan",
+    "python3": "3.7",
+    "edited_by": "Galina Avdeeva",
+    "date": "08 Dec 2023  09:33",
+    "commit": "e007b92278b1ce1843bf58ad6171f1df8e7012f0",
+    "comment": ""
+  }
+}

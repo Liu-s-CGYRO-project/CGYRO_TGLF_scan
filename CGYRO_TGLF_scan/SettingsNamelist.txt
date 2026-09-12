@@ -1,0 +1,133 @@
+{
+  "PHYSICS": {
+    "plotcgyro": true,
+    "CGYRO_vs_CGYRO": {
+      "runid": "",
+      "ave_window": 0.02,
+      "effnum": 5,
+      "error_flag": "CGYRO",
+      "plot_mode": "Plot 2D",
+      "plot_log_x": false,
+      "plot_log_y": false,
+      "normalize_main_ion": false,
+      "divide_by_ky": false,
+      "error_filter": false,
+      "highlight_max_gamma": false,
+      "legend_order_mode": "Plot order",
+      "eigen_ky_mode": "single ky",
+      "eigen_abs": false,
+      "plot_log_z": false,
+      "single_ky_values": "0.3",
+      "gamma_ref_mode": "all ky",
+      "gamma_ref_value": "0",
+      "eigen_error_filter": true,
+      "error_tolerance": 0.1,
+      "eigen_ky_values": "0.2",
+      "legend_order_text": "",
+      "plotcgyro": true,
+      "linear_export_dir": "",
+      "linear_export_now": false,
+      "force_read_all_nr_items": true,
+      "nr_plot_mode": "All nr in one figure",
+      "merge_all_nr_plot": true,
+      "check_cgyro_output_now": false
+    },
+    "compare_mode": "CGYRO_vs_TGLF",
+    "TGLF_vs_CGYRO": {
+      "TGLF": {
+        "spectra_mode": "1D"
+      },
+      "CGYRO": {
+        "runid": ""
+      },
+      "plot": {
+        "ave_window": 0.02,
+        "effnum": 5,
+        "error_flag": "CGYRO-TGLF",
+        "plot_log_x": true,
+        "plot_log_y": false,
+        "divide_by_ky": false,
+        "normalize_main_ion": false,
+        "plot_mode": "Plot 2D"
+      },
+      "legend_order_mode": "Plot order",
+      "legend_order_text": ""
+    },
+    "CGYRO_vs_TGLF": {
+      "CGYRO": {
+        "runid": ""
+      },
+      "TGLF": {
+        "spectra_mode": "2D"
+      },
+      "plot": {
+        "ave_window": 0.02,
+        "effnum": 5,
+        "error_flag": "CGYRO",
+        "plot_log_x": false,
+        "plot_log_y": false,
+        "normalize_main_ion": false,
+        "plot_mode": "Plot 2D",
+        "gamma_ref_mode": "all ky",
+        "gamma_ref_ky_min": "0",
+        "gamma_ref_ky_max": "1.2",
+        "gamma_ref_value": "0",
+        "gamma_ref_error_filter": true,
+        "gamma_ref_ky_values": "0.029999999329447746,0.05999999865889549,0.06309573352336884,0.07399983704090118,0.0867883712053299,0.09000000357627869,0.10000000149011612,0.10178700089454651,0.11937770247459412,0.11999999731779099,0.14000830054283142,0.15000000596046448,0.16420429944992065,0.18000000715255737,0.192581906914711,0.20000000298023224,0.20999999344348907,0.22586360573768616,0.23999999463558197,0.2648968994617462,0.27000001072883606,0.30000001192092896,0.3106760084629059,0.33000001311302185,0.36000001430511475,0.3643665015697479,0.38999998569488525,0.4000000059604645,0.41999998688697815,0.42733579874038696,0.44999998807907104,0.47999998927116394,0.5,0.5011872053146362,0.5099999904632568,0.5400000214576721,0.5699999928474426,0.5878015756607056,0.6000000238418579,0.6299999952316284,0.6600000262260437,0.6893845200538635,0.6899999976158142,0.699999988079071,0.7200000286102295,0.75,0.7799999713897705,0.800000011920929,0.8085228800773621,0.8100000023841858,0.8399999737739563,0.8700000047683716,0.8999999761581421,0.9482504725456238,1.0,1.100000023841858,1.1121259927749634,1.2000000476837158,1.304321050643921,1.5297319889068604,1.7940980195999146,2.1041510105133057,2.467787027359009,2.89426589012146,3.39444899559021,3.981071949005127,4.669074058532715,5.47597599029541,6.422325134277344,7.532220840454102,8.833928108215332,10.360589981079102,12.151089668273926,14.251029968261719,16.713869094848633,19.60232925415039,22.98996925354004,26.96306037902832,31.622779846191406",
+        "error_tolerance": 0.01,
+        "gamma_ref_split_panels": false,
+        "gamma_ref_tglf2d_x_axis": "para1"
+      },
+      "legend_order_mode": "Plot order",
+      "legend_order_text": ""
+    },
+    "tglf_input_load": false,
+    "tglf_settings_from_TGYRO": false,
+    "TGLF_vs_TGLF": {
+      "TGLF": {
+        "spectra_mode": "1D"
+      },
+      "plot": {
+        "tglf_vs_tglf_mode": "Spectra",
+        "ave_window": 0.02,
+        "effnum": 5,
+        "plot_log_x": true,
+        "plot_log_y": false,
+        "divide_by_ky": true,
+        "plot_mode": "Plot 2D"
+      },
+      "legend_order_mode": "Plot order"
+    }
+  },
+  "SETUP": {
+    "workDir": null,
+    "executable": null
+  },
+  "EXPERIMENT": {
+    "shot": null,
+    "time": null,
+    "device": null,
+    "shots": null,
+    "times": null,
+    "runid": ""
+  },
+  "REMOTE_SETUP": {
+    "serverPicker": null,
+    "workDir": null,
+    "server": null,
+    "tunnel": null
+  },
+  "MODULE": {
+    "ID": "001jy",
+    "edited_by": "jinyue_liu",
+    "date": "28 Sep 2025  10:55",
+    "contact": [
+      "jinyue.liu@ipp.ac.cn"
+    ],
+    "defaultGUI": "root['GUIS']['CGYRO_vs_TGLF']",
+    "commit": "",
+    "python3": "3.9",
+    "comment": "Result-free project with integrated OMFIT GitHub template manager"
+  },
+  "DEPENDENCIES": {}
+}

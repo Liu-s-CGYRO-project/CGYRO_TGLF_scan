@@ -1,0 +1,102 @@
+{
+  "PHYSICS": {
+    "single_Ti": true,
+    "scanParameter": "RLTS_1",
+    "scanParameterMin": 0,
+    "scanParameterMax": 2,
+    "scanParameterSteps": 15,
+    "scanParameter2D": "RLNS_1",
+    "scanParameter2DMin": 0,
+    "scanParameter2DMax": 2,
+    "scanParameter2DSteps": 15,
+    "combine_ions": true,
+    "parallelScan": 15,
+    "scanDimensions": 1,
+    "UQInputSamples": {
+      "__ndarray_tolist__": [
+        []
+      ],
+      "dtype": "float64",
+      "shape": [
+        1,
+        0
+      ]
+    },
+    "scanParameters": "RLTS_1",
+    "rho": 0.7,
+    "multiWindowDist": false
+  },
+  "SETUP": {
+    "executable": "\n$GACODE_ROOT/tglf/bin/tglf -e ."
+  },
+  "REMOTE_SETUP": {
+    "localhost": {
+      "executable": null,
+      "environment": "",
+      "batch": false
+    },
+    "cori": {
+      "executable": "",
+      "environment": ""
+    },
+    "shenma": {
+      "executable": "",
+      "environment": ""
+    },
+    "iris": {
+      "executable": "",
+      "environment": ""
+    },
+    "portal": {
+      "executable": "",
+      "environment": ""
+    },
+    "toki": {
+      "executable": "",
+      "environment": ""
+    },
+    "saturn": {
+      "executable": "",
+      "environment": ""
+    },
+    "swip_cluster": {
+      "executable": "",
+      "environment": ""
+    },
+    "iter_login": {
+      "executable": "",
+      "environment": ""
+    },
+    "engaging": {
+      "executable": "",
+      "environment": ""
+    },
+    "ukstar": {
+      "batch": true,
+      "executable": "",
+      "n": 20,
+      "queue": "",
+      "environment": ""
+    },
+    "omega": {
+      "executable": "",
+      "environment": ""
+    },
+    "environment": ""
+  },
+  "MODULE": {
+    "defaultGUI": "root['GUIS']['TGLF_GUI']",
+    "contact": [
+      "meneghini@fusion.gat.com",
+      "smithsp@fusion.gat.com",
+      "candy@fusion.gat.com",
+      "staebler@fusion.gat.com"
+    ],
+    "ID": "TGLF_GACODE",
+    "python3": "3.7",
+    "edited_by": "antti",
+    "date": "11 Oct 2024  19:29",
+    "commit": "efb693cdb1cdaa3f853a41164f264458829d4cf8",
+    "comment": ""
+  }
+}

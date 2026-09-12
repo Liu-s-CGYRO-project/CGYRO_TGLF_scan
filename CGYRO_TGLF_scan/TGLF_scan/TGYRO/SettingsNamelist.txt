@@ -1,0 +1,240 @@
+{
+  "PHYSICS": {
+    "radial_distribution": "uniform_r",
+    "relaxProfiles": 1,
+    "runPROFILES_GEN": false,
+    "evolve_density": true,
+    "Turb_Model": "TGLF",
+    "n_rad": 99,
+    "reload": false,
+    "ZERO_DENS_GRAD_FLAG": 2,
+    "INCLUDE_IONS": "thermal",
+    "radii": {
+      "__ndarray_tolist__": [
+        0.01,
+        0.02,
+        0.03,
+        0.04,
+        0.05,
+        0.060000000000000005,
+        0.06999999999999999,
+        0.08,
+        0.09,
+        0.09999999999999999,
+        0.11,
+        0.12,
+        0.13,
+        0.14,
+        0.15000000000000002,
+        0.16,
+        0.17,
+        0.18000000000000002,
+        0.19,
+        0.2,
+        0.21000000000000002,
+        0.22,
+        0.23,
+        0.24000000000000002,
+        0.25,
+        0.26,
+        0.27,
+        0.28,
+        0.29000000000000004,
+        0.3,
+        0.31,
+        0.32,
+        0.33,
+        0.34,
+        0.35000000000000003,
+        0.36000000000000004,
+        0.37,
+        0.38,
+        0.39,
+        0.4,
+        0.41000000000000003,
+        0.42000000000000004,
+        0.43,
+        0.44,
+        0.45,
+        0.46,
+        0.47000000000000003,
+        0.48000000000000004,
+        0.49,
+        0.5,
+        0.51,
+        0.52,
+        0.53,
+        0.54,
+        0.55,
+        0.56,
+        0.5700000000000001,
+        0.5800000000000001,
+        0.59,
+        0.6,
+        0.61,
+        0.62,
+        0.63,
+        0.64,
+        0.65,
+        0.66,
+        0.67,
+        0.68,
+        0.6900000000000001,
+        0.7000000000000001,
+        0.7100000000000001,
+        0.72,
+        0.73,
+        0.74,
+        0.75,
+        0.76,
+        0.77,
+        0.78,
+        0.79,
+        0.8,
+        0.81,
+        0.8200000000000001,
+        0.8300000000000001,
+        0.8400000000000001,
+        0.85,
+        0.86,
+        0.87,
+        0.88,
+        0.89,
+        0.9,
+        0.91,
+        0.92,
+        0.93,
+        0.9400000000000001,
+        0.9500000000000001,
+        0.9600000000000001,
+        0.97,
+        0.98,
+        0.99
+      ],
+      "dtype": "float64",
+      "shape": [
+        99
+      ]
+    },
+    "STRAHL_like_DV": true,
+    "extendedProfiles": true,
+    "Customized_TGLF_input": true,
+    "LOC_N_ION_USER": 10,
+    "robustDVprofiles": false
+  },
+  "SETUP": {
+    "workDir": null,
+    "executable": null,
+    "n_cpu_rad": 1,
+    "branch": null
+  },
+  "EXPERIMENT": {
+    "shot": null,
+    "time": null,
+    "device": null,
+    "shots": null,
+    "times": null,
+    "runid": ""
+  },
+  "REMOTE_SETUP": {
+    "serverPicker": null,
+    "workDir": null,
+    "server": null,
+    "tunnel": null,
+    "localhost": {
+      "executable": null,
+      "environment": "",
+      "batch": false
+    },
+    "cori": {
+      "queue": "",
+      "repo": "",
+      "w": "",
+      "batch": true,
+      "environment": ""
+    },
+    "shenma": {
+      "queue": null,
+      "batch": true,
+      "w": "",
+      "environment": ""
+    },
+    "iris": {
+      "batch": true,
+      "queue": null,
+      "w": "",
+      "environment": null
+    },
+    "portal": {
+      "batch": true,
+      "w": "",
+      "mem": "",
+      "environment": null
+    },
+    "saturn": {
+      "batch": true,
+      "queue": "",
+      "environment": null
+    },
+    "swip_cluster": {
+      "batch": true,
+      "queue": "",
+      "w": "",
+      "environment": ""
+    },
+    "iter_login": {
+      "batch": false,
+      "queue": "",
+      "w": "",
+      "environment": null
+    },
+    "engaging": {
+      "batch": true,
+      "queue": "",
+      "w": "",
+      "environment": ""
+    },
+    "ukstar": {
+      "batch": true,
+      "n": 20,
+      "queue": "",
+      "environment": ""
+    },
+    "omega": {
+      "batch": true,
+      "w": "",
+      "environment": null,
+      "queue": null,
+      "executable": ""
+    },
+    "login114": {
+      "queue": "",
+      "batch": true,
+      "w": "",
+      "environment": "",
+      "executable": "",
+      "n": 20
+    }
+  },
+  "DEPENDENCIES": {
+    "input_gacode": "root['PROFILES_GEN']['OUTPUTS']['input.gacode']",
+    "PROFILES_GEN": "root['PROFILES_GEN']",
+    "profiles_module": ""
+  },
+  "MODULE": {
+    "defaultGUI": "root['GUIS']['TGYROgui']",
+    "contact": [
+      "meneghini@fusion.gat.com",
+      "smithsp@fusion.gat.com",
+      "candy@fusion.gat.com",
+      "holland@fusion.gat.com",
+      "g.snoep@student.tue.nl"
+    ],
+    "ID": "TGYRO_GACODE",
+    "python3": "3.6",
+    "edited_by": "antti",
+    "date": "11 Oct 2024  19:29",
+    "commit": "efb693cdb1cdaa3f853a41164f264458829d4cf8",
+    "comment": ""
+  }
+}

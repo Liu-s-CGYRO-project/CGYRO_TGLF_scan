@@ -1,0 +1,14 @@
+ &SETUP
+ institution = 'PERSONAL'
+ version = '?'
+ /
+ &EXPERIMENT
+ device =
+ shot =
+ time =
+ shots =
+ times =
+ runid = 'sim1'
+ /
+ &SERVER
+ /

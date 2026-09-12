@@ -1,0 +1,51 @@
+{
+  "PHYSICS": {
+    "directionBT": -1,
+    "directionIp": 1
+  },
+  "SETUP": {
+    "executable": "module purge\nmodule load mod_ntcc\nmodule load ntcc/intel/2019/24.2.0\nmodule load mdsplus\ntrxpl < trxpl.in"
+  },
+  "REMOTE_SETUP": {
+    "server": "",
+    "tunnel": "",
+    "serverPicker": "",
+    "portal": {
+      "environment": ""
+    },
+    "heimdall": {
+      "environment": ""
+    },
+    "freia": {
+      "environment": ""
+    },
+    "iris": {
+      "environment": ""
+    },
+    "omega": {
+      "environment": ""
+    },
+    "saturn": {
+      "environment": ""
+    },
+    "venus": {
+      "environment": ""
+    },
+    "cmodws": {
+      "environment": ""
+    },
+    "environment": ""
+  },
+  "MODULE": {
+    "defaultGUI": "root['GUIS']['TRXPLgui']",
+    "contact": [
+      "",
+      "bgriers@pppl.gov"
+    ],
+    "ID": "TRXPL",
+    "edited_by": "Sterling Smith",
+    "date": "10 Sep 2024  02:17",
+    "commit": "72e5922773693b64280ec75a5eb21197b6eda9be",
+    "comment": ""
+  }
+}

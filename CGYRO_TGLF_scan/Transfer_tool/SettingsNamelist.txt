@@ -1,0 +1,49 @@
+{
+  "PHYSICS": {
+    "Transfer to GENE": false,
+    "start_from": "statefile",
+    "use_trxpl": false,
+    "Transfer to tglf": false,
+    "Transfer to cgyro": true,
+    "tglf_is_out_tglf_localdump": false
+  },
+  "SETUP": {
+    "workDir": null,
+    "executable": "#!/bin/bash\nset -e\n# Load the modules required by the target cluster here, then set GACODE_ROOT.\n: \"${GACODE_ROOT:?Set GACODE_ROOT to the installed GACODE version on the execution host}\"\nif [ ! -r \"$GACODE_ROOT/shared/bin/gacode_setup\" ]; then\n    echo \"Missing $GACODE_ROOT/shared/bin/gacode_setup\" >&2\n    exit 1\nfi\nsource \"$GACODE_ROOT/shared/bin/gacode_setup\"\n",
+    "pbs_queue": "parallel31",
+    "num_nodes": 1,
+    "num_cores": 3,
+    "p_tgyro": 3,
+    "wall_time": "00:30:00",
+    "input_gyro_template": ""
+  },
+  "EXPERIMENT": {
+    "shot": null,
+    "time": null,
+    "device": null,
+    "shots": null,
+    "times": null,
+    "runid": ""
+  },
+  "REMOTE_SETUP": {
+    "serverPicker": null,
+    "workDir": null,
+    "server": null,
+    "tunnel": null
+  },
+  "MODULE": {
+    "ID": "003jy",
+    "edited_by": "jinyue_liu",
+    "date": "28 Sep 2025  15:00",
+    "contact": [
+      "jinyue.liu@ipp.ac.cn"
+    ],
+    "defaultGUI": null,
+    "commit": "",
+    "python3": "3.9",
+    "comment": ""
+  },
+  "DEPENDENCIES": {
+    "gEQDSK": ""
+  }
+}

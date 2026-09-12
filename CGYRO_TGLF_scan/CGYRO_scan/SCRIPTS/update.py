@@ -1,0 +1,1 @@
+raise RuntimeError('The old private-directory updater is retired. Update only from a reviewed release manifest with explicit preserve-current or load-example selection; no project nodes were changed.')
