@@ -44,7 +44,8 @@ def local_input_provenance():
     }, 'localdump', {'radial_grid': radial_grid})
 current = local_input_provenance()
 if rho in root.get('input.tglf', {}) and cache['matches'](root.get('_input_cache_provenance'), current):
-    root['TGLF']['FILES']['input.tglf'] = copy.deepcopy(root['input.tglf'][rho])
+    if not root['TGLF'].get('FILES'):
+        root['TGLF']['FILES'] = OMFITtree({'input.tglf': copy.deepcopy(root['input.tglf'][rho])})
     OMFITx.End()
 for key in ('input.tglf', 'tgyro_output', 'scanResults', 'scanResults_spectra',
             'scanResults2D', 'scanResults2D_spectra', 'UQResults', 'UQResults_spectra',
@@ -70,7 +71,10 @@ for ri, rho_ in enumerate(radial_grid):
 # get the tgyro results (only used for plotting purposes)
 root['tgyro_output'] = copy.deepcopy(root['TGYRO']['OUTPUTS']['output'])
 
-# get ready for a new tglf scan
-root['TGLF']['FILES']['input.tglf'] = copy.deepcopy(root['input.tglf'][rho])
+# Only initialize an empty single-file workspace. Existing inputs and results
+# are kept until the user reviews a generated input in the Project workbench.
+if not root['TGLF'].get('FILES'):
+    root['TGLF']['FILES'] = OMFITtree({'input.tglf': copy.deepcopy(root['input.tglf'][rho])})
+printi('Local inputs ready. Project → TGLF → 参数与径向扫描 can compare and adopt a generated input.')
 
 root['_input_cache_provenance'] = local_input_provenance()

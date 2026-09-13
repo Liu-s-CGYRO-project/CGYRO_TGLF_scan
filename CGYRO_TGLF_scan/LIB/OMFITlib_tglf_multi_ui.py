@@ -1,6 +1,6 @@
 """OMFIT page for importing, configuring and running multiple input.gacode files."""
-from builtins import bool, dict, len, list, str, sum
-from OMFITlib_tglf_multi_data import DEFAULTS, case_plan, duplicate_case, initialize
+from builtins import all, any, bool, dict, len, list, str, sum
+from OMFITlib_tglf_multi_data import DEFAULTS, case_plan, duplicate_case, initialize, profile_digest
 
 STATUS = {'ready': '输入已生成', 'preparing': '正在生成输入', 'prepare_failed': '生成失败',
           'running': '运行中', 'complete': '完成', 'failed': '失败', 'partial': '部分完成', 'cancelled': '已中止'}
@@ -86,12 +86,29 @@ class MultiInputUI:
         ui.Tab('3. 运行与结果')
         selected = sum(bool(case['enabled']) for case in self.cases.values())
         ui.Label('已选择 {} / {} 个案例。每次“生成输入”均新建记录；完成的结果会保留。'.format(selected, len(self.cases)), align='left')
+        selected_cases = [case for case in self.cases.values() if case['enabled']]
+        run_issues = []
+        for case in selected_cases:
+            run = case['runs'].get(case['selected_run'])
+            try:
+                if not run or run['status'] in ('preparing', 'prepare_failed', 'cancelled') or not run.get('points'):
+                    raise ValueError('请先生成输入')
+                if run['plan'] != case_plan(self.settings, case) or run['profile_digest'] != profile_digest(case['input.gacode']):
+                    raise ValueError('输入或参数已变化，请重新生成')
+            except (KeyError, ValueError, TypeError) as exc:
+                run_issues.append(case['label'] + '：' + str(exc))
         with ui.same_row():
-            ui.Button('生成输入', self.command('run_tglf_multi', action='prepare'), updateGUI=True)
-            ui.Button('运行已生成输入 / 重试失败项', self.command('run_tglf_multi', action='run'), updateGUI=True)
-            ui.Button('生成并运行', self.command('run_tglf_multi', action='all'), updateGUI=True)
+            ui.Button('生成输入', self.command('run_tglf_multi', action='prepare'), updateGUI=True, state='normal' if selected else 'disabled')
+            ui.Button('运行已生成输入 / 重试失败项', self.command('run_tglf_multi', action='run'), updateGUI=True,
+                      state='normal' if selected and not run_issues else 'disabled', help='；'.join(run_issues))
+            ui.Button('生成并运行', self.command('run_tglf_multi', action='all'), updateGUI=True, state='normal' if selected else 'disabled')
+        if run_issues:
+            ui.Label('；'.join(run_issues), align='left')
+        can_plot = any('result' in point.get('attempts', {}).get(point.get('selected_attempt'), {})
+                       for case in selected_cases
+                       for point in case['runs'].get(case['selected_run'], {}).get('points', {}).values())
         with ui.same_row():
-            ui.Button('对比所选记录的频率与增长率', lambda: self.root['PLOTS']['TGLF_multi'].run())
+            ui.Button('对比所选记录的频率与增长率', lambda: self.root['PLOTS']['TGLF_multi'].run(), state='normal' if can_plot else 'disabled')
             ui.Button('刷新状态', lambda: None, updateGUI=True)
         ui.Label('结果选择独立于当前设置。更改参数后先重新生成输入；计算按案例和半径依次执行。', align='left')
         ui.Label('显示各案例原始 TGLF 归一化数值；不同剖面的物理单位比较需另行转换。', align='left')

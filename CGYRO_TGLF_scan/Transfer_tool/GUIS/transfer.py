@@ -64,4 +64,4 @@ OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['Transfer to tglf']", 'CGYRO → TG
 OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['tglf_is_out_tglf_localdump']",
                 'TGLF input is out.tglf.localdump', default=False)
 OMFITx.Button('Convert local inputs', convert_inputs, updateGUI=True)
-OMFITx.Label('NEO / ion ordering is available in the parent main → PROFILES_GEN GUI.')
+OMFITx.Label('NEO / ion ordering: Project 总控 → Transfer tool → 生成与高级工具 → PROFILES_GEN。')

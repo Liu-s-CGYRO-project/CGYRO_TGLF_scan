@@ -1,8 +1,32 @@
-CGYRO / TGLF comparison
-----------------------
+CGYRO / TGLF Project workbench
+-----------------------------
 
-Compare saved CGYRO linear scans and TGLF spectra or integrated flux scans.
-The default panel is ``GUIS/CGYRO_vs_TGLF``. The legacy
+The default panel is ``GUIS/main``. It organizes Transfer tool, CGYRO, TGLF,
+multi-profile calculations, execution settings, result collection, plotting,
+input differences and GitHub templates. Advanced module GUIs remain available.
+
+Prepare and validate CGYRO input through Transfer tool before running from
+the workbench. Changing the transferred input or its upstream profiles invalidates
+the handoff. Only a submitted/executed run can be collected. Collection archives
+the loaded results without resubmitting the scan.
+
+When a TGLF destination already has an input, the workbench displays parameter
+differences and waits for an explicit keep/replace choice. It does not merge model
+parameters automatically. Replacement archives the old input and its associated
+results together. A stale preview cannot overwrite newer inputs. These records
+are stored under ``PROJECT_STATE`` and kept with the user's project, not the code
+template. Opening the workbench never submits computations or polls a server.
+
+TGYRO-generated local inputs remain stored by radius. The TGLF page lets the user
+compare and adopt one as the current single-file input. Radial scans use private
+inputs and keep the existing single-file input and results, including on failure.
+
+Execution checks validate configured fields and prerequisites. They do not probe
+the solver installation or choose hardware resources automatically. Legacy TGLF
+batch scheduling still uses the existing backend.
+
+Compare saved CGYRO linear scans and TGLF spectra or integrated flux scans in
+the workbench's plotting page or ``GUIS/CGYRO_vs_TGLF``. The legacy
 ``GUIS/CGYRO_vs_CGYRO`` shortcut opens the same panel in CGYRO mode.
 
 Panel order

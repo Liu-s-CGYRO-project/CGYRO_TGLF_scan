@@ -80,12 +80,7 @@ if 'input.gacode' in root['TGYRO']['PROFILES_GEN']['OUTPUTS'] or (
     rho = root['SETTINGS']['PHYSICS']['rho']
 
     def show_single_rho():
-        # make copy of experimental tglf input file
-        def pick_rho(location=None):
-            rho = eval(location)
-            if 'input.tglf' in root and rho in root['input.tglf']:
-                root['TGLF']['FILES']['input.tglf'] = copy.deepcopy(root['input.tglf'][rho])
-
+        # Selecting a radius never overwrites the user's single-file input.
         rad_lab = 'rho' if root['TGYRO']['INPUTS']['input.tgyro']['TGYRO_USE_RHO'] else 'r/a'
         OMFITx.ComboBox(
             "root['SETTINGS']['PHYSICS']['rho']",
@@ -94,8 +89,8 @@ if 'input.gacode' in root['TGYRO']['PROFILES_GEN']['OUTPUTS'] or (
             default=0.5,
             updateGUI=True,
             state='normal',
-            postcommand=pick_rho,
         )
+        OMFITx.Label('Uses the selected radial input. Project → TGLF can compare and adopt it as the single-file input.')
 
     def show_tglf_detail():
         OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['show_TGLF_details']", lbl="Show TGLF details", default=False, updateGUI=True)

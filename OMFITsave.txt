@@ -1,6 +1,7 @@
 ['CGYRO_TGLF_scan'] <-:-:-> OMFITmodule <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['TGLF_scan'] <-:-:-> OMFITmodule <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['TGLF_scan']['TGLF'] <-:-:-> OMFITmodule <-:-:->  <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['FILES'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SCRIPTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SCRIPTS']['runTGLF'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/TGLF_scan/TGLF/SCRIPTS/runTGLF.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SCRIPTS']['runTGLFscan'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/TGLF_scan/TGLF/SCRIPTS/runTGLFscan.py <-:-:-> {}
@@ -227,6 +228,8 @@
 ['CGYRO_TGLF_scan']['GUIS']['Template_manager'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/Template_manager.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['GUIS']['TGLF_multi'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/TGLF_multi.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_project'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_project.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_project_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cases.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_selection'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_selection.py <-:-:-> {}
@@ -368,6 +371,7 @@
 ['CGYRO_TGLF_scan']['Transfer_tool']['help'] <-:-:-> OMFIThelp <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/help.rst <-:-:-> {}
 ['CGYRO_TGLF_scan']['Transfer_tool']['Transfer_file'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['TGLF_CASES'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['CGYRO_TGLF_scan']['PROJECT_STATE'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['OMFITtemplates'] <-:-:-> OMFITmodule <-:-:->  <-:-:-> {}
 ['OMFITtemplates']['GUIS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['OMFITtemplates']['GUIS']['main'] <-:-:-> OMFITpythonGUI <-:-:-> ./OMFITtemplates/GUIS/main.py <-:-:-> {}

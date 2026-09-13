@@ -4,12 +4,15 @@
 defaultVars(
     param=root['SETTINGS']['PHYSICS']['scanParameter'],
     parameterRange=root['SETTINGS']['PHYSICS']['scanParameterRange'],
-    inputTGLF=root['FILES']['input.tglf'],
+    inputTGLF=root.get('FILES', {}).get('input.tglf'),
     results='scanResults',
     results_spectra='scanResults_spectra',
     include_starting_param=True,
     cache_records=None,
 )
+
+if inputTGLF is None:
+    raise ValueError('Need an input.tglf file to run a TGLF scan')
 
 # Provenance is kept outside numeric result keys used by plotting code.
 cache = root['LIB']['OMFITlib_tglf_cache'].runNoGUI()

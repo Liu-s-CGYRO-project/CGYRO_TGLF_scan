@@ -11,8 +11,8 @@ elif root['SETTINGS']['PHYSICS']['scanDimensions'] == 'UQ':
     root['SCRIPTS']['setup_UQ_inputs'].run()
 scanResults_spectra = scanResults + '_spectra'
 
-# make copy of experimental tglf input file
-root['TGLF']['FILES']['input.tglf'] = copy.deepcopy(root['input.tglf'][rho])
+# Pass a private radial input to the scan. FILES belongs to the single-file run.
+radial_input = copy.deepcopy(root['input.tglf'][rho])
 
 # initialize directory structure
 root.setdefault(scanResults_spectra, OMFITtree())
@@ -30,11 +30,11 @@ root['TGLF']['_scan_cache_provenance'] = copy.deepcopy(radial_provenance.get(rho
 
 # run 1D/2D/UQ TGLF scan
 if root['SETTINGS']['PHYSICS']['scanDimensions'] == 1:
-    root['TGLF']['SCRIPTS']['runTGLFscan'].run()
+    root['TGLF']['SCRIPTS']['runTGLFscan'].run(inputTGLF=radial_input)
 elif root['SETTINGS']['PHYSICS']['scanDimensions'] == 2:
-    root['TGLF']['SCRIPTS']['runTGLFscan2D'].run()
+    root['TGLF']['SCRIPTS']['runTGLFscan2D'].run(inputTGLF=radial_input)
 elif root['SETTINGS']['PHYSICS']['scanDimensions'] == 'UQ':
-    root['TGLF']['SCRIPTS']['runTGLFUQscan'].run()
+    root['TGLF']['SCRIPTS']['runTGLFUQscan'].run(inputTGLF=radial_input)
 
 # store solution at this radius
 for scanName in [scanResults, scanResults_spectra]:

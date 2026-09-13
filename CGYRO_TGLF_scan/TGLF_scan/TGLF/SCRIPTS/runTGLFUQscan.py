@@ -9,11 +9,14 @@ defaultVars(
     rv=root['INPUTS'].get('rv', None),
     nosamples=root['SETTINGS']['PHYSICS']['scanParameterSamples'],
     samplingmethod=root['SETTINGS']['PHYSICS']['inputParameterSamplingMethod'],
-    inputTGLF=root['FILES']['input.tglf'],
+    inputTGLF=root.get('FILES', {}).get('input.tglf'),
     results='UQResults',
     results_spectra='UQResults_spectra',
     include_starting_param=True,
 )
+
+if inputTGLF is None:
+    raise ValueError('Need an input.tglf file to run a TGLF scan')
 
 # setup simple distributions
 if rv is None:

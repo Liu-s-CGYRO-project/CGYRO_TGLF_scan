@@ -1,37 +1,10 @@
-# -*-Python-*-
-# Created by jinyue_liu at 28 Sep 2025  15:04
+"""Default workbench for Linux OMFIT desktops."""
+from OMFITlib_project import ProjectActions
+from OMFITlib_project_ui import ProjectUI
 
-
-OMFITx.TitleGUI('CYTG GUI')
-OMFITx.Button('TGLF 多 input.gacode 计算', lambda: root['GUIS']['TGLF_multi'].run())
-
-#root.setdefault('scanResults', OMFITtree())
-#root.setdefault('scanResults2D', OMFITtree())
-#root.setdefault('input.tglf', OMFITtree())
-#root.setdefault('tgyro_output', OMFITtree())
-
-#param = root['TGLF']['SETTINGS']['PHYSICS']['scanParameter']
-#param2 = root['TGLF']['SETTINGS']['PHYSICS']['scanParameter2D']
-
-
-OMFITx.CheckBox(
-    "root['SETTINGS']['PHYSICS']['tglf_input_load']",
-    "Load input.tglf file - !load it before input.gacode!",
-    default=False,
-    updateGUI=True,
-    help='This CheckBox oppens the GUI where the input.tglf file can be loaded. Click "Pick a different input.tglf file" to load a new file.',
-)
-
-OMFITx.CheckBox(
-    "root['SETTINGS']['PHYSICS']['tglf_settings_from_TGYRO']",
-    "Load TGLF settings tab from TGYRO GUI",
-    default=False,
-    updateGUI=True,
-    help='This CheckBox loads the same GUI as in TGYRO module to specify TGLF settings, otherwise the old TGLF_scan GUI will be loaded.',
-)
-
-
-
-OMFITx.Tab('Transfer_input_file')
-
-OMFITx.CompoundGUI(root['TGLF_scan']['TGYRO']['PROFILES_GEN']['GUIS']['standaloneGUI'])
+actions = ProjectActions(root, OMFITtree, readers={'cgyro': OMFITgacode, 'tglf': OMFITgacode, 'tgyro': OMFITgacode},
+                         resolve_server=lambda node: SERVER[node], workdir=OMFITworkDir)
+configure = lambda node: OMFIT['scratch']['__moduleSetupGUI__'].run(base_override=relativeLocations(node))
+open_templates = (lambda: OMFIT['OMFITtemplates']['GUIS']['main'].run()) if 'OMFITtemplates' in OMFIT else None
+ProjectUI(actions, OMFITx, configure=configure, open_templates=open_templates,
+          servers=SERVER.listServers().keys()).render()

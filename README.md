@@ -2,13 +2,13 @@
 
 用于 Linux 桌面的 OMFIT 工程，包含已审计、修复和整理的 CGYRO/TGLF 工具，以及项目内置的 **OMFIT GitHub 模板管理器**。
 
-当前分发版为 **2026.09.13**，仅包含代码、输入模板和默认设置；计算案例、结果、缓存与旧命令记录不入库。原模块的输入示例保留在 `TEMPLATES` 中。执行计算前，需要导入自己的平衡/剖面或案例，并配置计算环境与求解器路径。
+当前分发版为 **2026.09.13.1**，仅包含代码、输入模板和默认设置；计算案例、结果、缓存与旧命令记录不入库。原模块的输入示例保留在 `TEMPLATES` 中。执行计算前，需要导入自己的平衡/剖面或案例，并配置计算环境与求解器路径。
 
-本版新增 **TGLF 多 input.gacode 计算** 页面：多文件/目录导入、独立案例参数、指定半径生成输入、批量运行、失败重试、历史结果和谱对比。保留上一版的 CGYRO_vs_CGYRO 重构及 GitHub 模板管理功能。
+默认 GUI 现在是 **Project 总控**：输入准备、Transfer tool、CGYRO、TGLF、运行配置和记录、绘图及 GitHub 模板管理集中在同一入口。保留多 input.gacode 计算与原比较绘图页面。
 
 ## 在 OMFIT 打开
 
-推荐从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_2026.09.13.zip`，在 OMFIT 中打开。
+推荐从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_2026.09.13.1.zip`，在 OMFIT 中打开。
 
 也可直接加载本仓库的工程入口：
 
@@ -21,7 +21,7 @@ OMFIT.load('/absolute/path/CGYRO_TGLF_scan/OMFITsave.txt')
 - `CGYRO_TGLF_scan`：扫描、转换及 CGYRO/TGLF 对比绘图。
 - `OMFITtemplates`：GitHub 模板版本管理。
 
-打开 CGYRO/TGLF 默认 GUI，点击 **Templates / GitHub** 即可进入管理器；也可以打开 `OMFITtemplates → GUIS → main`。管理器已预填本仓库地址。
+打开默认总控页，选择 **模板与 GitHub** 即可进入管理器；也可以打开 `OMFITtemplates → GUIS → main`。管理器已预填本仓库地址。
 
 如果只想把管理器加入已有计算工程，在该工程的 OMFIT 命令框执行：
 
@@ -32,9 +32,29 @@ OMFIT['OMFITtemplates']['GUIS']['main'].run()
 
 这两条命令只添加管理模块，不替换已有 CGYRO/TGLF 数据。添加后保存自己的工程即可长期使用。
 
+## Project 总控与流程依赖
+
+默认入口为 `CGYRO_TGLF_scan → GUIS → main`，也可以执行：
+
+```python
+OMFIT['CGYRO_TGLF_scan']['GUIS']['main'].run()
+```
+
+工作页面包括概览、Transfer tool、输入差异确认、CGYRO、TGLF 单文件与扫描、多 input.gacode、运行与环境、绘图对比、模板与 GitHub。常用参数在总控页设置；原模块的完整设置页通过对应按钮打开。
+
+1. **Transfer → CGYRO**：载入或生成输入，在“传递输入”中选择 `input.cgyro` 并点击“验证并送入 CGYRO”。已有完整输入也经过此步骤，无需强制重新运行 profiles_gen。只有输入检查和执行配置均通过，CGYRO 的准备、运行按钮才启用。传递后修改源输入、上游剖面或 CGYRO 输入，会要求重新准备和传递。
+2. **Transfer → TGLF**：选择 `input.tglf` 并传入。目标已有文件时先显示参数差异，由用户决定保留当前版本或使用传入版本；不自动混合参数。覆盖前保存原输入与关联结果，新的输入不会被关联到旧结果上。预览后任一输入变化，都需要重新比较。
+   TGYRO 按半径生成的输入也可在“TGLF 单文件与扫描 → 参数与径向扫描”选择，然后点击“比较并传入当前 TGLF 单文件”。生成和切换半径保留已有单文件输入；径向扫描使用局部副本，不覆盖该输入或它的结果。
+3. **Transfer 内部生成**：“生成与高级工具”可载入其自己的 `input.tglf` / `input.tgyro`。TGLF 种子已有值时同样先询问覆盖；改变生成输入会归档并使旧 TGYRO 结果失效。缺少上一步输入或结果时，后续按钮禁用并给出原因。
+4. **计算与收集**：可以仅生成 CGYRO 扫描输入，也可以运行。只有已提交或执行过的运行才允许收集；收集后按该运行记录的实际维数归档到绘图数据中，不会重新提交作业。多剖面 TGLF 必须先生成匹配当前输入和参数的局部输入，之后才能运行。
+5. **运行配置**：选择模块与 OMFIT 服务器，使用“同步 OMFIT 连接配置”填入服务器、隧道和工作目录，再设置命令。CGYRO 直接显示当前提交器读取的配置。检查仅确认本地设置和输入依赖，不代表已验证目标机器上的求解器或资源。
+6. **结果与历史**：无结果时禁用相应绘图按钮；保存的旧结果仍可查看。总控操作、输入候选、覆盖选择和输入历史位于 `PROJECT_STATE`，随当前工程保存，代码模板只含空分支。打开总控页不会提交任务或自动轮询服务器。
+
+上述流程约束由总控入口及其点击回调执行；直接在 OMFIT 命令行运行旧脚本仍属于高级用法。旧 TGLF 批处理的并行数、时限和通用运行设置自动化仍待后续统一，本次未改动其科学模型和求解算法。
+
 ## 多份 input.gacode 的 TGLF 计算
 
-在默认比较界面或原 main 界面点击 **TGLF 多 input.gacode 计算**，也可运行 `CGYRO_TGLF_scan → GUIS → TGLF_multi`。
+在总控页选择 **TGLF 多 input.gacode**，也可运行 `CGYRO_TGLF_scan → GUIS → TGLF_multi`。原比较页仍保留快捷按钮。
 
 1. **文件与案例**：多选 `input.gacode`，或选目录递归导入。不同文件夹中的同名文件按独立案例保存。填写共用半径（例如 `0.3, 0.5, 0.7`）；单个案例的半径可覆盖共用值。坐标明确选择 `rho` 或 `r/a`。
 2. **计算设置**：设定 SAT_RULE、NKY、NMODES、电磁开关及离子选择。案例的“此案例参数”支持 `SAT_RULE=2; NKY=24`，优先于共用设置。“复制为新案例”可对同一份剖面运行不同模型参数，不复制历史结果。
@@ -55,7 +75,7 @@ OMFIT['OMFITtemplates']['GUIS']['main'].run()
 3. 预览变更后生成新工程。打开前可备份当前会话；原 ZIP 始终保留。
 4. 开发者准备模板包，核对文件清单、仓库与账号，再发布不可覆盖的新版本。
 
-当前模板包含 `CGYRO_TGLF_scan` 和 `OMFITtemplates` 两个模块，不带结果或计算案例。在管理器中拉取 **2026.09.13**，选择保留当前案例、结果和设置即可生成更新后的工程。旧工程如缺管理模块，可先按上面的两条命令添加，再另存为 ZIP 并进行版本更新。
+当前模板包含 `CGYRO_TGLF_scan` 和 `OMFITtemplates` 两个模块，不带结果或计算案例。在管理器中拉取 **2026.09.13.1**，选择保留当前案例、结果和设置即可生成更新后的工程。默认 GUI 的模块信息随模板更新，用户的计算设置与结果继续保留。旧工程如缺管理模块，可先按上面的两条命令添加，再另存为 ZIP 并进行版本更新。
 
 Git 仓库保存可审查的源码；OMFIT 管理器通过 Release 附件分发模板。界面不会自动把附件内源码提交到 Git，源码改动仍通过正常的 commit / push 流程同步。
 
@@ -65,7 +85,7 @@ Git 仓库保存可审查的源码；OMFIT 管理器通过 Release 附件分发�
 python3 tools/build_project.py
 ```
 
-输出到 `dist/CGYRO_TGLF_scan_code_only_2026.09.13.zip`（版本号来自 `PROJECT_CONTENTS.json`）。构建仅收录 `OMFITsave.txt` 引用的代码、设置与输入模板，校验所有引用，并拒绝混入非空计算数据分支。
+输出到 `dist/CGYRO_TGLF_scan_code_only_2026.09.13.1.zip`（版本号来自 `PROJECT_CONTENTS.json`）。构建仅收录 `OMFITsave.txt` 引用的代码、设置与输入模板，校验所有引用，并拒绝混入非空计算数据分支。
 
 独立模板界面可执行 `sh OMFITtemplates/start_manager.sh`；OMFIT 内使用时复用 OMFIT 自己的 Python 和 Tk。
 

@@ -1,5 +1,6 @@
 ['TGLF_scan'] <-:-:-> OMFITmodule <-:-:->  <-:-:-> {}
 ['TGLF_scan']['TGLF'] <-:-:-> OMFITmodule <-:-:->  <-:-:-> {}
+['TGLF_scan']['TGLF']['FILES'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['TGLF_scan']['TGLF']['SCRIPTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['TGLF_scan']['TGLF']['SCRIPTS']['runTGLF'] <-:-:-> OMFITpythonTask <-:-:-> ./TGLF_scan/TGLF/SCRIPTS/runTGLF.py <-:-:-> {}
 ['TGLF_scan']['TGLF']['SCRIPTS']['runTGLFscan'] <-:-:-> OMFITpythonTask <-:-:-> ./TGLF_scan/TGLF/SCRIPTS/runTGLFscan.py <-:-:-> {}
@@ -226,6 +227,8 @@
 ['GUIS']['Template_manager'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/Template_manager.py <-:-:-> {}
 ['GUIS']['TGLF_multi'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/TGLF_multi.py <-:-:-> {}
 ['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['LIB']['OMFITlib_project'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project.py <-:-:-> {}
+['LIB']['OMFITlib_project_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_ui.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cases.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro_selection'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro_selection.py <-:-:-> {}
@@ -367,3 +370,4 @@
 ['Transfer_tool']['help'] <-:-:-> OMFIThelp <-:-:-> ./Transfer_tool/help.rst <-:-:-> {}
 ['Transfer_tool']['Transfer_file'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['TGLF_CASES'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['PROJECT_STATE'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}

@@ -11,6 +11,7 @@ from collections import (
 from OMFITlib_compare_cases import (
     CaseSelection,
 )
+from OMFITlib_project import comparison_issues
 from OMFITlib_compare_state import (
     MODES,
     MODE_LABELS,
@@ -37,12 +38,15 @@ class ComparisonUI(CaseSelection):
                              OrderedDict([('Linear spectra', 'Spectra'), ('Integrated flux', 'Flux')]),
                              'Data to compare', default='Spectra', updateGUI=True)
         with self.ui.same_row():
-            self.ui.Button('Plot selected data', self._plot)
+            missing = comparison_issues(self.root, self.mode)
+            self.ui.Button('Plot selected data', self._plot, state='disabled' if missing else 'normal', help='；'.join(missing))
             self.ui.Button('Check selection', self._refresh_check, updateGUI=True)
             if 'TGLF_multi' in self.root.get('GUIS', {}):
                 self.ui.Button('TGLF 多 input.gacode 计算', lambda: self.root['GUIS']['TGLF_multi'].run())
             if open_templates is not None:
                 self.ui.Button('Templates / GitHub', open_templates)
+        if missing:
+            self.ui.Label('；'.join(missing), align='left')
         self.ui.Tab('1. Cases')
         renderer = {
             'CGYRO_vs_TGLF': self.render_mode_cgyro_vs_tglf,
@@ -223,6 +227,9 @@ class ComparisonUI(CaseSelection):
             raise ValueError('\n'.join(report['errors']))
 
     def _plot(self):
+        missing = comparison_issues(self.root, self.mode)
+        if missing:
+            raise ValueError('；'.join(missing))
         self._assert_selection()
         key = 'CGYRO_vs_CGYRO' if self.mode == 'CGYRO_vs_CGYRO' else 'CGYRO_vs_TGLF'
         # OMFIT controls its own script cache; do not reload over unsaved editor changes.

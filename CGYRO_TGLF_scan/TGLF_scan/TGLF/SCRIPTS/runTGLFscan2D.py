@@ -6,12 +6,15 @@ defaultVars(
     param2=root['SETTINGS']['PHYSICS']['scanParameter2D'],
     parameterRange2=root['SETTINGS']['PHYSICS']['scanParameter2DRange'],
     parameterRange=root['SETTINGS']['PHYSICS']['scanParameterRange'],
-    inputTGLF=root['FILES']['input.tglf'],
+    inputTGLF=root.get('FILES', {}).get('input.tglf'),
     results='scanResults2D',
     results_spectra='scanResults2D_spectra',
     include_starting_param=True,
     cache_records=None,
 )
+
+if inputTGLF is None:
+    raise ValueError('Need an input.tglf file to run a TGLF scan')
 
 if param2 == param:
     printe('Param1 = param2 -> change one of them')

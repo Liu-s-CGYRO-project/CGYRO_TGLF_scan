@@ -124,12 +124,20 @@
     "contact": [
       "jinyue.liu@ipp.ac.cn"
     ],
-    "defaultGUI": "root['GUIS']['CGYRO_vs_TGLF']",
+    "defaultGUI": "root['GUIS']['main']",
     "commit": "",
     "python3": "3.9",
     "comment": "Result-free project with integrated OMFIT GitHub template manager"
   },
   "DEPENDENCIES": {},
+  "WORKBENCH": {
+    "page": "overview",
+    "runtime_module": "cgyro",
+    "transfer_source": "",
+    "cgyro_file": "",
+    "tglf_file": "",
+    "message": ""
+  },
   "TGLF_MULTI": {
     "radii": "0.5",
     "coordinate": "rho",

@@ -479,6 +479,8 @@ if setup['irun']==1:
         )
         submit_combined=output_to_text(submit_out)+'\n'+output_to_text(submit_err)+'\n'+output_to_text(submit_text)
         job_id=parse_scheduler_job_id(submit_combined, submit_rule)
+        root['RUN_MANIFEST']['job_id'] = job_id
+        root['RUN_MANIFEST']['status'] = 'submitted'
         if scheduler == 'pbs':
             wait_cmd='hb=0; while qstat '+job_id+' >/dev/null 2>&1; do sleep 30; hb=$((hb+30)); if [ \"$hb\" -ge 600 ]; then echo \"[heartbeat] job '+job_id+' still in queue/running at $(date)\"; hb=0; fi; done; echo \"[heartbeat] job '+job_id+' finished at $(date)\"'
         else:

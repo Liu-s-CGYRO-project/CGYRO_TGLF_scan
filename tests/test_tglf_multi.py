@@ -76,6 +76,26 @@ class TestMultiInput(unittest.TestCase):
     def latest(self):
         return self.case['runs'][self.case['selected_run']]
 
+    def test_gui_run_requires_generation_and_invalidates_changed_plan(self):
+        def run_button_state():
+            ui = FakeUI(self.root)
+            MultiInputUI(self.root, ui).render()
+            return next(kwargs['state'] for _, kind, args, kwargs in ui.events
+                        if kind == 'Button' and args[0] == '运行已生成输入 / 重试失败项')
+        self.assertEqual(run_button_state(), 'disabled')
+        self.run_cases('prepare')
+        self.assertEqual(run_button_state(), 'normal')
+        self.settings['radii'] = '.6'
+        self.assertEqual(run_button_state(), 'disabled')
+
+    def test_gui_no_selected_case_disables_run_and_plot(self):
+        self.case['enabled'] = False
+        ui = FakeUI(self.root)
+        MultiInputUI(self.root, ui).render()
+        for label in ('生成输入', '生成并运行', '对比所选记录的频率与增长率'):
+            options = next(kwargs for _, kind, args, kwargs in ui.events if kind == 'Button' and args[0] == label)
+            self.assertEqual(options['state'], 'disabled')
+
     def test_import_same_basename_in_two_directories_and_isolated_snapshot(self):
         original = profile()
         other = self.base / 'case B' / 'input.gacode'
