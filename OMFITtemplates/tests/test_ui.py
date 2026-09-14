@@ -10,7 +10,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'LIB'))
 from OMFITlib_template_ui import TemplateManager, open_manager
 from OMFITlib_template_service import publish
-from test_templates import fixture
+from test_templates import add_module, fixture
 
 
 class UITest(unittest.TestCase):
@@ -113,6 +113,22 @@ class UITest(unittest.TestCase):
             self.wait_idle()
         self.assertTrue(target.exists())
         self.assertIsNone(self.app.plan)
+
+    def test_preview_distinguishes_added_and_updated_modules(self):
+        add_module(self.new)
+        package = publish(self.new, self.library,
+            dict(id='with-added', name='新增模块', author='local', version='3', description=''), ['Demo', 'Added'])
+        self.app.template_path.set(package)
+        self.app._preview()
+        self.wait_idle()
+        self.assertIn('更新模块：Demo', self.app.plan_info.get())
+        self.assertIn('新增模块：Added', self.app.plan_info.get())
+        self.assertFalse(self.app.apply_button.instate(['disabled']))
+        self.app.output.set(str(self.base / 'with-added.zip'))
+        with patch('OMFITlib_template_ui.messagebox.showinfo'):
+            self.app._apply()
+            self.wait_idle()
+        self.assertTrue((self.base / 'with-added.zip').is_file())
 
     def test_changed_options_invalidate_preview(self):
         self.select()

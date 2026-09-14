@@ -711,6 +711,12 @@ class TemplateManager:
         self.plan_info.set('新增 {add} · 更新 {replace} · 删除 {delete}；保留 {keep} 个文件，预计输出约 {size}。{tail}'.format(
             **counts, keep=plan['preserved_files'], size=human_size(plan['output_bytes_estimate']),
             tail='列表显示前 1500 项，可导出完整清单。' if len(plan['changes']) > 1500 else ''))
+        scope = []
+        for key, label in (('updated_modules', '更新模块'), ('added_modules', '新增模块')):
+            if plan.get(key):
+                scope.append(label + '：' + '、'.join(plan[key]))
+        if scope:
+            self.plan_info.set('；'.join(scope) + '\n' + self.plan_info.get())
         self.status.set('预览完成：{} / {} / {}'.format(plan['release']['author'], plan['release']['id'], plan['release']['version']))
         self._set_busy(False)
 

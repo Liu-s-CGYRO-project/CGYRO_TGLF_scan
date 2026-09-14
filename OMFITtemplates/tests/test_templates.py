@@ -74,6 +74,23 @@ def rewrite(path, mutator):
             archive.writestr(name, content)
 
 
+def add_module(path, name='Added'):
+    def change(entries):
+        nodes = parse_tree(entries['OMFITsave.txt'])
+        nodes += [row([name], 'OMFITmodule'), row([name, 'GUIS']),
+                  row([name, 'GUIS', 'main'], 'OMFITpythonGUI', name + '/GUIS/main.py'),
+                  row([name, 'SETTINGS'], 'OMFITsettings', name + '/SettingsNamelist.txt'),
+                  row([name, 'SETTINGS', 'PHYSICS', 'dynamic'], 'OMFITexpression', value='new_module_default'),
+                  row([name, 'RUN_DB']), row([name, 'RUN_DB', 'sample'], 'OMFITascii', name + '/sample.dat')]
+        entries['OMFITsave.txt'] = tree_bytes(nodes)
+        entries[name + '/GUIS/main.py'] = b'# added module GUI'
+        entries[name + '/SettingsNamelist.txt'] = json_bytes({
+            'MODULE': {'ID': name, 'defaultGUI': "root['GUIS']['main']"},
+            'PHYSICS': {'gain': 3, 'dynamic': None}})
+        entries[name + '/sample.dat'] = b'NEW-MODULE-EXAMPLE'
+    rewrite(path, change)
+
+
 class TemplatesTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -179,6 +196,106 @@ class TemplatesTest(unittest.TestCase):
         path = publish(self.new, self.library, self.meta, ['Other', 'Demo'])
         with Template(path) as template:
             self.assertEqual(template.roots, ['Demo', 'Other'])
+
+    def test_update_existing_and_add_missing_root_preserves_data_and_settings(self):
+        add_module(self.new)
+        package = publish(self.new, self.library, self.meta, ['Demo', 'Added'])
+        before = self.old.read_bytes()
+        plan = plan_update(self.old, package)
+        self.assertEqual(plan['updated_modules'], ['Demo'])
+        self.assertEqual(plan['added_modules'], ['Added'])
+        self.assertIn({'action': 'add', 'path': "['Added']"}, plan['tree_changes'])
+        with self.result(plan) as result:
+            self.assertEqual(result.roots, ['Added', 'Demo', 'Other'])
+            self.assertEqual(result.read('Demo/data/v1.npy'), self.old_files['Demo/data/v1.npy'])
+            self.assertEqual(result.read('Demo/unreferenced-cache'), self.old_files['Demo/unreferenced-cache'])
+            self.assertEqual(result.read('Other/task.py'), self.old_files['Other/task.py'])
+            self.assertEqual(result.read('Demo/SCRIPTS/run.py'), b'# release 2')
+            settings = json.loads(result.read('Demo/SettingsNamelist.txt'))
+            self.assertEqual(settings['PHYSICS']['x'], 1)
+            self.assertEqual(settings['REMOTE_SETUP']['server'], 'server1')
+            self.assertEqual(settings['PHYSICS']['added'], 42)
+            self.assertEqual(result.read('Added/GUIS/main.py'), b'# added module GUI')
+            self.assertEqual(json.loads(result.read('Added/SettingsNamelist.txt'))['PHYSICS']['gain'], 3)
+            nodes = {node.keys: node for node in result.rows}
+            self.assertEqual(nodes[('Added', 'SETTINGS', 'PHYSICS', 'dynamic')].fields[2], "_'new_module_default'")
+            self.assertIn(('Added', 'RUN_DB'), nodes)
+            self.assertNotIn('Added/sample.dat', result.files)
+            output = result.path
+        self.assertEqual(self.old.read_bytes(), before)
+        # Re-applying the same package must not repeatedly add or rewrite it.
+        repeated = plan_update(output, package)
+        self.assertEqual(repeated['added_modules'], [])
+        self.assertEqual(repeated['changes'], [])
+        self.assertEqual(repeated['tree_changes'], [])
+
+    def test_template_can_add_only_new_modules(self):
+        add_module(self.new)
+        package = publish(self.new, self.library, self.meta, ['Added'])
+        plan = plan_update(self.old, package)
+        self.assertEqual(plan['updated_modules'], [])
+        self.assertEqual(plan['added_modules'], ['Added'])
+        with self.result(plan) as result:
+            for name, data in self.old_files.items():
+                if name != 'OMFITsave.txt':
+                    self.assertEqual(result.read(name), data)
+            self.assertEqual(result.read('Added/GUIS/main.py'), b'# added module GUI')
+
+    def test_template_can_initialize_project_without_modules(self):
+        def empty(entries):
+            entries.clear()
+            entries['OMFITsave.txt'] = tree_bytes([row(['MainSettings'], 'OMFITsettings', 'MainSettingsNamelist.txt')])
+            entries['MainSettingsNamelist.txt'] = b'{"keep": 42}'
+        rewrite(self.old, empty)
+        plan = self.plan()
+        self.assertEqual(plan['updated_modules'], [])
+        self.assertEqual(plan['added_modules'], ['Demo'])
+        with self.result(plan) as result:
+            self.assertEqual(result.roots, ['Demo'])
+            self.assertEqual(result.read('MainSettingsNamelist.txt'), b'{"keep": 42}')
+            self.assertEqual(json.loads(result.read('Demo/SettingsNamelist.txt'))['PHYSICS']['x'], 2)
+
+    def test_new_module_examples_follow_explicit_data_policy(self):
+        add_module(self.new)
+        package = publish(self.new, self.library, self.meta, ['Demo', 'Added'], include_examples=True)
+        for policy in ('keep', 'examples'):
+            with self.subTest(policy=policy):
+                output = self.dir / (policy + '.zip')
+                apply_update(plan_update(self.old, package, data_policy=policy), output)
+                with Project(output) as result:
+                    self.assertEqual('Added/sample.dat' in result.files, policy == 'examples')
+                    self.assertEqual('Demo/data/v1.npy' in result.files, policy == 'keep')
+                    self.assertEqual(result.read('Other/task.py'), self.old_files['Other/task.py'])
+                    if policy == 'examples':
+                        self.assertEqual(result.read('Added/sample.dat'), b'NEW-MODULE-EXAMPLE')
+
+    def test_new_module_does_not_replace_existing_nonmodule_tree(self):
+        add_module(self.new)
+        def conflict(entries):
+            entries['OMFITsave.txt'] += tree_bytes([row(['Added']), row(['Added', 'saved'], 'OMFITascii', 'saved.dat')])
+            entries['saved.dat'] = b'USER DATA'
+        rewrite(self.old, conflict)
+        before = self.old.read_bytes()
+        package = publish(self.new, self.library, self.meta, ['Demo', 'Added'])
+        with self.assertRaisesRegex(TemplateError, '同名.*Added'):
+            plan_update(self.old, package)
+        self.assertEqual(self.old.read_bytes(), before)
+
+    def test_new_module_cannot_overwrite_existing_unreferenced_file(self):
+        add_module(self.new)
+        rewrite(self.old, lambda entries: entries.update({'Added/GUIS/main.py': b'USER FILE'}))
+        before = self.old.read_bytes()
+        package = publish(self.new, self.library, self.meta, ['Added'])
+        with self.assertRaisesRegex(TemplateError, '覆盖保留数据'):
+            plan_update(self.old, package)
+        self.assertEqual(self.old.read_bytes(), before)
+
+    def test_new_module_directory_cannot_replace_existing_file(self):
+        add_module(self.new)
+        rewrite(self.old, lambda entries: entries.update({'Added/GUIS': b'USER FILE'}))
+        package = publish(self.new, self.library, self.meta, ['Added'])
+        with self.assertRaisesRegex(TemplateError, '文件与目录重名'):
+            plan_update(self.old, package)
 
     def test_ambiguous_release_identity_is_rejected(self):
         self.meta['author'] = 'a__b'

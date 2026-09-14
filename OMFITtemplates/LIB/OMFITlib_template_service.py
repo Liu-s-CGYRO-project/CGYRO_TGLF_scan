@@ -309,7 +309,14 @@ def _build(current, template, data_policy, settings_policy):
     if data_policy == 'examples' and not template.manifest['examples']:
         raise TemplateError('此版本没有示例，不能切换到示例结果')
     roots = template.roots
-    current_owned = current.ownership(roots)
+    existing_roots = [name for name in roots if name in current.roots]
+    added_roots = set(roots) - set(existing_roots)
+    conflicts = sorted({row.keys[0] for row in current.rows if row.keys[0] in added_roots})
+    if conflicts:
+        raise TemplateError('无法新增模块：当前工程已有同名的非模块节点：' + ', '.join(conflicts))
+    # Only existing modules own current files. Newly added modules must still
+    # pass the retained-file and tree collision checks below.
+    current_owned = current.ownership(existing_roots) if existing_roots else {}
     template_owned = template.ownership(roots)
     if data_policy == 'keep':
         removed_modules = {m for m in current.modules if m[0] in roots} - template.modules
@@ -381,6 +388,8 @@ def plan_update(current_path, template_path, data_policy='keep', settings_policy
                 'current_stamp': current.stamp(), 'template_stamp': template.stamp(),
                 'data_policy': data_policy, 'settings_policy': settings_policy,
                 'release': {k: template.manifest[k] for k in ('id', 'name', 'author', 'version', 'roots', 'examples')},
+                'updated_modules': sorted(set(template.roots) & set(current.roots)),
+                'added_modules': sorted(set(template.roots) - set(current.roots)),
                 'changes': changes, 'tree_changes': tree_changes, 'preserved_files': len(kept),
                 'output_bytes_estimate': sum(current.files[n].file_size for n in kept) +
                     sum(template.files[n].file_size for n in incoming) + sum(len(v) for v in generated.values()),
