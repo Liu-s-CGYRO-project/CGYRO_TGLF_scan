@@ -69,6 +69,24 @@ class LinuxTest(unittest.TestCase):
         self.assertIn('DISPLAY', result.stderr)
         self.assertNotIn('Traceback', result.stderr)
 
+    def test_repair_cli_without_display(self):
+        from test_templates import fixture
+        from OMFITlib_template_archive import Project
+        source, output = self.base / 'old.zip', self.base / 'fixed.zip'
+        fixture(source)
+        environment = dict(os.environ)
+        environment.pop('DISPLAY', None)
+        environment.pop('WAYLAND_DISPLAY', None)
+        command = [sys.executable, str(MODULE / 'launch.py'), 'repair', str(source), str(output)]
+        result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), str(output))
+        with Project(output) as project:
+            project.require_entry_first()
+        repeated = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=15)
+        self.assertNotEqual(repeated.returncode, 0)
+        self.assertNotIn('Traceback', repeated.stderr)
+
     def test_desktop_registration_update_and_remove(self):
         target = install_desktop.install(MODULE, sys.executable, self.base)
         self.assertTrue(target.is_file())

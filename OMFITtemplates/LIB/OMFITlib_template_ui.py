@@ -14,7 +14,7 @@ from OMFITlib_template_paths import default_library, legacy_preferences_path, pr
 from OMFITlib_template_github import DEFAULT_REPOSITORY, INITIAL_README, GitHub, login, repository
 from OMFITlib_template_service import (
     Cancelled, EXTENSION, Template, apply_update, inspect_project, list_library,
-    plan_update, publish, read_history, release_name, transfer,
+    plan_update, publish, read_history, release_name, repair_project, transfer,
 )
 
 DATA_OPTIONS = {'保留当前案例与结果': 'keep', '切换到模板示例': 'examples'}
@@ -230,6 +230,8 @@ class TemplateManager:
         heading = self._frame(page)
         heading.pack(fill='x')
         self._label(heading, '预览变更 → 生成新工程 → 在 OMFIT 打开', muted=True).pack(side='left')
+        self.repair_button = self._button(heading, '修复 ZIP 入口…', self._repair)
+        self.repair_button.pack(side='right')
         if self.session is not None:
             self._button(heading, '保存当前 OMFIT 会话…', self._save_session).pack(side='right')
         self._path_row(page, '当前工程 ZIP', self.current, lambda: self._choose_zip(self.current))
@@ -323,6 +325,9 @@ class TemplateManager:
             '4. 默认保留当前设置，并补全新版新增项；模块身份与依赖说明随模板更新。\n'
             '5. 生成新工程后，可“备份并在 OMFIT 打开”；此按钮会先保存当前会话的完整备份。\n'
             '6. 发布时先准备模板包，查看文件清单与目标仓库，再发布到 GitHub Releases。\n\n'
+            '旧 ZIP 无法打开\n\n'
+            '如果 OMFIT 到 Cases 或 GUIS 等子目录寻找 OMFITsave.txt，选中该工程 ZIP，'
+            '在更新页点击“修复 ZIP 入口”。这会保留所有文件内容并另存新 ZIP，无需选择模板。\n\n'
             '范围说明\n\n'
             '支持自包含、未加密的 OMFIT 工程 ZIP，按顶层模块选择。更新要求模块名称匹配。\n'
             '代码范围：SCRIPTS / PLOTS / GUIS / LIB / TEMPLATES / WORKFLOWS / SOURCE / DOCS / TESTS，'
@@ -739,6 +744,29 @@ class TemplateManager:
         self._invalidate()
         self.last_output = path
         self._set_busy(False)
+
+    def _repair(self):
+        if self.busy:
+            return
+        if not self.current.get().strip():
+            self._choose_zip(self.current)
+        source = self.current.get().strip()
+        if not source:
+            return
+        path = filedialog.asksaveasfilename(parent=self.window, title='另存入口修复后的工程（保留全部案例、结果与设置）',
+            initialfile=Path(source).stem + '_fixed.zip', defaultextension='.zip', filetypes=[('OMFIT 工程 ZIP', '*.zip')])
+        if path:
+            self._run('正在修复 ZIP 入口…', lambda: repair_project(source, path, self._progress, self.cancel), self._repaired)
+
+    def _repaired(self, path):
+        self.output.set(path)
+        self._invalidate()
+        self.last_output = path
+        self.plan_info.set('ZIP 入口已修复；所有文件内容已校验，案例、结果与设置保留。')
+        self.status.set('修复完成，请在 OMFIT 中打开新 ZIP。')
+        self._log('ZIP 入口修复完成：' + path + '\n原工程保留：' + self.current.get())
+        self._set_busy(False)
+        messagebox.showinfo('ZIP 入口已修复', path + '\n\n全部文件内容已校验。请在 OMFIT 中打开此 ZIP。', parent=self.window)
 
     def _save_report(self):
         if self.plan is None:

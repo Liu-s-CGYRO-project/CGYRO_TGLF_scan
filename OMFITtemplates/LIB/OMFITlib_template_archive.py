@@ -256,6 +256,16 @@ class Project:
         with self.z.open(self.files[name]) as stream:
             return sha_stream(stream, progress)[0]
 
+    def require_entry_first(self):
+        """Our output convention for native OMFIT ZIP loading.
+
+        cherry_pick_OMFITsave derives the project directory from namelist()[0].
+        Keep accepting historical input order, but always emit the actual tree
+        entry first so both complete and selective native loads find it.
+        """
+        if self.z.infolist()[0].filename != self.files['OMFITsave.txt'].filename:
+            raise TemplateError('ZIP 首个条目不是工程入口 OMFITsave.txt；请使用“修复 ZIP 入口”另存新工程。')
+
 
 def merge_defaults(defaults, current):
     """Retain existing values; add new keys. Module identity comes from release."""

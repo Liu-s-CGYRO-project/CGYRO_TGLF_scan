@@ -1,6 +1,7 @@
 """Immutable template releases and reviewed, non-destructive project updates."""
 from builtins import all, any, bool, bytes, dict, float, int, len, list, max, min, open, range, set, sorted, str, sum, tuple, type, zip
 from contextlib import contextmanager
+from copy import copy
 from datetime import datetime, timezone
 import hashlib
 import os
@@ -12,7 +13,7 @@ import zipfile
 
 from OMFITlib_template_archive import (
     CHUNK, CODE_BRANCHES, MAX_METADATA, Project, TemplateError, contains_path,
-    human_size, json_bytes, merge_defaults, parse_json, safe_name, tree_bytes,
+    human_size, json_bytes, member_name, merge_defaults, parse_json, safe_name, tree_bytes,
 )
 
 FORMAT = 'omfit-template-v1'
@@ -421,12 +422,18 @@ def apply_update(plan, output_path, progress=None, cancel=None):
         with new_file(output_path) as temporary:
             with zipfile.ZipFile(temporary, 'x', compression=zipfile.ZIP_DEFLATED, allowZip64=True) as output:
                 output.comment = current.z.comment
+                # Native OMFIT takes the project directory from the first ZIP
+                # member. A case or GUI script here sends it to the wrong tree.
+                output.writestr('OMFITsave.txt', generated['OMFITsave.txt'])
+                advance(len(generated['OMFITsave.txt']))
                 for name in sorted(kept):
                     _copy_member(current, name, output, name, cancel=cancel, progress=advance)
                 for name in sorted(incoming):
                     _copy_member(template, name, output, name,
                                  expected=template.manifest['files'][name]['sha256'], cancel=cancel, progress=advance)
                 for name, content in generated.items():
+                    if name == 'OMFITsave.txt':
+                        continue
                     check_cancel(cancel)
                     output.writestr(name, content)
                     advance(len(content))
@@ -438,6 +445,7 @@ def apply_update(plan, output_path, progress=None, cancel=None):
             if current.stamp() != plan['current_stamp'] or template.stamp() != plan['template_stamp']:
                 raise TemplateError('写入期间源文件发生变化，请重新预览')
             with Project(temporary) as result:
+                result.require_entry_first()
                 for name in kept:
                     if (result.files[name].file_size, result.files[name].CRC) != (current.files[name].file_size, current.files[name].CRC):
                         raise TemplateError('结果保留校验失败：' + name)
@@ -447,6 +455,68 @@ def apply_update(plan, output_path, progress=None, cancel=None):
                 for name in incoming:
                     if (result.files[name].file_size, result.files[name].CRC) != (template.files[name].file_size, template.files[name].CRC):
                         raise TemplateError('模板载荷校验失败：' + name)
+    return str(output_path)
+
+
+def repair_project(source_path, output_path, progress=None, cancel=None):
+    """Repack an existing project with its tree first; retain every file's bytes.
+
+    Use only public zipfile APIs, including ZIP64 streaming. Read-back hashes
+    verify all copied content before atomically publishing a new ZIP. No tree
+    expressions, result objects or template settings are evaluated or changed.
+    """
+    source_path = Path(source_path).expanduser().resolve()
+    output_path = Path(output_path).expanduser().resolve()
+    if source_path == output_path:
+        raise TemplateError('修复输出必须使用新的 ZIP 文件名，原工程保留')
+    if output_path.suffix.lower() != '.zip':
+        raise TemplateError('输出工程请使用 .zip 扩展名')
+    with Project(source_path) as source:
+        check_cancel(cancel)
+        size = sum(info.file_size for info in source.files.values())
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        if shutil.disk_usage(output_path.parent).free < size + 64 * 1024 * 1024:
+            raise TemplateError('修复磁盘空间不足，预计需要 ' + human_size(size))
+        done, total = 0, size * 2
+        stage = '正在修复 ZIP 入口；原工程保留'
+
+        def advance(amount):
+            nonlocal done
+            check_cancel(cancel)
+            done += amount
+            if progress:
+                progress(stage, done, total)
+
+        with new_file(output_path) as temporary:
+            with zipfile.ZipFile(temporary, 'x', compression=zipfile.ZIP_DEFLATED, allowZip64=True) as output:
+                output.comment = source.z.comment
+                names = ['OMFITsave.txt'] + [name for name in source.files if name != 'OMFITsave.txt']
+                # Flatten an optional wrapper, as apply_update does. Mixed './'
+                # directory entries otherwise confuse OMFITproject.info's
+                # commonprefix-based discovery even with the tree first.
+                digests = {name: _copy_member(source, name, output, name,
+                                              cancel=cancel, progress=advance) for name in names}
+                for info in source.z.infolist():
+                    if info.is_dir():
+                        check_cancel(cancel)
+                        name = member_name(info.filename)[len(source.prefix):]
+                        if name:
+                            target = copy(info)
+                            target.filename = target.orig_filename = name + '/'
+                            output.writestr(target, source.z.read(info))
+            stage = '正在逐文件校验修复工程'
+            with Project(temporary) as result:
+                result.require_entry_first()
+                if (set(result.files) != set(source.files) or result.directories != source.directories - {''}
+                        or result.z.comment != source.z.comment):
+                    raise TemplateError('修复后的工程文件清单不一致')
+                for name, digest in digests.items():
+                    check_cancel(cancel)
+                    if result.digest(name, advance) != digest:
+                        raise TemplateError('修复后的文件内容校验失败：' + name)
+            check_cancel(cancel)
+            if source.stamp() != source._stat:
+                raise TemplateError('修复期间源文件发生变化，请重新修复')
     return str(output_path)
 
 

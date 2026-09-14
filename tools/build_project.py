@@ -40,7 +40,8 @@ def build(output):
     selected.update({'README.md', 'PROJECT_CONTENTS.json'})
     with new_file(output) as temporary:
         with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as archive:
-            for name in sorted(selected):
+            # Native OMFIT chooses the project directory from namelist()[0].
+            for name in ['OMFITsave.txt'] + sorted(selected - {'OMFITsave.txt'}):
                 info = zipfile.ZipInfo(name)
                 info.create_system = 3
                 info.external_attr = (0o100755 if name.endswith('.sh') else 0o100644) << 16
@@ -49,6 +50,7 @@ def build(output):
             for name in sorted(directories):
                 archive.writestr(name.rstrip('/') + '/', b'')
         with Project(temporary) as project:
+            project.require_entry_first()
             owned = project.ownership(project.roots)
             data = [name for name, category in owned.items() if category == 'data']
             if data:
