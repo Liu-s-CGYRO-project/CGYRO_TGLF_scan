@@ -260,6 +260,27 @@ class NativeExecutionTests(unittest.TestCase):
         client = out['GitHub']('team/demo', token='', proxy=url)
         self.assertNotIn('native-test-only', client.connection)
 
+    def test_manager_updates_and_sorting_survive_native_import_cleanup(self):
+        root = self.host.modules[('OMFITtemplates',)]
+        out = self.host.execute('from OMFITlib_template_versions import sort_releases\n'
+                                'from OMFITlib_template_manager_update import check_manager_update, download_manager_package', root)
+        self.assertFalse(any(name.startswith('OMFITlib_') for name in sys.modules))
+        rows = [dict(version='2026.09.14.4', created='2026-09-14T05:16:00Z'),
+                dict(version='1.1.1', created='2026-09-14T09:19:00Z')]
+        self.assertEqual(out['sort_releases'](rows)[0]['version'], '1.1.1')
+        data = b'native manager download fixture'
+        digest = hashlib.sha256(data).hexdigest()
+        release = dict(tag_name='omfit-manager/v1.4.0', assets=[dict(id=17, state='uploaded', size=len(data),
+            name='OMFIT_template_manager_linux_v1.4.0.tar.gz', digest='sha256:' + digest)])
+        client = SimpleNamespace(repo='team/demo', base='/repos/team/demo', cancel=None, progress=None,
+                                 _pages=lambda path: iter([release]), _open=lambda *args, **kw: io.BytesIO(data))
+        result = out['check_manager_update'](client, '1.3.1')
+        self.assertTrue(result['available'])
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'manager.tar.gz'
+            out['download_manager_package'](client, result['packages']['linux'], output)
+            self.assertEqual(output.read_bytes(), data)
+
     def test_collectors_define_all_four_classes_inside_omfit(self):
         root = self.host.cg_fixture()
         cases = [('CGYROscan', 'collect.py', 'OMFITcgyro_eigen'),

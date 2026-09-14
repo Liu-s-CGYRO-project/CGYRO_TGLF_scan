@@ -21,3 +21,9 @@
 ['TESTS']['test_linux.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_linux.py <-:-:-> {}
 ['TESTS']['test_templates.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_templates.py <-:-:-> {}
 ['TESTS']['test_ui.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_ui.py <-:-:-> {}
+['LIB']['OMFITlib_template_manager_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_manager_ui.py <-:-:-> {}
+['LIB']['OMFITlib_template_manager_update'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_manager_update.py <-:-:-> {}
+['LIB']['OMFITlib_template_versions'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_versions.py <-:-:-> {}
+['TESTS']['test_manager_update.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_manager_update.py <-:-:-> {}
+['TESTS']['test_versions.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_versions.py <-:-:-> {}
+['TESTS']['test_zip_entry.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_zip_entry.py <-:-:-> {}

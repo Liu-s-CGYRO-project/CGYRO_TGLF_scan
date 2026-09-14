@@ -183,6 +183,68 @@ class UITest(unittest.TestCase):
         self.app.search.set('local')
         self.assertEqual(len(self.app.library_table.get_children()), 1)
 
+    def test_screenshot_sorting_and_selected_release_survive_order_change(self):
+        from OMFITlib_template_versions import SORT_OPTIONS
+        rows = [dict(id='scan', name='扫描', author='alice', version=version, examples=False,
+                     archive_bytes=100, roots=[], created='2026-09-14T' + time + ':00Z')
+                for version, time in [('2026.09.14.4', '05:16'), ('1.1.1', '09:19'), ('1.0.0', '06:21')]]
+        self.app._loaded((rows, []))
+        def versions():
+            return [self.app.library_table.item(item, 'values')[2] for item in self.app.library_table.get_children()]
+        self.assertEqual(versions(), ['1.1.1', '1.0.0', '2026.09.14.4'])
+        self.app.library_table.selection_set('0')
+        self.app._select_release()
+        self.app.release_sort.set(next(label for label, key in SORT_OPTIONS.items() if key == 'version_asc'))
+        self.pump(.02)
+        self.assertEqual(versions(), ['2026.09.14.4', '1.0.0', '1.1.1'])
+        self.assertEqual(self.app.selected_release['version'], '1.1.1')
+        self.assertEqual(self.app._require_selection()['version'], '1.1.1')
+
+    def test_manager_check_is_independent_and_uses_the_active_proxy(self):
+        from OMFITlib_template_github import DEFAULT_REPOSITORY
+        route = 'http://127.0.0.1:32123'
+        self.app.proxy_mode.set('手动 HTTP 代理')
+        self.app.proxy_host.set('127.0.0.1')
+        self.app.proxy_port.set('32123')
+        self.app.proxy_username.set('')
+        self.app.repository.set('other/template-repository')
+        before = self.old.read_bytes(), self.app.current.get(), self.app.template_path.get()
+        report = dict(current='1.4.0', latest='1.5.0', available=True, repository=DEFAULT_REPOSITORY,
+                      packages={}, notes='更新说明', url='https://github.com/' + DEFAULT_REPOSITORY + '/releases')
+        with patch('OMFITlib_template_manager_ui.GitHub') as client, \
+                patch('OMFITlib_template_manager_ui.check_manager_update', return_value=report):
+            self.app.manager_update_button.invoke()
+            self.wait_idle()
+        self.assertEqual(client.call_args.args[0], DEFAULT_REPOSITORY)
+        self.assertEqual(client.call_args.kwargs['proxy'], route)
+        self.assertEqual(client.call_args.kwargs['token'], '')
+        self.assertIn('1.5.0', self.app.status.get())
+        self.assertEqual(before, (self.old.read_bytes(), self.app.current.get(), self.app.template_path.get()))
+        self.assertIs(self.app.manager_update_dialog.tk, self.root.tk)
+        self.app._close_manager_update()
+        self.app._set_busy(True)
+        self.app._set_busy(False)
+        self.assertIsNone(self.app.manager_update_dialog)
+
+    def test_manager_download_keeps_current_project_and_reports_installation(self):
+        from OMFITlib_template_github import DEFAULT_REPOSITORY
+        self.app.proxy_mode.set('不使用代理')
+        package = dict(name='OMFIT_template_manager_1.5.0.omfit.zip')
+        report = dict(current='1.4.0', latest='1.5.0', available=True, repository=DEFAULT_REPOSITORY,
+                      packages={'omfit': package}, notes='修复', url='https://github.com/' + DEFAULT_REPOSITORY + '/releases')
+        self.app._show_manager_update(report)
+        output = str(self.base / package['name'])
+        with patch('OMFITlib_template_manager_ui.filedialog.asksaveasfilename', return_value=output), \
+                patch('OMFITlib_template_manager_ui.download_manager_package', return_value=output) as download, \
+                patch('OMFITlib_template_manager_ui.messagebox.showinfo') as info:
+            self.app.manager_download_buttons['omfit'].invoke()
+            self.wait_idle()
+        download.assert_called_once()
+        self.assertEqual(download.call_args.args[1:], (package, output))
+        self.assertIn('Import module', info.call_args.args[1])
+        self.assertEqual(self.app.current.get(), str(self.old))
+        self.assertIsNone(self.app.last_output)
+
     def test_omfit_window_reuses_existing_tk(self):
         manager = open_manager(str(self.old), self.library, self.base / 'preferences.json')
         self.assertIsNot(manager.window, self.root)

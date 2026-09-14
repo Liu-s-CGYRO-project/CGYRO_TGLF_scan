@@ -9,6 +9,7 @@
     "defaultGUI": "root['GUIS']['main']",
     "python3": "3.9",
     "contact": [],
-    "comment": "GitHub template manager inside OMFIT on Linux desktops, version 1.3.1"
+    "comment": "GitHub template manager inside OMFIT on Linux desktops, version 1.4.0",
+    "version": "1.4.0"
   }
 }

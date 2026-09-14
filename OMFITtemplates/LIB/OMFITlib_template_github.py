@@ -12,6 +12,7 @@ from urllib import error, parse, request
 from OMFITlib_template_archive import CHUNK, TemplateError, json_bytes, parse_json
 from OMFITlib_template_service import EXTENSION, Template, check_cancel, new_file, release_name
 from OMFITlib_template_proxy import ClosingTunnelHTTPSHandler, connection_label, login_environment, normalize_proxy, proxy_handler
+from OMFITlib_template_versions import sort_releases
 
 API = 'https://api.github.com'
 DEFAULT_REPOSITORY = 'Liu-s-CGYRO-project/CGYRO_TGLF_scan'
@@ -277,7 +278,7 @@ class GitHub:
                     entries.append(item)
                 except (ValueError, KeyError, TypeError, TemplateError) as exc:
                     errors.append('忽略模板附件 {}：{}'.format(name, exc))
-        return entries, errors
+        return sort_releases(entries), errors
 
     def _verify_download(self, path, release):
         if Path(path).stat().st_size != release['archive_bytes']:

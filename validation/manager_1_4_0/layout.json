@@ -1,0 +1,20 @@
+{
+  "manager_version": "1.4.0",
+  "real_public_template_versions": 12,
+  "actual_first_versions": [
+    "1.1.1",
+    "1.1.0",
+    "1.0.1",
+    "1.0.0",
+    "2026.09.14.4",
+    "2026.09.14.3"
+  ],
+  "minimum_window": "940x680",
+  "all_primary_buttons_visible": true,
+  "native_update_dialog_layout": true,
+  "update_dialog_uses_fixture_only": true,
+  "font": [
+    "WenQuanYi Micro Hei",
+    10
+  ]
+}

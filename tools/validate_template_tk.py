@@ -99,6 +99,14 @@ def validate(source):
             close_proxy.invoke()
             manager._set_busy(False)
             report['proxy_dialog_native_variables_and_private_password'] = True
+            manager._show_manager_update(dict(current='1.4.0', latest='1.4.0', available=False,
+                repository='Liu-s-CGYRO-project/CGYRO_TGLF_scan', notes='管理器独立更新',
+                packages={}, url='https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases'))
+            assert isinstance(manager.manager_update_dialog, namespace['Toplevel'])
+            assert manager.manager_update_dialog.tk is root.tk
+            manager._close_manager_update()
+            manager._set_busy(False)
+            report['manager_update_dialog_native_patches'] = True
 
             def wait():
                 deadline = time.monotonic() + 10

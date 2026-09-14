@@ -13,6 +13,8 @@ from OMFITlib_template_archive import TemplateError, human_size, json_bytes, par
 from OMFITlib_template_paths import default_library, legacy_preferences_path, preferences_path
 from OMFITlib_template_github import DEFAULT_REPOSITORY, INITIAL_README, GitHub, login, repository
 from OMFITlib_template_proxy import DEFAULT_RELAY, PROXY_MODES, connection_label, load_relay_script, manual_proxy, relay_proxy
+from OMFITlib_template_versions import MANAGER_VERSION, SORT_OPTIONS, sort_releases
+from OMFITlib_template_manager_ui import ManagerUpdateUI
 from OMFITlib_template_service import (
     Cancelled, EXTENSION, Template, apply_update, inspect_project, list_library,
     plan_update, publish, read_history, release_name, transfer,
@@ -22,7 +24,7 @@ DATA_OPTIONS = {'保留当前案例与结果': 'keep', '切换到模板示例': 
 SETTING_OPTIONS = {'保留当前设置，补全新增项': 'keep', '使用模板设置': 'template'}
 
 
-class TemplateManager:
+class TemplateManager(ManagerUpdateUI):
     def __init__(self, window, current_project='', library=None, preferences=None, session=None):
         self.window = window
         self.session = session
@@ -67,10 +69,15 @@ class TemplateManager:
         self.relay_environment = None
         self.proxy_info = tk.StringVar(master=window, value='')
         self.proxy_dialog = None
+        self.manager_update_dialog = None
+        self.manager_update_result = None
         self.connection_info = tk.StringVar(master=window, value='填写 GitHub 仓库地址后连接。公开模板可直接浏览；发布与私有仓库需要登录。')
         self.upload_info = tk.StringVar(master=window, value='先准备模板包，核对仓库、账号和上传文件后发布。')
         self.view_source = tk.StringVar(master=window, value='本地模板库' if library is not None else 'GitHub')
         self.search = tk.StringVar(master=window, value='')
+        order = saved.get('sort', 'published')
+        self.release_sort = tk.StringVar(master=window, value=next((label for label, key in SORT_OPTIONS.items()
+                                                                  if key == order), next(iter(SORT_OPTIONS))))
         current_project = session.project_path() if session is not None else (current_project or saved.get('current', ''))
         self.current = tk.StringVar(master=window, value=current_project if str(current_project).lower().endswith('.zip') else '')
         self.output = tk.StringVar(master=window, value='')
@@ -93,6 +100,7 @@ class TemplateManager:
         for variable in (self.current, self.template_path, self.data_policy, self.settings_policy):
             variable.trace_add('write', lambda *args: self._invalidate())
         self.search.trace_add('write', lambda *args: self._filter())
+        self.release_sort.trace_add('write', lambda *args: self._filter())
         self.repository.trace_add('write', lambda *args: self._repository_changed())
         for variable in (self.proxy_mode, self.proxy_host, self.proxy_port, self.proxy_username, self.proxy_password):
             variable.trace_add('write', lambda *args: self._proxy_changed())
@@ -171,7 +179,9 @@ class TemplateManager:
         header = self._frame(main)
         header.pack(fill='x')
         ttk.Label(header, text='OMFIT 模板管理', style='TM.Title.TLabel').pack(side='left')
-        self._label(header, '代码与设置版本化 · 案例与结果按需切换', muted=True).pack(side='right', pady=10)
+        self.manager_update_button = self._button(header, '检查管理器更新', self._check_manager_update)
+        self.manager_update_button.pack(side='right')
+        self._label(header, '管理器 ' + MANAGER_VERSION, muted=True).pack(side='right', padx=12)
         self.tabs = ttk.Notebook(main, style='TM.TNotebook')
         self.tabs.pack(fill='both', expand=True, pady=(8, 10))
         self.pages = [self._frame(self.tabs, padding=16) for _ in range(4)]
@@ -232,10 +242,13 @@ class TemplateManager:
         self._combo(row, self.view_source, ['GitHub', '本地模板库', '共享模板库'], 15).pack(side='left', padx=(0, 10))
         self._label(row, '搜索').pack(side='left', padx=(0, 6))
         self._entry(row, self.search).pack(side='left', fill='x', expand=True)
+        self._combo(row, self.release_sort, list(SORT_OPTIONS), 22).pack(side='left', padx=(10, 0))
         self._button(row, '刷新列表', self.refresh).pack(side='left', padx=(10, 0))
         self.view_source.trace_add('write', lambda *args: self.refresh())
         self.library_table = self._table(page, [('name', '模板', 260), ('author', '作者', 110),
             ('version', '版本', 100), ('examples', '示例', 95), ('size', '包大小', 100), ('date', '发布时间', 160)])
+        self.library_table.heading('date', command=lambda: self.release_sort.set(next(iter(SORT_OPTIONS))))
+        self.library_table.heading('version', command=self._toggle_version_sort)
         self.library_table.bind('<<TreeviewSelect>>', self._select_release)
         self.library_table.bind('<Double-1>', lambda event: self._use_selected())
         self.empty_hint = ttk.Label(self.library_table, text='连接 GitHub 仓库，浏览团队模板版本。\n也可选择本地模板库使用已下载的版本。',
@@ -383,6 +396,7 @@ class TemplateManager:
                 temporary = Path(stream.name)
                 stream.write(json_bytes({'library': self.library.get().strip(), 'shared': self.shared.get().strip(),
                                          'current': self.current.get().strip(), 'repository': self.repository.get().strip(),
+                                         'sort': SORT_OPTIONS.get(self.release_sort.get(), 'published'),
                                          'network': {'mode': PROXY_MODES.get(self.proxy_mode.get(), 'relay'),
                                                      'host': self.proxy_host.get().strip(), 'port': self.proxy_port.get().strip(),
                                                      'username': self.proxy_username.get().strip(), 'script': self.relay_script.get().strip()}}))
@@ -694,6 +708,8 @@ class TemplateManager:
             self._log('\n'.join(errors))
 
     def _filter(self):
+        previous = self.selected_release
+        self.releases = sort_releases(self.releases, SORT_OPTIONS.get(self.release_sort.get(), 'published'))
         self.library_table.delete(*self.library_table.get_children())
         self.selected_release = None
         self.release_info.set('选择一个版本可查看模块范围与更新说明；双击进入更新页。')
@@ -704,6 +720,9 @@ class TemplateManager:
             self.library_table.insert('', 'end', iid=str(index), values=(release.get('name', release['id']), release['author'],
                 release['version'], '待拉取确认' if release['examples'] is None else '包含示例' if release['examples'] else '无示例',
                 human_size(release['archive_bytes']), release.get('created', '')[:16].replace('T', ' ')))
+            if previous is not None and release == previous:
+                self.library_table.selection_set(str(index))
+                self.selected_release = release
         if self.library_table.get_children():
             self.empty_hint.place_forget()
         else:
@@ -711,6 +730,10 @@ class TemplateManager:
                 '暂无模板版本。\n在“发布模板”页准备首个版本，或导入已有模板包。')
             self.empty_hint.place(relx=.5, rely=.45, anchor='center')
         self._library_states()
+
+    def _toggle_version_sort(self):
+        target = 'version_asc' if SORT_OPTIONS.get(self.release_sort.get()) == 'version' else 'version'
+        self.release_sort.set(next(label for label, key in SORT_OPTIONS.items() if key == target))
 
     def _select_release(self, event=None):
         selected = self.library_table.selection()

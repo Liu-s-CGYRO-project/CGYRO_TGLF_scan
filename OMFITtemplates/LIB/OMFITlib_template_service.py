@@ -9,6 +9,7 @@ import re
 import shutil
 import uuid
 import zipfile
+from OMFITlib_template_versions import sort_releases
 
 from OMFITlib_template_archive import (
     CHUNK, CODE_BRANCHES, MAX_METADATA, Project, TemplateError, contains_path,
@@ -233,8 +234,7 @@ def list_library(library):
                 releases.append(dict(template.manifest, path=str(path.resolve()), archive_bytes=path.stat().st_size))
         except (TemplateError, OSError, KeyError, zipfile.BadZipFile) as exc:
             errors.append(path.name + ': ' + str(exc))
-    releases.sort(key=lambda m: (m.get('created', ''), m['version']), reverse=True)
-    return releases, errors
+    return sort_releases(releases), errors
 
 
 def transfer(source, destination, cancel=None, progress=None):

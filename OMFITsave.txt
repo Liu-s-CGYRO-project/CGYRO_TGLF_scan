@@ -399,3 +399,9 @@
 ['OMFITtemplates']['TESTS']['test_templates.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_templates.py <-:-:-> {}
 ['OMFITtemplates']['TESTS']['test_ui.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_ui.py <-:-:-> {}
 ['MainSettings'] <-:-:-> OMFITmainSettings <-:-:-> ./MainSettingsNamelist.txt <-:-:-> {}
+['OMFITtemplates']['LIB']['OMFITlib_template_manager_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_manager_ui.py <-:-:-> {}
+['OMFITtemplates']['LIB']['OMFITlib_template_manager_update'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_manager_update.py <-:-:-> {}
+['OMFITtemplates']['LIB']['OMFITlib_template_versions'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_versions.py <-:-:-> {}
+['OMFITtemplates']['TESTS']['test_manager_update.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_manager_update.py <-:-:-> {}
+['OMFITtemplates']['TESTS']['test_versions.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_versions.py <-:-:-> {}
+['OMFITtemplates']['TESTS']['test_zip_entry.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_zip_entry.py <-:-:-> {}
