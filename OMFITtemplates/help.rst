@@ -1,4 +1,4 @@
-OMFIT GitHub 模板管理器 1.2.4
+OMFIT GitHub 模板管理器 1.2.5
 ============================
 
 面向带桌面的 Linux，在 OMFIT 内浏览、拉取和发布不同开发者的模板版本。
@@ -6,6 +6,7 @@ OMFIT GitHub 模板管理器 1.2.4
 1.2.2 修复 Python 3.9 的字体初始化兼容问题，保留对当前 OMFIT Tk 窗口的显式绑定。
 1.2.3 支持更新已有模块并添加缺少的顶层模块，预览分别列出两类操作。
 1.2.4 在生成新工程时自动写入正确的 ZIP 入口顺序，兼容原生 OMFIT 加载器。
+1.2.5 修复 OMFIT 拦截 StringVar/BooleanVar 后的初始化参数冲突；全部变量使用显式 master、value 参数。
 默认仓库为 Liu-s-CGYRO-project/CGYRO_TGLF_scan，可在界面更改。
 通过 GitHub Releases 分发版本；默认只包含代码和设置，案例、结果可选择作为示例。
 

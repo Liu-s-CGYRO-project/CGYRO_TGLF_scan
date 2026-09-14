@@ -1,4 +1,5 @@
 """Actual Tk widgets and background actions, with file dialogs replaced in tests."""
+from contextlib import contextmanager
 from pathlib import Path
 import sys
 import tempfile
@@ -11,6 +12,31 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'LIB'))
 from OMFITlib_template_ui import TemplateManager, open_manager
 from OMFITlib_template_service import publish
 from test_templates import add_module, fixture
+
+
+@contextmanager
+def omfit_variable_interceptors():
+    """Desktop branch of omfit/utils_tk.py's name=None, **kw factories.
+
+    Unlike standard tkinter classes, OMFIT exposes one positional argument
+    (name), forwarding master and value only through keyword arguments.
+    Keep the real Tk variables so widget bindings and traces are exercised.
+    """
+    original_string, original_boolean = tk.StringVar, tk.BooleanVar
+    created = []
+
+    def _tkStringVar(name=None, **kw):
+        result = original_string(name=name, **kw)
+        created.append((result, kw))
+        return result
+
+    def _tkBooleanVar(name=None, **kw):
+        result = original_boolean(name=name, **kw)
+        created.append((result, kw))
+        return result
+
+    with patch.object(tk, 'StringVar', _tkStringVar), patch.object(tk, 'BooleanVar', _tkBooleanVar):
+        yield created
 
 
 class UITest(unittest.TestCase):
@@ -262,6 +288,67 @@ class UITest(unittest.TestCase):
         manager = TemplateManager(child, preferences=self.base / 'preferences.json', session=session)
         self.assertEqual(manager.current.get(), '')
         manager.close()
+
+    def test_omfit_variable_factories_open_preview_and_generate_project(self):
+        from types import SimpleNamespace
+        from OMFITlib_template_archive import Project
+        from OMFITlib_template_session import OMFITSession
+        with omfit_variable_interceptors() as created:
+            manager = open_manager(library=self.library, preferences=self.base / 'omfit-vars.json',
+                                   session=OMFITSession(SimpleNamespace(filename=str(self.old))))
+            self.addCleanup(lambda: manager.close() if manager.alive else None)
+            self.assertGreater(len(created), 20)
+            self.assertEqual(len({str(variable) for variable, _ in created}), len(created))
+            for variable, keywords in created:
+                self.assertIs(keywords['master'], manager.window)
+                self.assertIs(variable._tk, manager.window.tk)
+                self.assertIn('value', keywords)
+            self.assertEqual(manager.current.get(), str(self.old))
+            self.assertEqual(manager.library.get(), str(self.library))
+            self.assertFalse(manager.include_examples.get())
+            manager.include_examples.set(True)
+            self.assertTrue(manager.include_examples.get())
+            manager.metadata['name'].set('Independent name')
+            self.assertEqual(manager.metadata['author'].get(), '')
+            manager.template_path.set(self.template)
+            manager._preview()
+            deadline = time.monotonic() + 10
+            while manager.busy and time.monotonic() < deadline:
+                self.pump(.02)
+            self.assertFalse(manager.busy)
+            self.assertFalse(self.errors, self.errors)
+            self.assertIsNotNone(manager.plan)
+            target = self.base / 'omfit-vars-updated.zip'
+            manager.output.set(str(target))
+            with patch('OMFITlib_template_ui.messagebox.showinfo'):
+                manager._apply()
+                deadline = time.monotonic() + 10
+                while manager.busy and time.monotonic() < deadline:
+                    self.pump(.02)
+            self.assertFalse(manager.busy)
+            self.assertFalse(self.errors, self.errors)
+            with Project(self.old) as source, Project(target) as result:
+                result.require_entry_first()
+                self.assertEqual(source.read('Demo/data/v1.npy'), result.read('Demo/data/v1.npy'))
+            self.assertIsNone(manager.plan)
+            manager.close()
+        self.assertTrue(self.root.winfo_exists())
+
+    def test_omfit_variable_factories_bind_to_target_interpreter(self):
+        other = tk.Tk()
+        other.withdraw()
+        self.addCleanup(other.destroy)
+        child = tk.Toplevel(other)
+        with omfit_variable_interceptors() as created:
+            manager = TemplateManager(child, library=self.library, preferences=self.base / 'other-vars.json')
+            self.addCleanup(lambda: manager.close() if manager.alive else None)
+            for variable, _ in created:
+                self.assertIs(variable._tk, other.tk)
+                self.assertIsNot(variable._tk, self.root.tk)
+            manager.search.set('second interpreter')
+            self.assertEqual(other.getvar(str(manager.search)), 'second interpreter')
+            self.assertEqual(self.app.search.get(), '')
+            manager.close()
 
 
 if __name__ == '__main__':
