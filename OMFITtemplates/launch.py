@@ -5,8 +5,6 @@ import os
 from pathlib import Path
 import platform
 import sys
-import time
-import zipfile
 
 if sys.version_info < (3, 9):
     raise SystemExit('OMFIT 模板管理器需要 Python 3.9 或更新版本。')
@@ -14,7 +12,7 @@ if sys.version_info < (3, 9):
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'LIB'))
 from OMFITlib_template_archive import TemplateError, json_bytes, parse_json
 from OMFITlib_template_paths import default_library
-from OMFITlib_template_service import apply_update, inspect_project, list_library, plan_update, publish, repair_project
+from OMFITlib_template_service import apply_update, inspect_project, list_library, plan_update, publish
 from OMFITlib_template_github import DEFAULT_REPOSITORY, GitHub
 
 
@@ -71,9 +69,6 @@ def main():
     apply = commands.add_parser('apply', help='根据预览清单另存新工程')
     apply.add_argument('report')
     apply.add_argument('output')
-    repair = commands.add_parser('repair', help='修复已有工程 ZIP 的入口顺序，保留全部文件并另存新 ZIP')
-    repair.add_argument('source')
-    repair.add_argument('output')
     args = parser.parse_args()
     try:
         if args.check:
@@ -98,22 +93,11 @@ def main():
             result = plan_update(args.current, args.template, args.data, args.settings)
             with open(args.report, 'xb') as stream:
                 stream.write(json_bytes(result))
-        elif args.command == 'repair':
-            last_report = 0
-            def progress(label, done, total):
-                nonlocal last_report
-                now = time.monotonic()
-                if now - last_report >= 1 or done == total:
-                    print('{} · {:.1%}'.format(label, done / total if total else 1), file=sys.stderr, flush=True)
-                    last_report = now
-            result = repair_project(args.source, args.output, progress=progress)
         else:
             result = apply_update(parse_json(Path(args.report).read_bytes()), args.output)
         print(json.dumps(result, ensure_ascii=False, indent=2))
-    except (TemplateError, OSError, ValueError, KeyError, zipfile.BadZipFile) as exc:
+    except (TemplateError, OSError, ValueError, KeyError) as exc:
         parser.exit(1, str(exc) + '\n')
-    except KeyboardInterrupt:
-        parser.exit(130, '操作已取消，原工程保留。\n')
 
 
 if __name__ == '__main__':

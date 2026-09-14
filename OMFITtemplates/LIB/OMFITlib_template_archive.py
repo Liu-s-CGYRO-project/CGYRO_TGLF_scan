@@ -264,7 +264,7 @@ class Project:
         entry first so both complete and selective native loads find it.
         """
         if self.z.infolist()[0].filename != self.files['OMFITsave.txt'].filename:
-            raise TemplateError('ZIP 首个条目不是工程入口 OMFITsave.txt；请使用“修复 ZIP 入口”另存新工程。')
+            raise TemplateError('生成工程 ZIP 的首个条目不是 OMFITsave.txt，请重新生成工程。')
 
 
 def merge_defaults(defaults, current):

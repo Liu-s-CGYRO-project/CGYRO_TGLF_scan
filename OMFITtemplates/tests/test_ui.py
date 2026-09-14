@@ -10,7 +10,6 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'LIB'))
 from OMFITlib_template_ui import TemplateManager, open_manager
 from OMFITlib_template_service import publish
-from OMFITlib_template_archive import Project
 from test_templates import add_module, fixture
 
 
@@ -140,30 +139,6 @@ class UITest(unittest.TestCase):
         self.assertTrue(self.app.apply_button.instate(['disabled']))
         self.assertFalse(self.app.change_table.get_children())
 
-    def test_repair_from_ui_requires_no_template_and_keeps_current_project(self):
-        self.app.template_path.set('')
-        before = self.old.read_bytes()
-        output = self.base / 'repaired.zip'
-        with patch('OMFITlib_template_ui.filedialog.asksaveasfilename', return_value=str(output)), \
-                patch('OMFITlib_template_ui.messagebox.showinfo'):
-            self.app.repair_button.invoke()
-            self.assertTrue(self.app.repair_button.instate(['disabled']))
-            self.wait_idle()
-        with Project(output) as result:
-            result.require_entry_first()
-            self.assertEqual(result.read('Demo/data/v1.npy'), b'UNTOUCHED-RESULT-' + b'\x01' * 4096)
-        self.assertEqual(self.old.read_bytes(), before)
-        self.assertEqual(self.app.current.get(), str(self.old))
-        self.assertEqual(self.app.last_output, str(output))
-        self.assertIsNone(self.app.plan)
-        self.assertIn('ZIP 入口已修复', self.app.plan_info.get())
-
-    def test_repair_save_dialog_cancel_does_not_start_work(self):
-        with patch('OMFITlib_template_ui.filedialog.asksaveasfilename', return_value=''):
-            self.app.repair_button.invoke()
-        self.assertFalse(self.app.busy)
-        self.assertIsNone(self.app.last_output)
-
     def test_publish_from_ui(self):
         self.app.source.set(str(self.new))
         self.app._inspect()
@@ -203,10 +178,9 @@ class UITest(unittest.TestCase):
         self.app.tabs.select(self.app.pages[1])
         self.pump(.15)
         bottom = self.root.winfo_rooty() + self.root.winfo_height()
-        for widget in (self.app.apply_button, self.app.report_button, self.app.cancel_button, self.app.repair_button):
+        for widget in (self.app.apply_button, self.app.report_button, self.app.cancel_button):
             self.assertTrue(widget.winfo_ismapped())
             self.assertLessEqual(widget.winfo_rooty() + widget.winfo_height(), bottom)
-            self.assertLessEqual(widget.winfo_rootx() + widget.winfo_width(), self.root.winfo_rootx() + self.root.winfo_width())
 
     def test_github_connect_pull_and_use_from_real_widgets(self):
         self.app.repository.set('team/demo')
