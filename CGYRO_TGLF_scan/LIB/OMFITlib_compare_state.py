@@ -23,13 +23,14 @@ from copy import (
 )
 import math
 import re
+from OMFITlib_compare_options import validate_options
 
 MODES = ['CGYRO_vs_TGLF', 'CGYRO_vs_CGYRO', 'TGLF_vs_TGLF', 'TGLF_vs_CGYRO']
 MODE_LABELS = {
-    'CGYRO_vs_TGLF': 'CGYRO + TGLF (group by CGYRO radius)',
-    'CGYRO_vs_CGYRO': 'CGYRO scan comparison',
-    'TGLF_vs_TGLF': 'TGLF scan comparison',
-    'TGLF_vs_CGYRO': 'TGLF + CGYRO (group by TGLF radius)',
+    'CGYRO_vs_TGLF': 'CGYRO / TGLF · 按 CGYRO 半径分组',
+    'CGYRO_vs_CGYRO': 'CGYRO / CGYRO · 扫描对比',
+    'TGLF_vs_TGLF': 'TGLF / TGLF · 扫描对比',
+    'TGLF_vs_CGYRO': 'TGLF / CGYRO · 按 TGLF 半径分组',
 }
 STYLE_DEFAULTS = {
     'font_size': 12, 'legend_font_size': 9, 'line_width': 1.8,
@@ -207,7 +208,6 @@ def selection_check(root, mode=None):
     if settings.get('divide_by_ky', None) and settings.get('divide_by_ky2', None):
         errors.append('Choose one spectrum scaling: raw, /ky, or /ky².')
     if mode == 'CGYRO_vs_CGYRO':
-        from OMFITlib_compare_cgyro_selection import validate_options
         errors.extend(validate_options(settings))
     try:
         tol = float(settings.get('error_tolerance', 0.01))

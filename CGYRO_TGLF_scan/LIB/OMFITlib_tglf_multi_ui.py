@@ -1,6 +1,7 @@
 """OMFIT page for importing, configuring and running multiple input.gacode files."""
 from builtins import all, any, bool, dict, len, list, str, sum
 from OMFITlib_tglf_multi_data import DEFAULTS, case_plan, duplicate_case, initialize, profile_digest
+from OMFITlib_tglf_multi_plot import flux_summary
 
 STATUS = {'ready': '输入已生成', 'preparing': '正在生成输入', 'prepare_failed': '生成失败',
           'running': '运行中', 'complete': '完成', 'failed': '失败', 'partial': '部分完成', 'cancelled': '已中止'}
@@ -131,7 +132,6 @@ class MultiInputUI:
                 attempt = point['attempts'].get(point.get('selected_attempt', None), None)
                 if attempt and attempt['status'] == 'complete':
                     ui.Label('结果目录：' + attempt['workdir'], align='left')
-                    from OMFITlib_tglf_multi_plot import flux_summary
                     ui.Label(flux_summary(attempt['result']), align='left')
         ui.Separator('检查与运行消息')
         ui.Label(self.settings['status'] or '就绪。计算结果随当前 OMFIT 工程保存，不进入 GitHub 模板。', align='left')

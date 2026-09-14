@@ -1,0 +1,2478 @@
+{
+  "omfit_source": "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/OMFIT-source-ASIPP_unstable/omfit",
+  "python_files": 262,
+  "source_lines": 35260,
+  "registered_entries": 262,
+  "modules": 9,
+  "syntax_python39": true,
+  "expressions": [
+    {
+      "location": "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SETTINGS']['PHYSICS']['scanParameterRange']",
+      "syntax_python39": true
+    },
+    {
+      "location": "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SETTINGS']['PHYSICS']['scanParameter2DRange']",
+      "syntax_python39": true
+    },
+    {
+      "location": "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SETTINGS']['SETUP']['workDir']",
+      "syntax_python39": true
+    },
+    {
+      "location": "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SETTINGS']['SETUP']['executable']",
+      "syntax_python39": true
+    },
+    {
+      "location": "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['TRXPL']['SETTINGS']['SETUP']['workDir']",
+      "syntax_python39": true
+    },
+    {
+      "location": "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['TRXPL']['SETTINGS']['SETUP']['executable']",
+      "syntax_python39": true
+    },
+    {
+      "location": "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['SETTINGS']['SETUP']['workDir']",
+      "syntax_python39": true
+    },
+    {
+      "location": "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SETTINGS']['SETUP']['workDir']",
+      "syntax_python39": true
+    },
+    {
+      "location": "['CGYRO_TGLF_scan']['TGLF_scan']['SETTINGS']['SETUP']['workDir']",
+      "syntax_python39": true
+    },
+    {
+      "location": "['CGYRO_TGLF_scan']['SETTINGS']['SETUP']['workDir']",
+      "syntax_python39": true
+    },
+    {
+      "location": "['CGYRO_TGLF_scan']['CGYRO_scan']['SETTINGS']['SETUP']['workDir']",
+      "syntax_python39": true
+    },
+    {
+      "location": "['CGYRO_TGLF_scan']['CGYRO_scan']['SETTINGS']['SETUP']['executable']",
+      "syntax_python39": true
+    },
+    {
+      "location": "['CGYRO_TGLF_scan']['Transfer_tool']['SETTINGS']['SETUP']['workDir']",
+      "syntax_python39": true
+    }
+  ],
+  "settings": [
+    "CGYRO_TGLF_scan/CGYRO_scan/SettingsNamelist.txt",
+    "CGYRO_TGLF_scan/SettingsNamelist.txt",
+    "CGYRO_TGLF_scan/TGLF_scan/SettingsNamelist.txt",
+    "CGYRO_TGLF_scan/TGLF_scan/SettingsNamelist.txt_2_dd6fdf5b36/SettingsNamelist.txt",
+    "CGYRO_TGLF_scan/TGLF_scan/TGLF/SettingsNamelist.txt",
+    "CGYRO_TGLF_scan/TGLF_scan/TGLF/SettingsNamelist.txt_2_dd6fdf5b36/SettingsNamelist.txt",
+    "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/SettingsNamelist.txt",
+    "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/SettingsNamelist.txt_2_dd6fdf5b36/SettingsNamelist.txt",
+    "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/TRXPL/SettingsNamelist.txt",
+    "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/TRXPL/SettingsNamelist.txt_2_dd6fdf5b36/SettingsNamelist.txt",
+    "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SettingsNamelist.txt",
+    "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SettingsNamelist.txt_2_dd6fdf5b36/SettingsNamelist.txt",
+    "CGYRO_TGLF_scan/Transfer_tool/SettingsNamelist.txt",
+    "OMFITtemplates/SettingsNamelist.txt"
+  ],
+  "counters": {
+    "bound_omfitx_calls": 873,
+    "literal_script_calls": 175,
+    "dynamic_script_calls": 388,
+    "registered_library_imports": 114
+  },
+  "inventory": [
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/GUIS/CGYRO_scan_gui.py",
+      "sha256": "6488fc286edc9125de640fb06f9c5767efc19e14703e48b819596bacac86c23d",
+      "lines": 17,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['GUIS']['CGYRO_scan']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/LIB/OMFITlib_cgyro_read.py",
+      "sha256": "af6aba8b15e87413a0894fbbbd372b04292eaed4a8dd503a6bd860f78c23e4d8",
+      "lines": 137,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_read']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/LIB/OMFITlib_startup.py",
+      "sha256": "c60a1ebbe5e67fbcfa9339977d794b02a8abb0ac47353a4a0fd7d9e8a382f00a",
+      "lines": 1,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_startup']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/assist/collect_99949.py",
+      "sha256": "74fd7cad4fbae7a8c3323fea1143f389051f9e5608238885746f8d0eb80d3bb2",
+      "lines": 986,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['assist']['collect.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/assist/collect_gyro.py",
+      "sha256": "cb42ec22d59cc0cb91c94798899aaf459d4a75b81c7b3dfbfb1a57803dbc1102",
+      "lines": 706,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['assist']['collect_gyro.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/assist/getglobal.py",
+      "sha256": "950427c4089ec87ff326aec47db44788c23975c5099929083a197cdb26a553a5",
+      "lines": 25,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['assist']['getglobal.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/check2.py",
+      "sha256": "77cf8892e4ee2ffe41b6516fc5c6778e38c48055ecf52895e494d355a9a7f8f2",
+      "lines": 67,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['check2']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/energytransfer.py",
+      "sha256": "a8a0acbf53ac0c8eff2c5df39efe5cfab24ef1036b67bddd5a16291a2f3ae36c",
+      "lines": 92,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['energytransfer.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/freq_n.py",
+      "sha256": "fbbd5a118e41de2579262e7be2f082a7ceaaea498f234661ef059f2f2db418d9",
+      "lines": 71,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['freq_n.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/gbflux.py",
+      "sha256": "e7968b4e89d3499696ab29e79debc691530a434c1eb4ad89a02315b7938bdcb4",
+      "lines": 127,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['gbflux.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/kx_n.py",
+      "sha256": "3907440a6cf093001cffbd2dcb157573d8182e708a9d2efa828396d763c802c9",
+      "lines": 96,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['kx_n.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/loaddata.py",
+      "sha256": "08b42018a41cbc00a9988672d474848bcd39d75ce8cc8703ce4f0473f040b40c",
+      "lines": 31,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['loaddata.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/npv_n.py",
+      "sha256": "3776d15708c751c44f7a45cb2cf2c63bf37e937548b89abec83458601988042a",
+      "lines": 84,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['npv_n.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/phi_f_fft.py",
+      "sha256": "d61f92b08ee2be0c43188dcb3aeb35c8262e934765a7555a5a58572feb04fd58",
+      "lines": 186,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['phi_f_fft.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/phi_itheta.py",
+      "sha256": "da6e5230e98203582cf2b10d127f531940654fd7d481b20a76adef03a34aa3ec",
+      "lines": 116,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['phi_itheta.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/phi_n.py",
+      "sha256": "bc6ce85e822f92e48c1a5d692b998bdae6021cf9f4ec1cb7533be3af0d58e4ce",
+      "lines": 198,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['phi_n.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/phinpv_itheta.py",
+      "sha256": "4062e7c4fc9d9622138082c404274d322a3b8ce275612ba40ae72ae60ade042c",
+      "lines": 105,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['phinpv_itheta.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/quasi_linear.py",
+      "sha256": "3f68ec80b4161147eb2b07ff9cf94fd764c33faa01dd31bd44bbc1af9a374dbf",
+      "lines": 197,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['quasi_linear.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/quasiweight.py",
+      "sha256": "6aed1d0b0e6ebc91ecca8e3edf0502f9225033f8ed62950be996df2d84e738ae",
+      "lines": 84,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['quasiweight.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/zonalflow.py",
+      "sha256": "21421b51eb64dc4d3c8de8996f3ca3b11cc93c705a97f2d3a09add331e403165",
+      "lines": 55,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROalone']['zonalflow.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/assist/cgyro_read_xj.py",
+      "sha256": "08891b54c287f9c8fd98ef5a408d7ce73957a248738e6c905ae476797be6ae97",
+      "lines": 2,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['assist']['cgyro_read_xj']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/assist/changeOMFITcgyrogacode.py",
+      "sha256": "faa1e33039da02ca769827794d6d6bbf90ee33c0285e0df14b9833ea8589a0c7",
+      "lines": 27,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['assist']['changeOMFITcgyrogacode.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/assist/collect.py",
+      "sha256": "f63a3c31f679eaf791494d3d7c43f578b0e3e6227b95442c0dfbe53bd646c6e9",
+      "lines": 522,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['assist']['collect.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/assist/collect_gyro.py",
+      "sha256": "824f136cd344498b2ddd317c97b8a56419f8dbe3893dd8495acda317ed3cb9c2",
+      "lines": 529,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['assist']['collect_gyro.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/assist/getglobal.py",
+      "sha256": "51f1a9d08f4bc69a6ed5218dabf6fde79ad5899b61fde339611a63e8beb2094f",
+      "lines": 64,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['assist']['getglobal.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/assist/starter.py",
+      "sha256": "991f213ec1d2f0a9c35df9fc7246ff96a2c419fc29b72ef66572db3b02a3be53",
+      "lines": 24,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['assist']['starter.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/eigen/eigen_ave.py",
+      "sha256": "542a0a74ad7967e17cf7e039d8f823e8e8cedf3a97aab1fa7963488bf70f6b09",
+      "lines": 87,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['eigen']['eigen_ave.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/eigen/eigen_ave_2d.py",
+      "sha256": "1a8dfe51e3af2235c802666418cfd672e06a55f2dbcfe96f8f72a30ba842ec97",
+      "lines": 98,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['eigen']['eigen_ave_2d.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/eigen/eigen_ave_2d21d.py",
+      "sha256": "e3454a0855ef4f753b5b7feb6d277a22f828839fee63b6e24cc97c767d8c2b7f",
+      "lines": 83,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['eigen']['eigen_ave_2d21d.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/eigen/eigen_ball.py",
+      "sha256": "07a9414f4d48139946fba89a18dd8dbf67f797b986cf7ea50d4bfa0f1ac53f6a",
+      "lines": 123,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['eigen']['eigen_ball.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/eigen/eigen_ball2RZ.py",
+      "sha256": "3a044e9451f059f9f60c1436c51c713e1e5342f40c716456ffd3e252d0839f3f",
+      "lines": 57,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['eigen']['eigen_ball2RZ.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/eigen/eigen_ball2r.py",
+      "sha256": "01ccfac3f1a2438853e4c3dd318b2609b3defdd4a4653b79047dc3e409abc529",
+      "lines": 56,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['eigen']['eigen_ball2r.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/eigen/eigen_ball2theta.py",
+      "sha256": "d7c520587235fe1013dc939655287704e88280a91d833be52b5d60cec6ada362",
+      "lines": 61,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['eigen']['eigen_ball2theta.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/eigen/eigen_wd_s.py",
+      "sha256": "dcba0f5d4902813e010121325638718fd66b3bfd08682491973f53825f150b5c",
+      "lines": 132,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['eigen']['eigen_wd_s.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/eigen/flux_lin.py",
+      "sha256": "cff6d7097d8c2d65bb2c8043090abd59c7269e6b9c3d7e87b876cd41d4d15abd",
+      "lines": 66,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['eigen']['flux_lin.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/eigen/freqvstime.py",
+      "sha256": "e3f94bdeba465adf2be52f70c488fd6708b26a20e23a1ecae56a5eca212012b9",
+      "lines": 71,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['eigen']['freqvstime.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/eigen/writeeigen.py",
+      "sha256": "d2ec3d4273b0773f50f67a1deefe3e061979c9f345f728d9e77f5b0c080b862b",
+      "lines": 32,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['eigen']['writeeigen.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/linCGYRO.py",
+      "sha256": "f841534a47f1c288ac1648c73d19e348220c0a34841c17fdb18b8123e756251b",
+      "lines": 326,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['linCGYRO.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/linCGYRO_2d.py",
+      "sha256": "28607c48f6b56c7199d47c7284e5701f3e327544563b86ed372d22c22c8ef951",
+      "lines": 149,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['linCGYRO_2d.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/linCGYRO_2d21d.py",
+      "sha256": "ee432ab8e5e907a55ec101387910fa2b377a76e064ec406c1f5185bb6df4a204",
+      "lines": 95,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['linCGYRO_2d21d.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/outmsg.py",
+      "sha256": "4ac6006eee850ab060756cf6409a66042fc3d2269a3d34def651cca12f192a92",
+      "lines": 87,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['outmsg.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/outmsg_2d.py",
+      "sha256": "d67e8793b321286b4c53266f02125aed226eb1d0685d60a39481f3cd53ba68b9",
+      "lines": 50,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['outmsg_2d.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/outmsg_2d21d.py",
+      "sha256": "52b35f016e51b04f7fd6dc19dc5baaee34a2b07f7bb15c6cacaa07453cdb85b0",
+      "lines": 43,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['outmsg_2d21d.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/phi_n_ratio.py",
+      "sha256": "3f8c6a2bfa99279077ae74aa8028b0009d8ed4c884612eb69ac105e1cde6da9e",
+      "lines": 81,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['phi_n_ratio.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/qlflux_2d.py",
+      "sha256": "89213cdf6fb4c7237e2e585203d2ccc06ef07f2ce6cd0a887c1c09a45d0a350e",
+      "lines": 190,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['qlflux_2d.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/qlflux_2d21d.py",
+      "sha256": "e25a657e894c704f93c2c8f45562f329933a7cfe2eda571f6827d101d6095482",
+      "lines": 186,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['qlflux_2d21d.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/qlflux_99949.py",
+      "sha256": "e0bc57415fe68592cfa457f236b3f0a81a3c4adc2a8a0aa6319331907f6d9f47",
+      "lines": 231,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['PLOTS']['CGYROscan']['qlflux.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/CGYROScan.py",
+      "sha256": "03510d3b9dc8c0b16628efaa25d35d56ee69ca8ef4aa9b4c6921840086e124b6",
+      "lines": 66,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['CGYROScan.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/CGYROScan_2d.py",
+      "sha256": "9019a7c0a3cbc8499daa22ac443379c6a36b89d0b48e045ff27feaf1cc1b4b54",
+      "lines": 55,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['CGYROScan_2d.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/LM3Scan.py",
+      "sha256": "e6035465afa360122ea284a8dcb2ffff7cc3e1ae576afe6b8014a1616cd1a859",
+      "lines": 128,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['LM3Scan.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/downsync.py",
+      "sha256": "d094d116cb2b9dd4126b7b05bb548e234c3401f70b9a79fab7d83fcf09aac297",
+      "lines": 124,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['downsync.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/prepinputnl.py",
+      "sha256": "ba5447bff89c9f435cf775d5d023d588fa8e6f032f66735a48dc2d3ca8711fef",
+      "lines": 52,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['prepinputnl.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/prepinputnl_gyro.py",
+      "sha256": "f294c101acb1ac6fc0ebaca11b58f4b02a827d87155b14dfa5b4e128a58009be",
+      "lines": 79,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['prepinputnl_gyro.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/runCGYRO.py",
+      "sha256": "b54a8220d805d7e9a09029feb33f504aafb2c5eaf2045a3702b52507cb34120e",
+      "lines": 45,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['runCGYRO.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/set_resolution.py",
+      "sha256": "3e5783423c1d514f5667e0c23567a1a924878fc92b67b3316b882b865cad76e1",
+      "lines": 39,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['set_resolution.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin.py",
+      "sha256": "a655580d36bdc439c25c3ead6b5d65140713424e6a187e7640eabaf0f64f12fc",
+      "lines": 498,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['subscan_lin.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_2d.py",
+      "sha256": "586f58b2fba84799011afb5b60936f046d568a44a47753d9eaac6fff7bd2dbd7",
+      "lines": 2,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['subscan_lin_2d.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_2d_gyro.py",
+      "sha256": "7c92a5ded852b69d63b5bc8a78d4d73ec4590e2f57c95a0f136dac83097b0a88",
+      "lines": 236,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['subscan_lin_2d_gyro.py']"
+      ],
+      "disabled_entry": true
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_gyro.py",
+      "sha256": "8999266c5b09ef1738c976485e94a39ddd54d1dd64fdcba1be701967c35c8814",
+      "lines": 236,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['subscan_lin_gyro.py']"
+      ],
+      "disabled_entry": true
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_new.py",
+      "sha256": "6592c4d05a634ddb80617fbb0231d617a778aff9b8431a1727240f8456fb5f57",
+      "lines": 2,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['subscan_lin_new.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_ori.py",
+      "sha256": "6592c4d05a634ddb80617fbb0231d617a778aff9b8431a1727240f8456fb5f57",
+      "lines": 2,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['subscan_lin_ori.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/update.py",
+      "sha256": "339ffa65e84a6d2d5f7fbb5c667cfcb88c10008bb12001dd3be8737da2028ddf",
+      "lines": 1,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['update.py']"
+      ],
+      "disabled_entry": true
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/tmp.py.py",
+      "sha256": "824f92439e21835df6980513fc12e9f2238968076e8cad79b2d19b6027a2b68f",
+      "lines": 155,
+      "entries": [
+        "['CGYRO_TGLF_scan']['CGYRO_scan']['tmp.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/GUIS/CGYRO_vs_CGYRO.py",
+      "sha256": "722f8c782154169fd6e0b31ddfc273e1f4083bf6ef814e6cd020c3f427bdcf5e",
+      "lines": 3,
+      "entries": [
+        "['CGYRO_TGLF_scan']['GUIS']['CGYRO_vs_CGYRO']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/GUIS/CGYRO_vs_TGLF.py",
+      "sha256": "cd24a774dc0a8599344eb7ef10790295a27b6baf34d7d15edf418c6e1d30175c",
+      "lines": 6,
+      "entries": [
+        "['CGYRO_TGLF_scan']['GUIS']['CGYRO_vs_TGLF']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/GUIS/TGLF_multi.py",
+      "sha256": "555d78e5a7043bf5e1daf5f25565b6fce414a30c74d413c4b1d1775d522752b6",
+      "lines": 4,
+      "entries": [
+        "['CGYRO_TGLF_scan']['GUIS']['TGLF_multi']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/GUIS/Template_manager.py",
+      "sha256": "0f597f04c35fba22fafaf913f0a2b63772fce1b70d41e03eeeef4f0faa85c28f",
+      "lines": 2,
+      "entries": [
+        "['CGYRO_TGLF_scan']['GUIS']['Template_manager']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/GUIS/main.py",
+      "sha256": "c34a9cb95137bad0a258472c43b087389695b79e8b05d66400b358b8d50c4426",
+      "lines": 10,
+      "entries": [
+        "['CGYRO_TGLF_scan']['GUIS']['main']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cases.py",
+      "sha256": "4481f359ed100a4843123fab84a7b5664aa16cd226f9949500994ebfba4bd161",
+      "lines": 168,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cases']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro.py",
+      "sha256": "31b71b802535e765542429c6db606289233e6cf59c5776b220b1f3320e6e6280",
+      "lines": 88,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_data.py",
+      "sha256": "f7c539dfe18cf722c20519d05417d93b8a2ea71586f1660b8a17666fa0dbc8d8",
+      "lines": 185,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_data']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_eigen.py",
+      "sha256": "bda32dd30f4741d14ff2307f664bee92f4f94021f91cc696608812fda362cdc2",
+      "lines": 230,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_eigen']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_export.py",
+      "sha256": "1bbcf34780c783b8332db2fade3a84b148c4b4eb02d2d6beaaeac28bccfe3b04",
+      "lines": 82,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_export']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_render.py",
+      "sha256": "cbcc56f06f231a0ba8d1a501903f9e1e24e6be83ac17ccd66dd04e6fc73e8914",
+      "lines": 218,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_render']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_selection.py",
+      "sha256": "ecefaa25b740aa9cb36c4143b2a83a400dec7367553efb023f00665981c48cf8",
+      "lines": 381,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_selection']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_core.py",
+      "sha256": "cb59073afcd238b32df4c17181246ebc618ef3d8d3fb8bb1634e8d7adb232027",
+      "lines": 787,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_core']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_dispatch.py",
+      "sha256": "66320a942a8ebed7013e5e31dd688051c9620f336e517116e93917edcb028dea",
+      "lines": 140,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_dispatch']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_flux.py",
+      "sha256": "bf4abac4c6a9c07365db907622117f7369cc366af34852205d3224d9c8962044",
+      "lines": 526,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_flux']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_options.py",
+      "sha256": "d5b5712621fe6991f9a94b1258069eedc54bfc8e0a67bf11bfabaa905f0d8f5c",
+      "lines": 62,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_options']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_series.py",
+      "sha256": "5df7644f9515e8c2fb89d1ff1a78ba65d1afb23609a0d676f00ee10953a94a7b",
+      "lines": 394,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_series']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_spectra.py",
+      "sha256": "4f3f5f86e1b17c161344f4a099e115b9ee62dcf3cf373ea47ba49052e39efb0f",
+      "lines": 616,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_spectra']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_state.py",
+      "sha256": "8e63c972609c901a1f52e0e822a03e506bcd324bfe1de6b753086621fab18aa5",
+      "lines": 232,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_state']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_status.py",
+      "sha256": "907a6163af20c64f26c7dbf3f5f916c00a757772a9c60d22eb5e9b304dfb017f",
+      "lines": 336,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_status']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_style.py",
+      "sha256": "1d3750bdfe3857ff21b5c201bf920f46aca021d4475e5d6e42aa78ebc7330e9f",
+      "lines": 355,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_style']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_tglf.py",
+      "sha256": "f1c88ebf740ecc2a49dc8c771042164795aa0743bfb5aa6734352e499eb123f8",
+      "lines": 583,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_tglf']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py",
+      "sha256": "eaf4712cbba7ec8c59840ebde59aed487788bbc15c9df7ff27ec93ef81875b4e",
+      "lines": 296,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_ui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_compare_widgets.py",
+      "sha256": "cb5cc34403eff33f75d634cf39f5c6197ad390d6696eb99b6c12f7d006a3ef05",
+      "lines": 225,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_widgets']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_project.py",
+      "sha256": "9ce7a8c2d7408f46ff41b127a77d09ca925692e7f2f2b8a43a6669dbd007d774",
+      "lines": 556,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_project']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py",
+      "sha256": "a31c006696be5c9212af1a1445dd885d1aa48ee19a704de79a6a5648467b9c60",
+      "lines": 333,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_project_ui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_data.py",
+      "sha256": "683dd90672172004a785781d240e69a0cfdd4cc070f14d732e9545d63ccb1742",
+      "lines": 220,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_multi_data']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_plot.py",
+      "sha256": "631e45938afad95d823f06005dfab1d2b1632736434278ab24f07323ba09d8b4",
+      "lines": 51,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_multi_plot']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_run.py",
+      "sha256": "54378b5ff52eaf54a4d6bd1a3465a345c39423d749e7e966e40cddab69c9a0da",
+      "lines": 215,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_multi_run']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_ui.py",
+      "sha256": "95c46012aa6230fc7e2c06fccaa70edc7a2f3858e63fda417120d4e35ed90897",
+      "lines": 137,
+      "entries": [
+        "['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_multi_ui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/PLOTS/CGYRO_vs_CGYRO.py",
+      "sha256": "0633649baafd1d7930e94982035fc0bcd78d8ce29b49e134a758fd70adbd6667",
+      "lines": 4,
+      "entries": [
+        "['CGYRO_TGLF_scan']['PLOTS']['CGYRO_vs_CGYRO']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/PLOTS/CGYRO_vs_TGLF.py",
+      "sha256": "e8fdaf88d7779cf6964c710fdc75c66e18b27ba1e9d7062eaa9cc9f84549d9c2",
+      "lines": 4,
+      "entries": [
+        "['CGYRO_TGLF_scan']['PLOTS']['CGYRO_vs_TGLF']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/PLOTS/TGLF_multi.py",
+      "sha256": "c19d198df841cad8a2ba240066c00fe97f6cd16df178896207c7df6c8bc95ac9",
+      "lines": 4,
+      "entries": [
+        "['CGYRO_TGLF_scan']['PLOTS']['TGLF_multi']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/SCRIPTS/import_tglf_multi.py",
+      "sha256": "5bb4f5d1db6711c05ab2e105cbdb1381d27d3104e81cf65dfdffa3d68ac644e8",
+      "lines": 17,
+      "entries": [
+        "['CGYRO_TGLF_scan']['SCRIPTS']['import_tglf_multi']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/SCRIPTS/run_tglf_multi.py",
+      "sha256": "11cdc6a25713adae6f0ca9765deff4a438ca1e293e50e96644173d3b0da29190",
+      "lines": 6,
+      "entries": [
+        "['CGYRO_TGLF_scan']['SCRIPTS']['run_tglf_multi']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/GUIS/DV_scans_subgui.py",
+      "sha256": "4cdd76a3d60585b863b11a5370b867c4d87ba81f4f51356155834ea35dc77d73",
+      "lines": 297,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['GUIS']['DV_scans_subgui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/GUIS/main_DV_gui.py",
+      "sha256": "f06578decb39a437cfdebcf1223dd9583900d665636dcf7bceb36208fc2028a8",
+      "lines": 66,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['GUIS']['main_DV_gui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/GUIS/particleDandVgui.py",
+      "sha256": "d578df1bb2b5e5be36a0d6f6ec0a6c691c7933d5262ec5b796e146c14b4c4ce5",
+      "lines": 151,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['GUIS']['particleDandVgui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/GUIS/selection_GUI.py",
+      "sha256": "ff09a277077d6c67d8844fbbbcc867371dab553cbade610c09e70ac799e157d3",
+      "lines": 60,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['GUIS']['selection_GUI']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/GUIS/tglf_radial_gui.py",
+      "sha256": "eb5003eb2dfa6cd0b172a8e0ba197d834b5c0e7c7f5258a08e5b72255d297b2b",
+      "lines": 34,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['GUIS']['tglf_radial_gui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/GUIS/tglf_scan_gui.py",
+      "sha256": "7c7a4dd0fd9db985204d760b18ac80bf43c337f773e82ea5317dc0c1d1bde97f",
+      "lines": 202,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['GUIS']['tglf_scan_gui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/LIB/OMFITlib_tglf.py",
+      "sha256": "cbbc27c44319824069c2770573802b10d7969eab17145ebaef47930a599c723a",
+      "lines": 103,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['LIB']['OMFITlib_tglf']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plotDandV.py",
+      "sha256": "25af0675ab77f2ea927f434ebfed7ad5d687f4719060dd71f99f4e35d9b953d1",
+      "lines": 22,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plotDandV']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plotFluxTGLFvsExp.py",
+      "sha256": "da71f8077500fb0853de4c6a976dc986bcf73724fc04f7e13adaa26b70d177b4",
+      "lines": 119,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plotFluxTGLFvsExp']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plotFluxesvsKy.py",
+      "sha256": "31bc6e13b3f720737d0f9d3b128ff5b5a65c19bc1a3e51f8b03ba6ea6d0e7245",
+      "lines": 102,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plotFluxesvsKy']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plotFluxesvsRho.py",
+      "sha256": "79ba21f07d384ec3f68f551d85ae5c5b199972bb10cabb009916c0d51dfd85d7",
+      "lines": 23,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plotFluxesvsRho']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plotGammaMaxvsExB.py",
+      "sha256": "e6f0ccdffdefbdcc1c92b2e72712e6428f2b3aab26c019093abd8091ed418827",
+      "lines": 110,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plotGammaMaxvsExB']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plotGammaWithDirection.py",
+      "sha256": "d83ca5b974c28a1272153d542acd3eda240ee767e73dcf5ca556c5c4ad6ce78f",
+      "lines": 131,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plotGammaWithDirection']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plotGrowthRateScans.py",
+      "sha256": "5ab42773143ac4b4a4c2148dcee2dd5181e344e4f288c2cc68bd2505f725a98f",
+      "lines": 252,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plotGrowthRateScans']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plotLowKmodesContr.py",
+      "sha256": "7413c9fcece605b2e234570d08d97679465bc5fc5494252273ee732d5ffdfb30",
+      "lines": 96,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plotLowKmodesContr']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plotScanAtRho.py",
+      "sha256": "2a1d4fbc069bde4d0dc1f3acd7f2bc04f119b49ac4be1601527188b4b90be0db",
+      "lines": 70,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plotScanAtRho']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plotScanAtRhoUser.py",
+      "sha256": "147cbcae1b943102419d17a822327cbc176ccf4137bb94c14b73d6209b13f0d3",
+      "lines": 150,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plotScanAtRhoUser']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plotScanKyContr.py",
+      "sha256": "f361bd64b79f51776b30649f033fabfd8025d1615432bcfbc5db3f43e7ba7e30",
+      "lines": 166,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plotScanKyContr']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plotScanSpecAtRho.py",
+      "sha256": "9697f27c00038eae824809bf16e61716dfcfb503594a45371642f51fb2e21b39",
+      "lines": 33,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plotScanSpecAtRho']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plotStabilityInterchange.py",
+      "sha256": "2c56aa02e6451e7948fd6d5f4019a138ee1307f9ed9c7eed2467ddd4c55d9f5a",
+      "lines": 78,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plotStabilityInterchange']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plot_DV_scan.py",
+      "sha256": "21867c46ae77f1629e49575c5c409e4546719c8c452b83db557b54bade01b378",
+      "lines": 120,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plot_DV_scan']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plot_Radial_scan_in_time.py",
+      "sha256": "87e63cc2402b6d4ca1f53e34885c75d12ca33ccf7d1b36705653539c0728bf87",
+      "lines": 148,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plot_Radial_scan_in_time']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plot_UQ_probability.py",
+      "sha256": "73116f6cc0a4d744b776d10f604114f23d9b2f095cba09741f490064ea3bb96f",
+      "lines": 378,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plot_UQ']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plot_frequency_vs_ky.py",
+      "sha256": "2cf050c53f10854a9f3002f781b6d986ffe2f03cd530f1a7effa020f12d44b96",
+      "lines": 121,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plot_frequency_vs_ky']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plot_gamma_vs_k_and_r.py",
+      "sha256": "d2f2369f65344af074cf6c09a0d332d7978b45099863c879673a58c063383d85",
+      "lines": 130,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plot_gamma_vs_k_and_r']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/PLOTS/plot_resp_matrix.py",
+      "sha256": "a3d8fa0d37b765c559add25d13da9863891cd0fa1560cb9325ecd9e573c1ae60",
+      "lines": 211,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['plot_resp_matrix']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/DVscan.py",
+      "sha256": "00eb3cf29c3b1035b1ca8d52555897a3d4409b5b4cbb9afd7b9bf2d02162cc74",
+      "lines": 114,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['DVscan']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/Radial_scan.py",
+      "sha256": "f1f04a3f4c7146c6e3cfd560ff55e5535e9dba3afa9592df5a6bc0e4ada7cfbc",
+      "lines": 38,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['Radial_scan']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/Radial_scan_in_time.py",
+      "sha256": "3e60519944784b86b51cc6ede46e9ef3abbba6474e17d3475208a9e2a4aeda0b",
+      "lines": 76,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['Radial_scan_in_time']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/particleDandVprofile.py",
+      "sha256": "d59155569dee67a2936be083ff304f009153d05c7c3edb70b4dc3bb2b4b3097d",
+      "lines": 92,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['particleDandVprofile']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/particleDandVscan.py",
+      "sha256": "40137392b7b736cc47a48e8198505062f7f33ed18b13bb8d1162915b10f37283",
+      "lines": 119,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['particleDandVscan']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/print_scan_results.py",
+      "sha256": "7234685be8d91bbcfacdb5bc004cf897513b066a3af76f6c0071c09198701daf",
+      "lines": 28,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['print_scan_results']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/reloadDVscan.py",
+      "sha256": "3bdb447f592b71b20d4a1b69214196eb838723fc4c61ac440f0ded3e786b5e18",
+      "lines": 15,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['reloadDVscan']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/resetTGLF_scan.py",
+      "sha256": "0c5739bb9c446789fadd1fb492e6fd8cc5bb4cd6b79fd3ab856002f64997b218",
+      "lines": 16,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['reset']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/resp_matrix.py",
+      "sha256": "4b140c1f5b2704f744de72e7d3a235c38f5325ed3d938b49632a6125f38290dd",
+      "lines": 327,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['resp_matrix']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/runGrowthRateScans.py",
+      "sha256": "2ea21e3051114d593567963d1a62b85275401520e437d573982dde9b5dbcac56",
+      "lines": 90,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['runGrowthRateScans']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/runScanAtRho.py",
+      "sha256": "b4e7898e5696caeb4d4be04dd98e8892d7e94e2629836c6ca892dbd21acea93e",
+      "lines": 44,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['runScanAtRho']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/setup_UQ_inputs.py",
+      "sha256": "7169413970ca60bbd6dc8d486e89ccc470320ab459ba3fb44829bf45d90a2677",
+      "lines": 92,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['setup_UQ_inputs']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/setup_tglf.py",
+      "sha256": "ff45749f48d9c79564ee27a48e8ad030c5bfcf510a3bb8dda5662e5d225f869e",
+      "lines": 80,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['setup_tglf']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/setup_tglf_batch.py",
+      "sha256": "25936aa50ca035778becfeb62f90d8dbd0aac3fdcb747e95a169e9c8c8a79e91",
+      "lines": 42,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['setup_batch_tglf']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/GUIS/TGLF_GUI.py",
+      "sha256": "75619ad61dbc0625229ed8467ba382dfe3759ab01df34fc87dbd5d50e0fbf4bb",
+      "lines": 206,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['GUIS']['TGLF_GUI']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/GUIS/TGLFfromTGYROgui.py",
+      "sha256": "56466c467ab4c2a4efe0b7aab12b10b0aa1254968e7e3bc6460dac0f0aba6774",
+      "lines": 44,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['GUIS']['TGLFfromTGYROgui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/GUIS/constraints_GUI.py",
+      "sha256": "1f35a31fb8eba131c0523d3558117393916f2b6add86cf974fe39dab10589d3e",
+      "lines": 69,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['GUIS']['constraints_GUI']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/GUIS/scan2DGUI.py",
+      "sha256": "f79680849fc3dc500bb1c58bfa2d7465f7602a6d724df21a577ad648215b8943",
+      "lines": 26,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['GUIS']['scan2DGUI']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/GUIS/scanGUI.py",
+      "sha256": "fe81f81b485498ed3d85958805f510cf68ee3186edc3263337d5d7374ef6604f",
+      "lines": 204,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['GUIS']['scanGUI']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/GUIS/stiffnessGUI.py",
+      "sha256": "a7710c79a0d5262c104f279c7b7f4fc39089daa4c0cdac282491853c5402c0bc",
+      "lines": 11,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['GUIS']['stiffnessGUI']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/GUIS/uqGUI.py",
+      "sha256": "a473caeeb88799ceb12d0a63ab37c0899a90310cff0d1e8f01574e9bc4ddfd7f",
+      "lines": 255,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['GUIS']['uqGUI']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/LIB/OMFITlib_tglf_cache.py",
+      "sha256": "1c42095039b0a9f1734ff16686798481790c6889cbe745fe3d2882b919a303c3",
+      "lines": 83,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['LIB']['OMFITlib_tglf_cache']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/PLOTS/plotDiscreteSpectra.py",
+      "sha256": "cb0410f1f2a504387b8ad5de7e1f5c4c76b94d913b3ac0605f1e4dd131a9080f",
+      "lines": 153,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['PLOTS']['plotSpectrumDiscrete']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/PLOTS/plotScan.py",
+      "sha256": "9dea7da074d29a179d5acada87f7608c1574d434b938db53964a797aaa520265",
+      "lines": 107,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['PLOTS']['plotScan']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/PLOTS/plotScan2D.py",
+      "sha256": "afe4357447e72d374ae005362a0ca7e1baa47c0097214e652f580226fdc011f7",
+      "lines": 185,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['PLOTS']['plotScan2D']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/PLOTS/plotScanSpec.py",
+      "sha256": "3546822a6ec5b2fd0df6a301a4960a9683dbc96ad4748bf12da1b4c75947d3cc",
+      "lines": 106,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['PLOTS']['plotScanSpec']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/PLOTS/plotStiffness.py",
+      "sha256": "3c44ae2d6b0fc321158b5a869eb680ab50ba582e9ab70cd60ba5314a789ddc21",
+      "lines": 77,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['PLOTS']['plotStiffness']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/PLOTS/plot_growthrate_scan.py",
+      "sha256": "cd59e8f1f02b5a68298d115eeb63287001331ef30c2d09e350d798b8ff4ab62d",
+      "lines": 61,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['PLOTS']['plot_growthrate_scan']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/SCRIPTS/fromHARVEST.py",
+      "sha256": "bd7c18607450ead7688194a60948997c29fe6a862a3677e34fe93d4214c05f44",
+      "lines": 28,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SCRIPTS']['fromHARVEST']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/SCRIPTS/resetTGLF.py",
+      "sha256": "2650bed8b7c8fa39c4e9945ce66c23f110bb124a44c731eda4728a6362ca3b97",
+      "lines": 7,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SCRIPTS']['reset']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/SCRIPTS/runTGLF.py",
+      "sha256": "7400d229e306c1f32795ae27db35167a71091d006119d9a2ac9e20131f76a44c",
+      "lines": 27,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SCRIPTS']['runTGLF']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/SCRIPTS/runTGLFUQscan.py",
+      "sha256": "5b8fe0c255b06ff789d233e82f7e80d67348592a3994593de8161b4ad36ae58d",
+      "lines": 99,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SCRIPTS']['runTGLFUQscan']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/SCRIPTS/runTGLFbatch.py",
+      "sha256": "7fe528af70637cf558fb71a3e0759cba68a04f99b9ab0ee63d54b9b6fb8fd0e2",
+      "lines": 69,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SCRIPTS']['runTGLFbatch']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/SCRIPTS/runTGLFlinear.py",
+      "sha256": "032cc6e8382b28c0e837a951324768c5540886376d013bb7ea29f9047b478c7c",
+      "lines": 14,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SCRIPTS']['runTGLFlinear']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/SCRIPTS/runTGLFscan.py",
+      "sha256": "772a4a88464d3ae305872f7930a68e95e552f972fecfae98d61ae8d81e3e66c5",
+      "lines": 79,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SCRIPTS']['runTGLFscan']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/SCRIPTS/runTGLFscan2D.py",
+      "sha256": "f5d00e9b30e0e2a41a5ad22fe3c5b82f1afa362b922097b422051a6d2ef0d111",
+      "lines": 83,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SCRIPTS']['runTGLFscan2D']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGLF/SCRIPTS/runTGLFstiffness.py",
+      "sha256": "64da5c92b14c0577a9e105804f5effb8e6560316f0d79c301ce8ea206d60ec82",
+      "lines": 69,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['SCRIPTS']['runTGLFstiffness']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/GUIS/D_and_v_gui.py",
+      "sha256": "383ce0f0965dd82877da791a83293e5a61d8b02121f8df8c1086b08974141b71",
+      "lines": 85,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['GUIS']['D_and_v_gui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/GUIS/Plotgui.py",
+      "sha256": "9c2efc7efa3cb2396ec9832ebf6967ff9f19b84f8aa5eb56f42c3e2739f21c30",
+      "lines": 109,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['GUIS']['Plotgui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/GUIS/Rungui.py",
+      "sha256": "8e1054920e1439725af058bba2d0c77665a4e99b436835ac5a1848efb471a4d6",
+      "lines": 463,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['GUIS']['Rungui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/GUIS/TGLFinputGUI.py",
+      "sha256": "0914b49e88d518032bd8ed34e76296a9c81d5664a31189e717a1f35bba9ed01b",
+      "lines": 372,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['GUIS']['TGLFinputGUI']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/GUIS/TGYRO_load_existing_gui.py",
+      "sha256": "32da4200c9be70d094159737e1ab9e41a276ab463d23e2043847073dc65f10cb",
+      "lines": 20,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['GUIS']['TGYRO_load_existing_gui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/GUIS/TGYROgui.py",
+      "sha256": "6aad82ba5bb80cb64b73101b1ece5a00e168e29aa7fbfcbb75762af58953d818",
+      "lines": 72,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['GUIS']['TGYROgui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/LIB/OMFITlib_general.py",
+      "sha256": "07369172cec105983eaa9c186238f75ccccadf3f214032c491d493af8f35f441",
+      "lines": 524,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['LIB']['OMFITlib_general']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/overPlotDB.py",
+      "sha256": "3ec29f2e83706274ec5baf98f7437bb4da7ea143c739f4acc42b383fbfe44907",
+      "lines": 14,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['overPlotDB']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotChi.py",
+      "sha256": "b42a7eb121cfa1e53131195e84661aba1aea2f664c744cb19046b1feb5ae7d41",
+      "lines": 77,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotChi']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotDandV.py",
+      "sha256": "8d6aa78c2b5bd2032f7be7d8350e14e97cbc5d228a258829dc669ba312fb60fa",
+      "lines": 186,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotDandV']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotDeviation.py",
+      "sha256": "e068a8d1e1a5c1b3adc01b27e6949b97e43114e03b76eaaafbe2bdc8622e7bc5",
+      "lines": 156,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotDeviation']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotEXPcomparison_profiles.py",
+      "sha256": "a5848eeb112c84f8688ae0cbeba15d9dadb02b6dcb93da6ebe36f8a642623182",
+      "lines": 254,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotEXPcomparison_profiles']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotFluxes.py",
+      "sha256": "d039923ef6fd7d93ed984b7f377e3f49b7f616177c903e9f4807c34dae4eeae7",
+      "lines": 140,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotFluxes']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotGradLengths.py",
+      "sha256": "5fc89511a22c080d11fbccd5259bfbc2cf9b92d1e46b464926fbe80df636f2dd",
+      "lines": 101,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotGradLengths']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROcomparison_fluxconvergence.py",
+      "sha256": "726394514a49949ee706254efb281931b48cb39f3942fdc2c4336f703f845fc2",
+      "lines": 85,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROcomparison_fluxconvergence']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROcomparison_fluxes.py",
+      "sha256": "2c47b436113355bda0b0f1abbb833dd23a791bb29a17f9549ffa8707daad2097",
+      "lines": 278,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROcomparison_fluxes']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROcomparison_profiles.py",
+      "sha256": "070d20c452e0cc86b518a016f7b1d6ce398c1319949c91a24f3d70c3607db4c1",
+      "lines": 83,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROcomparison_profiles']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROcomparison_residual.py",
+      "sha256": "b28069993d6d56b29d0aba4780bd238ce1430f5ef5fb5317c43d03ad37d23ff9",
+      "lines": 18,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROcomparison_residual']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROconvergence.py",
+      "sha256": "ef163722e76191cdf0468a57b431dc39d48c2c5a5d4d2eebaff0805f6b38716f",
+      "lines": 31,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROconvergence']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROconvergence2.py",
+      "sha256": "d320ed67121adda793dafd703459c1496765599eb07847219440ce9a479041e9",
+      "lines": 212,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROconvergence2']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROfinal_profiles.py",
+      "sha256": "e7ce93516c5bb18f6f63d242285f243259cee4cde37a8bc820b706a588824f89",
+      "lines": 74,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROfinal_profiles']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROflux_gradient.py",
+      "sha256": "7bfa998cc96095827f5d839770446b95bb2fb1864db02a1f7bade48201fa7dc3",
+      "lines": 146,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROflux_gradient']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROfluxes.py",
+      "sha256": "61f022ab65e00d18730a45894a08a3929c720d6260368629cea456973ead8d33",
+      "lines": 50,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROfluxes']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROfluxes2.py",
+      "sha256": "af7c09c8068377d5b63cbe10526ffe9683e2d2ceaa56ed77bda552da99fe6950",
+      "lines": 107,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROfluxes2']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROiterations.py",
+      "sha256": "74b26438c2b2ef2624baca5328e97d0f84cde984f3e2d1471dc38ad8cca9ba0b",
+      "lines": 141,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROiterations']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROprofiles2.py",
+      "sha256": "4787cb9903b003f2e156c795f66245a9aaacc956d93af889243ecf5c3bee166f",
+      "lines": 119,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROprofiles2']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROresults.py",
+      "sha256": "2f0312c8741004c8c093aa0cb0cffd9ff767351a85d2e9f4704d9d1ebeca1a23",
+      "lines": 8,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROresults']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PLOTS/plotTGYROsummary.py",
+      "sha256": "6ef32f996addb5fbdbc188b6b958e86faa390357fb9bd748d0ad8f02778e4a72",
+      "lines": 162,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PLOTS']['plotTGYROsummary']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/GUIS/blendEPEDgui.py",
+      "sha256": "63c40b36cebb6793a2137a9abf3e2765d40277e82200e1d1a09eb423e746a1ee",
+      "lines": 37,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['GUIS']['blendEPEDgui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/GUIS/modifyIonsGUI.py",
+      "sha256": "d71db9ee9ca281f637bbb9d89d46718bd3b9db29e2408b84c65c873c194fa064",
+      "lines": 56,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['GUIS']['modifyIonsGUI']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/GUIS/standaloneGUI.py",
+      "sha256": "6f5599be9b62b15b837dcc4e6f266b65853a0775a8d96928b3546b525fe45505",
+      "lines": 163,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['GUIS']['standaloneGUI']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/GUIS/vgenGUI.py",
+      "sha256": "f345ef1b0fe7092f9b3e32356d9052d604de8d88ee3218275162da479f6aaf1c",
+      "lines": 155,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['GUIS']['vgenGUI']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/LIB/OMFITlib_profilesgen.py",
+      "sha256": "4985ae41c2217091856950b16122f1fc7900f0bf6c089af3cff9c48ffeb67d94",
+      "lines": 12,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['LIB']['OMFITlib_profilesgen']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/PLOTS/analyticThresholds.py",
+      "sha256": "ac9d358f659f086340e353f5c4872ad4580963d594ec27a4c7e7785c8205a36b",
+      "lines": 224,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['PLOTS']['analyticThresholds']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/PLOTS/gEQDSKoverlay.py",
+      "sha256": "c4b88961f361d083d836069d58dab858016cb443bb2e40fa367b0a0ab097c194",
+      "lines": 8,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['PLOTS']['gEQDSKoverlay']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/PLOTS/ktheta_rhos_n.py",
+      "sha256": "5470f8f4f324c82746a2d9b8ec5649d43f85531016af69ad2fae2b71946557f5",
+      "lines": 67,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['PLOTS']['ktheta_rhos_n']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/PLOTS/plot_geometry.py",
+      "sha256": "4f9dbf9b9a6d586a965ab08ec8c812009c087dabb2d2dfe619cae88b509c91ef",
+      "lines": 45,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['PLOTS']['plot_geometry']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/PLOTS/plot_input.py",
+      "sha256": "a9dfe37c5a85c7a4ea41f174f1e99cfab34205f60a455a4cdc66d4f875510da5",
+      "lines": 73,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['PLOTS']['plot_input']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/PLOTS/plot_quantities.py",
+      "sha256": "9f111788a8e5db32137cf1d6326be0887798c2ef716389d83d2eefc3ef23a57d",
+      "lines": 78,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['PLOTS']['plot_quantities']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/PLOTS/quasineutrality_check.py",
+      "sha256": "27db4b2a9570d9387a302b9dc931483ebcbb97ef83d92dbbcb91ef6abf9cf8a2",
+      "lines": 18,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['PLOTS']['quasineutrality_check']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/PLOTS/testConsitentStatefile.py",
+      "sha256": "5f38397ae8c76f9f82060dcb915d6c6000c0385ed8bf65ed2af7edc316ee31c4",
+      "lines": 27,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['PLOTS']['testConsitentStatefile']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/SCRIPTS/blendEPED.py",
+      "sha256": "ea505879f16a655fdc4c81baaf08426abe0e83540186f45dd667a7b9a40ab295",
+      "lines": 149,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['SCRIPTS']['blendEPED']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/SCRIPTS/create_input.neo.py",
+      "sha256": "bc0fa05625919970714533c5e6830dc42aa6cfe537ae4702b517155319148bce",
+      "lines": 37,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['SCRIPTS']['create_input.neo']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/SCRIPTS/enforce_quasineutrality.py",
+      "sha256": "5ad60eecb6f560c54b6341b3a1a9e3a7678e3a54a5682843d5d4eec80f0addb8",
+      "lines": 17,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['SCRIPTS']['enforce_quasineutrality']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/SCRIPTS/modify_gradients.py",
+      "sha256": "44daf6d9de2b703b0643742ad103c081a1c3576df33b4ad9318237d0d090e7ef",
+      "lines": 78,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['SCRIPTS']['modify_gradients']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/SCRIPTS/modify_ions.py",
+      "sha256": "d8788ede54e81e1afd60e8cac83abfdc4e7ef59537563c0246d43a76f19f8548",
+      "lines": 111,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['SCRIPTS']['modify_ions']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/SCRIPTS/postprocess_vgen.py",
+      "sha256": "1bcfa8b03c1b017fb62c3f3cda745e1048b4056689a735baa14ba18ee08dc013",
+      "lines": 77,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['SCRIPTS']['postprocess_vgen']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/SCRIPTS/reorder_ions.py",
+      "sha256": "1abb2e8c6cb1e354c62a998cb91c7195b47bd9158e977325e50b984e46d6c84b",
+      "lines": 22,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['SCRIPTS']['reorder_ions']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/SCRIPTS/resetPROFILES_GEN.py",
+      "sha256": "26be9d9c2ec74d8f3724b8b7f78a63f89db32c7bc87256ea5edf2720c2dfc902",
+      "lines": 14,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['SCRIPTS']['reset']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/SCRIPTS/run_profiles_gen.py",
+      "sha256": "968efed37c14050f009d99960c381f667abc8893fd7c551024399876bd45d83f",
+      "lines": 129,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['SCRIPTS']['run_profiles_gen']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/SCRIPTS/run_profiles_gen_batch.py",
+      "sha256": "ebe50f75d3efc3122505de63f43fbc96463010f1180968c0d3c83ff4726a7360",
+      "lines": 61,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['SCRIPTS']['batch_profiles_gen']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/SCRIPTS/run_profiles_gen_vgen.py",
+      "sha256": "86235dce02b82b9f115d5cea2ea215f099fba41e422f8861a2b4fc46a34cf1b3",
+      "lines": 113,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['SCRIPTS']['run_profiles_gen_vgen']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/TRXPL/GUIS/TRXPLgui.py",
+      "sha256": "73454e5f0c35389385db009fb01d3c17d0376187f607e66954a2e1bad5cf2898",
+      "lines": 112,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['TRXPL']['GUIS']['TRXPLgui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/TRXPL/PLOTS/compare_transp_trxpl.py",
+      "sha256": "7ae1899b0a5785532a0269be62991b11599b0d4d4ad3ff47a50c9acb222d41d2",
+      "lines": 209,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['TRXPL']['PLOTS']['compare_transp_trxpl']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/TRXPL/SCRIPTS/multi.py",
+      "sha256": "e51ff20bb795fd6a64f3701c6eae376dee9cd0712eaf8e15feed4d7050228256",
+      "lines": 104,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['TRXPL']['SCRIPTS']['multi']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/TRXPL/SCRIPTS/resetTRXPL.py",
+      "sha256": "d65ba2bdf57e251a3c698d0b7abc120ce186220363219af38ba533bd340f1d56",
+      "lines": 12,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['TRXPL']['SCRIPTS']['reset']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/TRXPL/SCRIPTS/trxpl.py",
+      "sha256": "b4344f36f7d229a557dac2cfa44417b91fa1e6fc7cbebd06da389756f393e57a",
+      "lines": 164,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['TRXPL']['SCRIPTS']['trxpl']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/PROFILES_GEN/TRXPL/SCRIPTS/trxpl_batch.py",
+      "sha256": "9aabb0bd2139471bbb514a0951a2f4bb29a18b29cc6e00c5b37367d4d59774a9",
+      "lines": 73,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['TRXPL']['SCRIPTS']['batch_trxpl']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/D_and_v.py",
+      "sha256": "d3ca6fb7c824a58d7182d39436d3761a4685c3f448aa044fe186f4fd88716f49",
+      "lines": 313,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['D_and_v']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/Rice_scaling.py",
+      "sha256": "1703548bad6ec8b9ce830cbe019f1502bf4e54df2942e826dfcbc91fd6e5551a",
+      "lines": 42,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['Rice_scaling']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/genNewProfiles.py",
+      "sha256": "df842b7ad8127d147859457acf03d078d95b3f9ff320c5578e3de9908f0ccadf",
+      "lines": 80,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['genNewProfiles']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/load_remote.py",
+      "sha256": "40f00e11fc15a5e5c0a88ed063cb4165258722a40de58a8e7972963300d426d3",
+      "lines": 61,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['load_remote']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/omfit_qlgyro.py",
+      "sha256": "7c94beb83efc6dcd5f5a3f9af38b62a35068bf647cc5600480faea39da2f9e5f",
+      "lines": 478,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['omfit_qlgyro']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/print_residual_and_convergence.py",
+      "sha256": "dd559604056b3077983e673f05aba0aa9f4f84ab1150453a229ed4d0bfde0f2d",
+      "lines": 24,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['print_residual_and_convergence']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/reloadTGYRO.py",
+      "sha256": "f543cd452a956eb8aba7298508c22f7ad87e2565a3376903a43e209c741e427f",
+      "lines": 18,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['reloadTGYRO']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/removeBogusParams.py",
+      "sha256": "b4291fde31ef310c22c559fbbb3e9d3ceca9aad9ac24bbea9df2d5cbfdc251a2",
+      "lines": 36,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['removeBogusParams']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/resetTGYRO.py",
+      "sha256": "8aac7f77d403711eac44c7c2c12fc44b5ab26f4ed857a64e327657cc974dcad1",
+      "lines": 17,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['reset']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/runTGYRO.py",
+      "sha256": "2c850440fb350b729f6b5a5ac0c8f6ad4465344ff9a0a9ed140015c302c1a932",
+      "lines": 50,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['runTGYRO']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/runTGYRObase.py",
+      "sha256": "a585e196f1039d447f76666ef2bd14ff6c03425d0c23b26972e406a3d15b3181",
+      "lines": 102,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['runTGYRObase']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/saveTGYRO.py",
+      "sha256": "2bbc3f056523cdce5127efe7556be835ba4137e3cb52c80b2b32a37bfe4080b3",
+      "lines": 14,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['saveTGYRO']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/to_omas.py",
+      "sha256": "03be98bc593b1207fa30c9f48257ea0aedf7141e63ca74c7dc213271b16eb2d3",
+      "lines": 112,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['to_omas']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/update_ion_data.py",
+      "sha256": "50196351df4442dff73cc15c6fb1025decdc942f349ff08e7f3833ce962f6a5c",
+      "lines": 22,
+      "entries": [
+        "['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['SCRIPTS']['update_ion_data']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/GUIS/transfer.py",
+      "sha256": "be2b32b3baeb2f2b413e4a2ef5d3241219e9ffcf4ffe5733b9447e0ad52b821c",
+      "lines": 67,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['GUIS']['transfer']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/GUIS/vgenGUI.py",
+      "sha256": "d91e1d315af87f432bc84e105b836b546229cbc220de8771f09c4a48f43229ac",
+      "lines": 4,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['GUIS']['vgenGUI']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_startup.py",
+      "sha256": "c60a1ebbe5e67fbcfa9339977d794b02a8abb0ac47353a4a0fd7d9e8a382f00a",
+      "lines": 1,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['LIB']['OMFITlib_startup']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/PLOTS/fastion.py",
+      "sha256": "34f44037bacd15747d505909e97aeb77d24e566e1418ed69fcdc3204f8f6d996",
+      "lines": 135,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['PLOTS']['fastion.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/PLOTS/kbmbae.py",
+      "sha256": "989f0c3970f814682bac73773ee33e58ca150827291984fb21e9adc6d7fa6521",
+      "lines": 131,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['PLOTS']['kbmbae.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/PLOTS/mtm.py",
+      "sha256": "9a0d8ea52e805629e00033c05e44117625d478cc28f8923186bedfc29026657f",
+      "lines": 262,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['PLOTS']['mtm.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/PLOTS/normpara.py",
+      "sha256": "ff0b1ad7efc6ad7fdcbfad931ce9ed85ed863a566a33cfaa11002e448fdd8a8b",
+      "lines": 145,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['PLOTS']['normpara.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/PLOTS/pltcrit.py",
+      "sha256": "fdf93b9515d7185a92696d6da24e14b9dae5f6030d6fa9a806743ee07b350a3e",
+      "lines": 110,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['PLOTS']['pltcrit.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/PLOTS/powerbalance.py",
+      "sha256": "26933b9ea5205ec9f2c496b3f387ef089c6e05889c0ddf2543dce87ae41d1412",
+      "lines": 58,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['PLOTS']['powerbalance.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/PLOTS/printinfo.py",
+      "sha256": "17d3b7036d39dfc6baae1d149787da3093199d7328e394057ba09d68ddb21896",
+      "lines": 7,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['PLOTS']['printinfo.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/PLOTS/profile.py",
+      "sha256": "03857976e01d81b9734cbc064bc655589b1054c6320776d86e45c2be13155940",
+      "lines": 240,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['PLOTS']['profile.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/PLOTS/source.py",
+      "sha256": "a11629fce0727420a78ab7dd341a0b5bef00626fac4e9ffa15dce6857816d704",
+      "lines": 195,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['PLOTS']['source.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/PLOTS/view12.py",
+      "sha256": "9421dd8446dbc483ed5b5779c9df34f15fb2e89e52e5a03cc2d97ffb536328fe",
+      "lines": 200,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['PLOTS']['view12.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/convert_file.py",
+      "sha256": "6f099feab54105f3732d50e70281f1053cee0c1cb1ae5df7111e3d883edc6472",
+      "lines": 539,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['SCRIPTS']['convert_file']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/inputcgyro2gyro.py",
+      "sha256": "64233c8f541c2b0753d3fc15128689f940715f5f2be0f03e0660859c9b29de08",
+      "lines": 72,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['SCRIPTS']['inputcgyro2gyro.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/main.py",
+      "sha256": "b6059a25c0482c388c880b7fe746deb129102cc25153b4cce2b96fcb973d82f5",
+      "lines": 20,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['SCRIPTS']['main.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen.py",
+      "sha256": "53bd1be438698ed715e354bc03e9a654d94ca2bcd2ec46ce452bcda6a9396883",
+      "lines": 40,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['SCRIPTS']['profiles_gen.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen4input.py",
+      "sha256": "2c66fc3d6320a903d18c490b39f1a7d0bc8b4c60be7f0e8cccd86a8aa20bdf91",
+      "lines": 24,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['SCRIPTS']['profiles_gen4input.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/tgyro_tglf.py",
+      "sha256": "1179fe9269fa2f97a8626ec716b107ef37e7ba26fe1698e6baa74830980f6483",
+      "lines": 34,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['SCRIPTS']['tgyro_tglf.py']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/update.py",
+      "sha256": "359efd51ba3b1d746699872872344191a0806b41cd8d2e0618a4735eb0343da9",
+      "lines": 7,
+      "entries": [
+        "['CGYRO_TGLF_scan']['Transfer_tool']['SCRIPTS']['update.py']"
+      ],
+      "disabled_entry": true
+    },
+    {
+      "file": "OMFITtemplates/GUIS/main.py",
+      "sha256": "0f6e2412da4bfaff49a33963d97df6693e706d9faf50edc492758fdfebf5f857",
+      "lines": 8,
+      "entries": [
+        "['OMFITtemplates']['GUIS']['main']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "OMFITtemplates/LIB/OMFITlib_template_archive.py",
+      "sha256": "04623f787ba7f11d20e4a40160f531a216d835679fd819ba16097942d284e965",
+      "lines": 293,
+      "entries": [
+        "['OMFITtemplates']['LIB']['OMFITlib_template_archive']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "OMFITtemplates/LIB/OMFITlib_template_github.py",
+      "sha256": "caab02eba4d7c48f172dde7e646befb647753174f301669b59014f5e2a758415",
+      "lines": 417,
+      "entries": [
+        "['OMFITtemplates']['LIB']['OMFITlib_template_github']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "OMFITtemplates/LIB/OMFITlib_template_paths.py",
+      "sha256": "4ae183ec0e3ccbc8996e7068b33d9a34633a4dbc71a465436de3bb924aa7d264",
+      "lines": 31,
+      "entries": [
+        "['OMFITtemplates']['LIB']['OMFITlib_template_paths']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "OMFITtemplates/LIB/OMFITlib_template_service.py",
+      "sha256": "c2549ff7932dbc94ac6c8ed6462ad9c5efbe8daf82ae97b4efe3bc5b9c36125f",
+      "lines": 463,
+      "entries": [
+        "['OMFITtemplates']['LIB']['OMFITlib_template_service']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "OMFITtemplates/LIB/OMFITlib_template_session.py",
+      "sha256": "5cdb441b0164b85e48afb0e8c955f9f49b1f65ccc505fa3c74f48f15f395ebea",
+      "lines": 55,
+      "entries": [
+        "['OMFITtemplates']['LIB']['OMFITlib_template_session']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "OMFITtemplates/LIB/OMFITlib_template_ui.py",
+      "sha256": "58ae0e872c16693bda9ae7e5d7486b90e72da727a031022d2fd7d6e02f4801e3",
+      "lines": 939,
+      "entries": [
+        "['OMFITtemplates']['LIB']['OMFITlib_template_ui']"
+      ],
+      "disabled_entry": false
+    },
+    {
+      "file": "OMFITtemplates/install_desktop.py",
+      "sha256": "bf8756ba6db72a6a35edf22871dbb3d8ab6570a5c74772e2f182fe67a784199e",
+      "lines": 101,
+      "entries": [],
+      "disabled_entry": false
+    },
+    {
+      "file": "OMFITtemplates/launch.py",
+      "sha256": "6c3773deb9e9a6029acde568a3c9140a6ac182fc768b5c623c278f65850f093c",
+      "lines": 104,
+      "entries": [],
+      "disabled_entry": false
+    }
+  ],
+  "findings": [
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_2d_gyro.py",
+      "line": 60,
+      "category": "missing_script_target",
+      "detail": "('PLOTS', 'gyroscan', 'assist', 'changeOMFITgyrogacode.py')",
+      "disabled_entry": true
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_gyro.py",
+      "line": 64,
+      "category": "missing_script_target",
+      "detail": "('PLOTS', 'gyroscan', 'assist', 'changeOMFITgyrogacode.py')",
+      "disabled_entry": true
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/omfit_qlgyro.py",
+      "line": 331,
+      "category": "missing_script_target",
+      "detail": "('TGLF_GACODE', 'SCRIPTS', 'runTGLF')",
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/omfit_qlgyro.py",
+      "line": 349,
+      "category": "missing_script_target",
+      "detail": "('GYRO_scan', 'SCRIPTS', 'runGYROscan')",
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/omfit_qlgyro.py",
+      "line": 362,
+      "category": "missing_script_target",
+      "detail": "('GYRO_scan', 'SCRIPTS', 'downsyncGYROscan')",
+      "disabled_entry": false
+    }
+  ],
+  "complete_runtime_compatibility_proven": false
+}

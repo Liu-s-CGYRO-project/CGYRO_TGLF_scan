@@ -136,8 +136,8 @@ class RefactorTest(unittest.TestCase):
         for mode in state.MODES:
             app,ui=self.render(fixture(mode))
             tabs=[args[0] for _,name,args,_ in ui.events if name=='Tab']
-            self.assertEqual(tabs,['1. Cases','2. Plot','3. Style','4. Export & checks'])
-            self.assertTrue(any(tab=='Header' and name=='Button' and args[0]=='Plot selected data'
+            self.assertEqual(tabs,['1 案例选择','2 绘图设置','3 图形样式','4 导出与检查',''])
+            self.assertTrue(any(tab=='' and name=='Button' and args[0]=='绘制所选数据'
                                 for tab,name,args,_ in ui.events))
             self.assertFalse(state.selection_check(app.root)['errors'])
 
@@ -457,7 +457,7 @@ class RefactorTest(unittest.TestCase):
         omfit = {'OMFITtemplates': {'GUIS': {'main': manager_gui}}}
         entry = (MODULE / 'GUIS/CGYRO_vs_TGLF.py').read_text(encoding='utf-8')
         exec(compile(entry, 'CGYRO_vs_TGLF.py', 'exec'), {'root': root, 'OMFITx': ui, 'OMFIT': omfit})
-        buttons = [args for _, kind, args, _ in ui.events if kind == 'Button' and args[0] == 'Templates / GitHub']
+        buttons = [args for _, kind, args, _ in ui.events if kind == 'Button' and args[0] == '模板 / GitHub']
         self.assertEqual(len(buttons), 1)
         buttons[0][1]()
         manager_gui.run.assert_called_once_with()

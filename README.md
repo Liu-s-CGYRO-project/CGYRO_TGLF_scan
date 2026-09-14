@@ -2,7 +2,7 @@
 
 用于 Linux 桌面的 OMFIT 工程，包含已审计、修复和整理的 CGYRO/TGLF 工具，以及项目内置的 **OMFIT GitHub 模板管理器**。
 
-当前分发版为 **1.0.0**，仅包含代码、输入模板和默认设置；计算案例、结果、缓存与旧命令记录不入库。原模块的输入示例保留在 `TEMPLATES` 中。执行计算前，需要导入自己的平衡/剖面或案例，并配置计算环境与求解器路径。
+当前分发版为 **1.0.1**，仅包含代码、输入模板和默认设置；计算案例、结果、缓存与旧命令记录不入库。原模块的输入示例保留在 `TEMPLATES` 中。执行计算前，需要导入自己的平衡/剖面或案例，并配置计算环境与求解器路径。
 
 本版将项目专用 Python 支持全部保存到 OMFIT 工程，移除私人 `sys.path` 和 `PYTHONPATH` 依赖。已对照提供的 GACODE_module.zip 中 9 个源文件，补齐缺少的方法，并修正旧辅助加载、绘图缓存与 NumPy 注入语义等兼容问题。此前 get/default、update 和 Tk 变量修复继续保留。详见 [OMFIT 兼容审计与内部支持代码](OMFIT_COMPATIBILITY.md)。
 
@@ -12,9 +12,13 @@
 
 工程模板从 **1.0.0** 起使用语义版本：修复问题递增修订号（例如 1.0.1），兼容的新功能递增次版本号（例如 1.1.0），不兼容的变更递增主版本号（例如 2.0.0）。管理器版本独立维护，目前为 **1.2.5**。历史日期版保留供回溯。
 
+1.0.1 修复 OMFIT 页面加载结束后点击 CGYRO 绘图、检查或导出时的库导入异常，并按 OMFIT 自带 TGLF、EFIT 和 TUTORIAL 的原生控件用法重排四种比较页面。页面分为“案例选择 / 绘图设置 / 图形样式 / 导出与检查”；标签页下方统一放置“检查选择”和“绘制所选数据”，其他工具入口移入第四页。升级后请关闭旧比较页面，在新生成工程中重新打开；本次新增库已随模板注册。
+
+“过滤未收敛点”旁的 `error 上限` 始终可编辑；0.01 表示相对波动 1%，勾选过滤后生效。“标记当前曲线最大 γ”跟随当前显示量（原始 γ、γ/ky 或 γ/ky²），在过滤后的有效曲线上定位。
+
 ## 在 OMFIT 打开
 
-推荐从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.0.0.zip`，在 OMFIT 中打开。
+推荐从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.0.1.zip`，在 OMFIT 中打开。
 
 也可直接加载本仓库的工程入口：
 
@@ -81,7 +85,7 @@ OMFIT['CGYRO_TGLF_scan']['GUIS']['main'].run()
 3. 预览变更后生成新工程。打开前可备份当前会话；原 ZIP 始终保留。
 4. 开发者准备模板包，核对文件清单、仓库与账号，再发布不可覆盖的新版本。
 
-当前模板包含 `CGYRO_TGLF_scan` 和 `OMFITtemplates` 两个模块，不带结果或计算案例。在 **1.2.5 管理器**中拉取 **1.0.0**，选择保留当前案例、结果和设置即可生成更新后的工程。默认 GUI 的模块信息随模板更新，用户的计算设置与结果继续保留。旧工程缺少管理模块时，管理器会在生成新工程时自动添加。
+当前模板包含 `CGYRO_TGLF_scan` 和 `OMFITtemplates` 两个模块，不带结果或计算案例。在 **1.2.5 管理器**中拉取 **1.0.1**，选择保留当前案例、结果和设置即可生成更新后的工程。默认 GUI 的模块信息随模板更新，用户的计算设置与结果继续保留。旧工程缺少管理模块时，管理器会在生成新工程时自动添加。
 
 如果总控页因旧版本报错而无法打开，可以从工程树直接打开 `OMFITtemplates → GUIS → main`，或在 OMFIT 命令窗口执行 `OMFIT['OMFITtemplates']['GUIS']['main'].run()`。桌面无法联网时，将 Release 的 `.omfittpl.zip` 传到 Linux，在“更新 / 切换”的模板包位置选择本地文件，再按正常流程生成新工程。
 
@@ -95,7 +99,7 @@ Git 仓库保存可审查的源码；OMFIT 管理器通过 Release 附件分发�
 python3 tools/build_project.py
 ```
 
-输出到 `dist/CGYRO_TGLF_scan_code_only_1.0.0.zip`（版本号来自 `PROJECT_CONTENTS.json`）。构建仅收录 `OMFITsave.txt` 引用的代码、设置与输入模板，校验所有引用，并拒绝混入非空计算数据分支。`OMFITsave.txt` 固定为 ZIP 第一个条目，兼容原生 OMFIT 的入口定位规则。
+输出到 `dist/CGYRO_TGLF_scan_code_only_1.0.1.zip`（版本号来自 `PROJECT_CONTENTS.json`）。构建仅收录 `OMFITsave.txt` 引用的代码、设置与输入模板，校验所有引用，并拒绝混入非空计算数据分支。`OMFITsave.txt` 固定为 ZIP 第一个条目，兼容原生 OMFIT 的入口定位规则。
 
 独立模板界面可执行 `sh OMFITtemplates/start_manager.sh`；OMFIT 内使用时复用 OMFIT 自己的 Python 和 Tk。
 

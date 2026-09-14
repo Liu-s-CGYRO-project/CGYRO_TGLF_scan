@@ -21,7 +21,6 @@ from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / 'tests'))
-import test_native_mapping as tests
 
 
 def load_native_mapping(source):
@@ -59,6 +58,10 @@ def load_native_mapping(source):
 
 
 def validate(source):
+    # The native loader is also used by isolated callback/import tests. Importing
+    # this suite earlier would preload project libraries through ordinary Python.
+    import test_native_mapping as tests
+
     source = Path(source).resolve()
     factory, registry, evidence = load_native_mapping(source)
     classes = (tests.NativeProjectTest, tests.NativeMultiInputTest, tests.NativeIntegrationTest)

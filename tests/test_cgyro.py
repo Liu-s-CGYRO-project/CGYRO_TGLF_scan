@@ -88,6 +88,12 @@ class CGYROTest(unittest.TestCase):
         result = data.collect_value_series(self.root, context, 'nr=2', 'A', 1.)
         self.assertNotIn(.1, result[0])
         self.assertIn('fluctuation filter', '\n'.join(context['_diagnostics']))
+        self.linear['0.1']['freq']['omega'][0][-2:] = [.9, 1.1]
+        for tolerance, included in ((.05, False), (.2, True)):
+            with self.subTest(error_tolerance=tolerance):
+                context = self.context(ave_window=.1, error_filter=True, error_tolerance=tolerance)
+                result = data.collect_value_series(self.root, context, 'nr=2', 'A', 1.)
+                self.assertEqual(.1 in result[0], included)
 
     def test_ambiguous_numeric_scan_key_is_rejected(self):
         original = self.run['nr=2']['A'].pop(1.)
@@ -216,7 +222,7 @@ class CGYROTest(unittest.TestCase):
                     self.assertEqual(axis.get_yscale(), 'log')
                     self.assertFalse(any(line.get_visible() for line in axis.get_xgridlines()))
 
-    def test_peak_marker_uses_raw_gamma_and_ignores_undefined_ky_scaling(self):
+    def test_peak_marker_follows_displayed_gamma_and_visible_ky(self):
         point = copy.deepcopy(self.linear['0.1'])
         linear = {}
         for ky, gamma in ((0., 100.), (.1, 2.), (1., 3.)):
@@ -225,12 +231,20 @@ class CGYROTest(unittest.TestCase):
             entry['freq']['gamma'][0][:] = gamma
             linear[str(ky)] = entry
         self.run['nr=2']['A'][1.]['lin'] = linear
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            figure = self.plot(selected_paras={'A': [1.]}, divide_by_ky=True, highlight_max_gamma=True)[0]
-        marker = figure.axes[2].lines[1]
-        np.testing.assert_allclose(marker.get_xdata(), [1.])
-        np.testing.assert_allclose(marker.get_ydata(), [3.])
+        for divide, squared, log_x, expected in (
+                (False, False, False, (0., 100.)),
+                (True, False, False, (.1, 20.)),
+                (False, True, False, (.1, 200.)),
+                (False, False, True, (1., 3.))):
+            with self.subTest(divide_by_ky=divide, divide_by_ky2=squared, log_x=log_x):
+                with warnings.catch_warnings():
+                    warnings.simplefilter('ignore')
+                    figure = self.plot(selected_paras={'A': [1.]}, divide_by_ky=divide,
+                                       divide_by_ky2=squared, plot_log_x=log_x,
+                                       highlight_max_gamma=True)[0]
+                marker = figure.axes[2].lines[1]
+                np.testing.assert_allclose(marker.get_xdata(), [expected[0]])
+                np.testing.assert_allclose(marker.get_ydata(), [expected[1]])
 
     def test_eigen_saved_epar_is_not_modified_by_apar(self):
         point = copy.deepcopy(self.linear['0.1'])
@@ -311,6 +325,16 @@ class CGYROTest(unittest.TestCase):
         ui = FakeUI(self.root)
         modules['ui'].ComparisonUI(self.root, ui).render()
         self.assertTrue(any(name == 'ComboBox' and args[0].endswith("['error_flag']") for _, name, args, _ in ui.events))
+        for enabled in (False, True):
+            self.settings.update(error_filter=enabled, error_tolerance=.2)
+            ui = FakeUI(self.root)
+            modules['ui'].ComparisonUI(self.root, ui).render()
+            entries = [(args, options) for _, name, args, options in ui.events
+                       if name == 'Entry' and args[0].endswith("['error_tolerance']")]
+            self.assertEqual(len(entries), 1)
+            self.assertIn('error', entries[0][0][1])
+            self.assertNotEqual(entries[0][1].get('state'), 'disabled')
+            self.assertEqual(self.settings['error_tolerance'], .2)
         self.settings['plot_mode'] = 'Plot 3D'
         ui = FakeUI(self.root)
         modules['ui'].ComparisonUI(self.root, ui).render()

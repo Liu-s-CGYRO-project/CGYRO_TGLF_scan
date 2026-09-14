@@ -78,7 +78,7 @@ def _spectra(axes, items, ctx):
                 valid &= y_gamma > 0
             indices = np.flatnonzero(valid)
             if len(indices):
-                index = indices[np.argmax(gamma[indices])]
+                index = indices[np.argmax(y_gamma[indices])]
                 x, y = ky[index], y_gamma[index]
                 axes[1, 0].plot(x, y, 'ro', markersize=ctx['ms'])
                 annotations.append(axes[1, 0].annotate('({:.3g}, {:.3g})'.format(x, y), (x, y)))

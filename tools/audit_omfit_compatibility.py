@@ -86,7 +86,21 @@ def audit(omfit_source):
                                   disabled_entry=disabled))
             builtins = {alias.asname or alias.name for n in tree.body if isinstance(n, ast.ImportFrom) and n.module == 'builtins'
                         for alias in n.names}
+            parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
             for node in ast.walk(tree):
+                library_names = ([node.module] if isinstance(node, ast.ImportFrom) and node.module
+                                 else [alias.name for alias in node.names] if isinstance(node, ast.Import) else [])
+                for name in library_names:
+                    if not entries or not name.startswith('OMFITlib_'):
+                        continue
+                    counts['registered_library_imports'] += 1
+                    scope = parents.get(node)
+                    while scope is not None:
+                        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                            finding(path, node.lineno, 'deferred_library_import',
+                                    name + ': may run after the native OMFIT import hook has been removed', disabled)
+                            break
+                        scope = parents.get(scope)
                 if isinstance(node, ast.ImportFrom):
                     name = node.module or ''
                     if name.startswith('OMFITlib_'):

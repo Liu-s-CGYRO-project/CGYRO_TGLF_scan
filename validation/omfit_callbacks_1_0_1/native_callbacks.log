@@ -1,0 +1,10 @@
+test_cancelled_export_after_gui_returns_preserves_state (__main__.CallbackTests) ... ok
+test_completed_multi_input_page_can_render_after_import_cleanup (__main__.CallbackTests) ... ok
+test_export_after_gui_returns_writes_raw_spectra_and_restores_flag (__main__.CallbackTests) ... ok
+test_four_modes_plot_and_check_after_gui_returns (__main__.CallbackTests) ... ok
+test_invalid_options_still_block_plot_after_gui_returns (__main__.CallbackTests) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 1.845s
+
+OK

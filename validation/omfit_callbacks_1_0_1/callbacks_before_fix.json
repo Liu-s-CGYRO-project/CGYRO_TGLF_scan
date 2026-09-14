@@ -1,0 +1,19 @@
+{
+  "tests": 5,
+  "failures": 0,
+  "errors": 9,
+  "python": "3.10.12",
+  "native_functions": {
+    "execGlobLoc": "1d1242276b44cba27b23ba34109f5680fec485647634ba56f86364a4631e70c5",
+    "_defaultVars": "7eacd5e4bdfe35d78bf249c2ff361aec5bbb3e9cc112d29645ee5743ff2b5777"
+  },
+  "native_mapping": {
+    "source_sha256": "4e5404965b38650c201ebdccce11bc618d95d766cbd76cdee6d6cdc5de2e271d",
+    "native_class_sha256": "a2ca3751968fe62fe82c5460986ffa4bdf1e6b4696860b2f686417c3f6d87285"
+  },
+  "import_cleanup_checked": true,
+  "project_lib_on_sys_path": false,
+  "real_matplotlib": true,
+  "complete_omfit_session_tested": false,
+  "solver_executed": false
+}

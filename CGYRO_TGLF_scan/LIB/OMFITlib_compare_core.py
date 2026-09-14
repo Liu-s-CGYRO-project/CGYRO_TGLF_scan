@@ -31,6 +31,7 @@ from builtins import (
 
 import numpy as np
 import re
+from OMFITlib_compare_options import is_gamma_ratio_plot_mode
 from OMFITlib_compare_state import (
     STYLE_DEFAULTS,
 )
@@ -80,12 +81,6 @@ def normalize_flux_species_option(value):
     if sval in ['ion only', 'ions only', 'ion', 'ions']:
         return 'Ion only'
     return 'Both'
-
-
-def is_gamma_ratio_plot_mode(plot_mode):
-    """True when selected plot mode is gamma-ratio mode (with legacy label support)."""
-    mode_txt = str(plot_mode).strip()
-    return mode_txt in ('Plot γ/γ_ref', 'Plot 纬/纬_ref')
 
 
 def build_context(root):

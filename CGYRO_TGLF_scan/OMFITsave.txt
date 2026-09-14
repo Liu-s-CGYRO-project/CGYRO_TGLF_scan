@@ -237,6 +237,7 @@
 ['LIB']['OMFITlib_compare_cgyro_render'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro_render.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro_export'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro_export.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_core'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_core.py <-:-:-> {}
+['LIB']['OMFITlib_compare_options'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_options.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_dispatch'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_dispatch.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_flux'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_flux.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_series'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_series.py <-:-:-> {}

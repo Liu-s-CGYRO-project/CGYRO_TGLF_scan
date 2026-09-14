@@ -1,0 +1,118 @@
+test_cancelled_export_after_gui_returns_preserves_state (__main__.CallbackTests) ... ERROR
+test_completed_multi_input_page_can_render_after_import_cleanup (__main__.CallbackTests) ... ERROR
+test_export_after_gui_returns_writes_raw_spectra_and_restores_flag (__main__.CallbackTests) ... ERROR
+test_four_modes_plot_and_check_after_gui_returns (__main__.CallbackTests) ... test_invalid_options_still_block_plot_after_gui_returns (__main__.CallbackTests) ...
+======================================================================
+ERROR: test_cancelled_export_after_gui_returns_preserves_state (__main__.CallbackTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/tools/validate_native_callbacks.py", line 122, in test_cancelled_export_after_gui_returns_preserves_state
+    callback()
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py", line 243, in _export
+    self._assert_selection()
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py", line 225, in _assert_selection
+    report = selection_check(self.root)
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_state.py", line 210, in selection_check
+    from OMFITlib_compare_cgyro_selection import validate_options
+ModuleNotFoundError: No module named 'OMFITlib_compare_cgyro_selection'
+
+======================================================================
+ERROR: test_completed_multi_input_page_can_render_after_import_cleanup (__main__.CallbackTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/tools/validate_native_callbacks.py", line 143, in test_completed_multi_input_page_can_render_after_import_cleanup
+    out['app'].render()
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_ui.py", line 134, in render
+    from OMFITlib_tglf_multi_plot import flux_summary
+ModuleNotFoundError: No module named 'OMFITlib_tglf_multi_plot'
+
+======================================================================
+ERROR: test_export_after_gui_returns_writes_raw_spectra_and_restores_flag (__main__.CallbackTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/tools/validate_native_callbacks.py", line 108, in test_export_after_gui_returns_writes_raw_spectra_and_restores_flag
+    callback()
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py", line 243, in _export
+    self._assert_selection()
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py", line 225, in _assert_selection
+    report = selection_check(self.root)
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_state.py", line 210, in selection_check
+    from OMFITlib_compare_cgyro_selection import validate_options
+ModuleNotFoundError: No module named 'OMFITlib_compare_cgyro_selection'
+
+======================================================================
+ERROR: test_four_modes_plot_and_check_after_gui_returns (__main__.CallbackTests) (mode='CGYRO_vs_CGYRO')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/tools/validate_native_callbacks.py", line 74, in test_four_modes_plot_and_check_after_gui_returns
+    self.assertEqual(buttons['Check selection']()['errors'], [])
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py", line 222, in _refresh_check
+    return selection_check(self.root)
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_state.py", line 210, in selection_check
+    from OMFITlib_compare_cgyro_selection import validate_options
+ModuleNotFoundError: No module named 'OMFITlib_compare_cgyro_selection'
+
+======================================================================
+ERROR: test_invalid_options_still_block_plot_after_gui_returns (__main__.CallbackTests) (values={'plot_mode': 'Plot single ky', 'single_ky_values': 'bad'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/tools/validate_native_callbacks.py", line 94, in test_invalid_options_still_block_plot_after_gui_returns
+    self.assertTrue(buttons['Check selection']()['errors'])
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py", line 222, in _refresh_check
+    return selection_check(self.root)
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_state.py", line 210, in selection_check
+    from OMFITlib_compare_cgyro_selection import validate_options
+ModuleNotFoundError: No module named 'OMFITlib_compare_cgyro_selection'
+
+======================================================================
+ERROR: test_invalid_options_still_block_plot_after_gui_returns (__main__.CallbackTests) (values={'plot_mode': 'Plot eigen ball', 'eigen_ky_mode': 'single ky', 'eigen_ky_values': ''})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/tools/validate_native_callbacks.py", line 94, in test_invalid_options_still_block_plot_after_gui_returns
+    self.assertTrue(buttons['Check selection']()['errors'])
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py", line 222, in _refresh_check
+    return selection_check(self.root)
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_state.py", line 210, in selection_check
+    from OMFITlib_compare_cgyro_selection import validate_options
+ModuleNotFoundError: No module named 'OMFITlib_compare_cgyro_selection'
+
+======================================================================
+ERROR: test_invalid_options_still_block_plot_after_gui_returns (__main__.CallbackTests) (values={'plot_mode': 'Plot γ/γ_ref', 'gamma_ref_value': 'nan'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/tools/validate_native_callbacks.py", line 94, in test_invalid_options_still_block_plot_after_gui_returns
+    self.assertTrue(buttons['Check selection']()['errors'])
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py", line 222, in _refresh_check
+    return selection_check(self.root)
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_state.py", line 210, in selection_check
+    from OMFITlib_compare_cgyro_selection import validate_options
+ModuleNotFoundError: No module named 'OMFITlib_compare_cgyro_selection'
+
+======================================================================
+ERROR: test_invalid_options_still_block_plot_after_gui_returns (__main__.CallbackTests) (values={'plot_mode': 'Plot γ/γ_ref', 'gamma_ref_mode': 'single ky', 'gamma_ref_value': '', 'gamma_ref_ky_values': ''})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/tools/validate_native_callbacks.py", line 94, in test_invalid_options_still_block_plot_after_gui_returns
+    self.assertTrue(buttons['Check selection']()['errors'])
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py", line 222, in _refresh_check
+    return selection_check(self.root)
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_state.py", line 210, in selection_check
+    from OMFITlib_compare_cgyro_selection import validate_options
+ModuleNotFoundError: No module named 'OMFITlib_compare_cgyro_selection'
+
+======================================================================
+ERROR: test_invalid_options_still_block_plot_after_gui_returns (__main__.CallbackTests) (values={'plot_mode': 'unknown'})
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/tools/validate_native_callbacks.py", line 94, in test_invalid_options_still_block_plot_after_gui_returns
+    self.assertTrue(buttons['Check selection']()['errors'])
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py", line 222, in _refresh_check
+    return selection_check(self.root)
+  File "/mnt/d/Codes/OMFIT-source-ASIPP_unstable/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_state.py", line 210, in selection_check
+    from OMFITlib_compare_cgyro_selection import validate_options
+ModuleNotFoundError: No module named 'OMFITlib_compare_cgyro_selection'
+
+----------------------------------------------------------------------
+Ran 5 tests in 1.214s
+
+FAILED (errors=9)
