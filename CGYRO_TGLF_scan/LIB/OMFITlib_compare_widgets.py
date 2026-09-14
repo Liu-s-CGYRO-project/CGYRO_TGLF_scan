@@ -82,7 +82,7 @@ class ComparisonWidgets:
                     self.ui.CheckBox(checkbox_path_builder(idx, name), str(name),
                                      default=False, updateGUI=True)
         for idx, name in enumerate(parameters):
-            if flags.get(idx):
+            if flags.get(idx, None):
                 if name not in selected:
                     selected[name] = self._normalize_value_list(value_keys_builder(name))
                 self.ui.Entry(entry_path_builder(name), '{} values'.format(name),
@@ -102,7 +102,7 @@ class ComparisonWidgets:
         self._prune_mapping_keys(selected, para_list)
         self._render_index_checkbox_grid(path_builder('TGLF', 'para_flag')+'[{idx}]', para_list)
         for idx, name in enumerate(para_list):
-            if not flags.get(idx):
+            if not flags.get(idx, None):
                 selected.pop(name, None)
                 continue
             nodes = [tglf_results[rho][name] for rho in rhos if rho in tglf_results and name in tglf_results[rho]]
@@ -126,7 +126,7 @@ class ComparisonWidgets:
     def _render_legend_order_controls(self, path_builder, state, default_legend_order='', editor_title='Legend order'):
         self.ui.ComboBox(path_builder('legend_order_mode'), LEGEND_ORDER_OPTIONS,
                          'Legend order', default='Plot order', updateGUI=True)
-        if state.get('legend_order_mode') == 'Manual order':
+        if state.get('legend_order_mode', None) == 'Manual order':
             self.ui.Entry(path_builder('legend_order_text'),
                           'Keywords in order (comma-separated; re:pattern allowed)',
                           default=default_legend_order)
@@ -146,7 +146,7 @@ class ComparisonWidgets:
         ttk.Label(win, text='Drag rows to reorder. Add keywords or re:patterns.').pack(padx=10, pady=8)
         box = tk.Listbox(win, exportselection=False)
         box.pack(fill='both', expand=True, padx=10)
-        text = state.get('legend_order_text') or default_text
+        text = state.get('legend_order_text', None) or default_text
         for item in dict.fromkeys(part.strip() for part in text.split(',') if part.strip()):
             box.insert(tk.END, item)
         row = ttk.Frame(win)
@@ -204,5 +204,5 @@ class ComparisonWidgets:
 
     def _render_tolerance_toggle(self, path, state, key, label, **unused):
         self.ui.CheckBox(path(key), label, default=False, updateGUI=True)
-        if state.get(key):
+        if state.get(key, None):
             self.ui.Entry(path('error_tolerance'), 'Relative fluctuation tolerance', default=0.01)

@@ -96,7 +96,7 @@ class ComparisonUI(CaseSelection):
                 self._entry('gamma_ref_ky_max', 'Maximum ky (blank = all)', '')
         if cross_model:
             self._check('gamma_ref_split_panels', 'Separate CGYRO and TGLF panels')
-            if self.state.get('TGLF', {}).get('spectra_mode') == '2D':
+            if self.state.get('TGLF', {}).get('spectra_mode', None) == '2D':
                 self._combo('gamma_ref_tglf2d_x_axis', ['para1', 'para2'], 'Scan axis for ratio', 'para1')
             self._render_tolerance_toggle(self._plot_path, self.plot_settings,
                                           'gamma_ref_error_filter', 'Filter unconverged CGYRO points')
@@ -107,7 +107,7 @@ class ComparisonUI(CaseSelection):
         self_mode = self.mode == 'CGYRO_vs_CGYRO'
         tglf_only = self.mode == 'TGLF_vs_TGLF'
         if tglf_only:
-            flux = settings.get('tglf_vs_tglf_mode') == 'Flux'
+            flux = settings.get('tglf_vs_tglf_mode', None) == 'Flux'
             dimension = self.state.get('TGLF', {}).get('spectra_mode', '1D')
             if dimension == '2D':
                 if not flux:
@@ -160,9 +160,9 @@ class ComparisonUI(CaseSelection):
                     ('Spectra only', 'No_error'),
                     ('CGYRO relative time fluctuation', 'CGYRO'),
                     ('Model difference / |CGYRO|', 'CGYRO-TGLF')]), 'Comparison panels', 'CGYRO')
-                if settings.get('error_flag') == 'No_error':
+                if settings.get('error_flag', None) == 'No_error':
                     self._combo('comparison_layout', ['Overlay', 'Separate models'], 'Panel layout', 'Overlay')
-                if settings.get('error_flag') == 'CGYRO-TGLF':
+                if settings.get('error_flag', None) == 'CGYRO-TGLF':
                     self.ui.Label('Select exactly one reference curve in at least one model per page.', align='left')
             self._render_scaling()
         if not eigen:
@@ -185,9 +185,9 @@ class ComparisonUI(CaseSelection):
         with self.ui.same_row():
             self._check('plot_log_x', 'Log X')
             self._check('plot_log_y', 'Log Y')
-            if self.mode == 'CGYRO_vs_CGYRO' and self.plot_settings.get('plot_mode') == 'Plot 3D':
+            if self.mode == 'CGYRO_vs_CGYRO' and self.plot_settings.get('plot_mode', None) == 'Plot 3D':
                 self._check('plot_log_z', 'Log Z')
-        if self.plot_settings.get('plot_log_y'):
+        if self.plot_settings.get('plot_log_y', None):
             self.ui.Label('Log Y hides zero and negative values; linear Y preserves signed spectra.', align='left')
         self.ui.Separator()
         self.ui.ComboBox(self._path('style', 'legend_location'), ['best', 'upper right', 'upper left', 'outside'],
@@ -209,7 +209,7 @@ class ComparisonUI(CaseSelection):
         for message in report['errors'] + report['warnings']:
             self.ui.Label('• '+message, align='left')
         self.ui.Separator()
-        spectra = not (self.mode == 'TGLF_vs_TGLF' and self.plot_settings.get('tglf_vs_tglf_mode') == 'Flux')
+        spectra = not (self.mode == 'TGLF_vs_TGLF' and self.plot_settings.get('tglf_vs_tglf_mode', None) == 'Flux')
         if spectra:
             self.ui.Button('Export selected omega / gamma data...', self._export)
             self.ui.Label('A new export folder keeps existing files. Raw spectra and settings are recorded.', align='left')

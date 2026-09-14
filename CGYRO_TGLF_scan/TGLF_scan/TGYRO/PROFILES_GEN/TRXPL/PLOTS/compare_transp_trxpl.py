@@ -12,7 +12,7 @@ defaultVars parameters
 
 defaultVars(transp_output=None, statefile=None, input_gacode=None, tgyro_output=None)
 if statefile is None:
-    statefile = root['OUTPUTS'].get('statefile')
+    statefile = root['OUTPUTS'].get('statefile', None)
 if transp_output is None or statefile is None or input_gacode is None or tgyro_output is None:
     raise OMFITexception('Pass transp_output, statefile, input_gacode and tgyro_output from the runs to compare')
 ig = input_gacode

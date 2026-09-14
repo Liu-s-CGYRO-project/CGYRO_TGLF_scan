@@ -6,7 +6,7 @@ from cgyro_read_xj import num2str_xj
 settings = root['SETTINGS']
 selection = settings['PLOTS']['1d']
 effnum = settings['SETUP']['effnum']
-destination = settings['DEPENDENCIES'].get('eigenout')
+destination = settings['DEPENDENCIES'].get('eigenout', None)
 if not destination:
     destination = tempfile.mkdtemp(prefix='cgyro-eigen-export-', dir=str(OMFITworkDir(root, '')))
 else:

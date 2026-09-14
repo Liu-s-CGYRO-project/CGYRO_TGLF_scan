@@ -27,8 +27,8 @@ if setup['idownsync']==1:
 # Publish only the successfully loaded points of this run. Old branches remain
 # in RUN_HISTORY; setting changes after submission cannot relabel these results.
 def publish_loaded_run(root):
-    manifest = root.get('RUN_MANIFEST')
-    if not manifest or manifest.get('status') != 'loaded':
+    manifest = root.get('RUN_MANIFEST', None)
+    if not manifest or manifest.get('status', None) != 'loaded':
         print('No fully loaded run to publish; preserved results are unchanged.')
         return
     if manifest['dimensions'] != 1:

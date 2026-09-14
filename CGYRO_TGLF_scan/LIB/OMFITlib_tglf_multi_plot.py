@@ -20,11 +20,11 @@ def plot_cases(root, notebook):
     for case in root.get('TGLF_CASES', {}).values():
         if not case['enabled']:
             continue
-        run = case['runs'].get(case['selected_run'])
+        run = case['runs'].get(case['selected_run'], None)
         if run is None:
             continue
         for point in run['points'].values():
-            attempt = point['attempts'].get(point.get('selected_attempt'))
+            attempt = point['attempts'].get(point.get('selected_attempt', None), None)
             if attempt is None or attempt['status'] != 'complete':
                 continue
             spectrum = attempt['result']['eigenvalue_spectrum']

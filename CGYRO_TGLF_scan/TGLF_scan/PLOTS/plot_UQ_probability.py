@@ -72,7 +72,7 @@ def experimental_flux_channel(quantity, species):
     return {('Gam/Gam_GB', 'elec'): 'pflux_e_target',
             ('Q/Q_GB', 'elec'): 'eflux_e_target',
             ('Q/Q_GB', 'ions'): 'eflux_i_target',
-            ('Pi/Pi_GB', 'ions'): 'mflux_target'}.get((quantity, species))
+            ('Pi/Pi_GB', 'ions'): 'mflux_target'}.get((quantity, species), None)
 
 
 def tgyro_radius_index(output, radius, use_rho):

@@ -130,8 +130,8 @@ def import_files(root, paths, loader, factory=dict):
             case_id = 'case_' + uuid.uuid4().hex[:12]
             record = factory()
             label = path.parent.name if path.name == 'input.gacode' else path.name
-            record.update(label=label, enabled=True, source=str(path), sha256=hashlib.sha256(raw).hexdigest(),
-                          info=info, radii='', extra='', runs=factory(), selected_run='')
+            record.update(dict(label=label, enabled=True, source=str(path), sha256=hashlib.sha256(raw).hexdigest(),
+                          info=info, radii='', extra='', runs=factory(), selected_run=''))
             record['input.gacode'] = copy.deepcopy(profile)
             cases[case_id] = record
             added.append(case_id)
@@ -147,14 +147,14 @@ def duplicate_case(root, case_id, factory=dict):
     duplicate = factory()
     duplicate.update({key: copy.deepcopy(value) for key, value in source.items()
                       if key not in ('runs', 'selected_run')})
-    duplicate.update(label=source['label'] + ' (copy)', enabled=True, runs=factory(), selected_run='')
+    duplicate.update(dict(label=source['label'] + ' (copy)', enabled=True, runs=factory(), selected_run=''))
     key = 'case_' + uuid.uuid4().hex[:12]
     cases[key] = duplicate
     return key
 
 
 def case_plan(settings, case):
-    radii = parse_radii(case.get('radii') or settings['radii'])
+    radii = parse_radii(case.get('radii', None) or settings['radii'])
     coordinate = settings['coordinate']
     if coordinate not in ('rho', 'r/a'):
         raise ValueError('未知半径坐标。')
@@ -204,7 +204,7 @@ def tgyro_input(profile, plan):
         'TGYRO_DEN_METHOD0': 1,
     }
     for index in range(1, 10):
-        ion = profile['IONS'].get(index)
+        ion = profile['IONS'].get(index, None)
         thermal = ion is not None and 'fast' not in str(ion[3]).lower()
         settings['TGYRO_CALC_FLAG' + str(index)] = int(ion is not None and (plan['include_ions'] == 'all' or thermal))
         settings['TGYRO_THERM_FLAG' + str(index)] = int(thermal)

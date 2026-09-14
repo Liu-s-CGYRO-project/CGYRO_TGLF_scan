@@ -14,7 +14,7 @@ def TGLF_var_group_scan(scan_vars, input_tglf=None):
     """
 
     if input_tglf is None:
-        input_tglf = root['TGLF']['FILES'].get('input.tglf')
+        input_tglf = root['TGLF']['FILES'].get('input.tglf', None)
     if input_tglf is None:
         raise ValueError('Pass the actual local TGLF input to define species groups')
     ns = int(input_tglf['NS'])

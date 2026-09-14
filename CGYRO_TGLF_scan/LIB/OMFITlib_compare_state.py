@@ -87,7 +87,7 @@ def sync_flags(state, key, items, selected_key=None):
     tokens = [str(item) for item in items]
     history = state.setdefault('_selector_keys', {})
     old = state.get(key, {})
-    previous = history.get(key)
+    previous = history.get(key, None)
     if previous is not None:
         enabled = {token for i, token in enumerate(previous) if old.get(i, old.get(str(i), False))}
     elif selected_key and selected_key in state:
@@ -113,7 +113,7 @@ def activate_source(state, source):
     Plot styling and user-edited scientific settings remain outside these snapshots.
     The first visit adopts legacy saved selections instead of erasing them.
     """
-    previous = state.get('_selection_source')
+    previous = state.get('_selection_source', None)
     if previous is None:
         state['_selection_source'] = source
         return
@@ -134,7 +134,7 @@ def plot_state(mode, state):
 
 def initialize_settings(root):
     physics = root.setdefault('SETTINGS', {}).setdefault('PHYSICS', {})
-    if physics.get('compare_mode') not in MODES:
+    if physics.get('compare_mode', None) not in MODES:
         physics['compare_mode'] = 'CGYRO_vs_TGLF'
     for mode in MODES:
         state = physics.setdefault(mode, {})
@@ -156,7 +156,7 @@ def initialize_settings(root):
             style.setdefault(key, default)
         if mode == 'TGLF_vs_TGLF':
             settings.setdefault('tglf_vs_tglf_mode', 'Spectra')
-            settings.setdefault('tglf_flux_merge_ions', settings.get('tglf_flux_ion_mode') != 'Split ions')
+            settings.setdefault('tglf_flux_merge_ions', settings.get('tglf_flux_ion_mode', None) != 'Split ions')
     return physics
 
 
@@ -172,14 +172,14 @@ def selection_check(root, mode=None):
     if mode not in MODES:
         errors.append('Choose a supported comparison mode.')
     if mode != 'TGLF_vs_TGLF':
-        if cg.get('runid') not in root.get('CGYRO_scan', {}).get('RUN_DB', {}):
+        if cg.get('runid', None) not in root.get('CGYRO_scan', {}).get('RUN_DB', {}):
             errors.append('Choose an available CGYRO run.')
         selections = [cg.get('selected_paras', {})]
-        if mode == 'CGYRO_vs_CGYRO' and cg.get('force_read_all_nr_items'):
+        if mode == 'CGYRO_vs_CGYRO' and cg.get('force_read_all_nr_items', None):
             selections = [cg.get('selected_paras_by_nr', {}).get(str(nr), {}) for nr in cg.get('nr_CGYRO', [])]
         if not any(has_values(v) for selected in selections for v in selected.values()):
             errors.append('Select at least one CGYRO parameter and value.')
-        if mode == 'CGYRO_vs_CGYRO' and not cg.get('nr_CGYRO'):
+        if mode == 'CGYRO_vs_CGYRO' and not cg.get('nr_CGYRO', None):
             errors.append('Select at least one CGYRO radius.')
         try:
             window = float(settings.get('ave_window', 0.02))
@@ -191,10 +191,10 @@ def selection_check(root, mode=None):
         key = 'selected_paras_2d' if tg.get('spectra_mode', '1D') == '2D' else 'selected_paras'
         if not any(has_values(v) for v in tg.get(key, {}).values()):
             errors.append('Select at least one TGLF parameter and value (both axes for 2D).')
-        if mode in ('TGLF_vs_TGLF', 'TGLF_vs_CGYRO') and not tg.get('rho_selected'):
+        if mode in ('TGLF_vs_TGLF', 'TGLF_vs_CGYRO') and not tg.get('rho_selected', None):
             errors.append('Select at least one TGLF radius.')
         if mode == 'CGYRO_vs_TGLF':
-            if not cg.get('nr_selected'):
+            if not cg.get('nr_selected', None):
                 errors.append('Select at least one CGYRO radius.')
             for nr in cg.get('nr_selected', []):
                 if not any(tg.get('rho_pair_flags', {}).get(str(nr), {}).values()):
@@ -202,9 +202,9 @@ def selection_check(root, mode=None):
         if mode == 'TGLF_vs_CGYRO':
             for rho in tg.get('rho_selected', []):
                 cfg = cg.get('rho_pair_cfg', {}).get(str(rho), {})
-                if not cfg.get('nr_selected') and not any(cfg.get('nr_flag', {}).values()):
+                if not cfg.get('nr_selected', None) and not any(cfg.get('nr_flag', {}).values()):
                     errors.append('Pair TGLF {} with a CGYRO radius.'.format(rho))
-    if settings.get('divide_by_ky') and settings.get('divide_by_ky2'):
+    if settings.get('divide_by_ky', None) and settings.get('divide_by_ky2', None):
         errors.append('Choose one spectrum scaling: raw, /ky, or /ky².')
     if mode == 'CGYRO_vs_CGYRO':
         from OMFITlib_compare_cgyro_selection import validate_options
@@ -226,7 +226,7 @@ def selection_check(root, mode=None):
                 raise ValueError
         except (TypeError, ValueError):
             errors.append('{} is outside the supported range.'.format(key))
-    if settings.get('plot_log_y'):
+    if settings.get('plot_log_y', None):
         warnings.append('Log Y hides zero/negative values, including stable gamma and signed omega.')
     return {'mode': mode, 'errors': errors, 'warnings': warnings,
             'summary': 'Ready to load selected curves.' if not errors else 'Selection needs attention.'}

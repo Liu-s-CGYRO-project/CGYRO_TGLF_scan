@@ -72,9 +72,9 @@ def _spectra(axes, items, ctx):
             axes[1, 1].plot(ky, gamma_error, label=label, linewidth=ctx['lw'])
         if ctx['highlight_max_gamma']:
             valid = np.isfinite(y_gamma) & np.isfinite(ky)
-            if ctx.get('plot_log_x'):
+            if ctx.get('plot_log_x', None):
                 valid &= ky > 0
-            if ctx.get('plot_log_y'):
+            if ctx.get('plot_log_y', None):
                 valid &= y_gamma > 0
             indices = np.flatnonzero(valid)
             if len(indices):
@@ -166,7 +166,7 @@ def _surface(fig, axes, item, ctx):
         axis.set_zlabel(divide_title(ctx, field))
         axis.set_title('{} vs {} ({})'.format(divide_title(ctx, field), item['para'], item['nr']))
         for name, coordinates in (('x', ky), ('y', parameter), ('z', values)):
-            if ctx.get('plot_log_' + name):
+            if ctx.get('plot_log_' + name, None):
                 if np.all(coordinates > 0):
                     getattr(axis, 'set_' + name + 'scale')('log')
                 else:
@@ -194,18 +194,18 @@ def render_page(notebook, ctx, label, items):
         apply_color_order_to_axes(axes, ctx)
         legend_rows = 0
         for axis in axes.ravel():
-            if ctx.get('plot_log_x'):
+            if ctx.get('plot_log_x', None):
                 axis.set_xscale('log')
-            if ctx.get('plot_log_y'):
+            if ctx.get('plot_log_y', None):
                 axis.set_yscale('log')
             labels = axis.get_legend_handles_labels()[1]
             if labels:
-                columns = 2 if len(labels) > 10 and ctx['style'].get('legend_location') != 'outside' else 1
+                columns = 2 if len(labels) > 10 and ctx['style'].get('legend_location', None) != 'outside' else 1
                 legend_rows = max(legend_rows, math.ceil(len(labels) / columns))
                 finalize_axis_legend(axis, dict(ctx, _legend_columns=columns))
             for spine in axis.spines.values():
                 spine.set_linewidth(ctx['bwith'])
-        if not ctx['style'].get('figure_height'):
+        if not ctx['style'].get('figure_height', None):
             height = max(fig.get_figheight(), rows * (.8 + legend_rows * ctx['fs2'] * 1.5 / 72.))
             fig.set_size_inches(fig.get_figwidth(), height, forward=True)
     for axis in axes.ravel():

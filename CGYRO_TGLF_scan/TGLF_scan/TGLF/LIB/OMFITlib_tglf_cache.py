@@ -68,14 +68,14 @@ def provenance(module, input_tglf, mode, extra=None):
 
 
 def matches(previous, current):
-    return bool(previous and current and current.get("reusable") and previous.get("reusable")
-                and current.get("sha256") and previous.get("sha256") == current["sha256"]
-                and previous.get("solver_sha256") == current.get("solver_sha256"))
+    return bool(previous and current and current.get("reusable", None) and previous.get("reusable", None)
+                and current.get("sha256", None) and previous.get("sha256", None) == current["sha256"]
+                and previous.get("solver_sha256", None) == current.get("solver_sha256", None))
 
 
 def prepare(results, spectra, key, records, current, factory=dict):
     """Discard stale or unproven derived data before running any new points."""
-    if not matches(records.get(key), current):
+    if not matches(records.get(key, None), current):
         results[key] = factory()
         spectra[key] = factory()
     results.setdefault(key, factory())

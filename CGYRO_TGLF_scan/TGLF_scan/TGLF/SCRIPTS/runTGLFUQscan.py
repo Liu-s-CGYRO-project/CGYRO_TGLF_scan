@@ -9,7 +9,7 @@ defaultVars(
     rv=root['INPUTS'].get('rv', None),
     nosamples=root['SETTINGS']['PHYSICS']['scanParameterSamples'],
     samplingmethod=root['SETTINGS']['PHYSICS']['inputParameterSamplingMethod'],
-    inputTGLF=root.get('FILES', {}).get('input.tglf'),
+    inputTGLF=root.get('FILES', {}).get('input.tglf', None),
     results='UQResults',
     results_spectra='UQResults_spectra',
     include_starting_param=True,

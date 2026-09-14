@@ -9,6 +9,7 @@ import sys
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
+from omfit_mapping import treeify
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / 'CGYRO_TGLF_scan/LIB'))
@@ -65,7 +66,7 @@ class UI:
         def record(*args, **kwargs):
             if name in ('Entry', 'ComboBox', 'CheckBox', 'FilePicker'):
                 parent, key = resolve_path(self.root, args[0])
-                parent.setdefault(key, copy.deepcopy(kwargs.get('default')))
+                parent.setdefault(key, copy.deepcopy(kwargs.get('default', None)))
             self.events.append((name, args, kwargs))
         return record
     def button(self, label):
@@ -73,9 +74,11 @@ class UI:
 
 
 class ProjectTest(unittest.TestCase):
+    tree_factory = dict
+
     def setUp(self):
-        self.root = fixture()
-        self.actions = project.ProjectActions(self.root)
+        self.root = treeify(fixture(), self.tree_factory)
+        self.actions = project.ProjectActions(self.root, self.tree_factory)
         self.cg = self.root['CGYRO_scan']
         self.tg = self.root['TGLF_scan']['TGLF']
         self.transfer = self.root['Transfer_tool']
@@ -83,7 +86,7 @@ class ProjectTest(unittest.TestCase):
     def configure(self, name='cgyro'):
         node = project.module(self.root, name)
         remote = node['SETTINGS']['REMOTE_SETUP']
-        remote.update(serverPicker='localhost', server='localhost', tunnel='', workDir='/tmp/test')
+        remote.update(dict(serverPicker='localhost', server='localhost', tunnel='', workDir='/tmp/test'))
         if name == 'cgyro':
             remote['localhost'] = dict(scheduler='local', environment='source /chosen/setup', executable='cgyro -e . -n 1')
         else:
@@ -209,7 +212,7 @@ class ProjectTest(unittest.TestCase):
 
     def test_collect_publishes_correct_dimension_without_resubmission(self):
         self.cg['RUN_MANIFEST'] = dict(status='submitted_or_finished', dimensions=2, points=['a'], workDir='/tmp/test')
-        setup = self.cg['SETTINGS']['SETUP']; setup.update(irun=1, idownsync=1, idimrun=1)
+        setup = self.cg['SETTINGS']['SETUP']; setup.update(dict(irun=1, idownsync=1, idimrun=1))
         def download():
             self.cg['RUN_MANIFEST']['status'] = 'loaded'
         def publish():
@@ -369,7 +372,7 @@ class ProjectTest(unittest.TestCase):
         self.assertNotIn('TGYRO', self.transfer['OUTPUTS'])
         self.assertEqual(self.transfer['INPUTS']['input.tglf']['SAT_RULE'], 0)
         archives = self.root['PROJECT_STATE']['activity'].values()
-        self.assertTrue(any(record.get('tgyro_result') == {'old_flux': [7, 8]} for record in archives))
+        self.assertTrue(any(record.get('tgyro_result', None) == {'old_flux': [7, 8]} for record in archives))
 
     def test_transfer_tgyro_seed_invalidates_previous_generation(self):
         self.transfer['OUTPUTS']['TGYRO'] = {'old_flux': [7, 8]}
@@ -392,7 +395,7 @@ class ProjectTest(unittest.TestCase):
         key, _ = self.pending()
         self.actions.resolve_input(key, True)
         self.assertEqual(self.tg['FILES']['input.tglf']['SAT_RULE'], 0)
-        self.assertTrue(any(r.get('previous_tglf_files', {}).get('result') == [42]
+        self.assertTrue(any(r.get('previous_tglf_files', {}).get('result', None) == [42]
                             for r in self.root['PROJECT_STATE']['activity'].values()))
 
     def test_cached_local_generation_keeps_current_input_and_results(self):
@@ -408,7 +411,7 @@ class ProjectTest(unittest.TestCase):
             pass
         def end():
             raise End()
-        env = dict(root=scan, OMFITtree=dict, OMFITx=SimpleNamespace(End=end), copy=copy,
+        env = dict(root=scan, OMFITtree=self.tree_factory, OMFITx=SimpleNamespace(End=end), copy=copy,
                    arange=np.arange, argmin=np.argmin, printi=lambda *args: None)
         with self.assertRaises(End):
             exec((REPO / 'CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/setup_tglf.py').read_text(encoding='utf-8'), env)
@@ -431,7 +434,7 @@ class ProjectTest(unittest.TestCase):
                         if fail:
                             raise RuntimeError('synthetic solver failure')
                     self.tg['SCRIPTS'][script].run.side_effect = run
-                    env = dict(root=scan, OMFITtree=dict, copy=copy, printi=lambda *args: None)
+                    env = dict(root=scan, OMFITtree=self.tree_factory, copy=copy, printi=lambda *args: None)
                     code = (REPO / 'CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/runScanAtRho.py').read_text(encoding='utf-8')
                     if fail:
                         with self.assertRaisesRegex(RuntimeError, 'synthetic'):
@@ -446,7 +449,7 @@ class ProjectTest(unittest.TestCase):
     def test_growth_scan_restores_single_file_after_success_or_failure(self):
         from unittest.mock import patch
         scan = self.root['TGLF_scan']
-        scan['SETTINGS']['PHYSICS'].update(Var_r=.5, RelativeChange_RLTS_1=.1)
+        scan['SETTINGS']['PHYSICS'].update(dict(Var_r=.5, RelativeChange_RLTS_1=.1))
         scan['input.tglf'] = {.5: tglf()}
         scan['TGLF_inputs_to_scan'] = {'RLTS_1': True}
         fake_lib = SimpleNamespace(TGLF_var_group_scan=lambda *args: {'RLTS_1': ['RLTS_1']})
@@ -457,7 +460,7 @@ class ProjectTest(unittest.TestCase):
                     raise RuntimeError('synthetic solver failure')
                 self.tg['FILES']['result'] = [7]
             self.tg['SCRIPTS']['runTGLF'].run.side_effect = run
-            env = dict(root=scan, OMFITtree=dict, copy=copy)
+            env = dict(root=scan, OMFITtree=self.tree_factory, copy=copy)
             env['defaultVars'] = lambda **kwargs: env.update(kwargs)
             code = (REPO / 'CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/runGrowthRateScans.py').read_text(encoding='utf-8')
             with patch.dict(sys.modules, OMFITlib_tglf=fake_lib):

@@ -75,7 +75,7 @@ def enable_legend_picking(ax):
             by_label = {str(line.get_label()): line for line in axes.get_lines()}
             handles = current.get_lines()
             for idx, text in enumerate(current.get_texts()):
-                line = by_label.get(text.get_text())
+                line = by_label.get(text.get_text(), None)
                 visible = line is None or line.get_visible()
                 text.set_alpha(1. if visible else .25)
                 if idx < len(handles):

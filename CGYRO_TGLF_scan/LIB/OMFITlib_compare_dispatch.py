@@ -48,7 +48,7 @@ def collect_comparison_pages(root, ctx):
     mode = ctx['compare_mode']
     if mode == 'TGLF_vs_TGLF':
         state = ctx['tglf_state']
-        key = 'selected_paras_2d' if state.get('spectra_mode') == '2D' else 'selected_paras'
+        key = 'selected_paras_2d' if state.get('spectra_mode', None) == '2D' else 'selected_paras'
         for rho in state.get('rho_selected', []):
             curves = []
             for number in (1, 2):
@@ -87,16 +87,16 @@ def export_comparison(root, ctx, pages):
             for curve in cg + tg:
                 for i in np.argsort(curve['ky']):
                     error = [curve['omega_error'][i], curve['gamma_error'][i]] if curve['kind'] == 'CGYRO' else ['', '']
-                    writer.writerow([title, curve['kind'], curve['label'], curve.get('nr'), curve.get('rho'),
+                    writer.writerow([title, curve['kind'], curve['label'], curve.get('nr', None), curve.get('rho', None),
                                      curve['para'], str(curve['value']), curve['ky'][i], curve['omega'][i], curve['gamma'][i], *error])
     def serial(value):
         return value.tolist() if hasattr(value, 'tolist') else str(value)
     metadata = {
         'format': 1, 'compare_mode': ctx['compare_mode'],
-        'normalization': 'main-ion' if ctx.get('normalize_main_ion') else 'native saved units',
+        'normalization': 'main-ion' if ctx.get('normalize_main_ion', None) else 'native saved units',
         'values': 'omega/gamma before display /ky or /ky² scaling; negative gamma is preserved',
         'std': 'CGYRO population standard deviation / absolute mean; blank for TGLF',
-        'averaging_fraction': ctx.get('ave_window'), 'plot_settings': ctx.get('plot_state', {}),
+        'averaging_fraction': ctx.get('ave_window', None), 'plot_settings': ctx.get('plot_state', {}),
         'diagnostics': ctx.get('_diagnostics', []),
     }
     (directory/'metadata.json').write_text(json.dumps(metadata, indent=2, ensure_ascii=False, default=serial), encoding='utf-8')
@@ -106,7 +106,7 @@ def export_comparison(root, ctx, pages):
 
 def run_plot(root):
     ctx = build_context(root)
-    if ctx.get('check_cgyro_output_now'):
+    if ctx.get('check_cgyro_output_now', None):
         return plot_cgyro_output_status(root, ctx)
     report = selection_check(root)
     if report['errors']:
@@ -115,12 +115,12 @@ def run_plot(root):
     if mode == 'CGYRO_vs_CGYRO':
         return root['PLOTS']['CGYRO_vs_CGYRO'].plot()
     try:
-        if mode == 'TGLF_vs_TGLF' and ctx.get('tglf_vs_tglf_mode') == 'Flux':
+        if mode == 'TGLF_vs_TGLF' and ctx.get('tglf_vs_tglf_mode', None) == 'Flux':
             return plot_tglf_vs_tglf(root, ctx)
         pages = list(collect_comparison_pages(root, ctx))
         if not pages or not any(cg or tg for _, cg, tg in pages):
             raise ValueError('No valid selected spectra. Check the source, radii and parameter values.')
-        if ctx['mode_state'].get('comparison_export_now'):
+        if ctx['mode_state'].get('comparison_export_now', None):
             return export_comparison(root, ctx, pages)
         if mode == 'TGLF_vs_TGLF':
             return plot_tglf_vs_tglf(root, ctx)
@@ -128,7 +128,7 @@ def run_plot(root):
         for title, cg, tg in pages:
             if not cg or not tg:
                 raise ValueError('Missing valid curves in one model: '+title)
-            if ctx.get('error_flag') == 'CGYRO-TGLF' and not ctx.get('plot_gamma_ratio'):
+            if ctx.get('error_flag', None) == 'CGYRO-TGLF' and not ctx.get('plot_gamma_ratio', None):
                 if len(cg) != 1 and len(tg) != 1:
                     raise ValueError('Choose exactly one reference curve in at least one model: '+title)
         notebook = FigureNotebook(0, 'CGYRO / TGLF comparison')

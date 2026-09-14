@@ -6,7 +6,7 @@ defaultVars(
     param2=root['SETTINGS']['PHYSICS']['scanParameter2D'],
     parameterRange2=root['SETTINGS']['PHYSICS']['scanParameter2DRange'],
     parameterRange=root['SETTINGS']['PHYSICS']['scanParameterRange'],
-    inputTGLF=root.get('FILES', {}).get('input.tglf'),
+    inputTGLF=root.get('FILES', {}).get('input.tglf', None),
     results='scanResults2D',
     results_spectra='scanResults2D_spectra',
     include_starting_param=True,
@@ -41,7 +41,7 @@ if include_starting_param:
         parameterRange = sorted(list(parameterRange) + [val1])
 cache_key = param2 + '+' + param
 current = cache['provenance'](root, inputTGLF, '2D', {'param': param, 'param2': param2, 'range': parameterRange, 'range2': parameterRange2})
-if not cache['matches'](cache_records.get(cache_key), current):
+if not cache['matches'](cache_records.get(cache_key, None), current):
     cache_records[cache_key + '_rows'] = {}
 cache['prepare'](results, results_spectra, cache_key, cache_records, current, OMFITtree)
 row_records = cache_records.setdefault(cache_key + '_rows', {})

@@ -24,7 +24,7 @@ def prepare_profiles_input(input_nodes, selected=None):
     raise ValueError('Load the selected statefile, pfile or input.profiles before generation')
 
 
-inputs, command = prepare_profiles_input(root['INPUTS'], root['SETTINGS']['PHYSICS'].get('start_from'))
+inputs, command = prepare_profiles_input(root['INPUTS'], root['SETTINGS']['PHYSICS'].get('start_from', None))
 setup = root['SETTINGS']['SETUP']
 workdir = setup['workDir']
 executable = setup.get('executable', '') + '\nset -e\ncommand -v profiles_gen >/dev/null\n' + command

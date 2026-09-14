@@ -22,7 +22,7 @@ def _get_cgyro_lin_node(root, ctx, nr, para, value):
         if key is None:
             return None
         node = node[key]
-    linear = node.get('lin') if hasattr(node, 'get') else None
+    linear = node.get('lin', None) if hasattr(node, 'get') else None
     return linear if hasattr(linear, 'keys') else None
 
 
@@ -151,7 +151,7 @@ def get_gamma_ratio_curve(root, ctx, nr, para, para_values):
     reference = None if reference is None or str(reference).strip() == '' else float(reference)
     if reference is not None and not np.isfinite(reference):
         raise ValueError('Reference scan value must be finite')
-    single = ctx.get('gamma_ref_mode') == 'single ky'
+    single = ctx.get('gamma_ref_mode', None) == 'single ky'
     targets = parse_gamma_ref_ky_values(ctx) if single else []
     if single and not targets:
         raise ValueError('Enter at least one ky value for the growth-rate ratio')

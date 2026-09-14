@@ -37,7 +37,7 @@ def read(node, path, default=None):
 
 def text_value(node, key):
     try:
-        value = node.get(key)
+        value = node.get(key, None)
         return '' if value is None else str(value).strip()
     except Exception:
         return ''  # An invalid OMFITexpression is reported as unresolved.
@@ -62,7 +62,7 @@ def input_digest(value):
 
 def pending_inputs(root, destination=None):
     return {key: value for key, value in read(root, ('PROJECT_STATE', 'activity'), {}).items()
-            if value.get('status') == 'awaiting_choice' and
+            if value.get('status', None) == 'awaiting_choice' and
             (destination is None or value.get('destination', 'tglf') == destination)}
 
 
@@ -117,13 +117,13 @@ def cgyro_input_issues(root):
     if pending_inputs(root, 'transfer'):
         return ['请先处理 Transfer tool 的 TGLF 输入覆盖选择']
     node = read(root, MODULES['cgyro'], {})
-    current = node.get('INPUTS', {}).get('input.cgyro')
+    current = node.get('INPUTS', {}).get('input.cgyro', None)
     if current is None:
         return ['先在 Transfer tool 准备 input.cgyro，再验证并传入 CGYRO']
     marker = read(root, ('PROJECT_STATE', 'pipeline', 'cgyro'), {})
     if not marker:
         return ['Transfer 输入准备尚未确认；请在“传递输入”中验证并送入 CGYRO']
-    source_path = marker.get('source')
+    source_path = marker.get('source', None)
     if not isinstance(source_path, (list, tuple)) or not source_path or source_path[0] != 'Transfer_tool':
         return ['输入传递记录无效，请重新验证并传递']
     source = read(root, source_path)
@@ -131,11 +131,11 @@ def cgyro_input_issues(root):
         return ['Transfer 源输入已移除，请重新准备和传递输入']
     try:
         validate_input(current, 'cgyro')
-        if transfer_upstream_digest(root) != marker.get('upstream_digest'):
+        if transfer_upstream_digest(root) != marker.get('upstream_digest', None):
             return ['Transfer 上游剖面或 TGLF 输入已经变化，请重新生成并传递 CGYRO 输入']
-        if input_digest(source) != marker.get('source_digest'):
+        if input_digest(source) != marker.get('source_digest', None):
             return ['Transfer 输入已经变化，请重新验证并传递给 CGYRO']
-        if input_digest(current) != marker.get('input_digest'):
+        if input_digest(current) != marker.get('input_digest', None):
             return ['CGYRO 输入已经变化，请在 Transfer tool 重新准备并传递']
     except (TypeError, ValueError) as exc:
         return [str(exc)]
@@ -144,9 +144,9 @@ def cgyro_input_issues(root):
 
 def collect_issues(root):
     manifest = read(root, ('CGYRO_scan', 'RUN_MANIFEST'), {})
-    if not manifest or manifest.get('status') not in ('submitted', 'submitted_or_finished', 'running', 'loaded', 'published'):
+    if not manifest or manifest.get('status', None) not in ('submitted', 'submitted_or_finished', 'running', 'loaded', 'published'):
         return ['尚无已执行 / 已提交的 CGYRO 运行；仅生成输入后不能收集结果']
-    if not manifest.get('points') or not manifest.get('workDir'):
+    if not manifest.get('points', None) or not manifest.get('workDir', None):
         return ['当前运行记录缺少扫描点或工作目录']
     return []
 
@@ -157,7 +157,7 @@ def comparison_issues(root, mode):
         problems.append('尚无已收集的 CGYRO 结果')
     if 'TGLF' in mode:
         tg = root.get('TGLF_scan', {})
-        if not any(tg.get(key) for key in ('scanResults', 'scanResults_spectra', 'scanResults2D', 'scanResults2D_spectra')):
+        if not any(tg.get(key, None) for key in ('scanResults', 'scanResults_spectra', 'scanResults2D', 'scanResults2D_spectra')):
             problems.append('尚无可供此绘图入口使用的 TGLF 扫描结果')
     return problems
 
@@ -211,7 +211,7 @@ def runtime_issues(root, name):
             for key in resource_keys:
                 try:
                     value = int(cfg.get(key, 0))
-                    if value < 1 or str(value) != str(cfg.get(key)).strip():
+                    if value < 1 or str(value) != str(cfg.get(key, None)).strip():
                         raise ValueError()
                 except (TypeError, ValueError):
                     problems.append(key + '必须为正整数')
@@ -254,7 +254,7 @@ def summary(root):
         'cgyro_input': 'input.cgyro' in cg.get('INPUTS', {}),
         'tglf_input': 'input.tglf' in read(tg, ('TGLF', 'FILES'), {}),
         'profiles': 'input.gacode' in read(tg, ('TGYRO', 'PROFILES_GEN', 'OUTPUTS'), {}),
-        'multi_cases': len(cases), 'multi_selected': sum(bool(c.get('enabled')) for c in cases.values()),
+        'multi_cases': len(cases), 'multi_selected': sum(bool(c.get('enabled', None)) for c in cases.values()),
         'cgyro_runs': len(cg.get('RUN_DB', {})),
         'cgyro_status': manifest.get('status', '尚无运行记录'),
         'tglf_radii': len(tg.get('scanResults_spectra', {})),
@@ -273,7 +273,7 @@ class ProjectActions:
         records = state.setdefault('activity', self.factory())
         key = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '_' + uuid.uuid4().hex[:8]
         record = self.factory()
-        record.update(id=key, title=title, created=datetime.now(timezone.utc).isoformat(), **values)
+        record.update(dict(id=key, title=title, created=datetime.now(timezone.utc).isoformat(), **values))
         records[key] = record
         return record
 
@@ -288,7 +288,7 @@ class ProjectActions:
         try:
             result = task.run(**kwargs)
         except BaseException as exc:
-            record.update(status='cancelled' if isinstance(exc, KeyboardInterrupt) else 'failed', error=str(exc))
+            record.update(dict(status='cancelled' if isinstance(exc, KeyboardInterrupt) else 'failed', error=str(exc)))
             self.settings['message'] = title + '：' + str(exc)
             raise
         record['status'] = 'returned'
@@ -321,7 +321,7 @@ class ProjectActions:
         if kind == 'cgyro':
             target = MODULES['transfer'] + ('Transfer_file', 'input.cgyro')
             self.replace('载入 Transfer tool 待准备输入', [(target, obj)])
-            self.settings.update(cgyro_file='', page='transfer')
+            self.settings.update(dict(cgyro_file='', page='transfer'))
             self.settings['message'] = 'input.cgyro 已载入 Transfer tool。请在“传递输入”中验证并送入 CGYRO。'
             return
         self.propose_tglf(obj, '导入 input.tglf：' + str(filename))
@@ -348,8 +348,8 @@ class ProjectActions:
             if target == 'cgyro':
                 pipeline = self.root['PROJECT_STATE'].setdefault('pipeline', self.factory())
                 marker = self.factory()
-                marker.update(source=list(source_path), source_digest=source_digest,
-                              input_digest=input_digest(read(self.root, path)), upstream_digest=upstream_digest, status='ready')
+                marker.update(dict(source=list(source_path), source_digest=source_digest,
+                              input_digest=input_digest(read(self.root, path)), upstream_digest=upstream_digest, status='ready'))
                 pipeline['cgyro'] = marker
         elif target == 'transfer':
             if kind != 'input.gacode':
@@ -389,12 +389,12 @@ class ProjectActions:
         if not picker:
             raise ValueError('请先选择服务器。')
         endpoint = self.resolve_server(node)
-        server = str(endpoint.get('server') or '')
+        server = str(endpoint.get('server', None) or '')
         if not server and picker == 'localhost':
             server = 'localhost'
         if not server:
             raise ValueError('OMFIT 个人配置未提供此服务器的连接信息。')
-        values = dict(server=server, tunnel=str(endpoint.get('tunnel') or ''),
+        values = dict(server=server, tunnel=str(endpoint.get('tunnel', None) or ''),
                       workDir=str(self.workdir(node, server)))
         remote.update(values)
         if name == 'cgyro':
@@ -406,13 +406,13 @@ class ProjectActions:
 
     def run_cgyro(self, prepare=False):
         node = module(self.root, 'cgyro')
-        if node['SETTINGS']['SETUP'].get('icgyro') != 1:
+        if node['SETTINGS']['SETUP'].get('icgyro', None) != 1:
             raise ValueError('此页面使用 CGYRO；旧 GYRO 提交后端不可用。')
         issues = cgyro_input_issues(self.root) + runtime_issues(self.root, 'cgyro')
         if issues:
             raise ValueError('；'.join(issues))
         setup = node['SETTINGS']['SETUP']
-        previous = setup.get('irun')
+        previous = setup.get('irun', None)
         try:
             setup['irun'] = 0 if prepare else 1
             if prepare:
@@ -452,7 +452,7 @@ class ProjectActions:
         self.call('收集 CGYRO 当前结果', MODULES['cgyro'] + ('SCRIPTS', 'downsync.py'))
         node = module(self.root, 'cgyro')
         setup = node['SETTINGS']['SETUP']
-        old_run, old_download = setup.get('irun'), setup.get('idownsync')
+        old_run, old_download = setup.get('irun', None), setup.get('idownsync', None)
         try:
             setup['irun'], setup['idownsync'] = 0, 0
             script = 'CGYROScan.py' if node['RUN_MANIFEST']['dimensions'] == 1 else 'CGYROScan_2d.py'
@@ -468,7 +468,7 @@ class ProjectActions:
         self.settings['message'] = LABELS[name] + '：已保存手动命令。'
 
     def use_generated_tglf(self):
-        selected = self.settings.get('generated_tglf_source')
+        selected = self.settings.get('generated_tglf_source', None)
         if selected not in generated_tglf_sources(self.root).values():
             raise ValueError('请先选择 TGYRO 生成的局部 TGLF 输入。')
         source = tuple(json.loads(selected))
@@ -512,10 +512,10 @@ class ProjectActions:
                      destination=destination,
                      current_digest=input_digest(current), incoming_digest=input_digest(incoming),
                      source=list(source_path) if source_path else [], differences=differences)
-        self.settings.update(page='review', message='目标已有 TGLF 输入。请查看参数差异后选择保留或覆盖。')
+        self.settings.update(dict(page='review', message='目标已有 TGLF 输入。请查看参数差异后选择保留或覆盖。'))
 
     def resolve_input(self, record_id, use_incoming):
-        record = pending_inputs(self.root).get(record_id)
+        record = pending_inputs(self.root).get(record_id, None)
         if record is None:
             raise ValueError('这条输入选择已经处理，请刷新页面。')
         if use_incoming:
@@ -538,7 +538,7 @@ class ProjectActions:
 
     def import_transfer_seed(self, kind):
         key = 'transfer_' + kind + '_file'
-        filename = self.settings.get(key)
+        filename = self.settings.get(key, None)
         if not filename:
             return
         incoming = self.readers[kind](filename)

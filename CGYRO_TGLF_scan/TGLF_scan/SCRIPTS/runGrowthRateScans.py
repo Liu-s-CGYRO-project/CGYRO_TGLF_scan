@@ -29,11 +29,11 @@ for variable in variables_to_scan.keys():
     percent_var[variable] = root['SETTINGS']['PHYSICS']['RelativeChange_%s' % variable]
 
 # Generate radial candidates without replacing the current single-file run.
-if not root.get('input.tglf'):
+if not root.get('input.tglf', None):
     root['SCRIPTS']['setup_tglf'].run()
 rho = root['SETTINGS']['PHYSICS']['Var_r']
 radial_input = copy.deepcopy(root['input.tglf'][rho])
-previous_files = root.get('TGLF', {}).get('FILES')
+previous_files = root.get('TGLF', {}).get('FILES', None)
 root['TGLF']['FILES'] = OMFITtree({'input.tglf': radial_input})
 try:
     # ----------------------------

@@ -43,8 +43,8 @@ def local_input_provenance():
         'inputs': TGYRO['INPUTS'],
     }, 'localdump', {'radial_grid': radial_grid})
 current = local_input_provenance()
-if rho in root.get('input.tglf', {}) and cache['matches'](root.get('_input_cache_provenance'), current):
-    if not root['TGLF'].get('FILES'):
+if rho in root.get('input.tglf', {}) and cache['matches'](root.get('_input_cache_provenance', None), current):
+    if not root['TGLF'].get('FILES', None):
         root['TGLF']['FILES'] = OMFITtree({'input.tglf': copy.deepcopy(root['input.tglf'][rho])})
     OMFITx.End()
 for key in ('input.tglf', 'tgyro_output', 'scanResults', 'scanResults_spectra',
@@ -73,7 +73,7 @@ root['tgyro_output'] = copy.deepcopy(root['TGYRO']['OUTPUTS']['output'])
 
 # Only initialize an empty single-file workspace. Existing inputs and results
 # are kept until the user reviews a generated input in the Project workbench.
-if not root['TGLF'].get('FILES'):
+if not root['TGLF'].get('FILES', None):
     root['TGLF']['FILES'] = OMFITtree({'input.tglf': copy.deepcopy(root['input.tglf'][rho])})
 printi('Local inputs ready. Project → TGLF → 参数与径向扫描 can compare and adopt a generated input.')
 

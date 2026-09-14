@@ -299,21 +299,21 @@ def build_context(root):
 
 def validate_options(settings):
     """Check active plot controls without loading any calculation data."""
-    if settings.get('linear_export_now'):
+    if settings.get('linear_export_now', None):
         return []
     mode = settings.get('plot_mode', 'Plot 2D')
     errors = []
     try:
         if mode == 'Plot single ky':
             parse_float_list_text(settings.get('single_ky_values', ''))
-        elif mode == 'Plot eigen ball' and settings.get('eigen_ky_mode') == 'single ky':
+        elif mode == 'Plot eigen ball' and settings.get('eigen_ky_mode', None) == 'single ky':
             if not parse_float_list_text(settings.get('eigen_ky_values', '')):
                 raise ValueError('Enter at least one ky value for the eigenfunction')
         elif is_gamma_ratio_plot_mode(mode):
             reference = settings.get('gamma_ref_value', '')
             if reference is not None and str(reference).strip() and not math.isfinite(float(reference)):
                 raise ValueError('Reference scan value must be finite')
-            if settings.get('gamma_ref_mode') == 'single ky' and not parse_float_list_text(settings.get('gamma_ref_ky_values', '')):
+            if settings.get('gamma_ref_mode', None) == 'single ky' and not parse_float_list_text(settings.get('gamma_ref_ky_values', '')):
                 raise ValueError('Enter at least one ky value for the growth-rate ratio')
         elif mode not in ('Plot 2D', 'Plot 3D', 'Plot eigen ball'):
             raise ValueError('Choose a supported CGYRO plot mode')
@@ -400,7 +400,7 @@ def _iter_selected_parameter_items(ctx, nr=None):
     selected_map = ctx.get('selected_paras', {})
     if nr is not None:
         selected_by_nr = ctx.get('selected_paras_by_nr', {})
-        if ctx.get('force_read_all_nr_items'):
+        if ctx.get('force_read_all_nr_items', None):
             selected_map = {}
         if hasattr(selected_by_nr, 'get'):
             selected_per_nr = selected_by_nr.get(str(nr), None)

@@ -363,8 +363,8 @@ def plot_on_axes(
         ax[0, 0].set_yscale('log')
         ax[1, 0].set_yscale('log')
 
-    ax[0, 1].set_title('Relative model difference' if ctx.get('error_flag') == 'CGYRO-TGLF' else 'Relative time fluctuation', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
-    ax[1, 1].set_title('Relative model difference' if ctx.get('error_flag') == 'CGYRO-TGLF' else 'Relative time fluctuation', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
+    ax[0, 1].set_title('Relative model difference' if ctx.get('error_flag', None) == 'CGYRO-TGLF' else 'Relative time fluctuation', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
+    ax[1, 1].set_title('Relative model difference' if ctx.get('error_flag', None) == 'CGYRO-TGLF' else 'Relative time fluctuation', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
     if show_error:
         error_line, = ax[0, 1].plot(ky, omega_error, linewidth=ctx['lw'], label=error_label)
         error_line._comparison_identity = label_str
@@ -550,7 +550,7 @@ def _plot_compare_page(fn, ctx, page_id, page_title, cgyro_curves, tglf_curves):
     all_curves = cgyro_curves + tglf_curves
     if not cgyro_curves or not tglf_curves:
         raise ValueError('No valid curves in one model for page {}. Check the selected source and values.'.format(page_id))
-    if not ctx.get('plot_gamma_ratio'):
+    if not ctx.get('plot_gamma_ratio', None):
         apply_cross_model_error_if_applicable(ctx, cgyro_curves, tglf_curves)
 
     if ctx.get('plot_gamma_ratio', False):
@@ -589,7 +589,7 @@ def _plot_compare_page(fn, ctx, page_id, page_title, cgyro_curves, tglf_curves):
             )
         return
 
-    if ctx.get('error_flag') == 'No_error' and ctx.get('comparison_layout', 'Overlay') == 'Overlay':
+    if ctx.get('error_flag', None) == 'No_error' and ctx.get('comparison_layout', 'Overlay') == 'Overlay':
         fig, axes = fn.subplots(nrows=2, ncols=1, figsize=(10., 6.5), label=page_id,
                                 sharex=True, sharey=False, squeeze=False)
         apply_figure_layout(fig, ctx)

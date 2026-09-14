@@ -26,17 +26,17 @@ class OMFITRunner:
         if settings['execution'] != 'module':
             raise ValueError('未知执行方式。')
         options = self.servers[module]
-        server = str(options.get('server') or '')
+        server = str(options.get('server', None) or '')
         if not server:
             raise ValueError('请先在 OMFIT 模块设置中配置 ' + relative.split('/')[0] + ' 的服务器。')
-        base = module['SETTINGS']['REMOTE_SETUP'].get('workDir')
+        base = module['SETTINGS']['REMOTE_SETUP'].get('workDir', None)
         if not base:
             base = self.workdir(module, server)
         base = str(base)
         if not PurePosixPath(base).is_absolute():
             raise ValueError('远程工作目录必须为 Linux 绝对路径。')
         remote = str(PurePosixPath(base) / 'tglf_multi' / relative) + '/'
-        return str(local) + os.sep, remote, server, str(options.get('tunnel') or '')
+        return str(local) + os.sep, remote, server, str(options.get('tunnel', None) or '')
 
     def preflight(self, settings):
         if not str(settings['tgyro_command']).strip() or not str(settings['tglf_command']).strip():
@@ -49,7 +49,7 @@ class OMFITRunner:
         local, remote, server, tunnel = self.endpoint(module, settings, name + '/' + relative)
         # A fresh leaf and clean=False protect every previous calculation.
         Path(local).mkdir(parents=True, exist_ok=False)
-        record.update(workdir=local, remotedir=remote, server=server, command=command, stdout=[], stderr=[])
+        record.update(dict(workdir=local, remotedir=remote, server=server, command=command, stdout=[], stderr=[]))
         script = '#!/bin/bash\nset -e\n' + str(settings['environment']) + '\n' + command + '\n'
         record['script'] = script
         code = self.ui.executable(module, inputs=inputs, outputs=['./'], clean=False,
@@ -84,7 +84,7 @@ class OMFITRunner:
                     raise RuntimeError('TGYRO localdump 缺少字段：' + key)
             # Preserve the exact dump separately from explicit user overrides.
             point = self.factory()
-            point.update(radius=radius, status='ready', attempts=self.factory())
+            point.update(dict(radius=radius, status='ready', attempts=self.factory()))
             point['localdump'] = copy.deepcopy(generated)
             point['input.tglf'] = copy.deepcopy(generated)
             for key, value in run['plan']['parameters'].items():
@@ -97,7 +97,7 @@ class OMFITRunner:
         settings = copy.deepcopy(dict(settings or run['settings']))
         attempt_id = 'attempt_' + stamp()
         attempt = self.factory()
-        attempt.update(status='running', created=datetime.now(timezone.utc).isoformat())
+        attempt.update(dict(status='running', created=datetime.now(timezone.utc).isoformat()))
         attempt['settings'] = settings
         attempt['input.tglf'] = copy.deepcopy(point['input.tglf'])
         point['attempts'][attempt_id] = attempt
@@ -110,7 +110,7 @@ class OMFITRunner:
             attempt['result'] = result
             attempt['status'] = 'complete'
         except BaseException as exc:
-            attempt.update(status='cancelled' if isinstance(exc, KeyboardInterrupt) else 'failed', error=str(exc))
+            attempt.update(dict(status='cancelled' if isinstance(exc, KeyboardInterrupt) else 'failed', error=str(exc)))
             raise
         return attempt
 
@@ -148,7 +148,7 @@ def run_selected(root, runner, action='all', factory=dict, progress=None):
     runner.preflight(settings)
     if action == 'run':
         for key, case in selected:
-            previous = case['runs'].get(case['selected_run'])
+            previous = case['runs'].get(case['selected_run'], None)
             if previous is None or previous['status'] in ('preparing', 'prepare_failed', 'cancelled'):
                 raise ValueError(case['label'] + '：请先生成输入。')
             if previous['plan'] != plans[key]:
@@ -160,9 +160,9 @@ def run_selected(root, runner, action='all', factory=dict, progress=None):
         if action != 'run':
             run_id = 'run_' + stamp()
             run = factory()
-            run.update(id=run_id, label=case['label'], created=datetime.now(timezone.utc).isoformat(),
+            run.update(dict(id=run_id, label=case['label'], created=datetime.now(timezone.utc).isoformat(),
                        source=case['source'], sha256=case['sha256'], plan=plans[key], profile_digest=digests[key],
-                       settings=copy.deepcopy(dict(settings)), status='preparing', points=factory(), preparation=factory())
+                       settings=copy.deepcopy(dict(settings)), status='preparing', points=factory(), preparation=factory()))
             run['input.gacode'] = copy.deepcopy(case['input.gacode'])
             case['runs'][run_id] = run
             case['selected_run'] = run_id
@@ -177,7 +177,7 @@ def run_selected(root, runner, action='all', factory=dict, progress=None):
                     runner.prepare(case, run)
                     run['status'] = 'ready'
                 except Exception as exc:
-                    run.update(status='prepare_failed', error=str(exc))
+                    run.update(dict(status='prepare_failed', error=str(exc)))
                     raise
             if action != 'prepare':
                 for point_id, point in run['points'].items():
@@ -191,7 +191,7 @@ def run_selected(root, runner, action='all', factory=dict, progress=None):
                         runner.calculate(run, point, point_id, settings=settings)
                         point['status'] = 'complete'
                     except Exception as exc:
-                        point.update(status='failed', error=str(exc))
+                        point.update(dict(status='failed', error=str(exc)))
                         if not settings['continue_on_error']:
                             run['status'] = 'partial'
                             raise

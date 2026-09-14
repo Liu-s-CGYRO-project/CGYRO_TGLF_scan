@@ -79,7 +79,7 @@ setup=root['SETTINGS']['SETUP']
 #                  }
 icgyro=setup['icgyro']
 rmtsetup=root['SETTINGS']['REMOTE_SETUP']
-manifest = root.get('RUN_MANIFEST')
+manifest = root.get('RUN_MANIFEST', None)
 if not manifest:
     raise ValueError('No run manifest. Prepare a run first; importing old result directories requires an explicit manifest.')
 rmtserver = manifest['server']

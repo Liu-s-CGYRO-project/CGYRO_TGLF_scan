@@ -31,7 +31,7 @@ def _export_linear_omega_gamma_vs_ky(ctx, nr, para, value, ky, omega, gamma,
     matrix = matrix[np.argsort(matrix[:, 0], kind='stable')]
     header = '\n'.join([
         'CGYRO_vs_CGYRO raw linear spectrum',
-        'runid={!r}; nr={!r}; parameter={!r}; value={!r}'.format(ctx.get('runid'), nr, para, value),
+        'runid={!r}; nr={!r}; parameter={!r}; value={!r}'.format(ctx.get('runid', None), nr, para, value),
         'normalize_main_ion={}; tail_fraction={}'.format(ctx.get('normalize_main_ion', False), ctx['ave_window']),
         'native units: ky=k_y*rho_s; omega/gamma=c_s/a',
         'main-ion option: ky *= sqrt(MASS)/Z; frequency/std *= sqrt(MASS), with the existing input species convention',

@@ -107,7 +107,7 @@ def _parse_tglf_2d_value_pair(value):
 
 def collect_tglf_series(root, ctx, rho, para, value, mode_idx=1):
     """Read only the selected 1D/2D source; preserve optional missing second modes."""
-    dimension = ctx.get('tglf_state', {}).get('spectra_mode')
+    dimension = ctx.get('tglf_state', {}).get('spectra_mode', None)
     if dimension is None:
         dimension = '2D' if isinstance(value, (list, tuple, ndarray)) else '1D'
     key = 'scanResults2D_spectra' if dimension == '2D' else 'scanResults_spectra'
@@ -143,7 +143,7 @@ def apply_cross_model_error_if_applicable(ctx, cgyro_curves, tglf_curves):
     1) exactly one TGLF curve (reference), compare all CGYRO curves to it;
     2) exactly one CGYRO curve (reference), compare all TGLF curves to it.
     """
-    if ctx.get('error_flag') != 'CGYRO-TGLF':
+    if ctx.get('error_flag', None) != 'CGYRO-TGLF':
         return
 
     if len(tglf_curves) == 1 and len(cgyro_curves) >= 1:
@@ -193,7 +193,7 @@ def read_settings(root, ctx, compare_mode):
     """
     tglf_state = ctx['tglf_state']
     cgyro_state = ctx['cgyro_state']
-    selected_key = 'selected_paras_2d' if tglf_state.get('spectra_mode') == '2D' else 'selected_paras'
+    selected_key = 'selected_paras_2d' if tglf_state.get('spectra_mode', None) == '2D' else 'selected_paras'
     tglf_selected_paras = dict(tglf_state.get(selected_key, {}))
     cgyro_selected_paras = cgyro_state.get('selected_paras', {})
     runid = cgyro_state.get('runid', '')

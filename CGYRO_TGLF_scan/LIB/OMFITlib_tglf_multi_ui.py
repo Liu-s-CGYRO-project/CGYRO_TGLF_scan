@@ -74,8 +74,8 @@ class MultiInputUI:
         if self.settings['execution'] == 'module':
             for name in ('TGYRO', 'TGLF'):
                 remote = self.root['TGLF_scan'][name]['SETTINGS']['REMOTE_SETUP']
-                ui.Label('{}: {}；目录 {}'.format(name, remote.get('serverPicker') or remote.get('server') or '未配置',
-                                                 remote.get('workDir') or 'OMFIT 自动工作目录'), align='left')
+                ui.Label('{}: {}；目录 {}'.format(name, remote.get('serverPicker', None) or remote.get('server', None) or '未配置',
+                                                 remote.get('workDir', None) or 'OMFIT 自动工作目录'), align='left')
             ui.Label('服务器在相应模块 Setup 中配置；命令在登录节点或已分配的计算节点同步执行。', align='left')
         ui.Entry(self.prefix + "['environment']", '环境初始化', default='', multiline=True,
                  help='例如 source /path/to/gacode/shared/bin/gacode_setup；在 TGYRO / TGLF 命令之前执行。')
@@ -89,9 +89,9 @@ class MultiInputUI:
         selected_cases = [case for case in self.cases.values() if case['enabled']]
         run_issues = []
         for case in selected_cases:
-            run = case['runs'].get(case['selected_run'])
+            run = case['runs'].get(case['selected_run'], None)
             try:
-                if not run or run['status'] in ('preparing', 'prepare_failed', 'cancelled') or not run.get('points'):
+                if not run or run['status'] in ('preparing', 'prepare_failed', 'cancelled') or not run.get('points', None):
                     raise ValueError('请先生成输入')
                 if run['plan'] != case_plan(self.settings, case) or run['profile_digest'] != profile_digest(case['input.gacode']):
                     raise ValueError('输入或参数已变化，请重新生成')
@@ -104,7 +104,7 @@ class MultiInputUI:
             ui.Button('生成并运行', self.command('run_tglf_multi', action='all'), updateGUI=True, state='normal' if selected else 'disabled')
         if run_issues:
             ui.Label('；'.join(run_issues), align='left')
-        can_plot = any('result' in point.get('attempts', {}).get(point.get('selected_attempt'), {})
+        can_plot = any('result' in point.get('attempts', {}).get(point.get('selected_attempt', None), {})
                        for case in selected_cases
                        for point in case['runs'].get(case['selected_run'], {}).get('points', {}).values())
         with ui.same_row():
@@ -119,16 +119,16 @@ class MultiInputUI:
             choices = {'{} | {} | {}'.format(run['created'], STATUS.get(run['status'], run['status']), run_id[-8:]): run_id
                        for run_id, run in case['runs'].items()}
             ui.ComboBox("root['TGLF_CASES'][{!r}]['selected_run']".format(key), choices, '运行记录', updateGUI=True)
-            run = case['runs'].get(case['selected_run'])
+            run = case['runs'].get(case['selected_run'], None)
             if run is None:
                 continue
             ui.Label('{}={}；参数 {}'.format(run['plan']['coordinate'], run['plan']['radii'], run['plan']['parameters']), align='left')
-            if run.get('error'):
+            if run.get('error', None):
                 ui.Label(run['error'], align='left')
             for point in run['points'].values():
                 ui.Label('{}={}：{}{}'.format(run['plan']['coordinate'], point['radius'], STATUS.get(point['status'], point['status']),
                                             '；' + point['error'] if point['status'] == 'failed' else ''), align='left')
-                attempt = point['attempts'].get(point.get('selected_attempt'))
+                attempt = point['attempts'].get(point.get('selected_attempt', None), None)
                 if attempt and attempt['status'] == 'complete':
                     ui.Label('结果目录：' + attempt['workdir'], align='left')
                     from OMFITlib_tglf_multi_plot import flux_summary

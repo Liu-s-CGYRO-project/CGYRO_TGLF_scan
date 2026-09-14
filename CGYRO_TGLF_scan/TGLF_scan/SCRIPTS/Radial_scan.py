@@ -10,7 +10,7 @@ current = {rho: cache['provenance'](root['TGLF'], root['input.tglf'][rho], 'radi
 if not recalculate:
     rho_needed = []
     for rho in rho_scan:
-        if rho in flx and rho in spec and cache['matches'](records.get(rho), current[rho]):
+        if rho in flx and rho in spec and cache['matches'](records.get(rho, None), current[rho]):
             printi('Experimental fluxes and spectra already calculated for %s' % rho)
             continue
         rho_needed.append(rho)

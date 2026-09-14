@@ -38,5 +38,5 @@ root['input.tglf'] = list(results['input_tglf'].values())[0]
 
 # Set up initial input.tglf
 rho = root['SETTINGS']['PHYSICS']['rho']
-if rho in root['input.tglf'] and not root['TGLF'].get('FILES'):
+if rho in root['input.tglf'] and not root['TGLF'].get('FILES', None):
     root['TGLF']['FILES'] = OMFITtree({'input.tglf': copy.deepcopy(root['input.tglf'][rho])})

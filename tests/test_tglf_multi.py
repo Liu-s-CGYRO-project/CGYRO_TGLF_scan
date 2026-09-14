@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import Mock
+from omfit_mapping import treeify
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -32,6 +33,8 @@ def result():
 
 
 class TestMultiInput(unittest.TestCase):
+    tree_factory = dict
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -39,11 +42,12 @@ class TestMultiInput(unittest.TestCase):
         self.root = {'SETTINGS': {}, 'TGLF_scan': {name: {'SETTINGS': {'REMOTE_SETUP': {}}} for name in ('TGYRO', 'TGLF')},
                      'SCRIPTS': {name: Mock() for name in ('import_tglf_multi', 'run_tglf_multi')},
                      'PLOTS': {'TGLF_multi': Mock()}}
-        self.settings, self.cases = data.initialize(self.root)
+        self.root = treeify(self.root, self.tree_factory)
+        self.settings, self.cases = data.initialize(self.root, self.tree_factory)
         self.path = self.base / 'case A' / 'input.gacode'
         self.path.parent.mkdir()
         self.path.write_text('synthetic profiles fixture')
-        self.case_id = data.import_files(self.root, [self.path], lambda *a, **k: profile())[0][0]
+        self.case_id = data.import_files(self.root, [self.path], lambda *a, **k: profile(), factory=self.tree_factory)[0][0]
         self.case = self.cases[self.case_id]
         self.calls = []
         self.fail_tglf = False
@@ -67,11 +71,11 @@ class TestMultiInput(unittest.TestCase):
 
         self.runner = execution.OMFITRunner(self.root, Mock(executable=fake_execute), read_dump,
                                             lambda name, fromString: fromString, lambda path: result(),
-                                            lambda *a: str(self.base / 'work'), {}, dict)
+                                            lambda *a: str(self.base / 'work'), {}, self.tree_factory)
         self.addCleanup(plt.close, 'all')
 
     def run_cases(self, action='all'):
-        return execution.run_selected(self.root, self.runner, action)
+        return execution.run_selected(self.root, self.runner, action, self.tree_factory)
 
     def latest(self):
         return self.case['runs'][self.case['selected_run']]
@@ -101,7 +105,7 @@ class TestMultiInput(unittest.TestCase):
         other = self.base / 'case B' / 'input.gacode'
         other.parent.mkdir()
         other.write_text('second synthetic input')
-        added, errors = data.import_files(self.root, [self.path, self.path, other], lambda *a, **k: original)
+        added, errors = data.import_files(self.root, [self.path, self.path, other], lambda *a, **k: original, factory=self.tree_factory)
         original['ne'][:] = 99
         self.assertEqual(len(added), 2)
         self.assertEqual([self.cases[key]['label'] for key in added], ['case A', 'case B'])
@@ -110,13 +114,13 @@ class TestMultiInput(unittest.TestCase):
         self.assertEqual(self.path.read_text(), 'synthetic profiles fixture')
 
     def test_import_partial_failures_leave_valid_cases(self):
-        added, errors = data.import_files(self.root, [self.path, self.base / 'missing'], lambda *a, **k: profile())
+        added, errors = data.import_files(self.root, [self.path, self.base / 'missing'], lambda *a, **k: profile(), factory=self.tree_factory)
         self.assertEqual((len(added), len(errors)), (1, 1))
 
     def test_invalid_profile_fails_at_import(self):
         bad = profile()
         bad['rho'][2] = np.nan
-        added, errors = data.import_files(self.root, [self.path], lambda *a, **k: bad)
+        added, errors = data.import_files(self.root, [self.path], lambda *a, **k: bad, factory=self.tree_factory)
         self.assertFalse(added)
         self.assertIn('rho', errors[0])
 
@@ -148,7 +152,7 @@ class TestMultiInput(unittest.TestCase):
         self.settings['extra'] = 'NKY=18'
         self.case['extra'] = 'NKY=24; SAT_RULE=2'
         self.run_cases()
-        copy_id = data.duplicate_case(self.root, self.case_id)
+        copy_id = data.duplicate_case(self.root, self.case_id, factory=self.tree_factory)
         self.assertFalse(self.cases[copy_id]['runs'])
         self.cases[copy_id]['extra'] = 'NKY=16'
         self.assertEqual(self.latest()['plan']['parameters']['NKY'], 24)
@@ -218,14 +222,14 @@ class TestMultiInput(unittest.TestCase):
         self.assertIn('/custom/bin/tglf -e .', self.calls[-1]['script'][0])
 
     def test_all_cases_preflight_before_external_execution(self):
-        key = data.duplicate_case(self.root, self.case_id)
+        key = data.duplicate_case(self.root, self.case_id, factory=self.tree_factory)
         self.cases[key]['radii'] = 'nan'
         with self.assertRaises(ValueError):
             self.run_cases()
         self.assertFalse(self.calls)
 
     def test_one_case_failure_does_not_stop_other_cases(self):
-        data.duplicate_case(self.root, self.case_id)
+        data.duplicate_case(self.root, self.case_id, factory=self.tree_factory)
         prepare = self.runner.prepare
         def first_fails(case, run):
             if case is self.case:

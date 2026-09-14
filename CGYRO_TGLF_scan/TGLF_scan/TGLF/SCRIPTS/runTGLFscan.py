@@ -4,7 +4,7 @@
 defaultVars(
     param=root['SETTINGS']['PHYSICS']['scanParameter'],
     parameterRange=root['SETTINGS']['PHYSICS']['scanParameterRange'],
-    inputTGLF=root.get('FILES', {}).get('input.tglf'),
+    inputTGLF=root.get('FILES', {}).get('input.tglf', None),
     results='scanResults',
     results_spectra='scanResults_spectra',
     include_starting_param=True,

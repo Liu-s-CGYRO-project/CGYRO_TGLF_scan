@@ -81,7 +81,7 @@ class CaseSelection(ComparisonWidgets):
         run, _ = self._choose_cgyro(cg, lambda *k: path('CGYRO', *k))
         results, rhos = self._choose_tglf(tg, lambda *k: path('TGLF', *k), select_radii=False)
         pairing_source = '{}|{}'.format(cg.get('runid', ''), tg.get('spectra_mode', '1D'))
-        if tg.get('_pairing_run') not in (None, pairing_source):
+        if tg.get('_pairing_run', None) not in (None, pairing_source):
             tg['rho_pair_flags'] = {}
         tg['_pairing_run'] = pairing_source
         selected = cg.get('nr_selected', [])
@@ -95,7 +95,7 @@ class CaseSelection(ComparisonWidgets):
             self._prune_mapping_keys(flags, [str(rho) for rho in rhos])
             self.ui.Label('Pair {} with TGLF radii'.format(nr), align='left')
             self._render_key_checkbox_grid(lambda rho: path('TGLF', 'rho_pair_flags', key, str(rho)), rhos)
-            paired_rhos.extend(rho for rho in rhos if flags.get(str(rho)))
+            paired_rhos.extend(rho for rho in rhos if flags.get(str(rho), None))
         self._cgyro_parameters(cg, lambda *k: path('CGYRO', *k), run, selected)
         self._tglf_parameters(tg, path, results, list(dict.fromkeys(paired_rhos)))
 
@@ -135,7 +135,7 @@ class CaseSelection(ComparisonWidgets):
             return
         self.ui.CheckBox(path('force_read_all_nr_items'), 'Select parameters separately for each radius',
                          default=False, updateGUI=True)
-        if not state.get('force_read_all_nr_items'):
+        if not state.get('force_read_all_nr_items', None):
             parameters = self._intersection_of_keysets({nr: run[nr].keys() for nr in radii if nr in run})
             self.ui.Label('Common CGYRO parameters', align='left')
             self._render_parameter_entries(
@@ -157,7 +157,7 @@ class CaseSelection(ComparisonWidgets):
                 flags.setdefault(name, name in values and self._is_nonempty_selection(values[name]))
             self._render_key_checkbox_grid(lambda name: path('para_list_flag_by_nr', str(nr), name), names)
             for name in names:
-                if not flags.get(name):
+                if not flags.get(name, None):
                     values.pop(name, None)
                     continue
                 values.setdefault(name, self._normalize_value_list(node[name].keys()))

@@ -164,7 +164,7 @@ class ProjectUI:
         self.label('从剖面准备局部输入，再选择径向、1D、2D 或 UQ 扫描。')
         generated = generated_tglf_sources(self.root)
         if generated:
-            if self.settings.get('generated_tglf_source') not in generated.values():
+            if self.settings.get('generated_tglf_source', None) not in generated.values():
                 self.settings['generated_tglf_source'] = next(iter(generated.values()))
             self.ui.ComboBox(self.prefix + "['generated_tglf_source']", generated, '已生成输入的半径', updateGUI=True)
             self.ui.Button('比较并传入当前 TGLF 单文件', self.actions.use_generated_tglf, updateGUI=True)
@@ -193,7 +193,7 @@ class ProjectUI:
             self.nav('返回 Transfer tool', 'transfer')
         for key, record in pending.items():
             self.ui.Separator(record['title'])
-            target = 'Transfer tool 的 TGLF 种子输入' if record.get('destination') == 'transfer' else 'TGLF 当前单文件输入'
+            target = 'Transfer tool 的 TGLF 种子输入' if record.get('destination', None) == 'transfer' else 'TGLF 当前单文件输入'
             self.label('目标：' + target + '。当前文件可能由 TGYRO 生成或由你导入。\n'
                        '下面逐项比较参数；选择整体保留或整体替换，不自动混合两套输入。')
             with self.ui.same_row():
@@ -236,7 +236,7 @@ class ProjectUI:
             self.label('配置检查：' + ('；'.join(runtime_issues(self.root, name)) or '基础字段已填写；目标程序与资源尚未验证'))
 
     def select_runtime(self, name):
-        self.settings.update(runtime_module=name, page='run')
+        self.settings.update(dict(runtime_module=name, page='run'))
 
     def render_run(self):
         self.ui.Tab('环境设置')
@@ -250,7 +250,7 @@ class ProjectUI:
         self.ui.Tab('运行记录')
         manifest = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST'), {})
         self.ui.Separator('CGYRO 当前运行')
-        self.label('状态：{}；作业：{}\n目录：{}'.format(STATUS.get(manifest.get('status'), manifest.get('status', '尚无记录')),
+        self.label('状态：{}；作业：{}\n目录：{}'.format(STATUS.get(manifest.get('status', None), manifest.get('status', '尚无记录')),
                     manifest.get('job_id', '—'), manifest.get('workDir', '—')))
         self.guarded('收集 CGYRO 当前结果', self.actions.collect, collect_issues(self.root))
         self.ui.Separator('TGLF 多剖面运行')
@@ -258,8 +258,8 @@ class ProjectUI:
         if not cases:
             self.label('尚无多剖面案例。')
         for case in cases.values():
-            run = case.get('runs', {}).get(case.get('selected_run'), {})
-            self.label('{}：{}'.format(case.get('label', '未命名案例'), STATUS.get(run.get('status'), run.get('status', '尚未运行'))))
+            run = case.get('runs', {}).get(case.get('selected_run', None), {})
+            self.label('{}：{}'.format(case.get('label', '未命名案例'), STATUS.get(run.get('status', None), run.get('status', '尚未运行'))))
         self.nav('选择记录 / 重试 / 查看错误', 'multi')
         self.label('这里显示 Project 保存的状态。不会在打开页面时轮询或提交任务。')
         self.ui.Tab('操作与输入历史')
@@ -269,8 +269,8 @@ class ProjectUI:
         for record in list(records.values())[-20:][::-1]:
             self.ui.Separator(record['title'])
             self.label('{} · {}{}'.format(record['created'], STATUS.get(record['status'], record['status']),
-                '\n' + record['error'] if record.get('error') else ''))
-            if record.get('previous_inputs'):
+                '\n' + record['error'] if record.get('error', None) else ''))
+            if record.get('previous_inputs', None):
                 self.label('保留的旧输入：' + '；'.join(record['previous_inputs'].keys()))
         self.label('完整历史在 Project → PROJECT_STATE 中；输入历史和旧结果随工程保存。')
 
@@ -289,7 +289,7 @@ class ProjectUI:
         for key, label in [('server', '实际服务器'), ('tunnel', '隧道'), ('workDir', '远程工作目录')]:
             self.ui.Entry(location(base + ('REMOTE_SETUP', key)), label)
         if name == 'cgyro':
-            cfg = remote.get(picker)
+            cfg = remote.get(picker, None)
             if isinstance(cfg, dict):
                 self.label('以下为 CGYRO 提交器实际使用的配置。')
                 path = base + ('REMOTE_SETUP', picker)
@@ -308,8 +308,8 @@ class ProjectUI:
         else:
             command = text_value(node['SETTINGS']['SETUP'], 'executable')
             self.label('当前命令：\n' + (command or '未解析 / 未设置'))
-            if self.settings.get('command_module') != name:
-                self.settings.update(command_module=name, command_draft=command)
+            if self.settings.get('command_module', None) != name:
+                self.settings.update(dict(command_module=name, command_draft=command))
             self.ui.Entry(self.prefix + "['command_draft']", '编辑执行命令', default='', multiline=True)
             self.ui.Button('保存为手动命令', lambda: self.actions.save_command(name), updateGUI=True)
             if name == 'transfer':
