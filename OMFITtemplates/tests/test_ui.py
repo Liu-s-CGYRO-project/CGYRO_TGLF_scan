@@ -65,6 +65,39 @@ class UITest(unittest.TestCase):
         self.assertEqual(self.app.template_path.get(), self.template)
         self.assertTrue(self.app.apply_button.instate(['disabled']))
 
+    def test_window_opens_with_python39_named_font_api(self):
+        from tkinter import font as tkfont
+        child = tk.Toplevel(self.root)
+        self.addCleanup(lambda: child.destroy() if child.winfo_exists() else None)
+        # Python 3.9 accepts only the name; 3.10 added the root argument.
+        def legacy_nametofont(name):
+            return tkfont.Font(name=name, exists=True)
+        with patch('OMFITlib_template_ui.tkfont.nametofont', legacy_nametofont):
+            manager = TemplateManager(child, library=self.library, preferences=self.base / 'legacy-font.json')
+        self.addCleanup(lambda: manager.close() if manager.alive else None)
+        self.assertEqual(len(manager.tabs.tabs()), 4)
+        self.assertGreater(manager._metrics_font.measure('模板管理'), 0)
+
+    def test_font_uses_target_interpreter_without_changing_default_font(self):
+        from tkinter import font as tkfont
+        other = tk.Tk()
+        other.withdraw()
+        def destroy_other():
+            try:
+                other.destroy()
+            except tk.TclError:
+                pass  # manager.close() already destroyed this interpreter.
+        self.addCleanup(destroy_other)
+        primary = tkfont.Font(root=self.root, name='TkDefaultFont', exists=True)
+        before = primary.actual()
+        target = tkfont.Font(root=other, name='TkDefaultFont', exists=True)
+        target.configure(size=19)
+        manager = TemplateManager(other, library=self.library, preferences=self.base / 'other-font.json')
+        self.addCleanup(lambda: manager.close() if manager.alive else None)
+        self.assertEqual(manager.font[1], 19)
+        self.assertEqual(primary.actual(), before)
+        self.assertIn('TkDefaultFont', tkfont.names(root=other))
+
     def test_preview_then_apply_from_ui(self):
         self.select()
         self.app._preview()

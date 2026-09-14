@@ -92,7 +92,9 @@ class TemplateManager:
         height = min(800, max(680, w.winfo_screenheight() - 100))
         w.geometry('{}x{}'.format(width, height))
         w.minsize(940, 680)
-        default = tkfont.nametofont('TkDefaultFont', root=w).actual()
+        # nametofont(root=...) requires Python 3.10; Font supports 3.9 and
+        # still binds to this window's interpreter in an embedded OMFIT session.
+        default = tkfont.Font(root=w, name='TkDefaultFont', exists=True).actual()
         available = set(tkfont.families(root=w))
         family = next((candidate for candidate in ('Noto Sans CJK SC', 'Source Han Sans SC',
                        'WenQuanYi Micro Hei', 'Noto Sans SC') if candidate in available), default['family'])

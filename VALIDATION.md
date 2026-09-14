@@ -1,4 +1,13 @@
-# 验证记录 · 2026.09.13.1
+# 验证记录 · 2026.09.14
+
+本版将模板管理器更新为 **1.2.2**，修复 Python 3.9 下启动时报 `nametofont() got an unexpected keyword argument 'root'` 的兼容问题。
+
+- 先用旧版 `nametofont(name)` 签名配合真实 Linux Tk 窗口复现报错，再改用 Python 3.9 支持的 `Font(root=window, name='TkDefaultFont', exists=True)`。
+- 管理器 91 项 Linux 回归测试通过；新增覆盖旧字体接口下完整界面初始化，以及目标 Tk 解释器的字体绑定。确认不会更改另一 Tk 窗口的默认字体。
+- 测试环境仍为 Python 3.10 / Tk 8.6；旧接口用与 Python 3.9 一致的签名复现，未声称完成完整 Python 3.9 环境验收。兼容接口已核对 CPython 3.9 的 `Lib/tkinter/font.py`。
+- 工程总控和计算流程代码沿用上一版；以下 133 项工程测试记录为上一版验证结果。本版发布包重新检查语法、引用、模板校验及旧工程升级保留。
+
+以下保留 2026.09.13.1 的验证背景：
 
 本版将默认界面改为 Linux OMFIT 原生 **Project 总控**，统一 Transfer、CGYRO、TGLF、多剖面计算、运行记录、绘图和 GitHub 模板入口。
 
