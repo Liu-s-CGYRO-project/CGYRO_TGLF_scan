@@ -383,6 +383,7 @@
 ['OMFITtemplates']['LIB']['OMFITlib_template_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_ui.py <-:-:-> {}
 ['OMFITtemplates']['LIB']['OMFITlib_template_paths'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_paths.py <-:-:-> {}
 ['OMFITtemplates']['LIB']['OMFITlib_template_github'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_github.py <-:-:-> {}
+['OMFITtemplates']['LIB']['OMFITlib_template_proxy'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_proxy.py <-:-:-> {}
 ['OMFITtemplates']['LIB']['OMFITlib_template_session'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_session.py <-:-:-> {}
 ['OMFITtemplates']['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./OMFITtemplates/SettingsNamelist.txt <-:-:-> {}
 ['OMFITtemplates']['help'] <-:-:-> OMFIThelp <-:-:-> ./OMFITtemplates/help.rst <-:-:-> {}
@@ -393,6 +394,7 @@
 ['OMFITtemplates']['SOURCE']['start_manager.sh'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/start_manager.sh <-:-:-> {}
 ['OMFITtemplates']['TESTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['OMFITtemplates']['TESTS']['test_github.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_github.py <-:-:-> {}
+['OMFITtemplates']['TESTS']['test_proxy.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_proxy.py <-:-:-> {}
 ['OMFITtemplates']['TESTS']['test_linux.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_linux.py <-:-:-> {}
 ['OMFITtemplates']['TESTS']['test_templates.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_templates.py <-:-:-> {}
 ['OMFITtemplates']['TESTS']['test_ui.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_ui.py <-:-:-> {}

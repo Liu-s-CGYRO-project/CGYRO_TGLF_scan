@@ -1,0 +1,75 @@
+{
+  "viewports": [
+    {
+      "window": "manager",
+      "tab": 1,
+      "width": 940,
+      "height": 680,
+      "controls": 15
+    },
+    {
+      "window": "manager",
+      "tab": 2,
+      "width": 940,
+      "height": 680,
+      "controls": 12
+    },
+    {
+      "window": "manager",
+      "tab": 3,
+      "width": 940,
+      "height": 680,
+      "controls": 14
+    },
+    {
+      "window": "manager",
+      "tab": 4,
+      "width": 940,
+      "height": 680,
+      "controls": 7
+    },
+    {
+      "window": "manager",
+      "tab": 1,
+      "width": 1180,
+      "height": 800,
+      "controls": 15
+    },
+    {
+      "window": "manager",
+      "tab": 2,
+      "width": 1180,
+      "height": 800,
+      "controls": 12
+    },
+    {
+      "window": "manager",
+      "tab": 3,
+      "width": 1180,
+      "height": 800,
+      "controls": 14
+    },
+    {
+      "window": "manager",
+      "tab": 4,
+      "width": 1180,
+      "height": 800,
+      "controls": 7
+    },
+    {
+      "window": "proxy settings",
+      "width": 760,
+      "height": 540,
+      "controls": 9
+    },
+    {
+      "window": "proxy settings",
+      "width": 820,
+      "height": 560,
+      "controls": 9
+    }
+  ],
+  "complete_omfit_session_tested": false,
+  "production_relay_tested": false,
+  "visible_controls_within_windows": true
+}

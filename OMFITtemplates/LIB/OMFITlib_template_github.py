@@ -11,6 +11,7 @@ from urllib import error, parse, request
 
 from OMFITlib_template_archive import CHUNK, TemplateError, json_bytes, parse_json
 from OMFITlib_template_service import EXTENSION, Template, check_cancel, new_file, release_name
+from OMFITlib_template_proxy import ClosingTunnelHTTPSHandler, connection_label, login_environment, normalize_proxy, proxy_handler
 
 API = 'https://api.github.com'
 DEFAULT_REPOSITORY = 'Liu-s-CGYRO-project/CGYRO_TGLF_scan'
@@ -75,7 +76,7 @@ def credentials():
     return '', '未登录（仅公开仓库）'
 
 
-def login():
+def login(proxy=None):
     """User-triggered login in their Linux desktop terminal, with no shell text."""
     executable = shutil.which('gh')
     if not executable:
@@ -87,7 +88,8 @@ def login():
         terminal = shutil.which(name)
         if terminal:
             subprocess.Popen([terminal] + arguments + command, stdin=subprocess.DEVNULL,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+                             env=login_environment(proxy))
             return
     raise TemplateError('未找到桌面终端。请在终端执行 gh auth login --hostname github.com --web，然后返回并连接仓库。')
 
@@ -149,20 +151,22 @@ def summary_from_body(body):
 
 
 class GitHub:
-    def __init__(self, repo, token=None, cancel=None, progress=None):
+    def __init__(self, repo, token=None, cancel=None, progress=None, proxy=None):
         self.repo = repository(repo)
         self._token, self.auth_source = credentials() if token is None else (token, '会话凭据')
         if any(character.isspace() for character in self._token):
             raise TemplateError('GitHub 凭据格式无效，请重新登录')
         self.cancel, self.progress = cancel, progress
         self.base = '/repos/' + self.repo
-        self.opener = request.build_opener(SafeRedirect())
+        proxy = normalize_proxy(proxy)
+        self.connection = connection_label(proxy)
+        self.opener = request.build_opener(proxy_handler(proxy), ClosingTunnelHTTPSHandler(), SafeRedirect())
 
     def _open(self, path, method='GET', data=None, accept='application/vnd.github+json', upload=False, size=None):
         check_cancel(self.cancel)
         origin = 'https://uploads.github.com' if upload else API
         headers = {'Accept': accept, 'X-GitHub-Api-Version': API_VERSION,
-                   'User-Agent': 'OMFIT-template-manager/1.2'}
+                   'User-Agent': 'OMFIT-template-manager/1.3'}
         if self._token:
             headers['Authorization'] = 'Bearer ' + self._token
         if data is not None:
@@ -179,13 +183,16 @@ class GitHub:
             message = {401: 'GitHub 登录已失效，请重新登录。',
                        403: 'GitHub 拒绝访问，请检查仓库权限、组织 SSO 或 API 限额。',
                        404: 'GitHub 仓库或版本不存在，或当前账号没有访问权限。',
+                       407: 'HTTP 代理认证失败，请重新加载 SSH 连接脚本或检查代理用户名和密码。',
                        422: 'GitHub 拒绝此版本：可能已存在同名标签或资源，或仓库尚无提交。'}.get(status,
                         'GitHub 请求失败（HTTP {}），请稍后检查远端状态。'.format(status))
             if status in (403, 429) and remaining == '0':
                 message = 'GitHub API 限额已用完，请稍后重试；公开仓库也可登录后提高可用限额。'
             raise GitHubError(status, message) from None
-        except (error.URLError, OSError, TimeoutError):
-            raise TemplateError('连接 GitHub 失败或超时，请检查 Linux 网络与代理设置。') from None
+        except (error.URLError, OSError, TimeoutError) as exc:
+            if '407' in str(getattr(exc, 'reason', exc)):
+                raise TemplateError('HTTP 代理认证失败，请重新加载 SSH 连接脚本或检查代理用户名和密码。') from None
+            raise TemplateError('连接 GitHub 失败或超时（{}）。请检查 SSH 隧道、本地代理端口与网络。'.format(self.connection)) from None
 
     def _json(self, path, method='GET', payload=None, **kwargs):
         data = json_bytes(payload) if payload is not None else None
@@ -194,6 +201,10 @@ class GitHub:
         if len(content) > MAX_RESPONSE:
             raise TemplateError('GitHub 响应过大，已停止读取')
         return parse_json(content)
+
+    def probe(self):
+        self._json('/rate_limit')
+        return {'connection': self.connection, 'https_verified': True}
 
     def connect(self):
         info = self._json(self.base)

@@ -1,4 +1,4 @@
-OMFIT GitHub 模板管理器 1.2.5
+OMFIT GitHub 模板管理器 1.3.0
 ============================
 
 面向带桌面的 Linux，在 OMFIT 内浏览、拉取和发布不同开发者的模板版本。
@@ -7,6 +7,7 @@ OMFIT GitHub 模板管理器 1.2.5
 1.2.3 支持更新已有模块并添加缺少的顶层模块，预览分别列出两类操作。
 1.2.4 在生成新工程时自动写入正确的 ZIP 入口顺序，兼容原生 OMFIT 加载器。
 1.2.5 修复 OMFIT 拦截 StringVar/BooleanVar 后的初始化参数冲突；全部变量使用显式 master、value 参数。
+1.3.0 新增 GitHub 代理设置、SSH 中继脚本环境读取、手动 HTTP 代理与 HTTPS 连接测试。
 默认仓库为 Liu-s-CGYRO-project/CGYRO_TGLF_scan，可在界面更改。
 通过 GitHub Releases 分发版本；默认只包含代码和设置，案例、结果可选择作为示例。
 
@@ -23,6 +24,37 @@ OMFIT GitHub 模板管理器 1.2.5
 窗口复用 OMFIT 的 Tk 会话，关闭窗口不会退出 OMFIT。
 “保存当前 OMFIT 会话”调用 OMFIT.saveas，完整保存内存中的当前工程，并将
 当前工程和发布来源指向新 ZIP。这是另存为操作，OMFIT 当前项目名称也随之改变。
+
+GitHub 代理与 SSH 中继
+---------------------
+
+默认连接配置为 liu@47.102.120.146:22，经 SSH 访问服务器 127.0.0.1:18888。
+HTTP 代理软件为 proxy.py，支持 HTTPS CONNECT，认证用户名为 omfit。
+本地端口与密码由已有连接脚本提供；服务器代理只监听服务器本机。
+
+在 Linux 终端加载该脚本后，从同一终端按原命令启动 OMFIT，管理器将读取
+OMFIT_GITHUB_RELAY_PORT 以及包含认证信息的 http_proxy / https_proxy。
+已打开的 OMFIT 可在“GitHub 版本 → 代理设置”选择脚本并点击“加载连接脚本”。
+加载只读取本工具需要的中继变量，不改变 OMFIT 主进程的环境；脚本负责建立 SSH 隧道。
+脚本需要交互式 SSH 登录时，请先在终端加载，再从该终端启动 OMFIT。
+
+点击“测试连接”检查通过当前代理访问 GitHub 的 HTTPS 连接；测试不读取 GitHub 令牌。
+版本列表、下载、发布和本工具启动的 gh 登录共用所选网络配置。
+外部浏览器使用自身的网络设置，已有浏览器会话可能需要单独配置代理。
+
+还可选择“系统代理”“手动 HTTP 代理”“不使用代理”。手动模式支持用户名和密码，
+密码仅留在当前窗口内；偏好设置只记住网络方式、端口、用户名和脚本路径。
+脚本中的密码、代理 URL 认证信息和 GitHub 令牌不写入工程、偏好设置或日志。
+SSH 模式缺少端口或认证时会说明如何加载脚本，不自动切换到直连。
+
+命令行诊断（Python 3.9+）：
+
+::
+
+    python3 OMFITtemplates/launch.py github-probe
+    python3 OMFITtemplates/launch.py github-probe --relay-script /path/to/relay.sh
+    python3 OMFITtemplates/launch.py github-check --network system --anonymous
+    python3 OMFITtemplates/launch.py github-list --network direct --anonymous
 
 GitHub 连接与首次建库
 --------------------

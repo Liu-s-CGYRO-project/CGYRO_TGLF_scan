@@ -240,6 +240,26 @@ class NativeExecutionTests(unittest.TestCase):
                     checked.append('/'.join(owner + ('LIB', key)))
         self.host.imported_libraries = checked
 
+    def test_proxy_functions_survive_native_import_cleanup(self):
+        from urllib import request
+        root = self.host.modules[('OMFITtemplates',)]
+        before = list(sys.meta_path)
+        out = self.host.execute('from OMFITlib_template_proxy import relay_proxy, proxy_handler\n'
+                                'from OMFITlib_template_github import GitHub', root)
+        self.assertEqual(sys.meta_path, before)
+        self.assertFalse(any(name.startswith('OMFITlib_') for name in sys.modules))
+        url = 'http://omfit:native-test-only@127.0.0.1:32123'
+        environment = self.host.factory({'OMFIT_GITHUB_RELAY_PORT': '32123', 'https_proxy': url})
+        self.assertEqual(out['relay_proxy'](environment), url)
+        handler = out['proxy_handler'](url)
+        req = request.Request('https://api.github.com/rate_limit')
+        handler.https_open(req)
+        self.assertEqual(req.host, '127.0.0.1:32123')
+        self.assertEqual(req._tunnel_host, 'api.github.com')
+        self.assertTrue(req.get_header('Proxy-authorization').startswith('Basic '))
+        client = out['GitHub']('team/demo', token='', proxy=url)
+        self.assertNotIn('native-test-only', client.connection)
+
     def test_collectors_define_all_four_classes_inside_omfit(self):
         root = self.host.cg_fixture()
         cases = [('CGYROscan', 'collect.py', 'OMFITcgyro_eigen'),

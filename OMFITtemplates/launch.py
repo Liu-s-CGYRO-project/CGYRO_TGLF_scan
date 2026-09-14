@@ -14,6 +14,7 @@ from OMFITlib_template_archive import TemplateError, json_bytes, parse_json
 from OMFITlib_template_paths import default_library
 from OMFITlib_template_service import apply_update, inspect_project, list_library, plan_update, publish
 from OMFITlib_template_github import DEFAULT_REPOSITORY, GitHub
+from OMFITlib_template_proxy import load_relay_script, relay_proxy
 
 
 def gui_environment(check_only=False, project='', library=None):
@@ -48,11 +49,15 @@ def main():
     inspect = commands.add_parser('inspect', help='读取工程模块与内容体积')
     inspect.add_argument('source')
     commands.add_parser('list', help='列出本地库版本')
-    for name, description in [('github-check', '检查 GitHub 仓库和登录状态（只读）'),
+    for name, description in [('github-probe', '测试 GitHub HTTPS 与所选代理（不读取 GitHub 凭据）'),
+                              ('github-check', '检查 GitHub 仓库和登录状态（只读）'),
                               ('github-list', '列出 GitHub 模板版本（只读）')]:
         command = commands.add_parser(name, help=description)
         command.add_argument('--repository', default=DEFAULT_REPOSITORY)
         command.add_argument('--anonymous', action='store_true', help='公开仓库检查，不读取本地凭据')
+        command.add_argument('--network', choices=['relay', 'system', 'direct'], default='relay',
+                             help='默认使用 47.102.120.146 的现有 SSH 中继脚本环境')
+        command.add_argument('--relay-script', help='显式加载已有 Linux 中继脚本，不需要把密码写入命令行')
     release = commands.add_parser('publish', help='发布不可覆盖的新版本')
     release.add_argument('source')
     for key in ('id', 'name', 'author', 'version'):
@@ -83,9 +88,13 @@ def main():
         elif args.command == 'list':
             releases, errors = list_library(args.library)
             result = {'releases': [{k: r[k] for k in ('id', 'name', 'author', 'version', 'examples', 'path')} for r in releases], 'errors': errors}
-        elif args.command in ('github-check', 'github-list'):
-            client = GitHub(args.repository, token='' if args.anonymous else None)
-            result = client.connect() if args.command == 'github-check' else client.list_releases()
+        elif args.command in ('github-probe', 'github-check', 'github-list'):
+            proxy = None if args.network == 'system' else ''
+            if args.network == 'relay':
+                proxy = relay_proxy(load_relay_script(args.relay_script) if args.relay_script else None)
+            client = GitHub(args.repository, token='' if args.anonymous or args.command == 'github-probe' else None, proxy=proxy)
+            result = client.probe() if args.command == 'github-probe' else (
+                client.connect() if args.command == 'github-check' else client.list_releases())
         elif args.command == 'publish':
             result = publish(args.source, args.library, {k: getattr(args, k) for k in ('id', 'name', 'author', 'version', 'description')},
                              sorted(set(args.roots)), args.examples)

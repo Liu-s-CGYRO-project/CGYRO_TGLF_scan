@@ -88,6 +88,17 @@ def validate(source):
             assert len(manager.tabs.tabs()) == 4
             assert buttons[0]() is manager
             assert tk.StringVar is namespace['_tkStringVar']  # The manager must not undo OMFIT's patch.
+            manager._proxy_settings()
+            assert isinstance(manager.proxy_dialog, namespace['Toplevel'])
+            assert manager.proxy_password._tk is root.tk
+            manager.proxy_password.set('native-test-password')
+            manager._save_preferences()
+            assert 'native-test-password' not in manager.preferences.read_text(encoding='utf-8')
+            close_proxy = next(widget for widget, _ in manager.widgets
+                               if widget.winfo_class() == 'TButton' and widget.cget('text') == '保存并关闭')
+            close_proxy.invoke()
+            manager._set_busy(False)
+            report['proxy_dialog_native_variables_and_private_password'] = True
 
             def wait():
                 deadline = time.monotonic() + 10

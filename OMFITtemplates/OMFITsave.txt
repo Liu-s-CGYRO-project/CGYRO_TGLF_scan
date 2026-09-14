@@ -6,6 +6,7 @@
 ['LIB']['OMFITlib_template_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_ui.py <-:-:-> {}
 ['LIB']['OMFITlib_template_paths'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_paths.py <-:-:-> {}
 ['LIB']['OMFITlib_template_github'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_github.py <-:-:-> {}
+['LIB']['OMFITlib_template_proxy'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_proxy.py <-:-:-> {}
 ['LIB']['OMFITlib_template_session'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_session.py <-:-:-> {}
 ['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./SettingsNamelist.txt <-:-:-> {}
 ['help'] <-:-:-> OMFIThelp <-:-:-> ./help.rst <-:-:-> {}
@@ -16,6 +17,7 @@
 ['SOURCE']['start_manager.sh'] <-:-:-> OMFITascii <-:-:-> ./start_manager.sh <-:-:-> {}
 ['TESTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['TESTS']['test_github.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_github.py <-:-:-> {}
+['TESTS']['test_proxy.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_proxy.py <-:-:-> {}
 ['TESTS']['test_linux.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_linux.py <-:-:-> {}
 ['TESTS']['test_templates.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_templates.py <-:-:-> {}
 ['TESTS']['test_ui.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_ui.py <-:-:-> {}
