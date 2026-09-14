@@ -103,11 +103,18 @@ def load_relay_script(path):
                'source "$omfit_proxy_script" >/dev/null && export ' + ' '.join(RELAY_ENV_KEYS)
                + ' && "$omfit_proxy_python" -c "$omfit_proxy_capture"',
                'omfit-relay', str(source), sys.executable, capture]
+    # OMFIT may be launched by absolute path from a desktop whose PATH has no
+    # python3. Preserve its active environment (do not resolve venv symlinks).
+    environment = dict(os.environ)
+    environment['PATH'] = str(Path(sys.executable).parent) + os.pathsep + environment.get('PATH', '')
     try:
         result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.DEVNULL, timeout=30, check=False)
-        if result.returncode or len(result.stdout) > 65536:
-            raise TemplateError('连接脚本未完成。若需要 SSH 交互登录，请先在终端加载脚本，再从同一终端启动 OMFIT。')
+                                stderr=subprocess.DEVNULL, timeout=30, check=False, env=environment)
+        if result.returncode:
+            raise TemplateError('连接脚本退出（状态 {}）。请在 OMFIT 的 Python 环境终端运行脚本，'
+                                '检查缺少的命令或完成 SSH 交互登录。'.format(result.returncode))
+        if len(result.stdout) > 65536:
+            raise TemplateError('连接脚本返回的中继环境过大，请检查脚本的代理配置')
         try:
             environment = parse_json(result.stdout)
         except TemplateError:
@@ -116,8 +123,10 @@ def load_relay_script(path):
             raise TemplateError('连接脚本未返回有效的中继环境')
         relay_proxy(environment)
         return environment
-    except (OSError, subprocess.TimeoutExpired):
-        raise TemplateError('加载连接脚本失败或超时；请在终端检查 SSH 连接后重试') from None
+    except subprocess.TimeoutExpired:
+        raise TemplateError('加载连接脚本超过 30 秒。请在终端检查 SSH 网络或完成登录，再从同一终端启动 OMFIT。') from None
+    except OSError as exc:
+        raise TemplateError('无法启动连接脚本（系统错误 {}）。请检查 bash 与 OMFIT Python 是否可执行。'.format(exc.errno)) from None
 
 
 def login_environment(proxy):

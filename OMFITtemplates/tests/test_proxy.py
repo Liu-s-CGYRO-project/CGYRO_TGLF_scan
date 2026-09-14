@@ -9,6 +9,7 @@ import shutil
 import socket
 import ssl
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -90,6 +91,33 @@ class RelayTest(unittest.TestCase):
                 with self.assertRaises(TemplateError) as caught:
                     proxy.load_relay_script(path)
             self.assertNotIn(SECRET, str(caught.exception))
+            self.assertIn('状态 1', str(caught.exception))
+            for failure, message in ((OSError(13, SECRET), '系统错误 13'),
+                                     (subprocess.TimeoutExpired(SECRET, 30, output=SECRET.encode()), '超过 30 秒')):
+                with self.subTest(failure=type(failure).__name__), \
+                        patch.object(proxy.shutil, 'which', return_value='/usr/bin/bash'), \
+                        patch.object(proxy.subprocess, 'run', side_effect=failure), \
+                        self.assertRaisesRegex(TemplateError, message) as caught:
+                    proxy.load_relay_script(path)
+                self.assertNotIn(SECRET, str(caught.exception))
+
+    @unittest.skipUnless(shutil.which('bash'), 'Linux bash is required')
+    def test_script_uses_omfit_python_when_desktop_path_has_no_python3(self):
+        executable = shutil.which('bash')
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'relay.sh'
+            observed = Path(directory) / 'interpreter.txt'
+            path.write_text('python3 -c \'import sys;print(sys.prefix)\' > "$OMFIT_TEST_INTERPRETER" || return $?\n'
+                            'OMFIT_GITHUB_RELAY_PORT=32123\n'
+                            'export http_proxy="' + URL + '"\nexport https_proxy="$http_proxy"\n')
+            self.assertIsNone(shutil.which('python3', path=directory))
+            with patch.dict(os.environ, {'PATH': directory, 'OMFIT_TEST_INTERPRETER': str(observed)}, clear=True), \
+                    patch.object(proxy.shutil, 'which', return_value=executable):
+                before = dict(os.environ)
+                environment = proxy.load_relay_script(path)
+                self.assertEqual(dict(os.environ), before)
+            self.assertEqual(proxy.relay_proxy(environment), URL)
+            self.assertEqual(observed.read_text().strip(), sys.prefix)
 
 
 class TLSHandler(APIHandler):

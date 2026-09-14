@@ -1,4 +1,4 @@
-OMFIT GitHub 模板管理器 1.3.0
+OMFIT GitHub 模板管理器 1.3.1
 ============================
 
 面向带桌面的 Linux，在 OMFIT 内浏览、拉取和发布不同开发者的模板版本。
@@ -8,6 +8,7 @@ OMFIT GitHub 模板管理器 1.3.0
 1.2.4 在生成新工程时自动写入正确的 ZIP 入口顺序，兼容原生 OMFIT 加载器。
 1.2.5 修复 OMFIT 拦截 StringVar/BooleanVar 后的初始化参数冲突；全部变量使用显式 master、value 参数。
 1.3.0 新增 GitHub 代理设置、SSH 中继脚本环境读取、手动 HTTP 代理与 HTTPS 连接测试。
+1.3.1 修复桌面 PATH 中没有 python3 时的脚本加载，并区分退出状态、启动失败与超时。
 默认仓库为 Liu-s-CGYRO-project/CGYRO_TGLF_scan，可在界面更改。
 通过 GitHub Releases 分发版本；默认只包含代码和设置，案例、结果可选择作为示例。
 
@@ -36,6 +37,8 @@ HTTP 代理软件为 proxy.py，支持 HTTPS CONNECT，认证用户名为 omfit�
 OMFIT_GITHUB_RELAY_PORT 以及包含认证信息的 http_proxy / https_proxy。
 已打开的 OMFIT 可在“GitHub 版本 → 代理设置”选择脚本并点击“加载连接脚本”。
 加载只读取本工具需要的中继变量，不改变 OMFIT 主进程的环境；脚本负责建立 SSH 隧道。
+加载脚本时只对子进程优先使用当前 OMFIT 的 Python 目录，不修改主进程 PATH。
+终端运行脚本若提示 python3 未找到，请先激活平时运行 OMFIT 的环境。
 脚本需要交互式 SSH 登录时，请先在终端加载，再从该终端启动 OMFIT。
 
 点击“测试连接”检查通过当前代理访问 GitHub 的 HTTPS 连接；测试不读取 GitHub 令牌。

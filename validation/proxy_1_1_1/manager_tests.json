@@ -1,0 +1,13 @@
+{
+  "tests": 120,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "python": "3.10.12",
+  "manager_version": "1.3.1",
+  "local_authenticated_connect_tls_tested": true,
+  "production_relay_tested": false,
+  "complete_omfit_session_tested": false,
+  "solver_executed": false,
+  "resource_warnings": []
+}

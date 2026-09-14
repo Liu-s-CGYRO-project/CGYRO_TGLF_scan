@@ -1,0 +1,22 @@
+test_all_helper_blocks_accept_multiline_programs (__main__.NativeExecutionTests) ... ok
+test_collectors_define_all_four_classes_inside_omfit (__main__.NativeExecutionTests) ... ok
+test_frequency_uncertainty_preserves_negative_growth (__main__.NativeExecutionTests) ... ok
+test_legacy_frequency_normalization_uses_generated_case_species (__main__.NativeExecutionTests) ... ok
+test_legacy_saved_helper_entry_loads_registered_library (__main__.NativeExecutionTests) ... ok
+test_library_uses_saved_omfit_file_each_time (__main__.NativeExecutionTests) ... ok
+test_linear_flux_plot_consumes_collector_cache (__main__.NativeExecutionTests) ... ok
+test_miller_method_from_private_archive_is_available_and_finite (__main__.NativeExecutionTests) ... ok
+test_native_pylab_reproduces_old_generator_problem (__main__.NativeExecutionTests) ... ok
+test_no_python_path_changes_or_leaked_reader_exports (__main__.NativeExecutionTests) ... ok
+test_proxy_functions_survive_native_import_cleanup (__main__.NativeExecutionTests) ... ok
+test_qlgyro_missing_companion_modules_fails_before_input_mutation (__main__.NativeExecutionTests) ... ok
+test_reader_flux_in_native_namespace_and_required_get_defaults (__main__.NativeExecutionTests) ... ok
+test_reader_rejects_nonfinite_and_inconsistent_channels (__main__.NativeExecutionTests) ... ok
+test_registered_libraries_import_in_their_own_module (__main__.NativeExecutionTests) ... ok
+test_rice_explicit_parameters_survive_native_defaultvars (__main__.NativeExecutionTests) ... ok
+test_transfer_profile_interpolation_has_explicit_scipy_support (__main__.NativeExecutionTests) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 2.376s
+
+OK
