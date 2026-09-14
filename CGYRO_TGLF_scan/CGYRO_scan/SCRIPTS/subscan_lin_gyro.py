@@ -2,8 +2,7 @@ raise RuntimeError('Legacy GYRO submission is disabled: this package lacks a ver
 
 import numpy as np
 import sys
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROscan/assist')
-from cgyro_read_xj import *
+from OMFITlib_cgyro_read import *
 print ("============== scan_gyro ===========")
 caseRoot=root['Cases'] # the root of the tag, defines where to store the scanning data
 physics=root['SETTINGS']['PHYSICS']

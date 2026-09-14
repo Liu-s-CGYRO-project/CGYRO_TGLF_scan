@@ -1,16 +1,13 @@
 import sys
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROalone/assist')
-f = open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+with open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 
 # this is a class inherient from OMFITgyro_base
 # this script will mostly focus on handling the nonlinear CGYRO object
 import numpy as np
 from scipy import integrate
 from scipy.interpolate import interp1d
-from classes.omfit_gacode import OMFITgyro
+from omfit_classes.omfit_gacode import OMFITgyro
 
 class OMFITgyro_nonlin(OMFITgyro):
     """
@@ -583,7 +580,7 @@ class OMFITgyro_nonlin(OMFITgyro):
         d2Rdtheta2 = np.gradient(dRdtheta) / np.gradient(theta_p)
         rc_theta = dldtheta ** 3 / (dRdtheta * d2Zdtheta2 - dZdtheta * d2Rdtheta2)
         #        IoverBunit=2*np.pi*self.rmin/integrate.trapz(1/Rs/gradr,l) # scale
-        IoverBunit = 2 * np.pi * self.rmin / np.trapz(1 / Rs / gradr, l)  # scale
+        IoverBunit = 2 * np.pi * self.rmin / integrate.trapezoid(1 / Rs / gradr, l)  # scale
         BtoverBunit = IoverBunit / Rs
         BpoverBunit = self.rmin / Rs * gradr / self.q
         BoverBunit = (BtoverBunit ** 2 + BpoverBunit ** 2) ** 0.5
@@ -599,9 +596,9 @@ class OMFITgyro_nonlin(OMFITgyro):
         E2kernel = 1. / Rs / gradr * (BoverBunit / BpoverBunit) ** 2
         E3kernel = 1. / 2. / Rs * BtoverBunit / BpoverBunit / BpoverBunit ** 2
         # chang the order[0~2*pi], denoted new
-        E1kernel_new = OMFITcgyro_nonlin.changeorder(self, E1kernel)
-        E2kernel_new = OMFITcgyro_nonlin.changeorder(self, E2kernel)
-        E3kernel_new = OMFITcgyro_nonlin.changeorder(self, E3kernel)
+        E1kernel_new = self.changeorder(E1kernel)
+        E2kernel_new = self.changeorder(E2kernel)
+        E3kernel_new = self.changeorder(E3kernel)
         ntheta_half = int(np.round((n_theta_p + 1) / 2))
         l_new = np.zeros(n_theta_p)
         l_new[0:ntheta_half - 1] = l[ntheta_half - 1:n_theta_p - 1] - l[ntheta_half - 1]
@@ -610,9 +607,9 @@ class OMFITgyro_nonlin(OMFITgyro):
         E2_new = integrate.cumulative_trapezoid(E2kernel_new, l_new, initial=0)
         E3_new = integrate.cumulative_trapezoid(E3kernel_new, l_new, initial=0)  # in the order of 0~2*pi
         # change back to [-pi,pi]
-        E1 = OMFITcgyro_nonlin.changeorder(self, E1_new)
-        E2 = OMFITcgyro_nonlin.changeorder(self, E2_new)
-        E3 = OMFITcgyro_nonlin.changeorder(self, E3_new)
+        E1 = self.changeorder(E1_new)
+        E2 = self.changeorder(E2_new)
+        E3 = self.changeorder(E3_new)
         E1[0:ntheta_half - 1] = E1[0:ntheta_half - 1] - (E1[ntheta_half - 2] + E1[ntheta_half])
         E2[0:ntheta_half - 1] = E2[0:ntheta_half - 1] - (E2[ntheta_half - 2] + E2[ntheta_half])
         E3[0:ntheta_half - 1] = E3[0:ntheta_half - 1] - (E3[ntheta_half - 2] + E3[ntheta_half])

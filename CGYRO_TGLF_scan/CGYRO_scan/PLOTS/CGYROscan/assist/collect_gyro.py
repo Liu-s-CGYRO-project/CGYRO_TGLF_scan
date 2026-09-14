@@ -1,11 +1,7 @@
 import sys
-#sys.path.append('/home/users/chenly_dut/mymodule/gyro_SCAN/PLOTS/gyroscan/assist')
-from cgyro_read_xj import *
-#from gyro_ball_class import OMFITgyro_eigen
-f = open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+from OMFITlib_cgyro_read import *
+with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 
 # this is a class inherient from OMFITgyro_base
 # this class will mainly focus on writting some methods for handling the eigenfunction
@@ -13,7 +9,7 @@ f.close()
 import numpy as np
 from scipy import integrate
 from scipy.interpolate import interp1d
-from classes.omfit_gacode import OMFITgyro
+from omfit_classes.omfit_gacode import OMFITgyro
 
 #class OMFITgyro_eigen(omfit_gacode.OMFITgyro_base.OMFITgyro):
 class OMFITgyro_eigen(OMFITgyro):
@@ -58,7 +54,7 @@ class OMFITgyro_eigen(OMFITgyro):
         # phi_b_gyro->phi_b;
         theta_b_gyro=balloon['theta_b_over_pi']
         self.theta_b_gyro=theta_b_gyro*np.pi
-        theta_b=np.linspace(np.amin(self.theta_b_gyro),np.amax(self.theta_b_gyro),np.alen(self.theta_b_gyro))  #
+        theta_b=np.linspace(np.amin(self.theta_b_gyro),np.amax(self.theta_b_gyro),len(self.theta_b_gyro))  #
         self.theta_b=theta_b
         self.phi_b_gyro=balloon['balloon_phi'].T[-1].data # the phi in the ballooning space
         if self['eigensolver']:   # if the bug in omfitgyro reader is solver, will just need to delete these two lines
@@ -103,7 +99,7 @@ class OMFITgyro_eigen(OMFITgyro):
         Rs_b = self.turn_thetap2thetab(self.Rs)
         epar_es_b = -1 / q_loc_b / Rs_b * np.gradient(self.phi_b / np.gradient(self.theta_b))
         self.epar_es_b=epar_es_b
-        omega=np.complex(self['freq']['omega'].T[-1].data,self['freq']['gamma'].T[-1].data)
+        omega=complex(self['freq']['omega'].T[-1].data,self['freq']['gamma'].T[-1].data)
         epar_b=epar_es_b
         self.epar_em_b = np.zeros(len(epar_b))
         if self.iapar==1:
@@ -187,12 +183,12 @@ class OMFITgyro_eigen(OMFITgyro):
         det=Rs*(dRdr*dZdtheta-dRdtheta*dZdr)
     # look at grad r
         gradr=dldtheta*Rs/det
-        l=integrate.cumtrapz(dldtheta,self.theta_p,initial=0)
+        l=integrate.cumulative_trapezoid(dldtheta,self.theta_p,initial=0)
         d2Zdtheta2=np.gradient(dZdtheta)/np.gradient(self.theta_p)
         d2Rdtheta2=np.gradient(dRdtheta)/np.gradient(self.theta_p)
         rc_theta=dldtheta**3/(dRdtheta*d2Zdtheta2-dZdtheta*d2Rdtheta2)
 #        IoverBunit=2*np.pi*self.rmin/integrate.trapz(1/Rs/gradr,l) # scale
-        IoverBunit=2*np.pi*self.rmin/np.trapz(1/Rs/gradr,l) # scale
+        IoverBunit=2*np.pi*self.rmin/integrate.trapezoid(1/Rs/gradr,l) # scale
         BtoverBunit=IoverBunit/Rs
         BpoverBunit=self.rmin/Rs*gradr/self.q
         BoverBunit=(BtoverBunit**2+BpoverBunit**2)**0.5
@@ -210,13 +206,13 @@ class OMFITgyro_eigen(OMFITgyro):
         E1kernel_new=OMFITgyro_eigen.changeorder(self,E1kernel)
         E2kernel_new=OMFITgyro_eigen.changeorder(self,E2kernel)
         E3kernel_new=OMFITgyro_eigen.changeorder(self,E3kernel)
-        ntheta_half=np.int(np.round((self.n_theta_p+1)/2))
+        ntheta_half=int(np.round((self.n_theta_p+1)/2))
         l_new=np.zeros(self.n_theta_p)
         l_new[0:ntheta_half-1]=l[ntheta_half-1:self.n_theta_p-1]-l[ntheta_half-1]
         l_new[ntheta_half-1:self.n_theta_p-1]=l[0:ntheta_half-1]+l[ntheta_half-1]
-        E1_new=integrate.cumtrapz(E1kernel_new,l_new,initial=0)
-        E2_new=integrate.cumtrapz(E2kernel_new,l_new,initial=0)
-        E3_new=integrate.cumtrapz(E3kernel_new,l_new,initial=0)  # in the order of 0~2*pi
+        E1_new=integrate.cumulative_trapezoid(E1kernel_new,l_new,initial=0)
+        E2_new=integrate.cumulative_trapezoid(E2kernel_new,l_new,initial=0)
+        E3_new=integrate.cumulative_trapezoid(E3kernel_new,l_new,initial=0)  # in the order of 0~2*pi
     # change back to [-pi,pi]
         E1=OMFITgyro_eigen.changeorder(self,E1_new)
         E2=OMFITgyro_eigen.changeorder(self,E2_new)
@@ -246,13 +242,13 @@ class OMFITgyro_eigen(OMFITgyro):
         D0_kernel=1./Rs*(2./rc_theta/Rs-2*cosu/Rs**2)*IoverBp
         D1_kernel_part=1./Rs**2.*(BoverBunit/BpoverBunit)**2        # the dI/dr is unknow yet
         D2_kernel=-1./2*1./Rs**2.*IoverBp*self.betastar/BpoverBunit**2
-        D0=integrate.cumtrapz(D0_kernel,l,initial=0)
-        D1_part=integrate.cumtrapz(D1_kernel_part,l,initial=0)
-        D2=integrate.cumtrapz(D2_kernel,l,initial=0)
+        D0=integrate.cumulative_trapezoid(D0_kernel,l,initial=0)
+        D1_part=integrate.cumulative_trapezoid(D1_kernel_part,l,initial=0)
+        D2=integrate.cumulative_trapezoid(D2_kernel,l,initial=0)
         dqdr=self.shear*self.q/self.rmin
         dIdr=(2*np.pi*dqdr-D0[-1]-D2[-1])/D1_part[-1]
         D1_kernel=1./Rs**2.*(BoverBunit/BpoverBunit)**2*dIdr
-        D1=integrate.cumtrapz(D1_kernel,l,initial=0)
+        D1=integrate.cumulative_trapezoid(D1_kernel,l,initial=0)
         # mu1=D0+D1+D2
         s_loc=self.rmin/q_loc*(D0_kernel+D1_kernel+D2_kernel)*np.gradient(l)/np.gradient(self.theta_p)
     #     get the output
@@ -279,7 +275,7 @@ class OMFITgyro_eigen(OMFITgyro):
         # called by miller_drffreq
         n_arr=len(arr)
         arr_new=np.zeros(n_arr)
-        n_arr_half=np.int(np.round((n_arr+1)/2))
+        n_arr_half=int(np.round((n_arr+1)/2))
         arr_new[0:n_arr_half-1]=arr[n_arr_half-1:n_arr-1]
     #    arr_new[n_arr_half-1:n_arr-1]=arr[0:n_arr_half-1];
         arr_new[n_arr_half-1:n_arr]=arr[0:n_arr_half]
@@ -454,7 +450,7 @@ class OMFITgyro_eigen(OMFITgyro):
         """
         # turn one value from theta_p space to theta_b space, which is used in the function eigen_ave
         """
-        if np.alen(value)!=np.alen(self.theta_p):
+        if len(value)!=len(self.theta_p):
             raise Exception('len(value)=len(theta_p) is required!')
         theta_bb=np.linspace(-np.pi,np.pi,self.n_theta+1)  # we will use the theta_bb to represent the ballooning angle in [-pi,pi]
         value_bb=np.interp(theta_bb,self.theta_p,value)

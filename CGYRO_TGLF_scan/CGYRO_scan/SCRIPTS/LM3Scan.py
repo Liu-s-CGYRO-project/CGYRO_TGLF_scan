@@ -5,8 +5,7 @@
 # before using this method, some parameters should be set accordingly
 import numpy as np
 import sys
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROscan/assist')
-from cgyro_read_xj import *
+from OMFITlib_cgyro_read import *
 effnum=root['SETTINGS']['SETUP']['effnum']
 import copy
 saved_physics = copy.deepcopy(root['SETTINGS']['PHYSICS'])

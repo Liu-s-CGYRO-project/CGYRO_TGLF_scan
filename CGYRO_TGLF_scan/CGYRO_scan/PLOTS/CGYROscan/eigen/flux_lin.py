@@ -1,12 +1,7 @@
 # plot the eigenfunction average parameters for 1d scan
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROscan/assist')
-from cgyro_read_xj import *
-from cgyro_ball import *
-from cgyro_ball_class import OMFITcgyro_eigen
-f = open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+from OMFITlib_cgyro_read import *
+with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 if setup['icgyro']==1:
     root['PLOTS']['CGYROscan']['assist']['collect.py'].run()
 else:
@@ -27,11 +22,8 @@ else:
 #
 for k in range(0,nRange_eigen):
     for p in range(num_ky_eigen):
-        datanode=root['OUTPUTScan'][Para][num2str_xj(para_eigen[k],effnum)]['lin'][num2str_xj(ky_eigen[p],effnum)]
-        if setup['icgyro']==1:
-            datanode=OMFITcgyro_eigen(datanode.filename)
-        else:
-            datanode = OMFITgyro_eigen(datanode.filename)
+        dirname = Para + '_' + num2str_xj(para_eigen[k], effnum) + '~ky_' + num2str_xj(ky_eigen[p], effnum)
+        datanode = mounttree[dirname]
         datanode.get_flux_lin()
         flux_lin_arr[k][p]=datanode.flux_lin
         k_perp_squal_arr[k][p]=datanode.k_perp_squal_ave

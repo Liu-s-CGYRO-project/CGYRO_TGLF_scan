@@ -1,3 +1,4 @@
+from builtins import any
 # -*-Python-*-
 # Created by smithsp at 2013/07/24 14:29
 #

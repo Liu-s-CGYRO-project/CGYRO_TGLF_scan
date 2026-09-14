@@ -1,14 +1,10 @@
+from scipy import interpolate
 # define a function convert the eigenfunction from ballooning space to r space
 import numpy as np
 import sys
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROscan/assist')
-from cgyro_read_xj import *
-# from cgyro_ball import *
-from cgyro_ball_class import OMFITcgyro_eigen
-f = open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+from OMFITlib_cgyro_read import *
+with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 if setup['icgyro']==1:
     root['PLOTS']['CGYROscan']['assist']['collect.py'].run()
 else:

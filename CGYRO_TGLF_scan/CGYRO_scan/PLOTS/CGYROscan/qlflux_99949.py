@@ -4,34 +4,9 @@ import xarray as xr
 import os
 import sys
 
-# Use the shared reader path for both archives.  The archived helper is only
-# a fallback and must not override the shared reader during comparison.
-if 'root' not in globals():
-	try:
-		root=OMFIT['CGYRO_TGLF_scan']['CGYRO_scan']
-	except Exception:
-		try:
-			root=OMFIT
-		except Exception:
-			pass
-_reader_paths=[]
-# Use the reader shipped with this project.
-try:
-	_reader_file=root['PLOTS']['CGYROscan']['assist']['cgyro_read_xj.py'].filename
-	_reader_paths.append(os.path.dirname(_reader_file))
-except Exception:
-	pass
-for _reader_path in reversed(_reader_paths):
-	if _reader_path:
-		while _reader_path in sys.path:
-			sys.path.remove(_reader_path)
-		sys.path.insert(0, _reader_path)
-sys.modules.pop('cgyro_read_xj', None)
-from cgyro_read_xj import *
-f = open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+from OMFITlib_cgyro_read import *
+with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 # get the data
 for paraval_item in Range:
     for ky_item in kyarr:

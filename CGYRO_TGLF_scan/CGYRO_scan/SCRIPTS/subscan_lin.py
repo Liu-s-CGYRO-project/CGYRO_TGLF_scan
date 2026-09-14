@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import re
-from cgyro_read_xj import *
+from OMFITlib_cgyro_read import *
 
 if 'SHELL' not in os.environ:
     os.environ['SHELL'] = '/bin/bash'

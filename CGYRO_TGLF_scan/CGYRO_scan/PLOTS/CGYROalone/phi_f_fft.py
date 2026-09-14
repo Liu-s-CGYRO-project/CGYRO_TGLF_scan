@@ -1,11 +1,8 @@
 # this script is used to plot the phi intensity over frequency via fft
 import sys
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROalone/assist')
 from matplotlib import ticker, cm
-f = open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+with open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 
 # note that it could be better if we split the time window in to several sub time windows
 t_ave_orig=root['SETTINGS']['PLOTS']['nl']['t_ave']

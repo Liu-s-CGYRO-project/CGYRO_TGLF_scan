@@ -1,14 +1,9 @@
 # calculate the wd for a given case
 import numpy as np
 import sys
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROscan/assist')
-from cgyro_read_xj import *
-from cgyro_ball import *
-from cgyro_ball_class import OMFITcgyro_eigen
-f = open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+from OMFITlib_cgyro_read import *
+with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 
 if setup['icgyro']==1:
     root['PLOTS']['CGYROscan']['assist']['collect.py'].run()
@@ -35,7 +30,7 @@ for k in range(nRange_x_eigen):
     for p in range(nRange_y_eigen):
         for q in range(num_ky_eigen):
 #            datanode=root['OUTPUTScan'][Para_x][num2str_xj(Range_x[k],effnum)][Para_y][num2str_xj(Range_y[p],effnum)]['lin'][num2str_xj(kyarr[q],effnum)]
-            datanode=root['OUTPUTS']['Linear'][Para_x+'_'+num2str_xj(para_x_eigen[k],effnum)+'~'+Para_y+'_'+num2str_xj(para_y_eigen[p],effnum)+'~ky_'+num2str_xj(ky_eigen[q],effnum)]
+            datanode=mounttree[Para_x+'_'+num2str_xj(para_x_eigen[k],effnum)+'~'+Para_y+'_'+num2str_xj(para_y_eigen[p],effnum)+'~ky_'+num2str_xj(ky_eigen[q],effnum)]
 #            if setup['icgyro']==1:
 #                datanode=OMFITcgyro_eigen(datanode.filename)
 #            else:

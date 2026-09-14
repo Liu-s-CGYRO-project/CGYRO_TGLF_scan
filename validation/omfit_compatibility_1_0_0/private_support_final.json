@@ -1,0 +1,128 @@
+{
+  "archive_name": "GACODE_module.zip",
+  "archive_sha256": "cb71c03e57997da7bba99b724ca9a757fff6bad5a62f9daf4639bc6f6588618b",
+  "python_files": 9,
+  "all_source_symbols_present": true,
+  "source_was_executed": false,
+  "records": [
+    {
+      "source": "GACODE_module/CGYROalone/getglobal.py",
+      "source_sha256": "62bdd456af43ed74541a161b5a3c3ce9bc01ff785d023da2c9bc423c977bb6eb",
+      "destination": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/assist/getglobal.py",
+      "destination_sha256": "950427c4089ec87ff326aec47db44788c23975c5099929083a197cdb26a553a5",
+      "missing_symbols": [],
+      "added_symbols": [],
+      "changed_symbols": []
+    },
+    {
+      "source": "GACODE_module/CGYROalone/collect_gyro.py",
+      "source_sha256": "4045e2c6365cf5db8517dd5b44cdcc577094c1a986382a5d7a76aba919ac4183",
+      "destination": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/assist/collect_gyro.py",
+      "destination_sha256": "cb42ec22d59cc0cb91c94798899aaf459d4a75b81c7b3dfbfb1a57803dbc1102",
+      "missing_symbols": [],
+      "added_symbols": [],
+      "changed_symbols": [
+        "OMFITgyro_nonlin",
+        "OMFITgyro_nonlin.Energy_transfer_p",
+        "OMFITgyro_nonlin.Energy_transfer_phi",
+        "OMFITgyro_nonlin.changeorder",
+        "OMFITgyro_nonlin.fft_jian",
+        "OMFITgyro_nonlin.get_kx_ky",
+        "OMFITgyro_nonlin.get_kxky_phi",
+        "OMFITgyro_nonlin.miller_wd_s"
+      ]
+    },
+    {
+      "source": "GACODE_module/CGYROalone/collect.py",
+      "source_sha256": "0a46e652e847f43b11cb21dfd492799094b21a9d49e2bee7c3e3ccd7577e43a7",
+      "destination": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROalone/assist/collect_99949.py",
+      "destination_sha256": "74fd7cad4fbae7a8c3323fea1143f389051f9e5608238885746f8d0eb80d3bb2",
+      "missing_symbols": [],
+      "added_symbols": [
+        "OMFITcgyro_nonlin.entropy_transfer"
+      ],
+      "changed_symbols": [
+        "OMFITcgyro_nonlin",
+        "OMFITcgyro_nonlin.Energy_transfer_p",
+        "OMFITcgyro_nonlin.Energy_transfer_p_improve",
+        "OMFITcgyro_nonlin.Energy_transfer_phi",
+        "OMFITcgyro_nonlin.Energy_transfer_phi_improve",
+        "OMFITcgyro_nonlin.fft_jian",
+        "OMFITcgyro_nonlin.get_ReyMaxStress",
+        "OMFITcgyro_nonlin.get_kx_ky",
+        "OMFITcgyro_nonlin.get_kxky_phi",
+        "OMFITcgyro_nonlin.miller_wd_s"
+      ]
+    },
+    {
+      "source": "GACODE_module/CGYROscan/changeOMFITcgyrogacode.py",
+      "source_sha256": "c48f64ef89ce110cb9f3e487fe1d8f1c7ac827e5fb5701167dc8645059874b5a",
+      "destination": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/assist/changeOMFITcgyrogacode.py",
+      "destination_sha256": "faa1e33039da02ca769827794d6d6bbf90ee33c0285e0df14b9833ea8589a0c7",
+      "missing_symbols": [],
+      "added_symbols": [],
+      "changed_symbols": []
+    },
+    {
+      "source": "GACODE_module/CGYROscan/getglobal.py",
+      "source_sha256": "f0a4b1efaf247bb9cf3efbd870fb3f10c3722704202869e515575986ac3ca9f5",
+      "destination": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/assist/getglobal.py",
+      "destination_sha256": "51f1a9d08f4bc69a6ed5218dabf6fde79ad5899b61fde339611a63e8beb2094f",
+      "missing_symbols": [],
+      "added_symbols": [],
+      "changed_symbols": []
+    },
+    {
+      "source": "GACODE_module/CGYROscan/starter.py",
+      "source_sha256": "8de6e389a9849439d10f9f32d53a43b795f4ef3b4e8bfca4c5accd672dfa4936",
+      "destination": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/assist/starter.py",
+      "destination_sha256": "991f213ec1d2f0a9c35df9fc7246ff96a2c419fc29b72ef66572db3b02a3be53",
+      "missing_symbols": [],
+      "added_symbols": [],
+      "changed_symbols": []
+    },
+    {
+      "source": "GACODE_module/CGYROscan/collect_gyro.py",
+      "source_sha256": "aed8f8dae3f7a1ab2f3ab9d69c4fe92e0ff6d26daf49676d07e222eb8a1549e1",
+      "destination": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/assist/collect_gyro.py",
+      "destination_sha256": "824f136cd344498b2ddd317c97b8a56419f8dbe3893dd8495acda317ed3cb9c2",
+      "missing_symbols": [],
+      "added_symbols": [],
+      "changed_symbols": [
+        "OMFITgyro_eigen",
+        "OMFITgyro_eigen.__init__",
+        "OMFITgyro_eigen.changeorder",
+        "OMFITgyro_eigen.eigen_ave",
+        "OMFITgyro_eigen.miller_wd_s",
+        "OMFITgyro_eigen.turn_thetap2thetab"
+      ]
+    },
+    {
+      "source": "GACODE_module/CGYROscan/collect.py",
+      "source_sha256": "1220c012370a313147b0bda6ea2b214e03000c5cd42e1f22d173d487b08c3a16",
+      "destination": "CGYRO_TGLF_scan/CGYRO_scan/PLOTS/CGYROscan/assist/collect.py",
+      "destination_sha256": "f63a3c31f679eaf791494d3d7c43f578b0e3e6227b95442c0dfbe53bd646c6e9",
+      "missing_symbols": [],
+      "added_symbols": [],
+      "changed_symbols": [
+        "OMFITcgyro_eigen",
+        "OMFITcgyro_eigen.eigen_ave",
+        "OMFITcgyro_eigen.miller_wd_s"
+      ]
+    },
+    {
+      "source": "GACODE_module/CGYROscan/cgyro_read_xj.py",
+      "source_sha256": "c852a19cefd1c6c324f1aedcb60cc7fe0b45da1f69aafce4ad4f3620b83f4b43",
+      "destination": "CGYRO_TGLF_scan/CGYRO_scan/LIB/OMFITlib_cgyro_read.py",
+      "destination_sha256": "af6aba8b15e87413a0894fbbbd372b04292eaed4a8dd503a6bd860f78c23e4d8",
+      "missing_symbols": [],
+      "added_symbols": [
+        "ql_species_flux"
+      ],
+      "changed_symbols": [
+        "getoutmsg",
+        "readfreq"
+      ]
+    }
+  ]
+}

@@ -1,10 +1,7 @@
 # this script is used to plot the zonal flow shearing rate versus theta
 import sys
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROalone/assist')
-f = open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+with open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 icgyro=root['SETTINGS']['SETUP']['icgyro']
 if icgyro==1:
     root['PLOTS']['CGYROalone']['assist']['collect.py'].run()

@@ -1,3 +1,4 @@
+from scipy.integrate import cumulative_trapezoid as cumtrapz
 # Modify input.gacode variables and save as input.gacode.[ext]
 
 

@@ -2,7 +2,7 @@
 import os
 import tempfile
 import numpy as np
-from cgyro_read_xj import num2str_xj
+from OMFITlib_cgyro_read import num2str_xj
 settings = root['SETTINGS']
 selection = settings['PLOTS']['1d']
 effnum = settings['SETUP']['effnum']

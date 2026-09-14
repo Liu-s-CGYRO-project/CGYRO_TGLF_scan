@@ -4,12 +4,9 @@
 # first we should define a function to read the date of out.gyro.freq, which contains the frequency and growth rate
 import numpy as np
 import sys
-#sys.path.append('/gpfs/scratch/liujy/OMFIT/mymodule/CGYRO_SCAN/PLOTS/CGYROscan/assist')
-from cgyro_read_xj import *
-f = open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+from OMFITlib_cgyro_read import *
+with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 # define the function for fit
 if ifit_mthd==1:
     def f_1(x,A,C):
@@ -67,17 +64,17 @@ for k in range(0,nRange):
                 inputcgyrogen=datanode['input.cgyro.gen']
                 betae=inputcgyrogen['BETAE_UNIT']
                 q = inputcgyrogen['Q']
-                Rmaj=inputcgyro['RMAJ']
+                Rmaj=inputcgyrogen['RMAJ']
                 nimisum=sum([inputcgyrogen['MASS_'+str(p)]*inputcgyrogen['DENS_'+str(p)] for p in arange(1,inputcgyrogen['N_SPECIES'])])
             else:
                 inputgyrogen = datanode['input.gyro.gen']
                 betae = inputgyrogen['BETAE_UNIT']
                 q = inputgyrogen['SAFETY_FACTOR']
-                Rmaj = inputgyro['ASPECT_RATIO']
-                n_ion=len(datanode['tagspec'])
-                nimisum = inputgyrogen['NI_OVER_NE' + str(p)] / inputgyrogen['MU_' + str(p)] ** 2
+                Rmaj = inputgyrogen['ASPECT_RATIO']
+                n_ion = len(datanode['tagspec']) - int(not inputgyrogen.get('AE_FLAG', 0))
+                nimisum = inputgyrogen['NI_OVER_NE'] / inputgyrogen['MU'] ** 2
                 if n_ion>1:
-                    nimisum=nimisum+sum([inputgyrogen['NI_OVER_NE' + str(p)] / inputgyrogen['MU_' + str(p)] ** 2 for p in arange(2, n_ion+1)])
+                    nimisum=nimisum+sum([inputgyrogen['NI_OVER_NE_' + str(p)] / inputgyrogen['MU_' + str(p)] ** 2 for p in arange(2, n_ion+1)])
             omega_a_to_cs = sqrt(2 / betae / nimisum) / q / Rmaj
             print('omega_a/cs_a=%7.2f'%omega_a_to_cs)
             w=w/omega_a_to_cs

@@ -24,7 +24,8 @@ sys.path.insert(0, str(REPO / 'tests'))
 import test_native_mapping as tests
 
 
-def validate(source):
+def load_native_mapping(source):
+    """Load the unchanged class and isolated lazy-loading registry for test hosts."""
     source = Path(source).resolve()
     raw = source.read_text(encoding='utf-8')
     base = source.with_name('utils_base.py')
@@ -52,6 +53,14 @@ def validate(source):
     factory = namespace['SortedDict']
     registry = ModuleType('omfit_classes.utils_base')
     registry._loaded_classes = set()
+    evidence = dict(source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                    native_class_sha256=hashlib.sha256(ast.get_source_segment(raw, native_class).encode()).hexdigest())
+    return factory, registry, evidence
+
+
+def validate(source):
+    source = Path(source).resolve()
+    factory, registry, evidence = load_native_mapping(source)
     classes = (tests.NativeProjectTest, tests.NativeMultiInputTest, tests.NativeIntegrationTest)
     stream = io.StringIO()
     with patch.dict(sys.modules, {'omfit_classes.utils_base': registry}):
@@ -65,8 +74,7 @@ def validate(source):
             for cls, original in zip(classes, originals):
                 cls.tree_factory = original
     report = dict(python=sys.version.split()[0], omfit_source=str(source),
-                  source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
-                  native_class_sha256=hashlib.sha256(ast.get_source_segment(raw, native_class).encode()).hexdigest(),
+                  **evidence,
                   native_class_unmodified=True, native_lazy_loading=True,
                   tests=result.testsRun, failures=len(result.failures), errors=len(result.errors),
                   skipped=len(result.skipped), complete_omfit_session_tested=False, solver_executed=False)

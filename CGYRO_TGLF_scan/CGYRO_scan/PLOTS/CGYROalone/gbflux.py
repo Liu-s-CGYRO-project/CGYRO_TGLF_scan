@@ -2,12 +2,8 @@
 import sys
 import numpy as np
 num2str_xj = root['PLOTS']['CGYROscan']['assist']['cgyro_read_xj'].runNoGUI()['num2str_xj']
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROalone/assist')
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROscan/assist')
-f = open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+with open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 icgyro=root['SETTINGS']['SETUP']['icgyro']
 if icgyro==1:
     root['PLOTS']['CGYROalone']['assist']['collect.py'].run()

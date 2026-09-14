@@ -1,11 +1,8 @@
+from scipy import interpolate
 import sys
-#sys.path.append('/home/users/chenly_dut/mymodule/CGYRO_SCAN/PLOTS/CGYROscan/assist')
-from cgyro_read_xj import *
-#from cgyro_ball_class import OMFITcgyro_eigen
-f = open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+from OMFITlib_cgyro_read import *
+with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 
 # this is a class inherient from OMFITcgyro_base
 # this class will mainly focus on writting some methods for handling the eigenfunction
@@ -13,7 +10,7 @@ f.close()
 import numpy as np
 from scipy import integrate
 from scipy.interpolate import interp1d
-from classes.omfit_gacode import OMFITcgyro
+from omfit_classes.omfit_gacode import OMFITcgyro
 
 #class OMFITcgyro_eigen(omfit_gacode.OMFITcgyro_base.OMFITcgyro):
 class OMFITcgyro_eigen(OMFITcgyro):
@@ -163,12 +160,12 @@ class OMFITcgyro_eigen(OMFITcgyro):
         det=Rs*(dRdr*dZdtheta-dRdtheta*dZdr)
     # look at grad r
         gradr=dldtheta*Rs/det
-        l=integrate.cumtrapz(dldtheta,self.theta_p,initial=0)
+        l=integrate.cumulative_trapezoid(dldtheta,self.theta_p,initial=0)
         d2Zdtheta2=np.gradient(dZdtheta)/np.gradient(self.theta_p)
         d2Rdtheta2=np.gradient(dRdtheta)/np.gradient(self.theta_p)
         rc_theta=dldtheta**3/(dRdtheta*d2Zdtheta2-dZdtheta*d2Rdtheta2)
 #        IoverBunit=2*np.pi*self.rmin/integrate.trapz(1/Rs/gradr,l) # scale
-        IoverBunit=2*np.pi*self.rmin/np.trapz(1/Rs/gradr,l) # scale
+        IoverBunit=2*np.pi*self.rmin/integrate.trapezoid(1/Rs/gradr,l) # scale
         BtoverBunit=IoverBunit/Rs
         BpoverBunit=self.rmin/Rs*gradr/self.q
         BoverBunit=(BtoverBunit**2+BpoverBunit**2)**0.5
@@ -190,9 +187,9 @@ class OMFITcgyro_eigen(OMFITcgyro):
         l_new=np.zeros(self.n_theta_p)
         l_new[0:ntheta_half-1]=l[ntheta_half-1:self.n_theta_p-1]-l[ntheta_half-1]
         l_new[ntheta_half-1:self.n_theta_p-1]=l[0:ntheta_half-1]+l[ntheta_half-1]
-        E1_new=integrate.cumtrapz(E1kernel_new,l_new,initial=0)
-        E2_new=integrate.cumtrapz(E2kernel_new,l_new,initial=0)
-        E3_new=integrate.cumtrapz(E3kernel_new,l_new,initial=0)  # in the order of 0~2*pi
+        E1_new=integrate.cumulative_trapezoid(E1kernel_new,l_new,initial=0)
+        E2_new=integrate.cumulative_trapezoid(E2kernel_new,l_new,initial=0)
+        E3_new=integrate.cumulative_trapezoid(E3kernel_new,l_new,initial=0)  # in the order of 0~2*pi
     # change back to [-pi,pi]
         E1=OMFITcgyro_eigen.changeorder(self,E1_new)
         E2=OMFITcgyro_eigen.changeorder(self,E2_new)
@@ -222,13 +219,13 @@ class OMFITcgyro_eigen(OMFITcgyro):
         D0_kernel=1./Rs*(2./rc_theta/Rs-2*cosu/Rs**2)*IoverBp
         D1_kernel_part=1./Rs**2.*(BoverBunit/BpoverBunit)**2        # the dI/dr is unknow yet
         D2_kernel=-1./2*1./Rs**2.*IoverBp*self.betastar/BpoverBunit**2
-        D0=integrate.cumtrapz(D0_kernel,l,initial=0)
-        D1_part=integrate.cumtrapz(D1_kernel_part,l,initial=0)
-        D2=integrate.cumtrapz(D2_kernel,l,initial=0)
+        D0=integrate.cumulative_trapezoid(D0_kernel,l,initial=0)
+        D1_part=integrate.cumulative_trapezoid(D1_kernel_part,l,initial=0)
+        D2=integrate.cumulative_trapezoid(D2_kernel,l,initial=0)
         dqdr=self.shear*self.q/self.rmin
         dIdr=(2*np.pi*dqdr-D0[-1]-D2[-1])/D1_part[-1]
         D1_kernel=1./Rs**2.*(BoverBunit/BpoverBunit)**2*dIdr
-        D1=integrate.cumtrapz(D1_kernel,l,initial=0)
+        D1=integrate.cumulative_trapezoid(D1_kernel,l,initial=0)
         # mu1=D0+D1+D2
         s_loc=self.rmin/q_loc*(D0_kernel+D1_kernel+D2_kernel)*np.gradient(l)/np.gradient(self.theta_p)
     #     get the output

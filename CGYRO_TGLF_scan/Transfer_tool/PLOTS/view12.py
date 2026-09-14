@@ -1,3 +1,5 @@
+from scipy.interpolate import CubicSpline
+
 fs1=12
 fs2=16
 fs3=20
@@ -18,8 +20,8 @@ rhop=linspace(0,1,numgrid)
 Pres=linspace(0,0,numgrid)
 rhot=linspace(0,0,numgrid)
 rhopres=(rhop[0:numgrid-1]+rhop[1:numgrid])/2;
-pppsi=spline(rhop,gdata['PPRIME'],rhopres)
-q=spline(rhop,abs(gdata['QPSI']),rhopres)
+pppsi=CubicSpline(rhop,gdata['PPRIME'])(rhopres)
+q=CubicSpline(rhop,abs(gdata['QPSI']))(rhopres)
 dpsi=difab/(numgrid-1);
 for m in linspace(numgrid-2,0,numgrid-1): #numgrid-1:-1:1
     m=int(m)
@@ -114,7 +116,7 @@ plot(rhot,abs(qpsi),linewidth=2)
 #ylim([2,9])
 ylim([0,9])
 plot(array([0,1]),array([2,2]),'--r',linewidth=1)
-q95=spline(rhop,abs(qpsi),0.95)
+q95=CubicSpline(rhop,abs(qpsi))(0.95)
 plot(array([0,1]),array([q95,q95]),'--r',linewidth=1)
 xticks(fontsize=fs1,family='serif')
 yticks(linspace(1,9,9),fontsize=fs1,family='serif')

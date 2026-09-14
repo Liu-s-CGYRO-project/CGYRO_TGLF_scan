@@ -1,3 +1,4 @@
+from scipy.integrate import cumulative_trapezoid as cumtrapz
 # -*-Python-*-
 # Created by snoepg at 27 Sep 2017  02:05
 

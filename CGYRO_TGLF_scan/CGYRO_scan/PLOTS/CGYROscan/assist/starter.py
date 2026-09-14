@@ -1,7 +1,5 @@
 #import numpy as np
 #import sys
-#sys.path.append('/home/jianx/mymodule/TGLF_SCAN/PLOTS/assist')
-#from tglf_read_xj import *
 #def getglobal():
 plots=root['SETTINGS']['PLOTS']
 plt1d=plots['1d']  # type: object

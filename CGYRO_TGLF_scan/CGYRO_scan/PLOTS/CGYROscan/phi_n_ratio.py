@@ -2,12 +2,9 @@
 # the parameters and the value is specified in root['SETTINGS']['PLOTS']['Para'] and root['SETTINGS']['PLOTS']['Range']
 import numpy as np
 import sys
-sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROscan/assist')
-from cgyro_read_xj import *
-f = open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+from OMFITlib_cgyro_read import *
+with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 if setup['icgyro']==1:
     root['PLOTS']['CGYROscan']['assist']['collect.py'].run()
 else:
@@ -30,7 +27,7 @@ else:
 for k in range(0,nRange):
     for p in range(num_ky):
         # datanode=root['OUTPUTScan'][Para][num2str_xj(Range[k],effnum)]['lin'][num2str_xj(kyarr[p],effnum)]
-        datanode = root['OUTPUTS']['Linear'][Para + '_' + num2str_xj(Range[k], effnum) + '~ky_' + num2str_xj(kyarr[p], effnum)]
+        datanode = mounttree[Para + '_' + num2str_xj(Range[k], effnum) + '~ky_' + num2str_xj(kyarr[p], effnum)]
         # try:
         datanode.get_phi_n_ratio(theta=0, i_field=0,i_species=-1,moment='n')
         ratio_phi_n_temp=datanode.phi_n_ratio

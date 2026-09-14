@@ -1,3 +1,13 @@
+from builtins import any
+# Optional legacy QLGYRO route needs companion OMFIT modules. Check before any mutation.
+for _module, _scripts in [('TGLF_GACODE', ('runTGLF',)),
+                           ('GYRO_scan', ('runGYROscan', 'downsyncGYROscan'))]:
+    if _module not in root:
+        raise OMFITexception('QLGYRO requires the optional OMFIT module ' + _module + '; use the bundled CGYRO/TGLF workflows')
+    for _script in _scripts:
+        if _script not in root[_module].get('SCRIPTS', {}):
+            raise OMFITexception('QLGYRO requires ' + _module + '/SCRIPTS/' + _script)
+
 defaultVars(
     relax=root['INPUTS']['input.tgyro']['LOC_RELAX'],
     iterations=root['INPUTS']['input.tgyro']['TGYRO_RELAX_ITERATIONS'],
@@ -26,7 +36,7 @@ root['INPUTS']['input.tgyro']['TGYRO_ITERATION_METHOD'] = 6
 root['SETTINGS']['PHYSICS']['runPROFILES_GEN'] = False
 runid = str(root['SETTINGS']['EXPERIMENT']['runid'])
 
-from classes.omfit_tglf import intensity_sat, get_sat_params, sum_ky_spectrum, flux_integrals, get_zonal_mixing
+from omfit_classes.omfit_tglf import intensity_sat, get_sat_params, sum_ky_spectrum, flux_integrals, get_zonal_mixing
 from OMFITlib_general import save_qlgyro_tgyro_outputs
 
 
@@ -54,7 +64,7 @@ def qlgyro(sims, ig, sat_rule_in=2):
     for sim in sims:
         kys.append(sim['input.cgyro.gen']['KY'])
         nfield = sim['input.cgyro.gen']['N_FIELD']
-        npecies = sim['input.cgyro.gen']['N_SPECIES']
+        nspecies = sim['input.cgyro.gen']['N_SPECIES']
         rmin = sim['input.cgyro.gen']['RMIN']
 
     kys = np.array(kys)
@@ -114,7 +124,7 @@ def qlgyro(sims, ig, sat_rule_in=2):
 
     in0rad = ig2it(ig, [rmin])
     in0 = {}
-    rad = in0rad.items()[0][0]
+    rad = list(in0rad.items())[0][0]
 
     for k, v in in0rad[rad].items():
         in0.setdefault(k, v)

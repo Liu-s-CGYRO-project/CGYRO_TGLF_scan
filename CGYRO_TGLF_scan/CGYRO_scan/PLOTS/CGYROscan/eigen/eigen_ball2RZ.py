@@ -1,14 +1,9 @@
 # this is used to turn the eigenfunction from ballooning space to RZ plane
 import numpy as np
 import sys
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROscan/assist')
-from cgyro_read_xj import *
-from cgyro_ball import *
-from cgyro_ball_class import OMFITcgyro_eigen
-f = open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+from OMFITlib_cgyro_read import *
+with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 if setup['icgyro']==1:
     root['PLOTS']['CGYROscan']['assist']['collect.py'].run()
 else:
@@ -24,7 +19,7 @@ ncount=1
 # RZ contour plot
 figure(figsize=[10,10])
 for dirname in root['SETTINGS']['PLOTS']['dirname']:
-    case=root['OUTPUTS']['Linear'][dirname]
+    case=mounttree[dirname]
     case.turn_ball2RZ(rhos_over_a=1.e-3,n =2)
     ax=plt.subplot(3,ncase,ncount,projection='polar')
     if iabs==0:

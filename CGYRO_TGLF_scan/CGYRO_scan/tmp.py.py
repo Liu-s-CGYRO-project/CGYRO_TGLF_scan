@@ -1,8 +1,6 @@
 # The linear run script of CGYRO
 root = OMFIT['CGYRO_TGLF_scan']['CGYRO_scan']
 import numpy as np
-sys.path.append('/public/home/jinyue_liu/bin/GACODE_module/mymodule/PLOTS/CGYROscan/assist')
-sys.path.append('/public/home/jinyue_liu/bin/GACODE_module/mymodule/PLOTS/CGYROalone/assist')
 module_location = OMFIT['CGYRO_TGLF_scan']['CGYRO_scan']
 for k in array(['H','D','T']):
 

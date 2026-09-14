@@ -1,11 +1,8 @@
 # this script will be used to plot the fluctuation amplitute versus n
 # plot flux(n) & flux(t)
 import sys
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROalone/assist')
-f = open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+with open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 # check to see how many fields that all the cases have in common
 icgyro=root['SETTINGS']['SETUP']['icgyro']
 if icgyro==1:

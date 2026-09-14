@@ -1,12 +1,9 @@
 # this script is used to plot the eigenfrequency and growth rate for all the scanning cases,
 import sys
-sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROscan/assist')
-from cgyro_read_xj import *
+from OMFITlib_cgyro_read import *
 from matplotlib import ticker
-f = open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 
 # then read all the data
 w_arr=zeros([nRange_x,nRange_y,num_ky])     # dominate mode frequency

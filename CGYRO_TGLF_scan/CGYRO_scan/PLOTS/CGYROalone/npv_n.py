@@ -1,10 +1,7 @@
 # this script will be used to plot the fluctuation amplitute of n&p&v versus n
 import sys
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROalone/assist')
-f = open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+with open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 root['PLOTS']['CGYROalone']['assist']['collect.py'].run()
 # check to see how many fields that all the cases have in common
 n_moment=3

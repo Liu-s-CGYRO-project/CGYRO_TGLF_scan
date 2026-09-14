@@ -2,11 +2,8 @@
 # note the dky should be the same for those input cases
 import sys
 from matplotlib import ticker, cm
-#sys.path.append('/home/users/xiangjian/mymodule/CGYRO_SCAN/PLOTS/CGYROalone/assist')
-f = open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-    exec(line)
-f.close()
+with open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 root['PLOTS']['CGYROalone']['assist']['collect.py'].run()
 # check to see how many fields that all the cases have in common
 n_field=1

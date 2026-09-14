@@ -330,6 +330,7 @@
 ['CGYRO_TGLF_scan']['CGYRO_scan']['GUIS']['CGYRO_scan'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/GUIS/CGYRO_scan_gui.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_startup'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/LIB/OMFITlib_startup.py <-:-:-> {}
+['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_read'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/LIB/OMFITlib_cgyro_read.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SettingsNamelist.txt <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SETTINGS']['SETUP']['workDir'] <-:-:-> OMFITexpression <-:-:-> _"OMFITworkDir(root,'')" <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SETTINGS']['SETUP']['executable'] <-:-:-> OMFITexpression <-:-:-> _"'cgyro -e . -n ' + str(root['SETTINGS']['SETUP']['num_cores'])" <-:-:-> {}

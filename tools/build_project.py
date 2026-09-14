@@ -15,7 +15,7 @@ from OMFITlib_template_service import new_file
 def build(output):
     output = Path(output).expanduser().resolve()
     rows = parse_tree((ROOT / 'OMFITsave.txt').read_bytes())
-    selected = {'OMFITsave.txt', 'MainSettingsNamelist.txt', 'VALIDATION.md'}
+    selected = {'OMFITsave.txt', 'MainSettingsNamelist.txt', 'VALIDATION.md', 'OMFIT_COMPATIBILITY.md'}
     directories = set()
     for row in rows:
         if not row.ref:

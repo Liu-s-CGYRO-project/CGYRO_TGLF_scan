@@ -1,16 +1,13 @@
 # 99949 version.
 import sys
 import os
-sys.path.append('/work/share/jianx/public_code/bin/GACODE_module/CGYROalone')
 
 # Set this env var to "1" before importing collect to load only class/function definitions.
 _COLLECT_IMPORT_ONLY = os.environ.get('CGYRO_COLLECT_IMPORT_ONLY', '0') == '1'
 
 if (not _COLLECT_IMPORT_ONLY) and ('root' in globals()):
-    f = open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r')
-    for line in f:
-        exec(line)
-    f.close()
+    with open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+        exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 
 # this is a class inherient from OMFITcgyro_base
 # this script will mostly focus on handling the nonlinear CGYRO object
@@ -18,7 +15,7 @@ import numpy as np
 from scipy import integrate
 from scipy.interpolate import interp1d
 from scipy.special import j0
-from classes.omfit_gacode import OMFITcgyro
+from omfit_classes.omfit_gacode import OMFITcgyro
 
 class OMFITcgyro_nonlin(OMFITcgyro):
     """
@@ -840,6 +837,119 @@ class OMFITcgyro_nonlin(OMFITcgyro):
         """Compatibility entry point for the shared, time-blocked implementation."""
         return self.Energy_transfer_p(i_theta_plot, i_s, kx_select, ky_select)
     
+    # Restored from the supplied GACODE_module/CGYROalone/collect.py.
+    def miller_wd_s(self,theta_p=np.linspace(-np.pi,np.pi,37)):
+        """
+        Usage: miller_wd_s(self)
+        Functionality: get the self.wd1, wd2,wd3, Rs,Zs,Gq,rc_theta,l, BoverBunit,Gtheta, gcos1, gcos2, gsin, gradr, k_perp
+        output: self.q_loc, self.s_loc as a function of theta_p
+        :return:
+        """
+        n_theta_p=len(theta_p)
+        xd = np.arcsin(self.delta)
+        arg = theta_p + xd * np.sin(theta_p)
+        Rs = self.Rmaj + self.rmin * np.cos(arg)  # R position
+        Zs = self.kappa * self.rmin * np.sin(theta_p)  # Z Position
+        #  calculate the Jocobian
+        dRdtheta = -1 * self.rmin * np.sin(arg) * (1 + np.cos(theta_p) * xd)
+        dZdtheta = self.kappa * self.rmin * np.cos(theta_p)
+        dldtheta = (dRdtheta ** 2 + dZdtheta ** 2) ** 0.5
+        dRdr = self.shift + np.cos(arg) - np.sin(theta_p) * np.sin(arg) * self.sdelta
+        dZdr = self.kappa * np.sin(theta_p) * (1 + self.skappa)
+        det = Rs * (dRdr * dZdtheta - dRdtheta * dZdr)
+        # look at grad r
+        gradr = dldtheta * Rs / det
+        l = integrate.cumulative_trapezoid(dldtheta, theta_p, initial=0)
+        d2Zdtheta2 = np.gradient(dZdtheta) / np.gradient(theta_p)
+        d2Rdtheta2 = np.gradient(dRdtheta) / np.gradient(theta_p)
+        rc_theta = dldtheta ** 3 / (dRdtheta * d2Zdtheta2 - dZdtheta * d2Rdtheta2)
+        #        IoverBunit=2*np.pi*self.rmin/integrate.trapz(1/Rs/gradr,l) # scale
+        IoverBunit = 2 * np.pi * self.rmin / integrate.trapezoid(1 / Rs / gradr, l)  # scale
+        BtoverBunit = IoverBunit / Rs
+        BpoverBunit = self.rmin / Rs * gradr / self.q
+        BoverBunit = (BtoverBunit ** 2 + BpoverBunit ** 2) ** 0.5
+        #    geometric components
+        cosu = np.gradient(Zs) / np.gradient(l)  # dZ/dl
+        sinu = -np.gradient(Rs) / np.gradient(l)  # - dR/dl
+        gsin = BtoverBunit / BoverBunit * self.Rmaj / BoverBunit * np.gradient(BoverBunit) / np.gradient(l)
+        gcos1 = (BtoverBunit / BoverBunit) ** 2 * self.Rmaj / Rs * cosu + (
+                    BpoverBunit / BoverBunit) ** 2 * self.Rmaj / rc_theta
+        gcos2 = -1. / 2. / BoverBunit ** 2 * self.Rmaj * gradr * self.betastar
+        # E series for mu
+        E1kernel = 2. / Rs / gradr * BtoverBunit / BpoverBunit * (self.rmin / rc_theta - self.rmin / Rs * cosu)
+        E2kernel = 1. / Rs / gradr * (BoverBunit / BpoverBunit) ** 2
+        E3kernel = 1. / 2. / Rs * BtoverBunit / BpoverBunit / BpoverBunit ** 2
+        # chang the order[0~2*pi], denoted new
+        E1kernel_new = OMFITcgyro_nonlin.changeorder(self, E1kernel)
+        E2kernel_new = OMFITcgyro_nonlin.changeorder(self, E2kernel)
+        E3kernel_new = OMFITcgyro_nonlin.changeorder(self, E3kernel)
+        ntheta_half = int(np.round((n_theta_p + 1) / 2))
+        l_new = np.zeros(n_theta_p)
+        l_new[0:ntheta_half - 1] = l[ntheta_half - 1:n_theta_p - 1] - l[ntheta_half - 1]
+        l_new[ntheta_half - 1:n_theta_p - 1] = l[0:ntheta_half - 1] + l[ntheta_half - 1]
+        E1_new = integrate.cumulative_trapezoid(E1kernel_new, l_new, initial=0)
+        E2_new = integrate.cumulative_trapezoid(E2kernel_new, l_new, initial=0)
+        E3_new = integrate.cumulative_trapezoid(E3kernel_new, l_new, initial=0)  # in the order of 0~2*pi
+        # change back to [-pi,pi]
+        E1 = OMFITcgyro_nonlin.changeorder(self, E1_new)
+        E2 = OMFITcgyro_nonlin.changeorder(self, E2_new)
+        E3 = OMFITcgyro_nonlin.changeorder(self, E3_new)
+        E1[0:ntheta_half - 1] = E1[0:ntheta_half - 1] - (E1[ntheta_half - 2] + E1[ntheta_half])
+        E2[0:ntheta_half - 1] = E2[0:ntheta_half - 1] - (E2[ntheta_half - 2] + E2[ntheta_half])
+        E3[0:ntheta_half - 1] = E3[0:ntheta_half - 1] - (E3[ntheta_half - 2] + E3[ntheta_half])
+        fstar = 1 / E2_new[-1] * (
+                    2 * np.pi * self.q * self.shear / self.rmin - 1 / self.rmin * E1_new[-1] + self.betastar *
+                    E3_new[-1])
+        THETA = Rs * BpoverBunit / BoverBunit * abs(gradr) * (1 / self.rmin * E1 + fstar * E2 - self.betastar * E3)
+        Gq = 1 / self.q * (self.rmin / Rs * BoverBunit / BpoverBunit)
+        Gtheta = BoverBunit * Rs / self.Rmaj / self.rmin / gradr * dldtheta
+        # assuming partial/partial(theta_p)=-i k_theta, partial/partial(r)=-i k_r
+        ktheta = self.ky[1]  # the ktheta is the kyrho_s specified in input.cgyro
+        kr = 0
+        vpar2v = 1 / 2  # assuming an isotropic distribution
+        #  the sign here is consistent with the s-alpha geometry
+        # the Rmaj exist in the denominator so that the output drift frequency has the unit of c_s/a,consistent with cgyro units
+        wd1 = ktheta * Gq * 1 * (gcos1 + gcos2 + THETA * gsin) / self.Rmaj
+        wd2 = -1 * ktheta * Gq * vpar2v * gcos2 / self.Rmaj
+        wd3 = -1 * kr * 1 * gradr * gsin / self.Rmaj
+        k_perp = (ktheta * Gq * THETA) ** 2 + (ktheta * Gq) ** 2
+        k_perp = k_perp ** 0.5
+        #  the local q and magnetic shear
+        IoverBp = IoverBunit / BpoverBunit
+        q_loc = IoverBp / Rs ** 2 * np.gradient(l) / np.gradient(theta_p)
+        # solute for I' with given s
+        D0_kernel = 1. / Rs * (2. / rc_theta / Rs - 2 * cosu / Rs ** 2) * IoverBp
+        D1_kernel_part = 1. / Rs ** 2. * (BoverBunit / BpoverBunit) ** 2  # the dI/dr is unknow yet
+        D2_kernel = -1. / 2 * 1. / Rs ** 2. * IoverBp * self.betastar / BpoverBunit ** 2
+        D0 = integrate.cumulative_trapezoid(D0_kernel, l, initial=0)
+        D1_part = integrate.cumulative_trapezoid(D1_kernel_part, l, initial=0)
+        D2 = integrate.cumulative_trapezoid(D2_kernel, l, initial=0)
+        dqdr = self.shear * self.q / self.rmin
+        dIdr = (2 * np.pi * dqdr - D0[-1] - D2[-1]) / D1_part[-1]
+        D1_kernel = 1. / Rs ** 2. * (BoverBunit / BpoverBunit) ** 2 * dIdr
+        D1 = integrate.cumulative_trapezoid(D1_kernel, l, initial=0)
+        # mu1=D0+D1+D2
+        s_loc = self.rmin / q_loc * (D0_kernel + D1_kernel + D2_kernel) * np.gradient(l) / np.gradient(theta_p)
+        #     get the output
+        self.wd1 = wd1
+        self.wd2 = wd2
+        self.wd3 = wd3
+        self.k_perp = k_perp
+        self.Rs = Rs
+        self.Zs = Zs
+        self.l = l
+        self.rc_theta = rc_theta
+        self.BoverBunit = BoverBunit
+        self.Gq = Gq
+        self.Gtheta = Gtheta
+        self.gcos1 = gcos1
+        self.gcos2 = gcos2
+        self.gsin = gsin
+        self.gradr = gradr
+        self.THETA = THETA
+        self.q_loc = q_loc
+        self.s_loc = s_loc
+
     def entropy_transfer(self,i_species=0):
         # the entropy is defined in Song-PRL-2025, it is a summation of all the other kx' and ky' to the kx,ky
         # the plot is about the kx,ky pairs

@@ -1,13 +1,10 @@
 import numpy as np
 import sys
 
-#sys.path.append('/public/home/xiang_jian/mymodule/CGYRO_SCAN/PLOTS/CGYROalone/assist')
-from cgyro_read_xj import *
+from OMFITlib_cgyro_read import *
 
-f = open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r')
-for line in f:
-	exec(line)
-f.close()
+with open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r') as _helper_source:
+    exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
 
 icgyro = root['SETTINGS']['SETUP']['icgyro']
 if icgyro == 1:
