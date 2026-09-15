@@ -1,6 +1,7 @@
 """Build independent Linux and native OMFIT manager packages from registered files."""
 import argparse
 import hashlib
+import gzip
 import io
 import json
 from pathlib import Path
@@ -15,6 +16,7 @@ from OMFITlib_template_archive import parse_tree
 from OMFITlib_template_manager_update import package_names
 from OMFITlib_template_service import new_file
 from OMFITlib_template_versions import MANAGER_VERSION
+from OMFITlib_template_incremental import FORMAT, manifest_name, validate_manifest
 
 README = '''# OMFIT 模板管理器 {version}
 
@@ -43,7 +45,11 @@ OMFIT_TEMPLATE_PYTHON=/path/to/python bash start_manager.sh
 数字版本按数值比较（1.10.0 在 1.9.0 前），旧日期版本保留在历史序列中。
 右上角“检查管理器更新”显示当前和最新稳定版本，使用当前代理配置。
 更新源固定为 Liu-s-CGYRO-project/CGYRO_TGLF_scan 的独立管理器 Release。
-下载 Linux 或 OMFIT 安装包后会校验大小和 SHA-256，用户再安装并重新打开窗口。
+优先显示文件级增量更新：比较本地 SHA-256，只下载变更文件，在界面内安装并重新打开。
+OMFIT 内只替换管理器模块；正常保存工程以保留更新。Linux 原启动入口会自动进入新版。
+取消或校验失败保留当前版本；完整安装包下载继续作为兼容入口。
+1.6.0 及更早版本需先完整安装一次 1.7.0，之后可使用增量流程。
+原安装目录保留，运行 bash start_manager.sh --no-update-redirect 可返回原目录版本。
 计算工程继续通过“更新 / 切换”页预览和生成新工程。
 
 默认公共 GitHub 代理使用“手动 HTTP 代理”，主机 47.102.120.146，端口 18889，用户名和密码留空。
@@ -103,7 +109,22 @@ def build(directory):
             assert archive.testzip() is None
             for name in archive.namelist():
                 assert archive.read(name) == payload[name]
-    return dict(version=MANAGER_VERSION, files=len(selected), packages=[
+    incremental = directory / 'incremental'
+    incremental.mkdir(parents=True, exist_ok=True)
+    manifest = dict(format=FORMAT, version=MANAGER_VERSION, files={})
+    for name, data in sorted(payload.items()):
+        digest = hashlib.sha256(data).hexdigest()
+        asset = 'omfit-file-' + digest + '.gz'
+        manifest['files'][name] = dict(size=len(data), sha256=digest, asset=asset,
+                                      mode=0o755 if name.endswith('.sh') else 0o644)
+        destination = incremental / asset
+        if not destination.exists():
+            with new_file(destination) as temporary:
+                temporary.write_bytes(gzip.compress(data, mtime=0))
+    validate_manifest(manifest, MANAGER_VERSION)
+    with new_file(incremental / manifest_name(MANAGER_VERSION)) as temporary:
+        temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    return dict(version=MANAGER_VERSION, files=len(selected), incremental=str(incremental), packages=[
         dict(path=str(path), bytes=path.stat().st_size, sha256=hashlib.sha256(path.read_bytes()).hexdigest())
         for path in (linux, module)])
 

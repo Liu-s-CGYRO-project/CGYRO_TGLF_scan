@@ -249,6 +249,68 @@ class UITest(unittest.TestCase):
         self.assertEqual(self.app.current.get(), str(self.old))
         self.assertIsNone(self.app.last_output)
 
+    def test_incremental_update_has_in_app_install_button_and_uses_active_proxy(self):
+        from types import SimpleNamespace
+        report = dict(current='1.6.0', latest='1.7.0', available=True, repository='team/demo',
+            packages={}, notes='增量升级', url='https://github.com/team/demo/releases',
+            plan=dict(changed=['OMFITtemplates/GUIS/main.py'], reused=['help.rst'], download_bytes=42))
+        self.app._show_manager_update(report)
+        self.assertTrue(self.app.manager_install_button.winfo_exists())
+        self.app.session = SimpleNamespace()
+        with patch('OMFITlib_template_manager_ui.GitHub') as client, \
+                patch('OMFITlib_template_manager_ui.install_incremental', return_value='/fixture/new') as install, \
+                patch.object(self.app, '_manager_installed') as installed:
+            self.app.manager_install_button.invoke()
+            self.wait_idle()
+        self.assertEqual(client.call_args.kwargs['token'], '')
+        self.assertEqual(client.call_args.kwargs['proxy'], 'http://47.102.120.146:18889')
+        self.assertEqual(install.call_args.args[1], report['plan'])
+        installed.assert_called_once_with('/fixture/new')
+
+    def test_incremental_failure_keeps_existing_gui_open(self):
+        from OMFITlib_template_archive import TemplateError
+        self.app.manager_update_result = {'plan': {'version': '1.7.0'}}
+        with patch('OMFITlib_template_manager_ui.install_incremental', side_effect=TemplateError('下载校验失败')), \
+                patch.object(self.app, '_manager_installed') as installed:
+            self.app._install_manager_update()
+            deadline = time.monotonic() + 5
+            while self.app.busy and time.monotonic() < deadline:
+                self.pump(.02)
+            installed.assert_not_called()
+        self.assertEqual(self.errors.pop(), '下载校验失败')
+        self.assertTrue(self.app.alive)
+        self.assertEqual(self.app.current.get(), str(self.old))
+
+    def test_in_omfit_incremental_install_reopens_only_manager_and_rolls_back_on_failure(self):
+        from unittest.mock import Mock
+        for fail in (False, True):
+            child = tk.Toplevel(self.root)
+            session = Mock()
+            session.project_path.return_value = str(self.old)
+            session.reopen_manager.side_effect = [RuntimeError('new GUI failed'), None] if fail else None
+            manager = TemplateManager(child, preferences=self.base / 'in-omfit.json', session=session)
+            manager._manager_installed('/fixture/installed')
+            self.pump(.2)
+            self.assertFalse(manager.alive)
+            self.assertTrue(self.root.winfo_exists())
+            session.replace_manager.assert_called_once_with(Path('/fixture/installed/OMFITtemplates'))
+            if fail:
+                session.restore_manager.assert_called_once_with(session.replace_manager.return_value)
+                self.assertIn('已恢复原模块', self.errors.pop())
+                self.assertEqual(session.reopen_manager.call_count, 2)
+            else:
+                session.restore_manager.assert_not_called()
+                session.reopen_manager.assert_called_once()
+
+    def test_standalone_launch_failure_restores_previous_active_version(self):
+        with patch('OMFITlib_template_manager_ui.activate_installation', return_value=b'previous') as activate, \
+                patch('OMFITlib_template_manager_ui.restore_activation') as restore, \
+                patch('OMFITlib_template_manager_ui.subprocess.Popen', side_effect=OSError('start failed')):
+            with self.assertRaises(OSError):
+                self.app._manager_installed('/fixture/new')
+        restore.assert_called_once_with(b'previous')
+        self.assertTrue(self.app.alive)
+
     def test_omfit_window_reuses_existing_tk(self):
         manager = open_manager(str(self.old), self.library, self.base / 'preferences.json')
         self.assertIsNot(manager.window, self.root)

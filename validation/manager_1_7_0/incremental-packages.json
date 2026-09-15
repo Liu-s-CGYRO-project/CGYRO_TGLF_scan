@@ -1,0 +1,32 @@
+{
+  "source": "locally built release assets",
+  "from_version": "1.6.0",
+  "to_version": "1.7.0",
+  "changed_files": 14,
+  "reused_files": 20,
+  "compressed_download_bytes": 53446,
+  "manifest_bytes": 9329,
+  "complete_linux_package_bytes": 92120,
+  "changed_paths": [
+    "OMFITtemplates/LIB/OMFITlib_template_incremental.py",
+    "OMFITtemplates/LIB/OMFITlib_template_manager_ui.py",
+    "OMFITtemplates/LIB/OMFITlib_template_manager_update.py",
+    "OMFITtemplates/LIB/OMFITlib_template_session.py",
+    "OMFITtemplates/LIB/OMFITlib_template_ui.py",
+    "OMFITtemplates/LIB/OMFITlib_template_versions.py",
+    "OMFITtemplates/OMFITsave.txt",
+    "OMFITtemplates/SettingsNamelist.txt",
+    "OMFITtemplates/help.rst",
+    "OMFITtemplates/launch.py",
+    "OMFITtemplates/tests/test_incremental.py",
+    "OMFITtemplates/tests/test_ui.py",
+    "README.md",
+    "SHA256SUMS.json"
+  ],
+  "assembled_files_match_complete_release": true,
+  "original_files_unchanged": true,
+  "isolated_full_gui_startup": true,
+  "activation_and_revert": true,
+  "github_credentials_used": false,
+  "http_asset_requests": 15
+}

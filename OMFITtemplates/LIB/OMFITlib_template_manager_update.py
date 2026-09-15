@@ -1,5 +1,5 @@
 """Check and download manager-only releases without changing a running project."""
-from builtins import dict, int, len, list, max, open, str
+from builtins import dict, int, len, list, max, open, set, str
 import hashlib
 from pathlib import Path
 import re
@@ -8,6 +8,7 @@ from urllib import parse
 from OMFITlib_template_archive import CHUNK, TemplateError
 from OMFITlib_template_service import check_cancel, new_file
 from OMFITlib_template_versions import MANAGER_VERSION, semantic_version
+from OMFITlib_template_incremental import manifest_name, verified_asset
 
 MANAGER_TAG_PREFIX = 'omfit-manager/v'
 MAX_MANAGER_PACKAGE = 128 * 1024 ** 2
@@ -53,7 +54,19 @@ def check_manager_update(client, current_version=MANAGER_VERSION):
             continue
         if 0 < size <= MAX_MANAGER_PACKAGE and identity > 0 and re.fullmatch(r'sha256:[a-f0-9]{64}', digest):
             packages[kind] = dict(name=name, size=size, asset_id=identity, sha256=digest[7:], repository=client.repo)
+    incremental_assets = {}
+    duplicates = set()
+    for asset in assets:
+        item = verified_asset(asset, client.repo)
+        if item:
+            if item['name'] in incremental_assets:
+                duplicates.add(item['name'])
+            incremental_assets[item['name']] = item
+    for name in duplicates:
+        incremental_assets.pop(name, None)
+    manifest = incremental_assets.get(manifest_name(version))
     result.update(latest=version, available=key > current, packages=packages,
+                  incremental=dict(manifest=manifest, assets=incremental_assets) if manifest is not None else None,
                   url='https://github.com/' + client.repo + '/releases/tag/' + parse.quote(MANAGER_TAG_PREFIX + version, safe=''),
                   notes=str(release.get('body') or '')[:20000])
     return result

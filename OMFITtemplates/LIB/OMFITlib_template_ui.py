@@ -597,6 +597,8 @@ class TemplateManager(ManagerUpdateUI):
                         self.progress.configure(value=100)
                         try:
                             event[1](event[2])
+                            if not self.alive:
+                                return
                         except Exception as exc:
                             self._error(exc)
                     elif isinstance(event[1], Cancelled):
@@ -605,7 +607,8 @@ class TemplateManager(ManagerUpdateUI):
                         self._error(event[1])
         except queue.Empty:
             pass
-        self._poll_after = self.window.after(100, self._poll)
+        if self.alive:
+            self._poll_after = self.window.after(100, self._poll)
 
     def refresh(self):
         if self.busy:

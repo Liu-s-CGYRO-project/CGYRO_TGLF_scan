@@ -1,13 +1,18 @@
 """Manager update dialog shared by standalone Tk and the OMFIT module."""
 from builtins import len, str
+from pathlib import Path
+import subprocess
+import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import webbrowser
 
-from OMFITlib_template_archive import TemplateError
+from OMFITlib_template_archive import TemplateError, human_size
 from OMFITlib_template_github import DEFAULT_REPOSITORY, GitHub
 from OMFITlib_template_manager_update import check_manager_update, download_manager_package
 from OMFITlib_template_versions import MANAGER_VERSION
+from OMFITlib_template_incremental import plan_incremental, install_incremental, activate_installation, restore_activation
+from OMFITlib_template_service import Cancelled
 
 
 class ManagerUpdateUI:
@@ -20,9 +25,20 @@ class ManagerUpdateUI:
             self._error(exc)
             return
         self._save_preferences()
-        self._run('正在检查管理器自身更新…',
-                  lambda: check_manager_update(GitHub(DEFAULT_REPOSITORY, token='', proxy=proxy, cancel=self.cancel)),
-                  self._show_manager_update)
+        sources = self.session.manager_sources() if self.session is not None else {}
+        module_dir = Path(__file__).resolve().parents[1]
+        def check():
+            client = GitHub(DEFAULT_REPOSITORY, token='', proxy=proxy, cancel=self.cancel)
+            result = check_manager_update(client)
+            if result['available'] and result.get('incremental'):
+                try:
+                    result['plan'] = plan_incremental(client, result, module_dir, sources)
+                except Cancelled:
+                    raise
+                except TemplateError as exc:
+                    result['incremental_error'] = str(exc)
+            return result
+        self._run('正在检查管理器自身更新并比较本地文件…', check, self._show_manager_update)
 
     def _close_manager_update(self):
         if self.busy:
@@ -55,8 +71,18 @@ class ManagerUpdateUI:
                     muted=True).pack(anchor='w', pady=(8, 4))
         self._label(page, '管理器更新源：' + result['repository'] + '\n网络：' + self.proxy_info.get(),
                     muted=True, wraplength=700).pack(fill='x')
-        self._label(page, '独立更新模板管理器。下载完成后按说明安装，再重新打开窗口；计算工程的更新仍在“更新 / 切换”页进行。',
+        self._label(page, '增量更新只下载变更文件，校验后安装并重新打开管理器。当前工程、计算结果和模板库保留；在 OMFIT 中正常保存工程即可保留更新。',
                     muted=True, wraplength=700).pack(fill='x', pady=10)
+        plan = result.get('plan')
+        self.manager_install_button = None
+        if plan:
+            self._label(page, '下载 {} 个变更文件（{}），复用 {} 个文件。'.format(
+                len(plan['changed']), human_size(plan['download_bytes']), len(plan['reused'])), wraplength=700).pack(fill='x')
+            self.manager_install_button = self._button(page, '安装增量更新并重新打开', self._install_manager_update)
+            self.manager_install_button.pack(anchor='w', pady=(8, 0))
+        elif result['available']:
+            self._label(page, result.get('incremental_error') or '此版本未提供增量文件，请下载完整安装包。',
+                        muted=True, wraplength=700).pack(fill='x')
         actions = self._frame(page)
         actions.pack(side='bottom', fill='x', pady=(12, 0))
         self.manager_download_buttons = {}
@@ -79,11 +105,64 @@ class ManagerUpdateUI:
         scroll = ttk.Scrollbar(body, command=notes.yview)
         scroll.grid(row=0, column=1, sticky='ns')
         notes.configure(yscrollcommand=scroll.set)
-        notes.insert('1.0', result['notes'] or '暂无发布说明。')
+        changes = ('需要更新的文件：\n' + '\n'.join(plan['changed']) + '\n\n发布说明：\n') if plan else ''
+        notes.insert('1.0', changes + (result['notes'] or '暂无发布说明。'))
         notes.configure(state='disabled')
         dialog.protocol('WM_DELETE_WINDOW', self._close_manager_update)
         self.status.set(summary)
         self._fit_size(dialog, 680, 480)
+
+    def _install_manager_update(self):
+        if self.busy or not self.manager_update_result.get('plan'):
+            return
+        plan = self.manager_update_result['plan']
+        try:
+            proxy = self._selected_proxy()
+        except TemplateError as exc:
+            self._error(exc)
+            return
+        def install():
+            path = install_incremental(GitHub(DEFAULT_REPOSITORY, token='', proxy=proxy,
+                cancel=self.cancel, progress=self._progress), plan)
+            if self.session is None:
+                result = subprocess.run([sys.executable, str(Path(path) / 'OMFITtemplates/launch.py'), '--check-ui'],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
+                if result.returncode:
+                    raise TemplateError('新版启动检查失败，当前版本保留：' + result.stderr.decode('utf-8', errors='replace')[-1000:])
+            return path
+        self._run('正在安装增量更新；当前版本保留…', install, self._manager_installed)
+
+    def _manager_installed(self, path):
+        if self.cancel.is_set():
+            self.status.set('已取消版本切换，当前管理器继续运行。')
+            return
+        path = Path(path)
+        self._save_preferences()
+        if self.session is not None:
+            session = self.session
+            parent = self.window.master
+            if parent is None:
+                raise TemplateError('未找到 OMFIT 主窗口，当前模块保留，请从 OMFIT 重新打开管理器')
+            previous = session.replace_manager(path / 'OMFITtemplates')
+            self.close()
+            def reopen():
+                try:
+                    session.reopen_manager()
+                except Exception as exc:
+                    session.restore_manager(previous)
+                    messagebox.showerror('Manager Update', '新版管理器未能打开，已恢复原模块：' + str(exc), parent=parent)
+                    session.reopen_manager()
+            parent.after(100, reopen)
+        else:
+            previous = activate_installation(path)
+            try:
+                subprocess.Popen([sys.executable, str(path / 'OMFITtemplates/launch.py'),
+                    '--library', self.library.get(), '--project', self.current.get()],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            except OSError:
+                restore_activation(previous)
+                raise
+            self.close()
 
     def _download_manager_update(self, kind):
         if self.busy:

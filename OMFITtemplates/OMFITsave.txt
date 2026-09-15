@@ -29,3 +29,5 @@
 ['TESTS']['test_zip_entry.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_zip_entry.py <-:-:-> {}
 ['LIB']['OMFITlib_template_cli'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_cli.py <-:-:-> {}
 ['TESTS']['test_cli.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_cli.py <-:-:-> {}
+['LIB']['OMFITlib_template_incremental'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_incremental.py <-:-:-> {}
+['TESTS']['test_incremental.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_incremental.py <-:-:-> {}

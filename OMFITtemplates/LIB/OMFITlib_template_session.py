@@ -1,5 +1,6 @@
 """Small, main-thread-only adapter to OMFIT's public saveas/load methods."""
-from builtins import any, bool, str
+from builtins import any, bool, dict, str, type
+import copy
 from datetime import datetime
 from pathlib import Path
 import threading
@@ -19,6 +20,54 @@ class OMFITSession:
     def project_path(self):
         path = str(getattr(self.omfit, 'filename', '') or '')
         return path if path.lower().endswith('.zip') else ''
+
+    def manager_sources(self):
+        """Locate only manager objects, even when OMFIT relocated their files."""
+        self._main_thread()
+        module = self.omfit['OMFITtemplates']
+        sources = {}
+        for branch, folder in (('LIB', 'LIB'), ('GUIS', 'GUIS'), ('TESTS', 'tests'), ('SOURCE', '')):
+            for key, node in module.get(branch, {}).items():
+                filename = str(getattr(node, 'filename', '') or '')
+                if filename:
+                    name = key if '.' in key else key + '.py'
+                    relative = 'OMFITtemplates/' + (folder + '/' if folder else '') + name
+                    sources[relative] = filename
+        for key, name in (('SETTINGS', 'SettingsNamelist.txt'), ('help', 'help.rst')):
+            node = module.get(key, None)
+            filename = str(getattr(node, 'filename', '') or '')
+            if filename:
+                sources['OMFITtemplates/' + name] = filename
+        return sources
+
+    def replace_manager(self, module_dir):
+        """Load only the manager; retain the old object until reopening succeeds."""
+        self._main_thread()
+        current = self.omfit['OMFITtemplates']
+        new = type(current)(str(Path(module_dir) / 'OMFITsave.txt'), quiet=True, developerMode=False)
+        if new['SETTINGS']['MODULE'].get('ID', '') != 'OMFITtemplates' or 'main' not in new.get('GUIS', {}):
+            raise TemplateError('下载内容不是可运行的 OMFITtemplates 模块')
+        def preserve(default, value):
+            if hasattr(default, 'items') and hasattr(value, 'items'):
+                result = copy.deepcopy(default)
+                for key, item in value.items():
+                    result[key] = preserve(result[key], item) if key in result else copy.deepcopy(item)
+                return result
+            return copy.deepcopy(value)
+        for key, value in current.get('SETTINGS', {}).items():
+            if key != 'MODULE':
+                new['SETTINGS'][key] = preserve(new['SETTINGS'].get(key, {}), value)
+        new.filename = ''
+        self.omfit['OMFITtemplates'] = new
+        return current
+
+    def restore_manager(self, previous):
+        self._main_thread()
+        self.omfit['OMFITtemplates'] = previous
+
+    def reopen_manager(self):
+        self._main_thread()
+        self.omfit['OMFITtemplates']['GUIS']['main'].run()
 
     def save_as(self, path):
         self._main_thread()

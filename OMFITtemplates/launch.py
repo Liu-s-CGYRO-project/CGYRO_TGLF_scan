@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import platform
 import sys
+import tempfile
 
 if sys.version_info < (3, 9):
     raise SystemExit('OMFIT 模板管理器需要 Python 3.9 或更新版本。')
@@ -45,6 +46,8 @@ def main():
     parser.add_argument('--library', default=None, help='模板库目录；图形界面默认恢复上次目录')
     parser.add_argument('--project', default='')
     parser.add_argument('--check', action='store_true', help='检查当前 Python、Tk 和 Linux 显示环境后退出')
+    parser.add_argument('--check-ui', action='store_true', help='在隔离偏好中检查完整管理器界面后退出')
+    parser.add_argument('--no-update-redirect', action='store_true', help='直接运行此目录中的版本，用于回退')
     commands = parser.add_subparsers(dest='command')
     inspect = commands.add_parser('inspect', help='读取工程模块与内容体积')
     inspect.add_argument('source')
@@ -77,10 +80,35 @@ def main():
     apply.add_argument('output')
     args = parser.parse_args()
     try:
+        if args.check_ui:
+            import tkinter as tk
+            from OMFITlib_template_ui import TemplateManager
+            with tempfile.TemporaryDirectory(prefix='omfit-manager-start-check-') as folder:
+                window = tk.Tk()
+                window.withdraw()
+                manager = None
+                try:
+                    manager = TemplateManager(window, preferences=str(Path(folder) / 'settings.json'))
+                    window.update_idletasks()
+                    print(json.dumps({'manager_ui': True, 'python': platform.python_version()}))
+                finally:
+                    if manager is not None:
+                        manager.close()
+                    else:
+                        window.destroy()
+            return
         if args.check:
             print(json.dumps(gui_environment(check_only=True), ensure_ascii=False, indent=2))
             return
         if args.command is None:
+            if not args.no_update_redirect:
+                from OMFITlib_template_incremental import active_launch
+                try:
+                    active = active_launch()
+                    if active is not None and active.resolve() != Path(__file__).resolve():
+                        os.execv(sys.executable, [sys.executable, str(active)] + sys.argv[1:])
+                except (TemplateError, OSError, KeyError) as exc:
+                    print('已安装更新无法启用，继续运行当前目录版本：' + str(exc), file=sys.stderr)
             gui_environment(project=args.project, library=args.library)
             return
         args.library = args.library or str(default_library())

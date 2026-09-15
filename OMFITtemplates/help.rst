@@ -1,4 +1,4 @@
-OMFIT GitHub 模板管理器 1.6.0
+OMFIT GitHub 模板管理器 1.7.0
 ============================
 
 面向带桌面的 Linux，在 OMFIT 内浏览、拉取和发布不同开发者的模板版本。
@@ -16,6 +16,7 @@ OMFIT GitHub 模板管理器 1.6.0
 1.6.0 修复大字体下文字遮挡，控件按实际文字尺寸布局；窗口标题使用不带版本号的英文。
 发布页在未登录时整体禁用；完成授权后自动读取 GitHub 登录名作为只读作者 ID。
 账号切换或凭据失效时清除旧发布计划；已下载模板的查看和使用不受影响。
+1.7.0 新增文件级增量更新，复用本地未变文件，只下载有变化的文件并在界面内安装。
 默认仓库为 Liu-s-CGYRO-project/CGYRO_TGLF_scan，可在界面更改。
 通过 GitHub Releases 分发版本；默认只包含代码和设置，案例、结果可选择作为示例。
 
@@ -156,3 +157,18 @@ GitHub 附件 API：https://docs.github.com/en/rest/releases/assets
 GitHub CLI 安装：https://cli.github.com/
 GitHub CLI 凭据：https://cli.github.com/manual/gh_auth_token
 Linux 用户目录：https://specifications.freedesktop.org/basedir/latest/
+
+管理器增量更新
+--------------
+
+点击右上角“检查管理器更新”，核对变更文件与下载量，再点击“安装增量更新并重新打开”。
+公开更新无需登录 GitHub，使用当前代理；旧版本未提供增量时仍可下载完整安装包。
+1.6.0 及更早版本需先手动安装一次 1.7.0，之后才能使用新的增量流程。
+
+本地文件按 SHA-256 复用，不依赖连续的版本链。清单、压缩附件和解压文件逐层校验。
+在独立的新目录中组装完整版本，校验完成后才启用；取消或失败保留当前版本。
+OMFIT 内直接替换管理器模块并重新打开，原设置保留，其他模块和计算结果不动。
+正常保存工程即可保留更新；新版界面打不开会恢复旧模块。
+
+独立 Linux 版从原启动脚本自动进入已安装的新版本，原目录仍保留。
+需要回退时，从原目录执行 bash start_manager.sh --no-update-redirect。

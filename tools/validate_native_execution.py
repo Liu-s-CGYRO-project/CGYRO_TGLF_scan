@@ -308,6 +308,26 @@ class NativeExecutionTests(unittest.TestCase):
                 self.assertEqual(out['ensure_cli'](client), str(target))
             self.assertEqual(target.read_bytes(), binary)
 
+    def test_incremental_manager_update_after_native_import_cleanup(self):
+        root = self.host.modules[('OMFITtemplates',)]
+        out = self.host.execute('from OMFITlib_template_incremental import plan_incremental, install_incremental, verify_installation', root)
+        self.assertFalse(any(name.startswith('OMFITlib_') for name in sys.modules))
+        with patch.dict(sys.modules), patch.object(sys, 'path', [str(REPO / 'OMFITtemplates/tests')] + sys.path):
+            from test_incremental import FixtureClient, fixture_payload
+        payload = fixture_payload()
+        client = FixtureClient(payload)
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            for name, data in payload.items():
+                path = folder / 'old' / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+            (folder / 'old/OMFITtemplates/GUIS/main.py').write_bytes(b'OLD')
+            plan = out['plan_incremental'](client, client.release, folder / 'old/OMFITtemplates')
+            self.assertEqual(plan['changed'], ['OMFITtemplates/GUIS/main.py'])
+            installed = out['install_incremental'](client, plan, folder / 'updates')
+            self.assertEqual(out['verify_installation'](installed, folder / 'updates'), Path(installed))
+
     def test_collectors_define_all_four_classes_inside_omfit(self):
         root = self.host.cg_fixture()
         cases = [('CGYROscan', 'collect.py', 'OMFITcgyro_eigen'),

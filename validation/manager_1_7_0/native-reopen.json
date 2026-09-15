@@ -1,0 +1,12 @@
+{
+  "native_executor": true,
+  "native_tk_patches": true,
+  "actual_gui_entry_and_reopen": true,
+  "old_gui_closed_new_version_loaded": true,
+  "same_tk_interpreter": true,
+  "calculation_object_preserved": true,
+  "unsaved_results_preserved": true,
+  "manager_settings_preserved": true,
+  "module_constructor": "adapter",
+  "complete_omfit_session_tested": false
+}

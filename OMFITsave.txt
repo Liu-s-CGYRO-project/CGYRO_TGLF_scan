@@ -407,3 +407,5 @@
 ['OMFITtemplates']['TESTS']['test_zip_entry.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_zip_entry.py <-:-:-> {}
 ['OMFITtemplates']['LIB']['OMFITlib_template_cli'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_cli.py <-:-:-> {}
 ['OMFITtemplates']['TESTS']['test_cli.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_cli.py <-:-:-> {}
+['OMFITtemplates']['LIB']['OMFITlib_template_incremental'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_incremental.py <-:-:-> {}
+['OMFITtemplates']['TESTS']['test_incremental.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_incremental.py <-:-:-> {}
