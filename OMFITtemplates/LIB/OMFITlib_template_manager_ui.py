@@ -100,7 +100,7 @@ class ManagerUpdateUI:
         body.pack(fill='both', expand=True, pady=8)
         body.columnconfigure(0, weight=1)
         body.rowconfigure(0, weight=1)
-        notes = tk.Text(body, wrap='word', font=self.font, height=7, relief='flat', padx=12, pady=10)
+        notes = self._text_area(body, wrap='word', height=7, relief='flat', padx=12, pady=10)
         notes.grid(row=0, column=0, sticky='nsew')
         scroll = ttk.Scrollbar(body, command=notes.yview)
         scroll.grid(row=0, column=1, sticky='ns')

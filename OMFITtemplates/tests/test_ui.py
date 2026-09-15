@@ -95,6 +95,52 @@ class UITest(unittest.TestCase):
         self.assertEqual(self.app.template_path.get(), self.template)
         self.assertTrue(self.app.apply_button.instate(['disabled']))
 
+    def test_author_dropdown_combines_with_search_sort_and_correct_selection(self):
+        base = self.app.releases[0]
+        releases = [dict(base, author='alice', version='1.9.0'),
+                    dict(base, author='alice', version='1.10.0'),
+                    dict(base, author='bob', version='1.10.0')]
+        self.app._loaded((releases, []))
+        self.assertEqual(tuple(self.app.author_combo.cget('values')), ('全部作者', 'alice', 'bob'))
+        self.app.author_combo.set('alice')
+        self.app.release_sort.set('版本号：新 → 旧')
+        ids = self.app.library_table.get_children()
+        self.assertEqual([self.app.library_table.set(i, 'version') for i in ids], ['1.10.0', '1.9.0'])
+        self.app.search.set('1.10')
+        ids = self.app.library_table.get_children()
+        self.assertEqual(len(ids), 1)
+        self.app.library_table.selection_set(ids[0])
+        self.app._select_release()
+        self.assertEqual(self.app.selected_release['author'], 'alice')
+        self.app.author_combo.set('bob')
+        self.assertIsNone(self.app.selected_release)
+        self.assertTrue(self.app.library_actions['拉取并使用 →'].instate(['disabled']))
+        ids = self.app.library_table.get_children()
+        self.app.library_table.selection_set(ids[0])
+        self.app._select_release()
+        self.assertEqual(self.app.selected_release['author'], 'bob')
+        self.app.author_combo.set('全部作者')
+        self.assertEqual(len(self.app.library_table.get_children()), 2)
+
+    def test_author_choices_survive_search_and_reset_when_library_changes(self):
+        base = self.app.releases[0]
+        releases = [dict(base, author='alice'), dict(base, author='bob')]
+        self.app._loaded((releases, []))
+        self.app.author_combo.set('alice')
+        self.app.search.set('no-matching-version')
+        self.assertFalse(self.app.library_table.get_children())
+        self.assertEqual(tuple(self.app.author_combo.cget('values')), ('全部作者', 'alice', 'bob'))
+        self.assertEqual(len(self.app.empty_hint_lines), 2)
+        self.app.search.set('')
+        self.app._loaded((list(releases), []))
+        self.assertEqual(self.app.author_filter.get(), 'alice')
+        self.app._loaded(([dict(base, author='carol')], []))
+        self.assertEqual(self.app.author_filter.get(), '全部作者')
+        self.assertEqual(tuple(self.app.author_combo.cget('values')), ('全部作者', 'carol'))
+        self.assertEqual(len(self.app.library_table.get_children()), 1)
+        self.app._loaded(([], []))
+        self.assertEqual(tuple(self.app.author_combo.cget('values')), ('全部作者',))
+
     def test_window_opens_with_python39_named_font_api(self):
         from tkinter import font as tkfont
         child = tk.Toplevel(self.root)

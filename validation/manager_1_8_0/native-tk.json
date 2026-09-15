@@ -1,0 +1,27 @@
+{
+  "omfit_tk_source": "OMFIT source checkout / omfit/utils_tk.py",
+  "python": "3.10.12",
+  "tk": "8.6.12",
+  "native_patches": {
+    "get_entry_fieldbackground": "9952a68a90c9b9c472c3a129f70f4d5d4c0c105a9149bbcee27d0ba7ee780485",
+    "Toplevel": "44628a1621d606c3861e5a269fe702e0cc7216662d0cfef3c8a4f1e231f9c0f8",
+    "Text": "80d8e7aa63d189c7de20247d98bcc680f02afae921dc52c4efc60ebbd6fcd211",
+    "_tkBooleanVar": "9e2763a127c7b67a09822a090972a6756663bdce3316b5eb4b4da4014415d099",
+    "_tkStringVar": "cbef0d9e5cf3cda9992180e6d0d43a95ae6900eb588cebe83114a285e93291ef"
+  },
+  "complete_omfit_session_tested": false,
+  "original_error_reproduced": true,
+  "proxy_dialog_native_variables_and_private_password": true,
+  "manager_update_dialog_native_patches": true,
+  "ascii_window_title": true,
+  "publish_login_gate_and_readonly_account": true,
+  "real_module_gui_entry": true,
+  "native_patched_widgets": true,
+  "window_reused": true,
+  "correct_master_and_initial_values": true,
+  "variable_traces": true,
+  "preview_and_generate": true,
+  "result_bytes_preserved": true,
+  "root_zip_entry": true,
+  "parent_session_survives_close": true
+}

@@ -78,6 +78,8 @@ class TemplateManager(ManagerUpdateUI):
         self.publish_auth_info = tk.StringVar(master=window, value='')
         self.view_source = tk.StringVar(master=window, value='本地模板库' if library is not None else 'GitHub')
         self.search = tk.StringVar(master=window, value='')
+        self.author_filter = tk.StringVar(master=window, value='全部作者')
+        self._updating_authors = False
         order = saved.get('sort', 'published')
         self.release_sort = tk.StringVar(master=window, value=next((label for label, key in SORT_OPTIONS.items()
                                                                   if key == order), next(iter(SORT_OPTIONS))))
@@ -105,6 +107,7 @@ class TemplateManager(ManagerUpdateUI):
         for variable in (self.current, self.template_path, self.data_policy, self.settings_policy):
             variable.trace_add('write', lambda *args: self._invalidate())
         self.search.trace_add('write', lambda *args: self._filter())
+        self.author_filter.trace_add('write', self._author_changed)
         self.release_sort.trace_add('write', lambda *args: self._filter())
         self.repository.trace_add('write', lambda *args: self._repository_changed())
         for variable in (self.proxy_mode, self.proxy_host, self.proxy_port, self.proxy_username, self.proxy_password):
@@ -129,10 +132,20 @@ class TemplateManager(ManagerUpdateUI):
         default = tkfont.Font(root=w, name='TkDefaultFont', exists=True).actual()
         available = set(tkfont.families(root=w))
         family = next((candidate for candidate in ('Noto Sans CJK SC', 'Source Han Sans SC',
-                       'WenQuanYi Micro Hei', 'Noto Sans SC') if candidate in available), default['family'])
+                       'WenQuanYi Micro Hei', 'Noto Sans SC', 'WenQuanYi Zen Hei',
+                       'Droid Sans Fallback', 'AR PL UMing CN') if candidate in available), default['family'])
         font = (family, default['size'] if default['size'] < 0 else max(10, default['size']))
-        self.font = font
         self._metrics_font = tkfont.Font(root=w, family=font[0], size=font[1])
+        # On older Linux desktops the Latin default can fall back to much
+        # taller CJK glyphs. Use Tk's actual Chinese face for layout metrics too.
+        try:
+            family = str(w.tk.call('font', 'actual', str(self._metrics_font), '-family', '中'))
+            self._metrics_font.configure(family=family)
+            font = (family, font[1])
+        except tk.TclError:
+            pass
+        self.font = font
+        self._line_gap = max(6, self._metrics_font.metrics('linespace') // 3)
         self._path_label_width = max(self._metrics_font.measure(text) for text in
             ('当前工程 ZIP', '输出工程 ZIP', '来源工程 ZIP', '选用模板包', '本地模板库', '共享目录（可选）')) + 12
         style = ttk.Style(w)
@@ -141,6 +154,8 @@ class TemplateManager(ManagerUpdateUI):
         style.configure('TM.TFrame', background='#f4f6fa')
         style.configure('TM.TLabel', background='#f4f6fa', foreground='#17283d', font=font)
         style.configure('TM.Muted.TLabel', background='#f4f6fa', foreground='#53647a', font=font)
+        style.configure('TM.Empty.TFrame', background='white')
+        style.configure('TM.Empty.TLabel', background='white', foreground='#53647a', font=font)
         for name in ('TM.TLabel', 'TM.Muted.TLabel'):
             style.map(name, foreground=[('disabled', '#7a8492')], background=[('disabled', '#f4f6fa')])
         style.map('TM.TFrame', background=[('disabled', '#f4f6fa')])
@@ -184,6 +199,33 @@ class TemplateManager(ManagerUpdateUI):
     def _text_width(self, text):
         unit = max(1, self._metrics_font.measure('0'))
         return (self._metrics_font.measure(str(text)) + unit - 1) // unit
+
+    def _text_area(self, parent, **kwargs):
+        kwargs.setdefault('font', self.font)
+        kwargs.setdefault('spacing1', self._line_gap // 2)
+        kwargs.setdefault('spacing2', self._line_gap // 2)
+        kwargs.setdefault('spacing3', self._line_gap)
+        return tk.Text(parent, **kwargs)
+
+    def _set_empty_hint(self, text):
+        # Separate rows give CJK fallback glyphs real space; a newline in one
+        # ttk.Label can use the Latin font's smaller baseline distance.
+        for label in self.empty_hint.winfo_children():
+            label.destroy()
+        self.empty_hint_lines = []
+        lines = text.splitlines()
+        for index, line in enumerate(lines):
+            label = ttk.Label(self.empty_hint, text=line, font=self.font, style='TM.Empty.TLabel',
+                              justify='center', anchor='center', padding=(4, self._line_gap // 2))
+            label.pack(fill='x', pady=(0, self._line_gap if index < len(lines) - 1 else 0))
+            self.empty_hint_lines.append(label)
+        self._layout_empty_hint()
+        self.empty_hint.place(relx=.5, rely=.45, relwidth=.92, anchor='center')
+
+    def _layout_empty_hint(self, event=None):
+        width = max(80, int(self.library_table.winfo_width() * .92) - 16)
+        for label in self.empty_hint_lines:
+            label.configure(wraplength=width)
 
     def _button(self, parent, text, command):
         widget = ttk.Button(parent, text=text, command=command, style='TM.TButton', width=0)
@@ -292,8 +334,14 @@ class TemplateManager(ManagerUpdateUI):
         row = self._frame(page)
         row.pack(fill='x', pady=(8, 0))
         self._combo(row, self.view_source, ['GitHub', '本地模板库', '共享模板库']).pack(side='left', padx=(0, 10))
+        self._label(row, '作者').pack(side='left', padx=(0, 6))
+        self.author_combo = self._combo(row, self.author_filter, ['全部作者'])
+        self.author_combo.pack(side='left', fill='x', expand=True)
+        row = self._frame(page)
+        row.pack(fill='x', pady=(8, 0))
         self._label(row, '搜索').pack(side='left', padx=(0, 6))
         self._entry(row, self.search).pack(side='left', fill='x', expand=True)
+        self._label(row, '排序').pack(side='left', padx=(10, 0))
         self._combo(row, self.release_sort, list(SORT_OPTIONS)).pack(side='left', padx=(10, 0))
         self._button(row, '刷新列表', self.refresh).pack(side='left', padx=(10, 0))
         self.view_source.trace_add('write', lambda *args: self.refresh())
@@ -303,9 +351,9 @@ class TemplateManager(ManagerUpdateUI):
         self.library_table.heading('version', command=self._toggle_version_sort)
         self.library_table.bind('<<TreeviewSelect>>', self._select_release)
         self.library_table.bind('<Double-1>', lambda event: self._use_selected())
-        self.empty_hint = ttk.Label(self.library_table, text='连接 GitHub 仓库，浏览团队模板版本。\n也可选择本地模板库使用已下载的版本。',
-                                   background='white', foreground='#53647a', font=self.font, justify='center')
-        self.empty_hint.place(relx=.5, rely=.45, anchor='center')
+        self.empty_hint = ttk.Frame(self.library_table, style='TM.Empty.TFrame')
+        self._set_empty_hint('连接 GitHub 仓库，浏览团队模板版本。\n也可选择本地模板库使用已下载的版本。')
+        self.library_table.bind('<Configure>', self._layout_empty_hint, add='+')
         info = self._label(page, variable=self.release_info, wraplength=1000, muted=True)
         actions = self._frame(page)
         actions.pack(side='bottom', fill='x', pady=(6, 0), before=self.library_table.master)
@@ -420,7 +468,7 @@ class TemplateManager(ManagerUpdateUI):
         actions.pack(fill='x')
         self._button(actions, '读取当前工程的更新记录', self._history).pack(side='left')
         self._button(actions, '初始化 GitHub 空仓库', self._initialize_repository).pack(side='left', padx=10)
-        self.log = tk.Text(page, wrap='word', font=self.font, background='#ffffff', foreground='#17283d',
+        self.log = self._text_area(page, wrap='word', background='#ffffff', foreground='#17283d',
                            relief='flat', padx=16, pady=14, height=5)
         scroll = ttk.Scrollbar(page, orient='vertical', command=self.log.yview)
         scroll.pack(side='right', fill='y', pady=(12, 0))
@@ -825,7 +873,7 @@ class TemplateManager(ManagerUpdateUI):
         dialog.title('Initialize GitHub Repository')
         dialog.geometry('850x600')
         self._label(dialog, '目标：' + repo + ' / README.md\n将创建下面的说明文件和首次提交。', wraplength=800).pack(fill='x', padx=15, pady=15)
-        content = tk.Text(dialog, wrap='word', font=self.font, padx=15, pady=10)
+        content = self._text_area(dialog, wrap='word', padx=15, pady=10)
         content.pack(fill='both', expand=True, padx=15)
         content.insert('1.0', INITIAL_README)
         content.configure(state='disabled')
@@ -852,7 +900,21 @@ class TemplateManager(ManagerUpdateUI):
         if errors:
             self._log('\n'.join(errors))
 
+    def _author_changed(self, *args):
+        if not self._updating_authors:
+            self._filter()
+
     def _filter(self):
+        authors = sorted({str(item.get('author', '')) for item in self.releases if item.get('author')}, key=str.casefold)
+        choices = ['全部作者'] + authors
+        self.author_combo.configure(values=choices)
+        if self.author_filter.get() not in choices:
+            self._updating_authors = True
+            try:
+                self.author_filter.set('全部作者')
+            finally:
+                self._updating_authors = False
+        author = self.author_filter.get()
         previous = self.selected_release
         self.releases = sort_releases(self.releases, SORT_OPTIONS.get(self.release_sort.get(), 'published'))
         self.library_table.delete(*self.library_table.get_children())
@@ -860,6 +922,8 @@ class TemplateManager(ManagerUpdateUI):
         self.release_info.set('选择一个版本可查看模块范围与更新说明；双击进入更新页。')
         query = self.search.get().strip().casefold()
         for index, release in enumerate(self.releases):
+            if author != '全部作者' and release.get('author', '').casefold() != author.casefold():
+                continue
             if query and query not in ' '.join(str(release.get(k, '')) for k in ('name', 'id', 'author', 'version')).casefold():
                 continue
             self.library_table.insert('', 'end', iid=str(index), values=(release.get('name', release['id']), release['author'],
@@ -871,9 +935,8 @@ class TemplateManager(ManagerUpdateUI):
         if self.library_table.get_children():
             self.empty_hint.place_forget()
         else:
-            self.empty_hint.configure(text='没有匹配的模板，请调整搜索词。' if query else
+            self._set_empty_hint('没有匹配的模板。\n请更换作者或调整搜索词。' if query or author != '全部作者' else
                 '暂无模板版本。\n在“发布模板”页准备首个版本，或导入已有模板包。')
-            self.empty_hint.place(relx=.5, rely=.45, anchor='center')
         self._library_states()
 
     def _toggle_version_sort(self):
@@ -1169,7 +1232,7 @@ class TemplateManager(ManagerUpdateUI):
             dialog = tk.Toplevel(self.window)
             dialog.title('Template Package Files')
             dialog.geometry('900x580')
-            text = tk.Text(dialog, wrap='none', font=self.font, padx=12, pady=12)
+            text = self._text_area(dialog, wrap='none', padx=12, pady=12)
             yscroll = ttk.Scrollbar(dialog, orient='vertical', command=text.yview)
             yscroll.pack(side='right', fill='y')
             xscroll = ttk.Scrollbar(dialog, orient='horizontal', command=text.xview)

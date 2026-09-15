@@ -1,0 +1,28 @@
+{
+  "source": "locally built release assets",
+  "client_version": "1.7.0",
+  "client_source": "unaltered 1.7.0 package",
+  "from_version": "1.7.0",
+  "to_version": "1.8.0",
+  "changed_files": 8,
+  "reused_files": 26,
+  "compressed_download_bytes": 41056,
+  "manifest_bytes": 9329,
+  "complete_linux_package_bytes": 93741,
+  "changed_paths": [
+    "OMFITtemplates/LIB/OMFITlib_template_manager_ui.py",
+    "OMFITtemplates/LIB/OMFITlib_template_ui.py",
+    "OMFITtemplates/LIB/OMFITlib_template_versions.py",
+    "OMFITtemplates/SettingsNamelist.txt",
+    "OMFITtemplates/help.rst",
+    "OMFITtemplates/tests/test_ui.py",
+    "README.md",
+    "SHA256SUMS.json"
+  ],
+  "assembled_files_match_complete_release": true,
+  "original_files_unchanged": true,
+  "isolated_full_gui_startup": true,
+  "activation_and_revert": true,
+  "github_credentials_used": false,
+  "http_asset_requests": 9
+}

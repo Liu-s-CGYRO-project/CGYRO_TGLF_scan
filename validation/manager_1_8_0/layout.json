@@ -1,0 +1,130 @@
+[
+  {
+    "font_size": 10,
+    "scaling": 1.333,
+    "actual_font": [
+      "WenQuanYi Micro Hei",
+      10
+    ],
+    "embedded": false,
+    "cjk_fallback_case": false,
+    "empty_hint_gap": 6,
+    "window_size": [
+      940,
+      680
+    ],
+    "errors": []
+  },
+  {
+    "font_size": 14,
+    "scaling": 1.333,
+    "actual_font": [
+      "WenQuanYi Micro Hei",
+      14
+    ],
+    "embedded": false,
+    "cjk_fallback_case": false,
+    "empty_hint_gap": 7,
+    "window_size": [
+      940,
+      765
+    ],
+    "errors": []
+  },
+  {
+    "font_size": 10,
+    "scaling": 2.0,
+    "actual_font": [
+      "WenQuanYi Micro Hei",
+      10
+    ],
+    "embedded": false,
+    "cjk_fallback_case": false,
+    "empty_hint_gap": 8,
+    "window_size": [
+      940,
+      793
+    ],
+    "errors": []
+  },
+  {
+    "font_size": 18,
+    "scaling": 1.333,
+    "actual_font": [
+      "WenQuanYi Micro Hei",
+      18
+    ],
+    "embedded": false,
+    "cjk_fallback_case": false,
+    "empty_hint_gap": 9,
+    "window_size": [
+      940,
+      855
+    ],
+    "errors": []
+  },
+  {
+    "font_size": -24,
+    "scaling": 2.0,
+    "actual_font": [
+      "WenQuanYi Micro Hei",
+      12
+    ],
+    "embedded": false,
+    "cjk_fallback_case": false,
+    "empty_hint_gap": 9,
+    "window_size": [
+      940,
+      863
+    ],
+    "errors": []
+  },
+  {
+    "font_size": 14,
+    "scaling": 1.333,
+    "actual_font": [
+      "WenQuanYi Micro Hei",
+      14
+    ],
+    "embedded": true,
+    "cjk_fallback_case": false,
+    "empty_hint_gap": 7,
+    "window_size": [
+      940,
+      781
+    ],
+    "errors": []
+  },
+  {
+    "font_size": 18,
+    "scaling": 1.333,
+    "actual_font": [
+      "WenQuanYi Micro Hei",
+      18
+    ],
+    "embedded": true,
+    "cjk_fallback_case": false,
+    "empty_hint_gap": 9,
+    "window_size": [
+      940,
+      871
+    ],
+    "errors": []
+  },
+  {
+    "font_size": 11,
+    "scaling": 1.333,
+    "actual_font": [
+      "WenQuanYi Micro Hei",
+      11
+    ],
+    "embedded": false,
+    "cjk_fallback_case": true,
+    "empty_hint_gap": 6,
+    "window_size": [
+      940,
+      691
+    ],
+    "errors": []
+  }
+]
