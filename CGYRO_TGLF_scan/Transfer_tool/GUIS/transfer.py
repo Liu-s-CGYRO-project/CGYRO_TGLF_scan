@@ -3,6 +3,8 @@
 OMFITx.TitleGUI('输入文件准备与转换')
 from builtins import bool, float, int, isinstance, str
 from collections import OrderedDict
+import tkinter as tk
+from omfit_classes.utils_base import evalExpr
 physics = root['SETTINGS']['PHYSICS']
 physics.setdefault('start_from', 'statefile')
 
@@ -46,7 +48,11 @@ def convert_inputs(location=None):
 def boolean_checkbox(key, label, default=False):
     # OMFIT CheckBox compares repr(value) with 'False'/'True'. Legacy 0/1,
     # NumPy scalars and string flags otherwise appear as an alternate blue box.
-    value = physics.get(key, default)
+    location = "root['SETTINGS']['PHYSICS'][{!r}]".format(key)
+    try:
+        value = evalExpr(physics.get(key, default))
+    except Exception:
+        return OMFITx.CheckBox(location, label, default=default, updateGUI=True)
     if getattr(value, 'shape', None) == () and hasattr(value, 'item'):
         value = value.item()
     if value is None:
@@ -55,11 +61,39 @@ def boolean_checkbox(key, label, default=False):
         flags = {'false': False, '.false.': False, '0': False,
                  'true': True, '.true.': True, '1': True}
         value = flags.get(value.strip().lower(), value)
-    if isinstance(value, (bool, int, float)) and value in (False, True):
-        physics[key] = bool(value)
-    # Redraw also clears the native alternate state after the default button.
-    return OMFITx.CheckBox("root['SETTINGS']['PHYSICS'][{!r}]".format(key), label,
-                          default=default, updateGUI=True)
+    if not (isinstance(value, (bool, int, float)) and value in (False, True)):
+        # Keep the native invalid-value indication for genuinely invalid data.
+        return OMFITx.CheckBox(location, label, default=default, updateGUI=True)
+    physics[key] = bool(value)
+    widgets = []
+
+    def restore_display(location=None):
+        # The native default button writes the setting before this callback.
+        selected = bool(physics.get(key, default))
+        for widget in widgets:
+            widget._transfer_boolean_var.set(selected)
+            widget.state(['!alternate', 'selected' if selected else '!selected'])
+
+    # Retain OMFIT's row, lock handling, default button and right-click help.
+    # This row owns its Tk value and click handler; no full-page redraw is needed.
+    widgets = OMFITx.CheckBox(location, label, default=default, postcommand=restore_display)
+    for widget in widgets:
+        variable = tk.BooleanVar(master=widget, value=bool(value))
+        # Keep the variable alive for the widget's lifetime. Otherwise its Tcl
+        # value can be unset and the Checkbutton re-enters the alternate state.
+        widget._transfer_boolean_var = variable
+        widget.unbind('<ButtonRelease-1>')
+
+        def write_selection(widget=widget, variable=variable):
+            if widget.instate(['disabled']):
+                return
+            physics[key] = bool(variable.get())
+            widget.state(['!alternate'])
+            OMFITaux['rootGUI'].event_generate('<<update_treeGUI>>')
+
+        widget.configure(variable=variable, onvalue=1, offvalue=0, command=write_selection)
+        widget.state(['!alternate', 'selected' if value else '!selected'])
+    return widgets
 
 
 OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['start_from']",
