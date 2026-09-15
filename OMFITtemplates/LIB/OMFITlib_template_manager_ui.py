@@ -36,7 +36,7 @@ class ManagerUpdateUI:
         self._close_manager_update()
         self.manager_update_result = result
         dialog = self.manager_update_dialog = tk.Toplevel(self.window)
-        dialog.title('检查管理器更新')
+        dialog.title('OMFIT Template Manager Updates')
         dialog.geometry('760x560')
         dialog.minsize(680, 480)
         dialog.transient(self.window)
@@ -72,15 +72,18 @@ class ManagerUpdateUI:
                         muted=True, wraplength=700).pack(side='bottom', fill='x', pady=8)
         body = self._frame(page)
         body.pack(fill='both', expand=True, pady=8)
+        body.columnconfigure(0, weight=1)
+        body.rowconfigure(0, weight=1)
         notes = tk.Text(body, wrap='word', font=self.font, height=7, relief='flat', padx=12, pady=10)
-        notes.pack(side='left', fill='both', expand=True)
+        notes.grid(row=0, column=0, sticky='nsew')
         scroll = ttk.Scrollbar(body, command=notes.yview)
-        scroll.pack(side='right', fill='y')
+        scroll.grid(row=0, column=1, sticky='ns')
         notes.configure(yscrollcommand=scroll.set)
         notes.insert('1.0', result['notes'] or '暂无发布说明。')
         notes.configure(state='disabled')
         dialog.protocol('WM_DELETE_WINDOW', self._close_manager_update)
         self.status.set(summary)
+        self._fit_size(dialog, 680, 480)
 
     def _download_manager_update(self, kind):
         if self.busy:
@@ -89,7 +92,7 @@ class ManagerUpdateUI:
             package = self.manager_update_result['packages'][kind]
             proxy = self._selected_proxy()
             output = filedialog.asksaveasfilename(parent=self.manager_update_dialog,
-                title='保存管理器安装包', initialfile=package['name'],
+                title='Save Manager Package', initialfile=package['name'],
                 filetypes=[('OMFIT 模块 ZIP', '*.zip')] if kind == 'omfit' else [('Linux 管理器', '*.tar.gz')])
             if not output:
                 return
@@ -101,7 +104,7 @@ class ManagerUpdateUI:
                            if kind == 'omfit' else
                            '解压到新目录，运行其中的 start_manager.sh。已有模板库和代理偏好继续保存在原用户配置目录。')
             self.status.set('管理器安装包已下载并通过 SHA-256 校验。')
-            messagebox.showinfo('管理器安装包已下载', str(path) + '\n\n' + instruction,
+            messagebox.showinfo('Manager Package Downloaded', str(path) + '\n\n' + instruction,
                                 parent=self.manager_update_dialog or self.window)
         self._run('正在下载管理器安装包…',
             lambda: download_manager_package(GitHub(DEFAULT_REPOSITORY, token='', proxy=proxy,

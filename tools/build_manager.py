@@ -50,6 +50,10 @@ OMFIT_TEMPLATE_PYTHON=/path/to/python bash start_manager.sh
 已移除 SSH 隧道与脚本入口，旧 SSH 配置自动迁移到公共代理。
 点击“登录 GitHub”时自动检测 gh，缺少时下载官方 Linux 包，校验后安装到用户目录并打开登录。
 无需 sudo 或配置 PATH，进度在窗口底部显示，可取消。
+路径标签、下拉框、按钮与表格按字体尺寸布局，较窄窗口自动换行。
+窗口标题为 OMFIT Template Manager，版本号在界面右上角显示。
+未登录时整个发布页置灰；授权完成后自动读取 GitHub 登录名，作者 ID 只读。
+账号切换或登录失效后清除旧发布准备信息。
 公开版本检查与下载不需要 GitHub 登录；私有仓库和发布仍使用各自的 GitHub 账号。
 '''
 

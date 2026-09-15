@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import tkinter as tk
+from tkinter import font as tkfont
 import unittest
 from unittest.mock import patch
 
@@ -169,6 +170,7 @@ class UITest(unittest.TestCase):
         self.assertFalse(self.app.change_table.get_children())
 
     def test_publish_from_ui(self):
+        self.app._set_github_login('local')
         self.app.source.set(str(self.new))
         self.app._inspect()
         self.wait_idle()
@@ -273,6 +275,58 @@ class UITest(unittest.TestCase):
             self.assertTrue(widget.winfo_ismapped())
             self.assertLessEqual(widget.winfo_rooty() + widget.winfo_height(), bottom)
 
+    def test_mixed_omfit_font_does_not_clip_labels_or_choice_text(self):
+        default = tkfont.Font(root=self.root, name='TkDefaultFont', exists=True)
+        saved_font = default.actual()
+        default.configure(size=14)
+        self.root.option_add('*Font', ('DejaVu Sans', 20))
+        child = tk.Toplevel(self.root)
+        manager = TemplateManager(child, preferences=self.base / 'font-settings.json')
+        try:
+            child.geometry('940x680')
+            manager.tabs.select(manager.pages[1])
+            self.pump(.2)
+            for frame in manager.pages[1].winfo_children():
+                children = frame.winfo_children()
+                for label in children:
+                    if label.winfo_class() != 'TLabel' or label.cget('text') not in ('当前工程 ZIP', '输出工程 ZIP', '选用模板包'):
+                        continue
+                    font = tkfont.Font(root=self.root, font=label.cget('font'))
+                    self.assertEqual(font.actual(), manager._metrics_font.actual())
+                    self.assertGreaterEqual(label.winfo_width(), font.measure(label.cget('text')))
+                    entry = next(widget for widget in children if widget.winfo_class() == 'TEntry')
+                    self.assertLess(label.winfo_rootx() + label.winfo_width(), entry.winfo_rootx())
+            choices = [widget for widget, _ in manager.widgets if widget.winfo_class() == 'TCombobox'
+                       and str(widget.cget('textvariable')) in (str(manager.data_policy), str(manager.settings_policy))]
+            self.assertEqual(len(choices), 2)
+            for widget in choices:
+                font = tkfont.Font(root=self.root, font=widget.cget('font'))
+                capacity = int(widget.cget('width')) * font.measure('0')
+                self.assertGreaterEqual(capacity, max(font.measure(value) for value in widget.cget('values')))
+                self.assertGreaterEqual(widget.winfo_height(), font.metrics('linespace') + 4)
+                popup = widget.tk.call('ttk::combobox::PopdownWindow', str(widget))
+                popup_font = tkfont.Font(root=self.root, font=widget.tk.call(popup + '.f.l', 'cget', '-font'))
+                self.assertEqual(popup_font.actual(), font.actual())
+            manager.pages[1].configure(padding=(180, 16))
+            self.pump(.2)
+            self.assertEqual(int(choices[1].grid_info()['row']), 1)
+            manager.pages[1].configure(padding=16)
+            self.pump(.2)
+            self.assertEqual(int(choices[1].grid_info()['row']), 0)
+        finally:
+            manager.close()
+            default.configure(**saved_font)
+            self.root.option_clear()
+
+    def test_table_columns_fit_the_visible_area_at_small_window_size(self):
+        self.root.deiconify()
+        self.root.geometry('940x680')
+        for page, table in ((0, self.app.library_table), (1, self.app.change_table)):
+            self.app.tabs.select(self.app.pages[page])
+            self.pump(.15)
+            widths = sum(int(table.column(key, 'width')) for key in table.cget('columns'))
+            self.assertLessEqual(widths, table.winfo_width() - 2)
+
     def test_github_connect_pull_and_use_from_real_widgets(self):
         route = 'http://omfit:fixture-secret@127.0.0.1:32123'
         self.app.proxy_host.set('127.0.0.1')
@@ -337,6 +391,8 @@ class UITest(unittest.TestCase):
             self.app._login()
             self.wait_idle()
             login.assert_called_once_with(proxy=route, executable='/fixture/gh')
+            self.app._stop_login_check()
+            self.app._set_github_login('dev')
             self.app._prepare_upload(self.template)
             self.wait_idle()
             self.app._upload()
@@ -423,6 +479,108 @@ class UITest(unittest.TestCase):
             login.assert_not_called()
         self.assertFalse(self.errors)
         self.assertIn('取消', self.app.status.get())
+
+    def test_anonymous_publish_page_stays_disabled_after_background_actions(self):
+        from tkinter import ttk
+        def check(parent):
+            for widget in parent.winfo_children():
+                if isinstance(widget, ttk.Widget):
+                    self.assertTrue(widget.instate(['disabled']), str(widget))
+                check(widget)
+        check(self.app.publish_content)
+        self.app.refresh()
+        self.wait_idle()
+        check(self.app.publish_content)
+        self.app.library_table.selection_set(self.app.library_table.get_children()[0])
+        self.app._select_release()
+        self.assertTrue(self.app.library_actions['上传本地包'].instate(['disabled']))
+        self.assertFalse(self.app.library_actions['导出包'].instate(['disabled']))
+        with patch('OMFITlib_template_ui.publish') as publish_package:
+            self.app._publish()
+            publish_package.assert_not_called()
+        self.assertIn('先', self.errors.pop())
+
+    def test_connect_tracks_current_account_and_makes_author_readonly(self):
+        with patch('OMFITlib_template_ui.GitHub') as client:
+            client.return_value.list_releases.return_value = ([], [])
+            for user in ('alice', 'bob', ''):
+                client.return_value.connect.return_value = dict(repository='team/demo', private=False,
+                    login=user, default_branch='main', empty=False)
+                self.app._connect()
+                self.wait_idle()
+                self.assertEqual(self.app.metadata['author'].get(), user)
+                self.assertEqual(self.app.github_login, user)
+                self.assertTrue(self.app.author_entry.instate(['readonly' if user else 'disabled']))
+                button = next(widget for widget, _ in self.app.widgets
+                              if widget.winfo_class() == 'TButton' and widget.cget('text') == '准备模板包')
+                self.assertEqual(button.instate(['disabled']), not bool(user))
+                self.app.publish_plan = {'login': user}
+                self.app.package_path = 'old-package.zip'
+            self.assertEqual(self.app.metadata['author'].get(), '')
+
+    def test_login_completion_enables_publish_without_manual_reconnect(self):
+        from OMFITlib_template_github import GitHub
+        with patch('OMFITlib_template_ui.ensure_cli', return_value='/fixture/gh'), \
+                patch('OMFITlib_template_ui.login'), \
+                patch('OMFITlib_template_github.credentials', return_value=('fixture-token', 'fixture')), \
+                patch.object(GitHub, '_json', return_value={'login': 'verified-author', 'name': 'Display name'}) as response:
+            self.app._login()
+            self.wait_idle()
+            self.assertEqual(self.app.github_login, '')
+            self.root.after_cancel(self.app._login_after)
+            self.app._check_login()
+            deadline = time.monotonic() + 5
+            while not self.app.github_login and time.monotonic() < deadline:
+                self.pump(.02)
+            self.assertEqual(self.app.metadata['author'].get(), 'verified-author')
+            self.assertTrue(self.app.author_entry.instate(['readonly', '!disabled']))
+            response.assert_called_once_with('/user')
+            self.assertIsNone(self.app._login_after)
+            self.assertFalse(self.errors)
+
+    def test_login_check_without_token_stays_disabled_and_stale_result_is_ignored(self):
+        from OMFITlib_template_github import GitHub
+        self.app._login_remaining = 2
+        generation = self.app._login_generation
+        with patch('OMFITlib_template_github.credentials', return_value=('', 'anonymous')), \
+                patch.object(GitHub, '_json') as request:
+            self.app._check_login()
+            deadline = time.monotonic() + 5
+            while self.app._login_after is None and time.monotonic() < deadline:
+                self.pump(.02)
+            request.assert_not_called()
+            self.assertIsNotNone(self.app._login_after)
+            self.assertEqual(self.app.github_login, '')
+        self.app._stop_login_check()
+        self.app._login_checked(generation, 'old-account', None)
+        self.assertEqual(self.app.github_login, '')
+
+    def test_expired_login_locks_publish_and_clears_prepared_account(self):
+        from OMFITlib_template_github import GitHubError
+        self.app._set_github_login('alice')
+        self.app.publish_plan = {'login': 'alice'}
+        self.app.package_path = 'old-package.zip'
+        self.app._error(GitHubError(401, 'GitHub 登录已失效'))
+        self.assertEqual(self.errors.pop(), 'GitHub 登录已失效')
+        self.assertEqual(self.app.metadata['author'].get(), '')
+        self.assertIsNone(self.app.publish_plan)
+        self.assertIsNone(self.app.package_path)
+        self.app._set_busy(True)
+        self.app._set_busy(False)
+        self.assertTrue(self.app.upload_button.instate(['disabled']))
+        self.assertTrue(self.app.author_entry.instate(['disabled']))
+
+    def test_new_template_uses_verified_account_even_if_variable_was_changed(self):
+        self.app._set_github_login('verified-author')
+        self.app.source.set(str(self.new))
+        self.app.roots.set('Demo')
+        for key, value in dict(id='account-test', name='账户测试', author='outdated-author', version='1.0.0').items():
+            self.app.metadata[key].set(value)
+        with patch('OMFITlib_template_ui.publish', return_value='prepared.zip') as package, \
+                patch.object(self.app, '_package_built'):
+            self.app._publish()
+            self.wait_idle()
+        self.assertEqual(package.call_args.args[2]['author'], 'verified-author')
 
     def test_upload_requires_prepared_plan_and_user_click(self):
         self.app.repository.set('team/demo')

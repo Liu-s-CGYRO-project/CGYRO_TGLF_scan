@@ -208,9 +208,18 @@ class GitHub:
         self._json('/rate_limit')
         return {'connection': self.connection, 'https_verified': True}
 
+    def current_login(self):
+        """Read the authenticated account, without depending on repository access."""
+        if not self._token:
+            return ''
+        user = self._json('/user').get('login', '')
+        if not isinstance(user, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}', user):
+            raise TemplateError('未能读取 GitHub 登录账号，请重新登录')
+        return user
+
     def connect(self):
         info = self._json(self.base)
-        user = self._json('/user').get('login', '') if self._token else ''
+        user = self.current_login()
         try:
             commits = self._json(self.base + '/commits?per_page=1')
             empty = not commits

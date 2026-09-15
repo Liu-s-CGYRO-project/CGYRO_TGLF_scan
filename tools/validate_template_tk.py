@@ -107,6 +107,19 @@ def validate(source):
             manager._close_manager_update()
             manager._set_busy(False)
             report['manager_update_dialog_native_patches'] = True
+            assert manager.window.title() == 'OMFIT Template Manager'
+            assert manager.window.title().isascii()
+            assert manager.author_entry.instate(['disabled'])
+            manager._set_github_login('native-test-author')
+            assert manager.metadata['author'].get() == 'native-test-author'
+            assert manager.author_entry.instate(['readonly', '!disabled'])
+            manager._set_busy(True)
+            manager._set_busy(False)
+            assert manager.author_entry.instate(['readonly', '!disabled'])
+            manager._set_github_login('')
+            assert manager.author_entry.instate(['disabled'])
+            report['ascii_window_title'] = True
+            report['publish_login_gate_and_readonly_account'] = True
 
             def wait():
                 deadline = time.monotonic() + 10

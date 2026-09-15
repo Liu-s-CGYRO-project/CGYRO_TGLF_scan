@@ -1,0 +1,20 @@
+{
+  "project": {
+    "output": "CGYRO_TGLF_scan_code_only_1.4.0.zip",
+    "files": 323,
+    "bytes": 641510,
+    "sha256": "34c63d30506f0d3420dcc982566f31c9cd3d43fcf9040cc32722effa63ae1aec",
+    "calculation_data_files": 0,
+    "modules": [
+      "CGYRO_TGLF_scan",
+      "OMFITtemplates"
+    ]
+  },
+  "template": "tdxy-liu__cgyro-tglf__1.4.0.omfittpl.zip",
+  "template_sha256": "6213cbab2e1fab5e43112558bdccd482f86e6c6947292e8493d29dfd3a7c406a",
+  "scientific_files_unchanged": 290,
+  "native_module_zip_entry": true,
+  "isolated_module_cold_gui": true,
+  "linux_launcher": true,
+  "previous_project_results_and_settings_preserved": true
+}

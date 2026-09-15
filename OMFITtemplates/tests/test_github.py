@@ -164,6 +164,17 @@ class GitHubTest(unittest.TestCase):
         self.assertFalse(any(path == '/user' for _, path, _, _ in self.state.calls))
         self.assertTrue(all('Authorization' not in headers for _, _, headers, _ in self.state.calls))
 
+    def test_current_account_does_not_require_repository_access(self):
+        self.state.fail = 'GET /repos/team/demo'
+        self.assertEqual(self.client.current_login(), 'developer')
+        self.assertEqual([path for _, path, _, _ in self.state.calls], ['/user'])
+
+    def test_current_account_requires_a_valid_github_login_field(self):
+        for response in ({'name': 'Display Name'}, {'login': '../fake'}, {'login': None}):
+            with self.subTest(response=response), patch.object(self.client, '_json', return_value=response), \
+                    self.assertRaisesRegex(TemplateError, '登录账号'):
+                self.client.current_login()
+
     def test_real_http_download_hash_verification_and_offline_cache(self):
         release = self.seed_release()
         self.assertEqual(release['publisher'], 'developer')
