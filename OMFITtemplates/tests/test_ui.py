@@ -1,6 +1,8 @@
 """Actual Tk widgets and background actions, with file dialogs replaced in tests."""
 from contextlib import contextmanager
 import os
+import json
+import threading
 from pathlib import Path
 import sys
 import tempfile
@@ -11,7 +13,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'LIB'))
 from OMFITlib_template_ui import TemplateManager, open_manager
-from OMFITlib_template_service import publish
+from OMFITlib_template_service import Cancelled, publish
 from test_templates import add_module, fixture
 
 
@@ -273,7 +275,10 @@ class UITest(unittest.TestCase):
 
     def test_github_connect_pull_and_use_from_real_widgets(self):
         route = 'http://omfit:fixture-secret@127.0.0.1:32123'
-        self.app.relay_environment = {'OMFIT_GITHUB_RELAY_PORT': '32123', 'https_proxy': route}
+        self.app.proxy_host.set('127.0.0.1')
+        self.app.proxy_port.set('32123')
+        self.app.proxy_username.set('omfit')
+        self.app.proxy_password.set('fixture-secret')
         self.app.repository.set('team/demo')
         remote = dict(id='test', name='测试', author='local', version='2', roots=['Demo'], examples=False,
                       archive_bytes=1024, repository='team/demo', remote=True, asset_id=17, publisher='developer')
@@ -294,27 +299,44 @@ class UITest(unittest.TestCase):
         self.assertEqual(self.app.template_path.get(), self.template)
         self.assertEqual(self.app.data_policy.get(), '保留当前案例与结果')
 
-    def test_relay_is_default_and_missing_environment_never_falls_back(self):
-        self.assertIn('47.102.120.146', self.app.proxy_mode.get())
-        with patch.dict(os.environ, {}, clear=True), patch('OMFITlib_template_ui.GitHub') as client:
-            self.app._connect()
-            client.assert_not_called()
-            self.assertIn('同一终端', self.app.status.get())
+    def test_retired_relay_preferences_migrate_in_real_gui_and_save(self):
+        self.assertEqual(self.app._selected_proxy(), 'http://47.102.120.146:18889')
+        path = self.base / 'old-preferences.json'
+        path.write_text(json.dumps({'network': {'mode': 'relay', 'host': '127.0.0.1', 'port': '32123',
+            'username': 'omfit', 'script': '/old/relay.sh'}, 'repository': 'team/demo'}))
+        child = tk.Toplevel(self.root)
+        manager = TemplateManager(child, preferences=path)
+        try:
+            self.assertEqual(manager.repository.get(), 'team/demo')
+            self.assertEqual(manager._selected_proxy(), 'http://47.102.120.146:18889')
+            self.assertEqual(manager.proxy_username.get(), '')
+            manager._save_preferences()
+            saved = json.loads(path.read_text())['network']
+            self.assertEqual(saved['mode'], 'manual')
+            self.assertNotIn('script', saved)
+            self.assertFalse(hasattr(manager, 'relay_script'))
+        finally:
+            manager.close()
 
     def test_proxy_probe_login_and_upload_share_the_selected_route(self):
         route = 'http://omfit:fixture-secret@127.0.0.1:32123'
-        self.app.relay_environment = {'OMFIT_GITHUB_RELAY_PORT': '32123', 'https_proxy': route}
+        self.app.proxy_host.set('127.0.0.1')
+        self.app.proxy_port.set('32123')
+        self.app.proxy_username.set('omfit')
+        self.app.proxy_password.set('fixture-secret')
         plan = dict(repository='team/demo', private=False, login='dev', tag='tag', bytes=1,
                     path=self.template, metadata=dict(roots=['Demo'], examples=False))
         with patch('OMFITlib_template_ui.GitHub') as client, patch('OMFITlib_template_ui.login') as login, \
-                patch('OMFITlib_template_ui.messagebox.askyesno', return_value=True), patch.object(self.app, '_connect'):
+                patch('OMFITlib_template_ui.messagebox.askyesno', return_value=True), patch.object(self.app, '_connect'), \
+                patch('OMFITlib_template_ui.ensure_cli', return_value='/fixture/gh'):
             client.return_value.probe.return_value = dict(connection='HTTP 代理 127.0.0.1:32123')
             client.return_value.prepare_publish.return_value = plan
             client.return_value.publish_release.return_value = 'https://github.com/team/demo/releases/tag/tag'
             self.app._test_proxy()
             self.wait_idle()
             self.app._login()
-            login.assert_called_once_with(proxy=route)
+            self.wait_idle()
+            login.assert_called_once_with(proxy=route, executable='/fixture/gh')
             self.app._prepare_upload(self.template)
             self.wait_idle()
             self.app._upload()
@@ -322,11 +344,10 @@ class UITest(unittest.TestCase):
             client.return_value.publish_release.assert_called_once_with(plan)
             self.assertTrue(all(call.kwargs['proxy'] == route for call in client.call_args_list))
 
-    def test_proxy_preferences_do_not_store_password_or_relay_environment(self):
+    def test_proxy_preferences_do_not_store_password(self):
         self.app.proxy_mode.set('手动 HTTP 代理')
         self.app.proxy_port.set('32123')
         self.app.proxy_password.set('private-test-password')
-        self.app.relay_environment = {'https_proxy': 'another-private-test-value'}
         self.app._save_preferences()
         content = (self.base / 'preferences.json').read_text()
         self.assertNotIn('private-test', content)
@@ -334,7 +355,6 @@ class UITest(unittest.TestCase):
         manager = TemplateManager(child, preferences=self.base / 'preferences.json')
         self.assertEqual(manager.proxy_port.get(), '32123')
         self.assertEqual(manager.proxy_password.get(), '')
-        self.assertIsNone(manager.relay_environment)
         manager.close()
 
     def test_proxy_dialog_widgets_survive_close_and_background_state_changes(self):
@@ -367,21 +387,42 @@ class UITest(unittest.TestCase):
         self.app._proxy_settings()
         self.assertTrue(self.app.proxy_dialog.winfo_exists())
 
-    def test_load_script_updates_only_manager_session_and_invalidates_publish(self):
-        route = 'http://omfit:fixture-secret@127.0.0.1:32123'
-        environment = {'OMFIT_GITHUB_RELAY_PORT': '32123', 'https_proxy': route}
+    def test_login_installs_in_background_then_opens_login_with_current_proxy(self):
+        entered, release = threading.Event(), threading.Event()
         before = dict(os.environ)
-        self.app.relay_script.set('/fixture/relay.sh')
-        self.app._prepared(dict(repository='team/demo', private=False, login='dev', tag='tag', bytes=1,
-            path=self.template, metadata=dict(roots=['Demo'], examples=False)))
-        with patch('OMFITlib_template_ui.load_relay_script', return_value=environment):
-            self.app._load_relay()
+        def install(client):
+            self.assertEqual(client.repo, 'cli/cli')
+            self.assertEqual(client._token, '')
+            self.assertEqual(client.connection, 'HTTP 代理 47.102.120.146:18889')
+            client.progress('正在下载 GitHub CLI', 5, 10)
+            entered.set()
+            self.assertTrue(release.wait(5))
+            return '/fixture/gh'
+        with patch('OMFITlib_template_ui.ensure_cli', side_effect=install) as prepare, \
+                patch('OMFITlib_template_ui.login') as login:
+            self.app._login()
+            try:
+                self.assertTrue(entered.wait(2))
+                self.pump(.15)
+                self.assertTrue(self.app.busy)
+                self.assertIn('正在下载 GitHub CLI', self.app.status.get())
+                login.assert_not_called()
+                self.app._login()
+                prepare.assert_called_once()
+            finally:
+                release.set()
             self.wait_idle()
-        self.assertEqual(self.app._selected_proxy(), route)
+            login.assert_called_once_with(proxy='http://47.102.120.146:18889', executable='/fixture/gh')
         self.assertEqual(dict(os.environ), before)
-        self.assertIsNone(self.app.publish_plan)
-        self.assertNotIn('fixture-secret', self.app.proxy_info.get())
-        self.assertNotIn('fixture-secret', self.app.log.get('1.0', 'end'))
+
+    def test_cancelled_install_does_not_launch_login(self):
+        with patch('OMFITlib_template_ui.ensure_cli', side_effect=Cancelled('安装已取消')), \
+                patch('OMFITlib_template_ui.login') as login:
+            self.app._login()
+            self.wait_idle()
+            login.assert_not_called()
+        self.assertFalse(self.errors)
+        self.assertIn('取消', self.app.status.get())
 
     def test_upload_requires_prepared_plan_and_user_click(self):
         self.app.repository.set('team/demo')

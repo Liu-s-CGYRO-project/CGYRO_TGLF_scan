@@ -1,0 +1,13 @@
+{
+  "manager": "1.5.0",
+  "proxy": "http://47.102.120.146:18889",
+  "retired_ssh_preferences_migrated": true,
+  "gui_button_installed_official_binary": true,
+  "installed_version": "gh version 2.100.0 (2026-09-03)",
+  "installed_sha256": "553949e2efa12842771efe6012aa4de21f1d591530ec17fc435f610f10e017ee",
+  "user_directory_only": true,
+  "login_handoff_verified": true,
+  "login_authorization_performed": false,
+  "second_login_reuses_cli": true,
+  "parent_environment_unchanged": true
+}

@@ -1,22 +1,25 @@
-"""GitHub HTTP proxies and the existing SSH relay script, scoped to one client."""
+"""GitHub HTTP proxies, scoped to one client."""
 from builtins import ValueError, any, dict, int, len, str
 import base64
 from http.client import HTTPSConnection
 import os
-from pathlib import Path
-import shutil
-import subprocess
-import sys
 from urllib import parse, request
 
-from OMFITlib_template_archive import TemplateError, parse_json
+from OMFITlib_template_archive import TemplateError
 
-DEFAULT_RELAY = 'liu@47.102.120.146:22 → 127.0.0.1:18888'
-PROXY_MODES = {'SSH 隧道 · 47.102.120.146': 'relay', '系统代理': 'system',
-               '手动 HTTP 代理': 'manual', '不使用代理': 'direct'}
+DEFAULT_PROXY_HOST = '47.102.120.146'
+DEFAULT_PROXY_PORT = '18889'
+PROXY_MODES = {'手动 HTTP 代理': 'manual', '系统代理': 'system', '不使用代理': 'direct'}
 PROXY_ENV_KEYS = ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
                   'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY')
-RELAY_ENV_KEYS = ('OMFIT_GITHUB_RELAY_PORT',) + PROXY_ENV_KEYS
+
+
+def network_preferences(saved=None):
+    """Migrate the retired relay mode without carrying over its authentication."""
+    defaults = dict(mode='manual', host=DEFAULT_PROXY_HOST, port=DEFAULT_PROXY_PORT, username='')
+    if not isinstance(saved, dict) or saved.get('mode', '') not in PROXY_MODES.values():
+        return defaults
+    return {key: saved.get(key, value) for key, value in defaults.items()}
 
 
 def normalize_proxy(value):
@@ -67,66 +70,6 @@ def manual_proxy(host, port, username='', password=''):
             raise TemplateError('请填写代理密码；密码只保留在当前管理器窗口内')
         credentials = parse.quote(str(username), safe='') + ':' + parse.quote(str(password), safe='') + '@'
     return normalize_proxy('http://{}{}:{}'.format(credentials, authority, int(port)))
-
-
-def relay_proxy(environment=None):
-    """Read the relay's dynamic loopback port and authentication from its script."""
-    environment = os.environ if environment is None else environment
-    port = str(environment.get('OMFIT_GITHUB_RELAY_PORT', '')).strip()
-    if not port.isascii() or not port.isdigit() or not 1 <= int(port) <= 65535:
-        raise TemplateError('尚未读取 SSH 中继端口。请加载已有连接脚本，或在运行该脚本的同一终端启动 OMFIT。')
-    value = next((environment.get(key, '') for key in ('https_proxy', 'HTTPS_PROXY', 'http_proxy', 'HTTP_PROXY')
-                  if environment.get(key, '')), '')
-    if not value:
-        raise TemplateError('连接脚本尚未提供 http_proxy / https_proxy 及代理认证信息')
-    value = normalize_proxy(value)
-    parts = parse.urlsplit(value)
-    if parts.hostname not in ('127.0.0.1', 'localhost', '::1') or parts.port != int(port):
-        raise TemplateError('脚本代理地址与 OMFIT_GITHUB_RELAY_PORT 不一致，请重新加载连接脚本')
-    if parse.unquote(parts.username or '') != 'omfit' or not parts.password:
-        raise TemplateError('脚本未提供 omfit 用户的代理认证，请在原连接脚本中检查密码读取配置')
-    return value
-
-
-def load_relay_script(path):
-    """Explicit user action: source their script and capture only relay variables."""
-    source = Path(path).expanduser().resolve()
-    if not source.is_file():
-        raise TemplateError('请选择已有的 Linux SSH 中继连接脚本')
-    executable = shutil.which('bash')
-    if not executable:
-        raise TemplateError('加载 SSH 中继脚本需要 Linux bash')
-    capture = 'import json,os;print(json.dumps({k:os.environ.get(k, "") for k in ' + repr(RELAY_ENV_KEYS) + '}))'
-    # Arguments remain separate; filenames and script contents never become shell text.
-    command = [executable, '-c',
-               'readonly omfit_proxy_script="$1" omfit_proxy_python="$2" omfit_proxy_capture="$3"; set --; '
-               'source "$omfit_proxy_script" >/dev/null && export ' + ' '.join(RELAY_ENV_KEYS)
-               + ' && "$omfit_proxy_python" -c "$omfit_proxy_capture"',
-               'omfit-relay', str(source), sys.executable, capture]
-    # OMFIT may be launched by absolute path from a desktop whose PATH has no
-    # python3. Preserve its active environment (do not resolve venv symlinks).
-    environment = dict(os.environ)
-    environment['PATH'] = str(Path(sys.executable).parent) + os.pathsep + environment.get('PATH', '')
-    try:
-        result = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.DEVNULL, timeout=30, check=False, env=environment)
-        if result.returncode:
-            raise TemplateError('连接脚本退出（状态 {}）。请在 OMFIT 的 Python 环境终端运行脚本，'
-                                '检查缺少的命令或完成 SSH 交互登录。'.format(result.returncode))
-        if len(result.stdout) > 65536:
-            raise TemplateError('连接脚本返回的中继环境过大，请检查脚本的代理配置')
-        try:
-            environment = parse_json(result.stdout)
-        except TemplateError:
-            raise TemplateError('连接脚本未返回有效的中继环境') from None
-        if not isinstance(environment, dict):
-            raise TemplateError('连接脚本未返回有效的中继环境')
-        relay_proxy(environment)
-        return environment
-    except subprocess.TimeoutExpired:
-        raise TemplateError('加载连接脚本超过 30 秒。请在终端检查 SSH 网络或完成登录，再从同一终端启动 OMFIT。') from None
-    except OSError as exc:
-        raise TemplateError('无法启动连接脚本（系统错误 {}）。请检查 bash 与 OMFIT Python 是否可执行。'.format(exc.errno)) from None
 
 
 def login_environment(proxy):

@@ -1,4 +1,4 @@
-"""Real HTTP CONNECT/TLS tests, plus relay environment and credential isolation."""
+"""Real HTTP CONNECT/TLS tests, plus preference migration and credential isolation."""
 import base64
 import gc
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,17 +27,20 @@ SECRET = 'proxy-test-only:+@'
 URL = 'http://omfit:proxy-test-only%3A%2B%40@127.0.0.1:32123'
 
 
-class RelayTest(unittest.TestCase):
-    def test_relay_uses_dynamic_loopback_and_encoded_auth(self):
-        environment = {'OMFIT_GITHUB_RELAY_PORT': '32123', 'https_proxy': URL}
-        self.assertEqual(proxy.relay_proxy(environment), URL)
+class ProxyTest(unittest.TestCase):
+    def test_new_and_retired_preferences_use_public_proxy_without_credentials(self):
+        for saved in (None, {}, [], {'mode': 'relay', 'host': '127.0.0.1', 'port': '12345',
+                                    'username': 'omfit', 'script': '/old/script.sh', 'password': SECRET}):
+            network = proxy.network_preferences(saved)
+            self.assertEqual(network, dict(mode='manual', host='47.102.120.146', port='18889', username=''))
+            self.assertEqual(proxy.manual_proxy(network['host'], network['port']), 'http://47.102.120.146:18889')
+
+    def test_existing_manual_system_and_direct_preferences_are_preserved(self):
+        for mode in ('manual', 'system', 'direct'):
+            network = dict(mode=mode, host='proxy.example', port='3456', username='researcher')
+            self.assertEqual(proxy.network_preferences(dict(network, password=SECRET, script='/old.sh')), network)
         self.assertEqual(proxy.connection_label(URL), 'HTTP 代理 127.0.0.1:32123')
         self.assertNotIn(SECRET, proxy.connection_label(URL))
-        for changes in ({'OMFIT_GITHUB_RELAY_PORT': ''}, {'OMFIT_GITHUB_RELAY_PORT': '32124'},
-                        {'https_proxy': URL.replace('127.0.0.1', '47.102.120.146')},
-                        {'https_proxy': 'http://127.0.0.1:32123'}):
-            with self.subTest(changes=changes), self.assertRaises(TemplateError):
-                proxy.relay_proxy(dict(environment, **changes))
 
     def test_invalid_urls_are_rejected_without_echoing_credentials(self):
         for value in ('socks5://omfit:secret@localhost:1080', 'http://omfit:secret@localhost:bad',
@@ -67,57 +70,6 @@ class RelayTest(unittest.TestCase):
         self.assertNotIn(SECRET, str(launch.call_args.args))
         self.assertNotIn(URL, str(launch.call_args.args))
 
-    @unittest.skipUnless(shutil.which('bash'), 'Linux bash is required')
-    def test_script_load_keeps_parent_environment_and_does_not_execute_path_text(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "relay ' $(touch injected).sh"
-            path.write_text('OMFIT_GITHUB_RELAY_PORT=32123\n'
-                            'export http_proxy="' + URL + '"\nexport https_proxy="$http_proxy"\n'
-                            'printf "proxy-secret-stdout\\n"\nprintf "proxy-secret-stderr\\n" >&2\n')
-            before = dict(os.environ)
-            result = proxy.load_relay_script(path)
-            self.assertEqual(proxy.relay_proxy(result), URL)
-            self.assertEqual(dict(os.environ), before)
-            self.assertNotIn('GH_TOKEN', result)
-            self.assertFalse((Path(directory) / 'injected').exists())
-
-    def test_script_failures_hide_captured_secrets(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / 'relay.sh'
-            path.write_text('return 1\n')
-            with patch.object(proxy.shutil, 'which', return_value='/usr/bin/bash'), \
-                    patch.object(proxy.subprocess, 'run', return_value=subprocess.CompletedProcess(
-                        [], 1, stdout=SECRET.encode(), stderr=SECRET.encode())):
-                with self.assertRaises(TemplateError) as caught:
-                    proxy.load_relay_script(path)
-            self.assertNotIn(SECRET, str(caught.exception))
-            self.assertIn('状态 1', str(caught.exception))
-            for failure, message in ((OSError(13, SECRET), '系统错误 13'),
-                                     (subprocess.TimeoutExpired(SECRET, 30, output=SECRET.encode()), '超过 30 秒')):
-                with self.subTest(failure=type(failure).__name__), \
-                        patch.object(proxy.shutil, 'which', return_value='/usr/bin/bash'), \
-                        patch.object(proxy.subprocess, 'run', side_effect=failure), \
-                        self.assertRaisesRegex(TemplateError, message) as caught:
-                    proxy.load_relay_script(path)
-                self.assertNotIn(SECRET, str(caught.exception))
-
-    @unittest.skipUnless(shutil.which('bash'), 'Linux bash is required')
-    def test_script_uses_omfit_python_when_desktop_path_has_no_python3(self):
-        executable = shutil.which('bash')
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / 'relay.sh'
-            observed = Path(directory) / 'interpreter.txt'
-            path.write_text('python3 -c \'import sys;print(sys.prefix)\' > "$OMFIT_TEST_INTERPRETER" || return $?\n'
-                            'OMFIT_GITHUB_RELAY_PORT=32123\n'
-                            'export http_proxy="' + URL + '"\nexport https_proxy="$http_proxy"\n')
-            self.assertIsNone(shutil.which('python3', path=directory))
-            with patch.dict(os.environ, {'PATH': directory, 'OMFIT_TEST_INTERPRETER': str(observed)}, clear=True), \
-                    patch.object(proxy.shutil, 'which', return_value=executable):
-                before = dict(os.environ)
-                environment = proxy.load_relay_script(path)
-                self.assertEqual(dict(os.environ), before)
-            self.assertEqual(proxy.relay_proxy(environment), URL)
-            self.assertEqual(observed.read_text().strip(), sys.prefix)
 
 
 class TLSHandler(APIHandler):

@@ -27,3 +27,5 @@
 ['TESTS']['test_manager_update.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_manager_update.py <-:-:-> {}
 ['TESTS']['test_versions.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_versions.py <-:-:-> {}
 ['TESTS']['test_zip_entry.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_zip_entry.py <-:-:-> {}
+['LIB']['OMFITlib_template_cli'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_cli.py <-:-:-> {}
+['TESTS']['test_cli.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_cli.py <-:-:-> {}

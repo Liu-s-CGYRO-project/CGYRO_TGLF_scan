@@ -244,13 +244,16 @@ class NativeExecutionTests(unittest.TestCase):
         from urllib import request
         root = self.host.modules[('OMFITtemplates',)]
         before = list(sys.meta_path)
-        out = self.host.execute('from OMFITlib_template_proxy import relay_proxy, proxy_handler\n'
-                                'from OMFITlib_template_github import GitHub', root)
+        out = self.host.execute('from OMFITlib_template_proxy import manual_proxy, network_preferences, proxy_handler\n'
+                                'from OMFITlib_template_github import GitHub\n'
+                                'from OMFITlib_template_cli import linux_architecture, cli_path', root)
         self.assertEqual(sys.meta_path, before)
         self.assertFalse(any(name.startswith('OMFITlib_') for name in sys.modules))
         url = 'http://omfit:native-test-only@127.0.0.1:32123'
-        environment = self.host.factory({'OMFIT_GITHUB_RELAY_PORT': '32123', 'https_proxy': url})
-        self.assertEqual(out['relay_proxy'](environment), url)
+        self.assertEqual(out['manual_proxy']('127.0.0.1', '32123', 'omfit', 'native-test-only'), url)
+        self.assertEqual(out['network_preferences']({'mode': 'relay'})['port'], '18889')
+        self.assertIn(out['linux_architecture'](), ('amd64', 'arm64', 'armv6', '386'))
+        self.assertEqual(out['cli_path']().name, 'gh')
         handler = out['proxy_handler'](url)
         req = request.Request('https://api.github.com/rate_limit')
         handler.https_open(req)
@@ -280,6 +283,30 @@ class NativeExecutionTests(unittest.TestCase):
             output = Path(directory) / 'manager.tar.gz'
             out['download_manager_package'](client, result['packages']['linux'], output)
             self.assertEqual(output.read_bytes(), data)
+
+    def test_cli_installs_after_native_import_cleanup(self):
+        import tarfile
+        root = self.host.modules[('OMFITtemplates',)]
+        out = self.host.execute('from OMFITlib_template_cli import ensure_cli, linux_architecture', root)
+        self.assertFalse(any(name.startswith('OMFITlib_') for name in sys.modules))
+        architecture = out['linux_architecture']()
+        name = 'gh_2.99.0_linux_' + architecture
+        binary = b'#!/bin/sh\nprintf "gh version 2.99.0 (native-fixture)\\n"\n'
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode='w:gz') as archive:
+            info = tarfile.TarInfo(name + '/bin/gh')
+            info.size = len(binary)
+            archive.addfile(info, io.BytesIO(binary))
+        data = stream.getvalue()
+        release = dict(tag_name='v2.99.0', assets=[dict(name=name + '.tar.gz', id=17,
+            state='uploaded', size=len(data), digest='sha256:' + hashlib.sha256(data).hexdigest())])
+        client = SimpleNamespace(repo='cli/cli', base='/repos/cli/cli', cancel=None, progress=None,
+            _json=lambda path: release, _open=lambda *args, **kw: io.BytesIO(data))
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'bin/gh'
+            with patch.dict(out['ensure_cli'].__globals__, {'find_cli': lambda: None, 'cli_path': lambda: target}):
+                self.assertEqual(out['ensure_cli'](client), str(target))
+            self.assertEqual(target.read_bytes(), binary)
 
     def test_collectors_define_all_four_classes_inside_omfit(self):
         root = self.host.cg_fixture()

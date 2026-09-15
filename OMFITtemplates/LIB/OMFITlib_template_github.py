@@ -13,6 +13,7 @@ from OMFITlib_template_archive import CHUNK, TemplateError, json_bytes, parse_js
 from OMFITlib_template_service import EXTENSION, Template, check_cancel, new_file, release_name
 from OMFITlib_template_proxy import ClosingTunnelHTTPSHandler, connection_label, login_environment, normalize_proxy, proxy_handler
 from OMFITlib_template_versions import sort_releases
+from OMFITlib_template_cli import find_cli
 
 API = 'https://api.github.com'
 DEFAULT_REPOSITORY = 'Liu-s-CGYRO-project/CGYRO_TGLF_scan'
@@ -64,7 +65,7 @@ def credentials():
         token = os.environ.get(key, '').strip()
         if token:
             return token, key
-    executable = shutil.which('gh')
+    executable = find_cli()
     if executable:
         try:
             result = subprocess.run([executable, 'auth', 'token', '--hostname', 'github.com'],
@@ -77,11 +78,11 @@ def credentials():
     return '', '未登录（仅公开仓库）'
 
 
-def login(proxy=None):
+def login(proxy=None, executable=None):
     """User-triggered login in their Linux desktop terminal, with no shell text."""
-    executable = shutil.which('gh')
+    executable = executable or find_cli()
     if not executable:
-        raise TemplateError('请先安装 GitHub CLI（gh），然后执行：gh auth login --hostname github.com --web')
+        raise TemplateError('GitHub CLI 尚未准备完成，请在管理器中重新点击“登录 GitHub”自动安装')
     command = [executable, 'auth', 'login', '--hostname', 'github.com', '--web', '--git-protocol', 'https']
     terminals = [('x-terminal-emulator', ['-e']), ('gnome-terminal', ['--']),
                  ('konsole', ['-e']), ('xfce4-terminal', ['-x']), ('xterm', ['-e'])]
@@ -184,7 +185,7 @@ class GitHub:
             message = {401: 'GitHub 登录已失效，请重新登录。',
                        403: 'GitHub 拒绝访问，请检查仓库权限、组织 SSO 或 API 限额。',
                        404: 'GitHub 仓库或版本不存在，或当前账号没有访问权限。',
-                       407: 'HTTP 代理认证失败，请重新加载 SSH 连接脚本或检查代理用户名和密码。',
+                       407: 'HTTP 代理认证失败，请检查代理用户名和密码；公共代理的用户名和密码应留空。',
                        422: 'GitHub 拒绝此版本：可能已存在同名标签或资源，或仓库尚无提交。'}.get(status,
                         'GitHub 请求失败（HTTP {}），请稍后检查远端状态。'.format(status))
             if status in (403, 429) and remaining == '0':
@@ -192,8 +193,8 @@ class GitHub:
             raise GitHubError(status, message) from None
         except (error.URLError, OSError, TimeoutError) as exc:
             if '407' in str(getattr(exc, 'reason', exc)):
-                raise TemplateError('HTTP 代理认证失败，请重新加载 SSH 连接脚本或检查代理用户名和密码。') from None
-            raise TemplateError('连接 GitHub 失败或超时（{}）。请检查 SSH 隧道、本地代理端口与网络。'.format(self.connection)) from None
+                raise TemplateError('HTTP 代理认证失败，请检查代理用户名和密码；公共代理的用户名和密码应留空。') from None
+            raise TemplateError('连接 GitHub 失败或超时（{}）。请检查代理地址、端口与网络。'.format(self.connection)) from None
 
     def _json(self, path, method='GET', payload=None, **kwargs):
         data = json_bytes(payload) if payload is not None else None

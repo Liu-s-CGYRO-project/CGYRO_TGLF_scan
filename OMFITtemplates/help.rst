@@ -1,4 +1,4 @@
-OMFIT GitHub 模板管理器 1.4.0
+OMFIT GitHub 模板管理器 1.5.0
 ============================
 
 面向带桌面的 Linux，在 OMFIT 内浏览、拉取和发布不同开发者的模板版本。
@@ -12,6 +12,7 @@ OMFIT GitHub 模板管理器 1.4.0
 1.4.0 默认按实际发布时间排序，可切换版本号排序；修正旧日期版本与语义版本混排。
 右上角“检查管理器更新”独立检查管理器稳定版，使用当前代理，提供经过 SHA-256 校验的 Linux／OMFIT 模块包。
 管理器更新源固定为官方仓库，修改计算模板仓库不会改变软件更新源；检查与下载不会自动替换正在运行的工程。
+1.5.0 移除 SSH 隧道入口，旧配置自动迁移到公共 HTTP 代理。登录时自动安装缺少的 gh。
 默认仓库为 Liu-s-CGYRO-project/CGYRO_TGLF_scan，可在界面更改。
 通过 GitHub Releases 分发版本；默认只包含代码和设置，案例、结果可选择作为示例。
 
@@ -29,36 +30,21 @@ OMFIT GitHub 模板管理器 1.4.0
 “保存当前 OMFIT 会话”调用 OMFIT.saveas，完整保存内存中的当前工程，并将
 当前工程和发布来源指向新 ZIP。这是另存为操作，OMFIT 当前项目名称也随之改变。
 
-GitHub 代理与 SSH 中继
----------------------
+GitHub 代理
+-----------
 
-默认连接配置为 liu@47.102.120.146:22，经 SSH 访问服务器 127.0.0.1:18888。
-HTTP 代理软件为 proxy.py，支持 HTTPS CONNECT，认证用户名为 omfit。
-本地端口与密码由已有连接脚本提供；服务器代理只监听服务器本机。
-
-在 Linux 终端加载该脚本后，从同一终端按原命令启动 OMFIT，管理器将读取
-OMFIT_GITHUB_RELAY_PORT 以及包含认证信息的 http_proxy / https_proxy。
-已打开的 OMFIT 可在“GitHub 版本 → 代理设置”选择脚本并点击“加载连接脚本”。
-加载只读取本工具需要的中继变量，不改变 OMFIT 主进程的环境；脚本负责建立 SSH 隧道。
-加载脚本时只对子进程优先使用当前 OMFIT 的 Python 目录，不修改主进程 PATH。
-终端运行脚本若提示 python3 未找到，请先激活平时运行 OMFIT 的环境。
-脚本需要交互式 SSH 登录时，请先在终端加载，再从该终端启动 OMFIT。
-
-点击“测试连接”检查通过当前代理访问 GitHub 的 HTTPS 连接；测试不读取 GitHub 令牌。
-版本列表、下载、发布和本工具启动的 gh 登录共用所选网络配置。
-外部浏览器使用自身的网络设置，已有浏览器会话可能需要单独配置代理。
-
-还可选择“系统代理”“手动 HTTP 代理”“不使用代理”。手动模式支持用户名和密码，
-密码仅留在当前窗口内；偏好设置只记住网络方式、端口、用户名和脚本路径。
-脚本中的密码、代理 URL 认证信息和 GitHub 令牌不写入工程、偏好设置或日志。
-SSH 模式缺少端口或认证时会说明如何加载脚本，不自动切换到直连。
+默认“手动 HTTP 代理”使用 47.102.120.146:18889，用户名与密码留空。
+还可选择“系统代理”或“不使用代理”，手动模式也支持其他 HTTP 代理和可选认证。
+旧 SSH 模式自动迁移并清除旧用户名与脚本路径；已有手动、系统和直连配置保留。
+点击“测试连接”检查 HTTPS；版本、下载、发布、更新与 gh 安装沿用当前代理。
+密码只留在当前窗口，不写入偏好或工程；外部浏览器使用自身的网络设置。
 
 命令行诊断（Python 3.9+）：
 
 ::
 
     python3 OMFITtemplates/launch.py github-probe
-    python3 OMFITtemplates/launch.py github-probe --relay-script /path/to/relay.sh
+    python3 OMFITtemplates/launch.py github-probe --network manual --proxy-host 47.102.120.146 --proxy-port 18889
     python3 OMFITtemplates/launch.py github-check --network system --anonymous
     python3 OMFITtemplates/launch.py github-list --network direct --anonymous
 
@@ -66,12 +52,12 @@ GitHub 连接与首次建库
 --------------------
 
 1. 在“GitHub 版本”填写 所有者/仓库 或 https://github.com/所有者/仓库.git。
-2. 安装 GitHub CLI（gh）。点击“登录 GitHub”会在 Linux 桌面终端打开浏览器登录流程。
-   完成后返回并点击“连接仓库”。也可提前执行：
-
-   ::
-
-       gh auth login --hostname github.com --web
+2. 点击“登录 GitHub”。已有 gh 时直接使用；缺少时自动通过当前代理下载官方 Linux
+   稳定版，按机器架构选择安装包，核对大小和 SHA-256 后装入用户目录。
+   默认位置为 ~/.local/share/omfit-template-manager/tools/bin/gh，支持 XDG_DATA_HOME。
+   无需 sudo、pip 或配置 PATH，进度在窗口底部显示，可点击“取消操作”。
+   安装完成后自动打开登录终端，按提示完成浏览器授权，再点击“连接仓库”。
+   登录和读取凭据共用这个 gh；公开版本的浏览下载不要求安装。
 
 3. 公开仓库可匿名浏览和拉取。私有仓库需要 Contents 读取权限；发布及初始化需要
    Contents 写权限，组织可能要求 SSO。连接栏显示仓库可见性和实际登录账号。

@@ -3,7 +3,7 @@ from builtins import any, float, int, len, sorted, str, tuple
 from datetime import datetime, timezone
 import re
 
-MANAGER_VERSION = '1.4.0'
+MANAGER_VERSION = '1.5.0'
 SORT_OPTIONS = {'发布时间：新 → 旧': 'published', '版本号：新 → 旧': 'version', '版本号：旧 → 新': 'version_asc'}
 _SEMVER = re.compile(r'v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)'
                      r'(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\Z')

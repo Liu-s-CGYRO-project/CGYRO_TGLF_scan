@@ -12,9 +12,10 @@ from tkinter import filedialog, font as tkfont, messagebox, ttk
 from OMFITlib_template_archive import TemplateError, human_size, json_bytes, parse_json
 from OMFITlib_template_paths import default_library, legacy_preferences_path, preferences_path
 from OMFITlib_template_github import DEFAULT_REPOSITORY, INITIAL_README, GitHub, login, repository
-from OMFITlib_template_proxy import DEFAULT_RELAY, PROXY_MODES, connection_label, load_relay_script, manual_proxy, relay_proxy
+from OMFITlib_template_proxy import PROXY_MODES, connection_label, manual_proxy, network_preferences
 from OMFITlib_template_versions import MANAGER_VERSION, SORT_OPTIONS, sort_releases
 from OMFITlib_template_manager_ui import ManagerUpdateUI
+from OMFITlib_template_cli import CLI_REPOSITORY, ensure_cli
 from OMFITlib_template_service import (
     Cancelled, EXTENSION, Template, apply_update, inspect_project, list_library,
     plan_update, publish, read_history, release_name, transfer,
@@ -57,16 +58,13 @@ class TemplateManager(ManagerUpdateUI):
         self.library = tk.StringVar(master=window, value=str(library or saved.get('library') or default_library()))
         self.shared = tk.StringVar(master=window, value=str(saved.get('shared', '')))
         self.repository = tk.StringVar(master=window, value=str(saved.get('repository', DEFAULT_REPOSITORY)))
-        network = saved.get('network', {})
-        network = network if isinstance(network, dict) else {}
-        mode = network.get('mode', 'relay')
+        network = network_preferences(saved.get('network', {}))
+        mode = network['mode']
         self.proxy_mode = tk.StringVar(master=window, value=next((label for label, value in PROXY_MODES.items() if value == mode), next(iter(PROXY_MODES))))
-        self.proxy_host = tk.StringVar(master=window, value=str(network.get('host', '127.0.0.1')))
-        self.proxy_port = tk.StringVar(master=window, value=str(network.get('port', '')))
-        self.proxy_username = tk.StringVar(master=window, value=str(network.get('username', 'omfit')))
+        self.proxy_host = tk.StringVar(master=window, value=str(network['host']))
+        self.proxy_port = tk.StringVar(master=window, value=str(network['port']))
+        self.proxy_username = tk.StringVar(master=window, value=str(network['username']))
         self.proxy_password = tk.StringVar(master=window, value='')
-        self.relay_script = tk.StringVar(master=window, value=str(network.get('script', '')))
-        self.relay_environment = None
         self.proxy_info = tk.StringVar(master=window, value='')
         self.proxy_dialog = None
         self.manager_update_dialog = None
@@ -397,9 +395,9 @@ class TemplateManager(ManagerUpdateUI):
                 stream.write(json_bytes({'library': self.library.get().strip(), 'shared': self.shared.get().strip(),
                                          'current': self.current.get().strip(), 'repository': self.repository.get().strip(),
                                          'sort': SORT_OPTIONS.get(self.release_sort.get(), 'published'),
-                                         'network': {'mode': PROXY_MODES.get(self.proxy_mode.get(), 'relay'),
+                                         'network': {'mode': PROXY_MODES.get(self.proxy_mode.get(), 'manual'),
                                                      'host': self.proxy_host.get().strip(), 'port': self.proxy_port.get().strip(),
-                                                     'username': self.proxy_username.get().strip(), 'script': self.relay_script.get().strip()}}))
+                                                     'username': self.proxy_username.get().strip()}}))
             os.replace(temporary, self.preferences)
         except OSError as exc:
             self._log('库路径未保存：' + str(exc))
@@ -515,8 +513,6 @@ class TemplateManager(ManagerUpdateUI):
 
     def _selected_proxy(self):
         mode = PROXY_MODES.get(self.proxy_mode.get(), '')
-        if mode == 'relay':
-            return relay_proxy(self.relay_environment)
         if mode == 'system':
             return None
         if mode == 'direct':
@@ -553,27 +549,6 @@ class TemplateManager(ManagerUpdateUI):
                   lambda: GitHub(DEFAULT_REPOSITORY, token='', proxy=proxy, cancel=self.cancel).probe(),
                   lambda report: self.proxy_info.set('GitHub HTTPS 连接成功 · ' + report['connection']))
 
-    def _choose_relay_script(self):
-        path = filedialog.askopenfilename(parent=self.proxy_dialog or self.window,
-                                         title='选择现有 SSH 中继连接脚本')
-        if path:
-            self.relay_script.set(path)
-
-    def _load_relay(self):
-        if self.busy:
-            return
-        path = self.relay_script.get().strip()
-        if not path:
-            self._error(TemplateError('请先选择已有的 Linux SSH 中继连接脚本'))
-            return
-        def loaded(environment):
-            self.relay_environment = environment
-            self.proxy_mode.set(next(iter(PROXY_MODES)))
-            self._proxy_changed()
-            self._save_preferences()
-            self.status.set('SSH 中继配置已加载，点击“测试连接”或“连接仓库”。')
-        self._run('正在加载 SSH 中继脚本…', lambda: load_relay_script(path), loaded)
-
     def _proxy_settings(self):
         if self.busy:
             return
@@ -582,23 +557,16 @@ class TemplateManager(ManagerUpdateUI):
             return
         dialog = self.proxy_dialog = tk.Toplevel(self.window)
         dialog.title('GitHub 代理设置')
-        dialog.geometry('820x560')
-        dialog.minsize(760, 540)
+        dialog.geometry('780x420')
+        dialog.minsize(720, 400)
         page = self._frame(dialog, padding=20)
         page.pack(fill='both', expand=True)
         row = self._frame(page)
         row.pack(fill='x', pady=(0, 12))
         self._label(row, '连接方式', width=13).pack(side='left')
         self._combo(row, self.proxy_mode, list(PROXY_MODES), 30).pack(side='left')
-        self._label(page, 'SSH 中继：' + DEFAULT_RELAY, wraplength=740).pack(fill='x')
-        self._label(page, '自动读取脚本导出的 OMFIT_GITHUB_RELAY_PORT 与 http_proxy / https_proxy。'
-                    '认证用户名为 omfit，密码沿用脚本配置。', muted=True, wraplength=740).pack(fill='x', pady=8)
-        self._path_row(page, '连接脚本', self.relay_script, self._choose_relay_script)
-        row = self._frame(page)
-        row.pack(fill='x', pady=(4, 12))
-        self._button(row, '加载连接脚本', self._load_relay).pack(side='left')
-        self._label(row, '已从同一终端启动 OMFIT 时，无需重新加载。', muted=True).pack(side='left', padx=12)
-        ttk.Separator(page).pack(fill='x', pady=10)
+        self._label(page, '默认公共代理：47.102.120.146:18889，用户名和密码留空。',
+                    muted=True, wraplength=680).pack(fill='x', pady=(0, 12))
         self._label(page, '手动 HTTP 代理（仅在手动模式下生效）').pack(anchor='w')
         for label, variable in (('主机', self.proxy_host), ('端口', self.proxy_port),
                                 ('用户名', self.proxy_username), ('密码', self.proxy_password)):
@@ -661,11 +629,23 @@ class TemplateManager(ManagerUpdateUI):
         self._run('正在连接 GitHub 并读取版本…', work, connected)
 
     def _login(self):
+        if self.busy:
+            return
         try:
-            login(proxy=self._selected_proxy())
-            self.status.set('已打开 GitHub 登录终端。完成登录后，点击“连接仓库”。')
-        except (TemplateError, OSError) as exc:
+            proxy = self._selected_proxy()
+        except TemplateError as exc:
             self._error(exc)
+            return
+        self._save_preferences()
+        def ready(executable):
+            if self.cancel.is_set():
+                self.status.set('已取消登录。')
+                return
+            login(proxy=proxy, executable=executable)
+            self.status.set('已打开 GitHub 登录终端。按提示完成浏览器授权后，点击“连接仓库”。')
+        self._run('正在准备 GitHub 登录，缺少 gh 时自动安装…',
+                  lambda: ensure_cli(GitHub(CLI_REPOSITORY, token='', proxy=proxy,
+                                           cancel=self.cancel, progress=self._progress)), ready)
 
     def _initialize_repository(self):
         if self.busy:
