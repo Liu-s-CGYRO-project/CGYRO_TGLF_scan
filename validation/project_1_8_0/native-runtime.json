@@ -1,0 +1,8 @@
+{
+  "tests": 10,
+  "failures": 0,
+  "errors": 0,
+  "native_SortedDict": true,
+  "source_sha256": "4e5404965b38650c201ebdccce11bc618d95d766cbd76cdee6d6cdc5de2e271d",
+  "native_class_sha256": "a2ca3751968fe62fe82c5460986ffa4bdf1e6b4696860b2f686417c3f6d87285"
+}

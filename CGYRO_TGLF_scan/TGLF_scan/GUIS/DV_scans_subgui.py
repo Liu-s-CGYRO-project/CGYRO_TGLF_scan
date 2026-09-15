@@ -7,7 +7,7 @@ Secondary GUI to get frequency and growth rates scans + transport coefficient se
 
 root.setdefault('TGLF_inputs_to_scan', {})
 
-OMFITx.Label('Indicate TGLF inputs to scan over')
+OMFITx.Label('选择需要扫描的 TGLF 输入参数')
 
 # set defaults:
 def load_default_vars():
@@ -39,13 +39,13 @@ if 'input.tglf' in root['TGLF']['FILES']:
     )
 
 else:
-    OMFITx.Label('input.tglf not found. Set up TGLF for scans to read all possible scan options. Defaults: ', align='left')
+    OMFITx.Label('尚无 input.tglf；准备 TGLF 输入后可读取全部扫描选项。默认值：', align='left')
     def_options = {k: 1 for k in root['TGLF_inputs_to_scan'].keys()}
     OMFITx.CompoundGUI(root['GUIS']['selection_GUI'], dictionary_to_read=def_options, dictionary_to_write='TGLF_inputs_to_scan', title='')
 
 
 OMFITx.Label('')
-OMFITx.Button("Reload default scan variables", load_default_vars, updateGUI=True)
+OMFITx.Button('恢复默认扫描变量', load_default_vars, updateGUI=True)
 
 
 OMFITx.Label('')
@@ -53,13 +53,13 @@ OMFITx.Label('')
 
 # ==============================
 
-OMFITx.Tab("Frequency scans")
+OMFITx.Tab('频率扫描')
 
 OMFITx.Entry(
-    "root['SETTINGS']['PHYSICS']['Var_r']", 'rho for growth rate scans: ', default=0.6, help='Radial location for growth rate scan'
+    "root['SETTINGS']['PHYSICS']['Var_r']", '增长率扫描半径 rho：', default=0.6, help='Radial location for growth rate scan'
 )
 OMFITx.Entry(
-    "root['SETTINGS']['PHYSICS']['NMODES']", 'Number of TGLF modes to store: ', default=2, help='Dominant: 1; first subdominant: 2, etc.'
+    "root['SETTINGS']['PHYSICS']['NMODES']", '保存的 TGLF 模态数：', default=2, help='Dominant: 1; first subdominant: 2, etc.'
 )
 
 OMFITx.Label('')
@@ -79,7 +79,7 @@ OMFITx.Separator()
 
 # Run scans
 OMFITx.Button(
-    "Scan for growth rates",
+    '扫描增长率',
     lambda: root['SCRIPTS']['runGrowthRateScans'].run(NMODES=root['SETTINGS']['PHYSICS']['NMODES']),
     updateGUI=False,
 )
@@ -87,35 +87,35 @@ OMFITx.Button(
 if 'scans' in root['TGLF_SCAN_DB']:
     OMFITx.Entry(
         "root['SETTINGS']['PHYSICS']['plot_gamma_lims']",
-        'Growth rate plot range',
+        '增长率绘图范围',
         default=[None, None],
         help="Leave to [None,None] to have automatic ylims",
     )
 
     OMFITx.Entry(
         "root['SETTINGS']['PHYSICS']['plot_mode_number']",
-        'TGLF mode rank to plot',
+        '绘制的 TGLF 模态序号',
         default=1,
         help='Dominant: 1; first subdominant: 2, etc.',
     )
     OMFITx.CheckBox(
         "root['SETTINGS']['PHYSICS']['normalized_freq']",
-        'Plot normalized growth rates ',
+        '绘制归一化增长率',
         default=True,
         updateGUI=False,
         help='Plotting growth rates normalized by ktheta*rhos helps assessing the importance of multiscale effects on transport',
     )
-    OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['separate_freq_plot']", 'Separate real frequency plot ', default=False, updateGUI=True)
+    OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['separate_freq_plot']", '单独绘制实频率', default=False, updateGUI=True)
     if root['SETTINGS']['PHYSICS']['separate_freq_plot']:
         OMFITx.Entry(
             "root['SETTINGS']['PHYSICS']['plot_freq_lims']",
-            'Real frequency plot range',
+            '实频率绘图范围',
             default=[None, None],
             help="Leave to [None,None] to have automatic ylims",
         )
 
     OMFITx.Button(
-        "Plot growth rates/frequencies scans",
+        '绘制增长率 / 频率扫描',
         lambda: root['PLOTS']['plotGrowthRateScans'].run(
             normalized_freq=root['SETTINGS']['PHYSICS']['normalized_freq'],
             separate_freq_plot=root['SETTINGS']['PHYSICS']['separate_freq_plot'],
@@ -130,9 +130,9 @@ if 'scans' in root['TGLF_SCAN_DB']:
 
 # ========================
 # scan for impurity transport coefficients
-OMFITx.Tab("Transport coefficients scans")
+OMFITx.Tab('输运系数扫描')
 
-OMFITx.Label('NB: TGYRO will be used to get input.tglf files if species are modified from a previous run.', align='left')
+OMFITx.Label('若物种相对上次运行发生变化，将使用 TGYRO 重新生成 input.tglf。', align='left')
 
 
 def get_ion_list_short():
@@ -147,12 +147,12 @@ def get_ion_list_short():
 ions = root['TGYRO']['PROFILES_GEN']['OUTPUTS']['input.gacode']['IONS']
 ion_list = [ions[k][0] for k in ions.keys()]
 OMFITx.Label('Original Ion List:{}'.format(ion_list))
-OMFITx.Label('Specify impurity for which transport coefficients should be found')
+OMFITx.Label('选择需要计算输运系数的杂质')
 
-OMFITx.Entry("root['SETTINGS']['PHYSICS']['impElement']", 'Impurity Element', default='Ca', updateGUI=False)
+OMFITx.Entry("root['SETTINGS']['PHYSICS']['impElement']", '杂质元素', default='Ca', updateGUI=False)
 
 # allow specification of particle charge in case one wants to study transport of partially-ionized species
-OMFITx.Entry("root['SETTINGS']['PHYSICS']['impZ']", 'Impurity Charge (Z)', default=20, updateGUI=False)
+OMFITx.Entry("root['SETTINGS']['PHYSICS']['impZ']", '杂质电荷数 Z', default=20, updateGUI=False)
 
 try:
     atom = atomic_element(symbol=root['SETTINGS']['PHYSICS']['impElement'])
@@ -164,7 +164,7 @@ except ValueError:
 
 OMFITx.CheckBox(
     "root['SETTINGS']['PHYSICS']['transport_matrix_method']",
-    'Use matrix inversion method to obtain transport coefficients ',
+    '使用矩阵求逆计算输运系数',
     default=True,
     updateGUI=True,
     help="If checked, transport coefficients are computed via a matrix inversion, "
@@ -175,7 +175,7 @@ OMFITx.CheckBox(
 if root['SETTINGS']['PHYSICS']['transport_matrix_method']:
     OMFITx.CheckBox(
         "root['SETTINGS']['PHYSICS']['compute_thermodiffusion']",
-        'Compute thermodiffusion',
+        '计算热扩散',
         default=True,
         updateGUI=True,
         help="If checked, compute diffusion (D), thermodiffusion (vT) and the residual convection term (vp), rather than just D,v. ",
@@ -183,7 +183,7 @@ if root['SETTINGS']['PHYSICS']['transport_matrix_method']:
 
     OMFITx.CheckBox(
         "root['SETTINGS']['PHYSICS']['compute_rotodiffusion']",
-        'Compute rotodiffusion',
+        '计算旋转扩散',
         default=True,
         updateGUI=True,
         help="If checked, compute rotodiffusion (vR) as well as thermodiffusion (vT).",
@@ -223,7 +223,7 @@ for v in root['TGLF_inputs_to_scan'].keys():
 
 # =======================
 # Run D,V scan
-OMFITx.Button("Scan for transport coefficients", "root['SCRIPTS']['DVscan'].run", updateGUI=False)
+OMFITx.Button('扫描输运系数', "root['SCRIPTS']['DVscan'].run", updateGUI=False)
 OMFITx.Label('')
 OMFITx.Separator()
 OMFITx.Label('')
@@ -258,10 +258,10 @@ if (
             root['scan_vars_to_plot']['v_D' + extra_str] = '$v/D$ [1/m]'
 
     # Select quantities to plot, also indicating labels:
-    OMFITx.Label('Indicate scan output variables to be plotted')
+    OMFITx.Label('选择要绘制的扫描输出量')
     OMFITx.CheckBox(
         "root['SETTINGS']['PHYSICS']['plot_STRAHL_corrections']",
-        'Include STRAHL-like corrections to all transport coefficients',
+        '对全部输运系数采用 STRAHL 类修正',
         default=True,
         updateGUI=True,
         help='Apply corrections to transport coefficients that allow comparison with STRAHL. These account for poloidal asymmetries and different radial coordinates',
@@ -269,7 +269,7 @@ if (
     )
     OMFITx.CheckBox(
         "root['SETTINGS']['PHYSICS']['plot_normalized_coeffs']",
-        'Plot transport coefficients normalized by chi_i',
+        '绘制以 χᵢ 归一化的输运系数',
         default=False,
         updateGUI=False,
     )
@@ -277,7 +277,7 @@ if (
     if len(root['scan_vars_to_plot']) == 0:
         load_default_DV_plot_vars()
 
-    OMFITx.Button("Reload default scan variables to plot", load_default_DV_plot_vars, updateGUI=True)
+    OMFITx.Button('恢复默认绘图变量', load_default_DV_plot_vars, updateGUI=True)
 
     OMFITx.CompoundGUI(
         root['GUIS']['selection_GUI'],
@@ -288,7 +288,7 @@ if (
 
     OMFITx.CheckBox(
         "root['SETTINGS']['PHYSICS']['shade_DV']",
-        'Shadow over D,V range ',
+        '显示 D、V 范围阴影',
         default=True,
         updateGUI=True,
         help="Color plot between up and down scans. This is a purely graphical effect to better show sensitivity ranges.",

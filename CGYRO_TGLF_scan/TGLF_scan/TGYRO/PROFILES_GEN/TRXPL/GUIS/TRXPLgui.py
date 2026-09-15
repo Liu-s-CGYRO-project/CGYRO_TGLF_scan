@@ -1,7 +1,7 @@
 # -*-Python-*-
 # Created by grierson at 15 Aug 2015  13:26
 
-OMFITx.TitleGUI('TRXPL TRANSP Extract Plasma State')
+OMFITx.TitleGUI('TRXPL：提取 TRANSP 等离子体状态')
 
 if TRANSP is None:
     server = root['SETTINGS']['EXPERIMENT']['server']
@@ -52,7 +52,7 @@ if TRANSP is None:
     OMFITx.ShotTimeDevice()
     if not is_device(device, 'CMOD'):
         _help = "TRANSP runID as either 'Z01' or '2601'"
-        OMFITx.Entry("root['SETTINGS']['EXPERIMENT']['runid']", 'TRANSP run', default='Z01', updateGUI=True, help=_help)
+        OMFITx.Entry("root['SETTINGS']['EXPERIMENT']['runid']", 'TRANSP 运行名称', default='Z01', updateGUI=True, help=_help)
         if not root['SETTINGS']['EXPERIMENT']['runid']:
             OMFITx.End()
     else:
@@ -69,14 +69,14 @@ if TRANSP is None:
         OMFITx.ComboBox(
             "root['SETTINGS']['PHYSICS']['directionBT']",
             {'Clockwise': -1, 'Counter-clockwise': 1},
-            'Toroidal Field Direction',
+            '环向磁场方向',
             default=-1,
             updateGUI=False,
         )
         OMFITx.ComboBox(
             "root['SETTINGS']['PHYSICS']['directionIp']",
             {'Clockwise': -1, 'Counter-clockwise': 1},
-            'Plasma Current Direction',
+            '等离子体电流方向',
             default=1,
             updateGUI=False,
         )
@@ -86,12 +86,12 @@ else:
 OMFITx.Entry("root['SETTINGS']['EXPERIMENT']['avgtim']", '[+/-] avg [ms]', default=20, updateGUI=True)
 
 with OMFITx.same_row():
-    OMFITx.CheckBox("root['SETTINGS']['EXPERIMENT']['multiwindow']", 'Extract multi window profiles', default=False, updateGUI=True)
+    OMFITx.CheckBox("root['SETTINGS']['EXPERIMENT']['multiwindow']", '提取多个时间窗剖面', default=False, updateGUI=True)
     server = root['SETTINGS']['EXPERIMENT']['server']
     if server != 'CDF':
         OMFITx.CheckBox(
             "root['SETTINGS']['EXPERIMENT']['dWdt_correction']",
-            'Correct input power for dW/dt term',
+            '按 dW/dt 修正输入功率',
             default=False,
             updateGUI=False,
             help='Substract time derivative of pressure (dp/dt) from heating profile.\n Time evolution of pressure must be smooth',
@@ -102,11 +102,11 @@ if root['SETTINGS']['EXPERIMENT']['multiwindow']:
 
     OMFITx.ShotTimeDevice(showShot=False, showDevice=False, multiTimes=True)
 OMFITx.ComboBox(
-    "root['SETTINGS']['EXPERIMENT']['nzones']", {'from TRANSP run': None}, 'Number of radial zones', default=None, state='normal'
+    "root['SETTINGS']['EXPERIMENT']['nzones']", {'from TRANSP run': None}, '径向区域数', default=None, state='normal'
 )
 
 OMFITx.Separator()
 if root['SETTINGS']['EXPERIMENT']['multiwindow']:
-    OMFITx.Button('Extract Multi Window Plasma State', "root['SCRIPTS']['batch_trxpl']")
+    OMFITx.Button('提取多个时间窗的等离子体状态', "root['SCRIPTS']['batch_trxpl']")
 else:
-    OMFITx.Button('Extract Plasma State', "root['SCRIPTS']['trxpl']")
+    OMFITx.Button('提取等离子体状态', "root['SCRIPTS']['trxpl']")

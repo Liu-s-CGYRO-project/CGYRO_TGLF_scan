@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 import uuid
 
 from OMFITlib_tglf_multi_data import case_plan, initialize, profile_digest, tgyro_input, tglf_text
+from OMFITlib_project_runtime import shared_issues
 
 
 def stamp():
@@ -137,6 +138,8 @@ def validate_result(result):
 
 def run_selected(root, runner, action='all', factory=dict, progress=None):
     settings, cases = initialize(root, factory)
+    if shared_issues(root):
+        raise ValueError('；'.join(shared_issues(root)))
     if action not in ('all', 'prepare', 'run'):
         raise ValueError('未知运行操作。')
     selected = [(key, case) for key, case in cases.items() if case['enabled']]

@@ -1,7 +1,7 @@
 # -*-Python-*-
 # Created by smithsp at 02 Sep 2015  21:39
 
-OMFITx.TitleGUI('TGLF GUI')
+OMFITx.TitleGUI('TGLF 参数设置')
 
 defaultVars(
     inp_loc="root['FILES']['input.tglf']",
@@ -16,22 +16,22 @@ defaultVars(
 try:
     input_tglf = eval(inp_loc)
 except Exception:
-    OMFITx.ObjectPicker(inp_loc, lbl='input.tglf file', objectType=OMFITgacode)
+    OMFITx.ObjectPicker(inp_loc, lbl='input.tglf 输入文件', objectType=OMFITgacode)
     OMFITx.End()
 if 'USE_TRANSPORT_MODEL' not in input_tglf:
-    OMFITx.Label("This GUI is only valid for a TGLF input file (usually named input.tglf)")
+    OMFITx.Label('此页面需要有效的 TGLF 输入文件，通常为 input.tglf。')
     OMFITx.End()
 
 options = {
-    'TGLF-NN': ("Get fluxes with neural-network model", [True, 1e6]),
-    'TGLF': ("Get growth rate spectra and fluxes", [True, -1.0]),
-    'wavefunction': ("Get wavefunction at set ky", [False, -1.0]),
+    'TGLF-NN': ('使用神经网络模型计算通量', [True, 1e6]),
+    'TGLF': ('计算增长率谱与通量', [True, -1.0]),
+    'wavefunction': ('计算指定 ky 的本征函数', [False, -1.0]),
 }
 
 OMFITx.ComboBox(
     [inp_loc + "['USE_TRANSPORT_MODEL']", inp_loc + "['NN_MAX_ERROR']"],
     {options[k][0]: options[k][1] for k in allowOptions},
-    "TGLF mode",
+    'TGLF 计算模式',
     updateGUI=True,
     default=[True, -1.0],
 )
@@ -42,17 +42,17 @@ if eval(inp_loc + "['USE_TRANSPORT_MODEL']") and eval(inp_loc + "['NN_MAX_ERROR'
 
 
 # GEOMETRY_FLAG tglf_geometry_flag_in geometry type (0=-, 1=Miller, 2=Fourier, 3=ELITE) 1
-OMFITx.Tab("Physics Controls")
+OMFITx.Tab('物理参数')
 if showNumSpecies:
-    OMFITx.Entry(inp_loc + "['NS']", lbl="Number of species including both electrons and ions", default=2, check=is_int, updateGUI=True)
-OMFITx.CheckBox(inp_loc + "['USE_BPER']", lbl="Include transverse magnetic fluctuations (A_||)", default=True)
-OMFITx.CheckBox(inp_loc + "['USE_BPAR']", lbl="Include compressional magnetic fluctuations (B_||)", default=True)
-OMFITx.CheckBox(inp_loc + "['USE_MHD_RULE']", lbl="Ignore pressure gradient contribution to curvature drift (Phi)", default=False)
-OMFITx.CheckBox(inp_loc + "['ADIABATIC_ELEC']", lbl="Use adiabatic electrons", default=False)
+    OMFITx.Entry(inp_loc + "['NS']", lbl='物种总数（电子与离子）', default=2, check=is_int, updateGUI=True)
+OMFITx.CheckBox(inp_loc + "['USE_BPER']", lbl='包含横向磁扰动（A∥）', default=True)
+OMFITx.CheckBox(inp_loc + "['USE_BPAR']", lbl='包含压缩磁扰动（B∥）', default=True)
+OMFITx.CheckBox(inp_loc + "['USE_MHD_RULE']", lbl='忽略压强梯度对曲率漂移的贡献（Phi）', default=False)
+OMFITx.CheckBox(inp_loc + "['ADIABATIC_ELEC']", lbl='采用绝热电子', default=False)
 OMFITx.ComboBox(
     inp_loc + "['SAT_RULE']",
     {'0': 0, '1': 1, '2': 2},
-    lbl="Saturation rule",
+    lbl='饱和规则',
     updateGUI=True,
     default=1,
     help='''SAT0 - Spectral shift [Staebler 2013] and quasilinear weights from GYRO [Staebler 2007].
@@ -66,20 +66,20 @@ SAT2 - Spectral shift [Staebler 2013] new collision model and quasilinear weight
 #  lbl="VPAR_MODEL (0=low-Mach-number limit)",default=0)
 OMFITx.ComboBox(
     inp_loc + "['ALPHA_QUENCH']",
-    {"Use quench rule": 1.0, "Use new spectral shift model": 0.0},
-    lbl="Quench rule",
+    {'采用湍流抑制规则': 1.0, '采用新的谱位移模型': 0.0},
+    lbl='湍流抑制规则',
     default=0.0,
 )
-OMFITx.ComboBox(inp_loc + "['SIGN_BT']", [1, -1], lbl="Sign of Bt with respect to CCW toroidal direction from top", default=1)
-OMFITx.ComboBox(inp_loc + "['SIGN_IT']", [1, -1], lbl="Sign of It with respect to CCW toroidal direction from top", default=1)
+OMFITx.ComboBox(inp_loc + "['SIGN_BT']", [1, -1], lbl='Bt 符号（俯视逆时针为正）', default=1)
+OMFITx.ComboBox(inp_loc + "['SIGN_IT']", [1, -1], lbl='It 符号（俯视逆时针为正）', default=1)
 
-OMFITx.Tab("Numerical Controls")
-OMFITx.CheckBox(inp_loc + "['USE_BISECTION']", lbl="Use bisection search method to find width that maximizes growth rate", default=True)
+OMFITx.Tab('数值参数')
+OMFITx.CheckBox(inp_loc + "['USE_BISECTION']", lbl='用二分法寻找使增长率最大的模态宽度', default=True)
 # Not relevant
 # OMFITx.CheckBox(inp_loc+"['NEW_EIKONAL']",
 #  lbl="Recompute the eikonal, (unclicking means to use the eikonal computed "
 #  "on the last call to TGLF made with NEW_EIKONAL set)", default=True)
-OMFITx.CheckBox(inp_loc + "['IFLUX']", lbl="Compute quasilinear weights and mode amplitudes", default=True)
+OMFITx.CheckBox(inp_loc + "['IFLUX']", lbl='计算准线性权重与模态幅度', default=True)
 
 
 def check_nky(s):
@@ -94,20 +94,20 @@ def check_nky(s):
 
 
 if not input_tglf['USE_TRANSPORT_MODEL']:
-    OMFITx.Entry(inp_loc + "['KY']", "k_y for single-mode call to TGLF", default=0.3)
+    OMFITx.Entry(inp_loc + "['KY']", 'TGLF 单模态计算的 k_y', default=0.3)
 else:
     OMFITx.ComboBox(
         inp_loc + "['KYGRID_MODEL']",
-        {"Standard ky spectrum for transport model": 1, "User defined with NKY modes up to KY equal spaced": 0},
-        lbl='ky Grid Model',
+        {'输运模型的标准 ky 谱': 1, '自定义等间距 ky 网格（NKY 个点，最大值 KY）': 0},
+        lbl='ky 网格模型',
         default=1,
         updateGUI=True,
     )
     if input_tglf['KYGRID_MODEL'] == 0:
-        OMFITx.Entry(inp_loc + "['KY']", lbl="Max KY for user defined KY grid", default=0.3)
-        OMFITx.Entry(inp_loc + "['NKY']", lbl="Number of KY for user defined KY grid", default=12, check=check_nky)
+        OMFITx.Entry(inp_loc + "['KY']", lbl='自定义 ky 网格最大值', default=0.3)
+        OMFITx.Entry(inp_loc + "['NKY']", lbl='自定义 ky 网格点数', default=12, check=check_nky)
     else:
-        OMFITx.Entry(inp_loc + "['NKY']", lbl="Number of poloidal modes in the high-k spectrum of TGLF_TM", default=12, check=is_int)
+        OMFITx.Entry(inp_loc + "['NKY']", lbl='TGLF_TM 高 k 谱的极向模态数', default=12, check=is_int)
 
     def set_nky(location=None):
         if location is None:
@@ -125,44 +125,44 @@ else:
             # "Find most unstable negative frequency mode (ion drift direction)":2,
             "Sort the unstable modes by growthrate in rank order": -1,
         },
-        lbl="Which modes?",
+        lbl='模态选择',
         default=-1,
         updateGUI=True,
         postcommand=set_nky,
     )
     if input_tglf['IBRANCH'] == -1:
-        OMFITx.Entry(inp_loc + "['NMODES']", lbl="Number of unstable modes to store", default=2, check=is_int)
+        OMFITx.Entry(inp_loc + "['NMODES']", lbl='保存的不稳定模态数', default=2, check=is_int)
 # Note to self, add NMODES =2 for ibranch=0 for linear run, check for ibranch behavior
 
-OMFITx.Entry(inp_loc + "['NBASIS_MIN']", lbl="Minimum number of parallel basis functions", default=2, check=is_int)
-OMFITx.Entry(inp_loc + "['NBASIS_MAX']", lbl="Maximum number of parallel basis functions", default=4, check=is_int)
-OMFITx.Entry(inp_loc + "['NXGRID']", lbl="Number of nodes in Gauss-Hermite quadrature", default=16, check=is_int)
+OMFITx.Entry(inp_loc + "['NBASIS_MIN']", lbl='平行基函数最小数量', default=2, check=is_int)
+OMFITx.Entry(inp_loc + "['NBASIS_MAX']", lbl='平行基函数最大数量', default=4, check=is_int)
+OMFITx.Entry(inp_loc + "['NXGRID']", lbl='Gauss–Hermite 求积节点数', default=16, check=is_int)
 
 # Convert to on/off
-OMFITx.Tab("Physics Switches")
-OMFITx.CheckBox(inp_loc + "['ALPHA_P']", lbl="Include parallel velocity shear for all species", default=1.0, mapFalseTrue=[0.0, 1.0])
-OMFITx.CheckBox(inp_loc + "['ALPHA_E']", lbl="Include ExB velocity shear for spectral shift model", default=1.0, mapFalseTrue=[0.0, 1.0])
+OMFITx.Tab('物理模型开关')
+OMFITx.CheckBox(inp_loc + "['ALPHA_P']", lbl='包含所有物种的平行速度剪切', default=1.0, mapFalseTrue=[0.0, 1.0])
+OMFITx.CheckBox(inp_loc + "['ALPHA_E']", lbl='谱位移模型包含 E×B 速度剪切', default=1.0, mapFalseTrue=[0.0, 1.0])
 OMFITx.CheckBox(
     inp_loc + "['XNU_FACTOR']",
-    lbl="Include the trapped/passing boundary electron-ion collision terms",
+    lbl='包含俘获 / 通行边界的电子–离子碰撞项',
     default=1.0,
     mapFalseTrue=[0.0, 1.0],
 )
-OMFITx.CheckBox(inp_loc + "['DEBYE_FACTOR']", lbl="Include the Debye length term", default=1.0, mapFalseTrue=[0.0, 1.0])
+OMFITx.CheckBox(inp_loc + "['DEBYE_FACTOR']", lbl='包含德拜长度项', default=1.0, mapFalseTrue=[0.0, 1.0])
 
 if showLocalTab:
-    OMFITx.Tab("Local parameters")
+    OMFITx.Tab('局部参数')
     OMFITx.Entry(
         inp_loc + "['VEXB_SHEAR']",
-        lbl="Normalized toroidal ExB velocity Doppler shift gradient common to all " "species. For large ExB velocity ordering",
+        lbl='所有物种共用的归一化环向 E×B 多普勒频移梯度（大 E×B 速度排序）',
         default=0.0,
     )
-    OMFITx.Entry(inp_loc + "['BETAE']", lbl='Beta_e defined with respect to B_unit', default=0.0)
-    OMFITx.Entry(inp_loc + "['XNUE']", lbl='Electron-ion collision frequency / (c_s/a)', default=0.0)
-    OMFITx.Entry(inp_loc + "['ZEFF']", lbl='Effective ion charge (Zeff)', default=1.0)
-    OMFITx.Entry(inp_loc + "['DEBYE']", lbl='Debye length/gyroradius', default=0.0)
+    OMFITx.Entry(inp_loc + "['BETAE']", lbl='以 B_unit 定义的电子 β', default=0.0)
+    OMFITx.Entry(inp_loc + "['XNUE']", lbl='电子–离子碰撞频率 / (c_s/a)', default=0.0)
+    OMFITx.Entry(inp_loc + "['ZEFF']", lbl='有效离子电荷数 Zeff', default=1.0)
+    OMFITx.Entry(inp_loc + "['DEBYE']", lbl='德拜长度 / 回旋半径', default=0.0)
     OMFITx.ComboBox(
-        "scratch['tglf_species_num']", list(range(1, input_tglf['NS'] + 1)) + ['all'], lbl='Show which species', default=1, updateGUI=True
+        "scratch['tglf_species_num']", list(range(1, input_tglf['NS'] + 1)) + ['all'], lbl='显示物种', default=1, updateGUI=True
     )
     if scratch['tglf_species_num'] == 'all':
         spec_nums = list(range(1, input_tglf['NS'] + 1))
@@ -196,11 +196,11 @@ if showButtons:
     OMFITx.Tab("")
     OMFITx.Separator()
     if input_tglf['USE_TRANSPORT_MODEL']:
-        OMFITx.Button("Run TGLF to get fluxes", "root['SCRIPTS']['runTGLF']")
+        OMFITx.Button('运行 TGLF 计算通量', "root['SCRIPTS']['runTGLF']")
         if 'eigenvalue_spectrum' in root['FILES']:
-            OMFITx.Button("Plot eigenvalue spectra", "root['FILES']['eigenvalue_spectrum'].plotFigure")
-            OMFITx.Button("Plot discrete spectra", "root['PLOTS']['plotSpectrumDiscrete']")
+            OMFITx.Button('绘制本征值谱', "root['FILES']['eigenvalue_spectrum'].plotFigure")
+            OMFITx.Button('绘制离散谱', "root['PLOTS']['plotSpectrumDiscrete']")
     else:
-        OMFITx.Button("Run TGLF to get wavefunction", "root['SCRIPTS']['runTGLFlinear']")
+        OMFITx.Button('运行 TGLF 计算本征函数', "root['SCRIPTS']['runTGLFlinear']")
         if 'wavefunction' in root['FILES']:
-            OMFITx.Button("Plot wavefunctions", "root['FILES']['wavefunction'].plot")
+            OMFITx.Button('绘制本征函数', "root['FILES']['wavefunction'].plot")

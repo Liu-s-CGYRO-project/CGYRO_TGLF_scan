@@ -1,5 +1,6 @@
 # -*-Python-*-
 # Created by meneghini at 2013/08/07 17:34
+from builtins import sum, int, isinstance, list, tuple
 
 defaultVars(waitBatchJob=True, radial_distribution=root['SETTINGS']['PHYSICS']['radial_distribution'], load_input_gacode=True,remote_dir=root['SETTINGS']['REMOTE_SETUP']['workDir'])
 
@@ -82,6 +83,13 @@ OMFITx.executable(root, inputs, [], executable='sh %s', script=(cp_script, 'cp_s
 
 # execute TGYRO
 std_out = []
+shared_command = root['SETTINGS']['SETUP'].get('gacode_command', None)
+if shared_command:
+    # DIR entries may include [MPI count, radial-coordinate option].
+    total_mpi = sum(int(value[0] if isinstance(value, (list, tuple)) else value)
+                    for value in root['INPUTS']['input.tgyro']['DIR'].values())
+    environment = root['SETTINGS']['REMOTE_SETUP'].get('environment', '')
+    root['SETTINGS']['SETUP']['executable'] = environment + '\n' + shared_command.replace('{n_radii}', str(total_mpi))
 OMFITx.executable(root, [], [], clean=False, std_out=std_out,remotedir=remote_dir)
 
 if waitBatchJob:

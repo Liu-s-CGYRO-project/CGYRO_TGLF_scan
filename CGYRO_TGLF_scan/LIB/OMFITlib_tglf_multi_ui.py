@@ -1,6 +1,7 @@
 """OMFIT page for importing, configuring and running multiple input.gacode files."""
 from builtins import all, any, bool, dict, len, list, str, sum
 from OMFITlib_gui_layout import finish_gui_layout
+from OMFITlib_project_runtime import shared_issues
 from OMFITlib_tglf_multi_data import DEFAULTS, case_plan, duplicate_case, initialize, profile_digest
 from OMFITlib_tglf_multi_plot import flux_summary
 
@@ -71,25 +72,18 @@ class MultiInputUI:
         ui.Entry(self.prefix + "['extra']", '共用附加参数', default='', multiline=True,
                  help='每行 KEY=value，或用分号分隔；例如 KYGRID_MODEL=1; NBASIS_MAX=8。')
         ui.Separator('执行环境')
-        ui.ComboBox(self.prefix + "['execution']", {'本机 Linux': 'local', '使用 OMFIT 的 TGYRO / TGLF 服务器配置': 'module'},
-                    '执行位置', default='local', updateGUI=True)
-        if self.settings['execution'] == 'module':
-            for name in ('TGYRO', 'TGLF'):
-                remote = self.root['TGLF_scan'][name]['SETTINGS']['REMOTE_SETUP']
-                ui.Label('{}: {}；目录 {}'.format(name, remote.get('serverPicker', None) or remote.get('server', None) or '未配置',
-                                                 remote.get('workDir', None) or 'OMFIT 自动工作目录'), align='left')
-            ui.Label('服务器在相应模块 Setup 中配置；命令在登录节点或已分配的计算节点同步执行。', align='left')
-        ui.Entry(self.prefix + "['environment']", '环境初始化', default='', multiline=True,
-                 help='例如 source /path/to/gacode/shared/bin/gacode_setup；在 TGYRO / TGLF 命令之前执行。')
-        ui.Entry(self.prefix + "['tgyro_command']", 'TGYRO 输入生成命令', default=DEFAULTS['tgyro_command'],
-                 help='{n_radii} 自动替换为转换半径数。保留 -t 使用测试模式生成 localdump。')
-        ui.Entry(self.prefix + "['tglf_command']", 'TGLF 计算命令', default=DEFAULTS['tglf_command'])
+        ui.Label('使用工程共用的 GACODE 服务器与环境；请在“环境配置与记录”中统一设置。', align='left')
+        def open_environment():
+            self.root['SETTINGS'].setdefault('WORKBENCH', {})['page'] = 'run'
+            self.root['GUIS']['main'].run()
+        ui.Button('打开统一环境配置', open_environment)
         ui.CheckBox(self.prefix + "['continue_on_error']", '单项失败后继续其他计算', default=True)
         ui.Tab('3. 运行与结果')
         selected = sum(bool(case['enabled']) for case in self.cases.values())
         ui.Label('已选择 {} / {} 个案例。每次“生成输入”均新建记录；完成的结果会保留。'.format(selected, len(self.cases)), align='left')
         selected_cases = [case for case in self.cases.values() if case['enabled']]
-        run_issues = []
+        environment_issues = shared_issues(self.root)
+        run_issues = list(environment_issues)
         for case in selected_cases:
             run = case['runs'].get(case['selected_run'], None)
             try:
@@ -100,10 +94,10 @@ class MultiInputUI:
             except (KeyError, ValueError, TypeError) as exc:
                 run_issues.append(case['label'] + '：' + str(exc))
         with ui.same_row():
-            ui.Button('生成输入', self.command('run_tglf_multi', action='prepare'), updateGUI=True, state='normal' if selected else 'disabled')
+            ui.Button('生成输入', self.command('run_tglf_multi', action='prepare'), updateGUI=True, state='normal' if selected and not environment_issues else 'disabled')
             ui.Button('运行已生成输入 / 重试失败项', self.command('run_tglf_multi', action='run'), updateGUI=True,
                       state='normal' if selected and not run_issues else 'disabled', help='；'.join(run_issues))
-            ui.Button('生成并运行', self.command('run_tglf_multi', action='all'), updateGUI=True, state='normal' if selected else 'disabled')
+            ui.Button('生成并运行', self.command('run_tglf_multi', action='all'), updateGUI=True, state='normal' if selected and not environment_issues else 'disabled')
         if run_issues:
             ui.Label('；'.join(run_issues), align='left')
         can_plot = any('result' in point.get('attempts', {}).get(point.get('selected_attempt', None), {})
@@ -136,4 +130,4 @@ class MultiInputUI:
                     ui.Label(flux_summary(attempt['result']), align='left')
         ui.Separator('检查与运行消息')
         ui.Label(self.settings['status'] or '就绪。计算结果随当前 OMFIT 工程保存，不进入 GitHub 模板。', align='left')
-        finish_gui_layout(intro)
+        finish_gui_layout(intro, self.ui)

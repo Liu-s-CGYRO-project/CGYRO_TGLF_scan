@@ -1,47 +1,47 @@
 # -*-Python-*-
 # Created by thomek at 27 Sep 2016  16:20
 
-OMFITx.TitleGUI('TGYRO plot GUI')
+OMFITx.TitleGUI('TGYRO 结果绘图')
 
-OMFITx.Tab('Individual run')
+OMFITx.Tab('单次运行')
 if 'output' in root['OUTPUTS']:
     OMFITx.Separator()
-    OMFITx.CheckBox("scratch['plot_gb']", 'Plot GyroBohm Normalized Fluxes', default=True)
-    OMFITx.CheckBox("scratch['plot_loggb']", 'symlog-scale GyroBohm Normalized Fluxes', default=False)
+    OMFITx.CheckBox("scratch['plot_gb']", '绘制回旋玻姆归一化通量', default=True)
+    OMFITx.CheckBox("scratch['plot_loggb']", '回旋玻姆通量采用对称对数坐标', default=False)
     OMFITx.Separator()
-    OMFITx.Button('Plot profiles and scale lengths', "root['PLOTS']['plotTGYROprofiles2'].runNoGUI")
+    OMFITx.Button('绘制剖面与梯度尺度长度', "root['PLOTS']['plotTGYROprofiles2'].runNoGUI")
     OMFITx.Button(
-        'Plot flux matching', lambda: root['PLOTS']['plotTGYROfluxes2'].runNoGUI(gb=scratch['plot_gb'], loggb=scratch['plot_loggb'])
+        '绘制通量匹配', lambda: root['PLOTS']['plotTGYROfluxes2'].runNoGUI(gb=scratch['plot_gb'], loggb=scratch['plot_loggb'])
     )
     OMFITx.Button(
-        'Plot flux convergence', lambda: root['PLOTS']['plotTGYROconvergence2'].runNoGUI(gb=scratch['plot_gb'], loggb=scratch['plot_loggb'])
+        '绘制通量收敛过程', lambda: root['PLOTS']['plotTGYROconvergence2'].runNoGUI(gb=scratch['plot_gb'], loggb=scratch['plot_loggb'])
     )
-    OMFITx.Button('Plot profiles evolution', "root['OUTPUTS']['output'].plot_profiles_evolution")
-    OMFITx.Button('Plot flux-gradient', lambda: root['PLOTS']['plotTGYROflux_gradient'].runNoGUI())
-    OMFITx.Button('Plot profiles and fluxes summary', "root['PLOTS']['plotTGYROsummary'].plotFigure")
-    OMFITx.Button('Plot profiles iteration summary', "root['OUTPUTS']['output'].plotFigure")
+    OMFITx.Button('绘制剖面演化', "root['OUTPUTS']['output'].plot_profiles_evolution")
+    OMFITx.Button('绘制通量–梯度关系', lambda: root['PLOTS']['plotTGYROflux_gradient'].runNoGUI())
+    OMFITx.Button('绘制剖面与通量汇总', "root['PLOTS']['plotTGYROsummary'].plotFigure")
+    OMFITx.Button('绘制剖面迭代汇总', "root['OUTPUTS']['output'].plotFigure")
 
-OMFITx.Tab('Compare runs')
+OMFITx.Tab('运行对比')
 if len(root['RUN_DB']) == 0:
-    OMFITx.Label('No runs are present, so there is nothing to compare to')
+    OMFITx.Label('尚无可比较的运行记录。')
 else:
     OMFITx.Separator()
     OMFITx.ListEditor("scratch['plot_runids']", list(root['RUN_DB'].keys()), lbl='Select runs', default=[], unique=True, updateGUI=False)
     OMFITx.Separator()
-    OMFITx.CheckBox("scratch['plot_gb']", 'Plot GyroBohm Normalized Fluxes', default=True)
-    OMFITx.CheckBox("scratch['plot_loggb']", 'symlog-scale GyroBohm Normalized Fluxes', default=False)
+    OMFITx.CheckBox("scratch['plot_gb']", '绘制回旋玻姆归一化通量', default=True)
+    OMFITx.CheckBox("scratch['plot_loggb']", '回旋玻姆通量采用对称对数坐标', default=False)
     OMFITx.Separator()
-    OMFITx.Button('Compare residuals', "root['PLOTS']['plotTGYROcomparison_residual'].runNoGUI")
-    OMFITx.Button('Compare profiles', "root['PLOTS']['plotTGYROcomparison_profiles'].runNoGUI")
+    OMFITx.Button('对比残差', "root['PLOTS']['plotTGYROcomparison_residual'].runNoGUI")
+    OMFITx.Button('对比剖面', "root['PLOTS']['plotTGYROcomparison_profiles'].runNoGUI")
     OMFITx.Button(
-        'Compare fluxes', lambda: root['PLOTS']['plotTGYROcomparison_fluxes'].runNoGUI(gb=scratch['plot_gb'], loggb=scratch['plot_loggb'])
+        '对比通量', lambda: root['PLOTS']['plotTGYROcomparison_fluxes'].runNoGUI(gb=scratch['plot_gb'], loggb=scratch['plot_loggb'])
     )
     OMFITx.Button(
-        'Compare flux convergence',
+        '对比通量收敛过程',
         lambda: root['PLOTS']['plotTGYROcomparison_fluxconvergence'].runNoGUI(gb=scratch['plot_gb'], loggb=scratch['plot_loggb']),
     )
     OMFITx.Button(
-        'Compare RMS, offset and deviations from experimental profiles',
+        '对比与实验剖面的均方根误差、偏移及偏差',
         lambda: root['PLOTS']['plotDeviation'].runNoGUI(),
     )
 
@@ -53,8 +53,8 @@ else:
             only=[scratch['module_load']],
         )
 
-    OMFITx.Separator('Compare with experimental profiles')
-    OMFITx.CheckBox('scratch["outside_module"]', 'Load profile module outside of this project', default=False, updateGUI=True)
+    OMFITx.Separator('与实验剖面对比')
+    OMFITx.CheckBox('scratch["outside_module"]', '载入其他工程的剖面模块', default=False, updateGUI=True)
 
     root['SETTINGS']['DEPENDENCIES'].setdefault('profiles_module', '')
     if scratch["outside_module"]:
@@ -67,12 +67,12 @@ else:
             )
             root['SETTINGS']['DEPENDENCIES']['profiles_module'] = "scratch['ExpProfiles'][%r]" % scratch['module_load']
 
-        OMFITx.Label('Load project with experimental data inside the OMFITprofiles module')
+        OMFITx.Label('载入包含 OMFITprofiles 实验数据的工程')
 
         scratch['init_project_dir'] = str(MainSettings['SETUP']['projectsDir'])
         OMFITx.FilePicker(
             "scratch['profile_module_project']",
-            lbl='Directory of existing OMFIT project',
+            lbl='已有 OMFIT 工程目录',
             init_directory_location="scratch['init_project_dir']",
             tree=False,
             default='',
@@ -81,12 +81,12 @@ else:
         try:
             modules = OMFITproject.info(filename=scratch['profile_module_project'])['modules']
         except Exception:
-            OMFITx.Label('No project selected')
+            OMFITx.Label('尚未选择工程')
         else:
             OMFITx.ComboBox(
                 "scratch['module_load']",
                 [x.strip() for x in modules if 'OMFITprofiles' in x or 'QUICKFIT' in x],
-                'Modules list',
+                '模块列表',
                 default='',
                 postcommand=load_project,
                 updateGUI=True,
@@ -103,7 +103,7 @@ else:
 
     if ismodule(profiles_module, ['OMFITprofiles', 'QUICKFIT']):
         OMFITx.Button(
-            'Compare with experimental data',
+            '与实验数据对比',
             "root['PLOTS']['plotEXPcomparison_profiles'].runNoGUI",
             help="Plotting settings can be change directly in the script root['PLOTS']['plotEXPcomparison_profiles']",
         )

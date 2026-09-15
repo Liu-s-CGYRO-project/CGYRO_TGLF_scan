@@ -1,6 +1,7 @@
 # -*-Python-*-
 """Transfer inputs and run only workflows present in this module."""
-OMFITx.TitleGUI('Transfer files')
+OMFITx.TitleGUI('输入文件准备与转换')
+from collections import OrderedDict
 physics = root['SETTINGS']['PHYSICS']
 physics.setdefault('start_from', 'statefile')
 
@@ -42,26 +43,26 @@ def convert_inputs(location=None):
 
 
 OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['start_from']",
-               {'Statefile': 'statefile', 'p-file': 'pfile',
-                'input.profiles': 'input.profiles', 'input.gacode': 'input.gacode'},
-               lbl='Profile source', default='statefile', updateGUI=True)
+               OrderedDict([('状态文件（statefile）', 'statefile'), ('剖面文件（p-file）', 'pfile'),
+                            ('input.profiles', 'input.profiles'), ('input.gacode', 'input.gacode')]),
+               lbl='剖面来源', default='statefile', updateGUI=True)
 if physics['start_from'] not in ('statefile', 'pfile', 'input.profiles', 'input.gacode'):
     physics['start_from'] = 'input.gacode'
-OMFITx.FilePicker("scratch['profile_filename']", 'Profile input', default='',
+OMFITx.FilePicker("scratch['profile_filename']", '剖面输入文件', default='',
                   updateGUI=True, postcommand=load_profile)
 if physics['start_from'] in ('statefile', 'pfile'):
-    OMFITx.FilePicker("scratch['equilibrium_filename']", 'Equilibrium g-file', default='',
+    OMFITx.FilePicker("scratch['equilibrium_filename']", '平衡文件（g-file）', default='',
                       updateGUI=True, postcommand=load_equilibrium)
 if physics['start_from'] != 'input.gacode':
-    OMFITx.Button('Generate input.gacode', generate_profiles, updateGUI=True)
+    OMFITx.Button('生成 input.gacode', generate_profiles, updateGUI=True)
 
-OMFITx.Label('Local parameter conversion: load the relevant inputs, select one direction, then convert.')
+OMFITx.Label('局部参数转换：载入所需输入，选择转换方向，然后执行转换。')
 for key in ('input.cgyro', 'input.tglf', 'input.gacode'):
     OMFITx.FilePicker("scratch['convert_" + key + "']", key, default='',
                       updateGUI=True, postcommand=load_conversion_inputs)
 OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['Transfer to cgyro']", 'TGLF → CGYRO', default=True)
 OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['Transfer to tglf']", 'CGYRO → TGLF', default=False)
 OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['tglf_is_out_tglf_localdump']",
-                'TGLF input is out.tglf.localdump', default=False)
-OMFITx.Button('Convert local inputs', convert_inputs, updateGUI=True)
-OMFITx.Label('NEO / ion ordering: Project 总控 → Transfer tool → 生成与高级工具 → PROFILES_GEN。')
+                'TGLF 输入来自 out.tglf.localdump', default=False)
+OMFITx.Button('转换局部输入', convert_inputs, updateGUI=True)
+OMFITx.Label('NEO 与离子排序：工程总控 → 输入准备与转换 → 生成与高级工具 → PROFILES_GEN。')

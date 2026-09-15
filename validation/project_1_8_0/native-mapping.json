@@ -1,0 +1,14 @@
+{
+  "python": "3.10.12",
+  "omfit_source": "OMFIT source checkout / omfit/omfit_classes/sortedDict.py",
+  "source_sha256": "4e5404965b38650c201ebdccce11bc618d95d766cbd76cdee6d6cdc5de2e271d",
+  "native_class_sha256": "a2ca3751968fe62fe82c5460986ffa4bdf1e6b4696860b2f686417c3f6d87285",
+  "native_class_unmodified": true,
+  "native_lazy_loading": true,
+  "tests": 66,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "complete_omfit_session_tested": false,
+  "solver_executed": false
+}

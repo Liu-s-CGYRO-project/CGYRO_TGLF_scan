@@ -72,7 +72,7 @@ class ComparisonUI(CaseSelection):
             self.ui.Button('检查选择', self._refresh_check, updateGUI=True, width=16)
             self.ui.Button('绘制所选数据', self._plot, state='disabled' if missing else 'normal', width=20,
                            help='按当前案例、参数和绘图设置生成图形。计算结果仅在点击后读取。')
-        finish_gui_layout(status_label)
+        finish_gui_layout(status_label, self.ui)
 
     def _path(self, *keys):
         return self._dict_path(self.prefix, *keys)

@@ -26,7 +26,7 @@ OMFITx.Tab('TGLF')
 
 OMFITx.CheckBox(
     settings_loc_str + "['PHYSICS']['Customized_TGLF_input']",
-    "Customize TGLF settings",
+    '自定义 TGLF 设置',
     default=False,
     updateGUI=True,
     help=''' The optimal default settings are summarized in TGLF scenarious.
@@ -35,8 +35,7 @@ OMFITx.CheckBox(
 
 if settings_loc['PHYSICS']['Customized_TGLF_input']:
     OMFITx.Label(
-        '''The optimal default settings are summarized in TGLF scenarios.
-It is not recommended to change default settings without consultation with Gary Staebler''',
+        'TGLF 参数方案提供推荐默认值。\n如需调整这些默认设置，建议咨询 Gary Staebler。',
         foreground='red',
     )
 
@@ -77,7 +76,7 @@ if settings_loc['PHYSICS']['Customized_TGLF_input'] == False:
             ]
         ],
         tglf_options,
-        lbl='TGLF scenario',
+        lbl='TGLF 参数方案',
         default=tglf_options['Conventional (SAT_RULE=1)'],
         updateGUI=True,
         help='TGLF scenarios adjust the wavenumber spectrum',
@@ -89,7 +88,7 @@ if settings_loc['PHYSICS']['Customized_TGLF_input'] == False:
     state_xnu_model = 'disabled'
     state = 'disabled'
 
-    OMFITx.Separator('These settings are predefined by TGLF scenario', foreground='black')
+    OMFITx.Separator('以下设置由 TGLF 参数方案预先定义。', foreground='black')
 
 else:
     if inp_loc_tree['SAT_RULE'] == 0:
@@ -97,7 +96,7 @@ else:
     else:
         inp_loc_tree['ALPHA_ZF'] = 1
 
-    OMFITx.Separator('Customize your settings', foreground='black')
+    OMFITx.Separator('自定义设置', foreground='black')
 
 OMFITx.ComboBox(
     inp_loc_tgyro_str + "['TGYRO_TGLF_REVISION']",
@@ -107,7 +106,7 @@ OMFITx.ComboBox(
         '3 - Spectral shift ExB shear model': 3,
         '4 - Momentum transport without EM terms': 4,
     },
-    "TGLF revision",
+    'TGLF 修订版本',
     default=3,
     help='''The Waltz quench rule has only been calibrated to GYRO for SAT_RULE=0 and the linear growth rates output to the file out.tglf.eigenvalue spectrum will be the net growth rate after the quench rule is applied, not the actual growth rates. ''',
     updateGUI=True,
@@ -171,7 +170,7 @@ SAT2 - Spectral shift [Staebler 2013] new collision model and quasilinear weight
 )
 
 if inp_loc_tree['SAT_RULE'] != 0 and inp_loc_tree['ALPHA_QUENCH'] == 1.0:
-    OMFITx.Label('The Waltz quench rule (ALPHA_QUENCH = 1) has only been\ncalibrated to GYRO for SAT_RULE=0!', foreground='red')
+    OMFITx.Label('Waltz 抑制规则（ALPHA_QUENCH=1）仅在 SAT_RULE=0 时\n经过 GYRO 标定。', foreground='red')
 
 OMFITx.Entry(
     inp_loc + "['ALPHA_ZF']",
@@ -206,7 +205,7 @@ def check_nky(s):
 
 
 if inp_loc_tree['KYGRID_MODEL'] == 0:
-    OMFITx.Entry(inp_loc + "['KY']", lbl='KY', help="Max KY for user defined KY grid", default=0.3)
+    OMFITx.Entry(inp_loc + "['KY']", lbl='KY', help='自定义 ky 网格最大值', default=0.3)
 
     OMFITx.Entry(
         inp_loc + "['NKY']",
@@ -265,7 +264,7 @@ if (
     and inp_loc_tree['ALPHA_QUENCH'] == 0.0
     and inp_loc_tree['UNITS'] != 'CGYRO'
 ):
-    OMFITx.Label('For high-beta plasma it is best to change UNITS to CGYRO', foreground='black')
+    OMFITx.Label('高 β 等离子体建议将 UNITS 设为 CGYRO。', foreground='black')
 
 
 def sat_rule_restr(val):
@@ -349,7 +348,7 @@ EMcontr['Electromagnetic (Phi + BPER (A||))'] = [True, False]
 OMFITx.ComboBox(
     [inp_loc + "['%s']" % k for k in ['USE_BPER', 'USE_BPAR']],
     EMcontr,
-    lbl='Electromagnetic contribution',
+    lbl='电磁贡献',
     default=[False, False],
     updateGUI=True,
     state=state_em,

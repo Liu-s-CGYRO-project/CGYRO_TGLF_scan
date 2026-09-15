@@ -24,7 +24,7 @@ def add_quantity(location):
 OMFITx.ComboBox(
     "scratch['%s_add_quantity']" % dictionary_to_write,
     [''] + [k for k, v in sorted(dictionary_to_read.items()) if not k.startswith('__') and not is_int(v)],
-    lbl="Add quantity",
+    lbl='添加物理量',
     postcommand=add_quantity,
     help='Choose a scan output variable to be plotted.',
     default='',
@@ -45,7 +45,7 @@ if dictionary_to_write in root:
         OMFITx.ComboBox(
             "scratch['%s_delete_quantity']" % dictionary_to_write,
             [''] + sorted(root[dictionary_to_write].keys()),
-            lbl="Delete quantity",
+            lbl='删除物理量',
             help="Click on a quantity to eliminate it from the list",
             postcommand=delete_quantity,
             default='',

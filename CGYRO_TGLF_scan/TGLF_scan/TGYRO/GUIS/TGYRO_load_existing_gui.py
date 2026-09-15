@@ -1,7 +1,7 @@
 # -*-Python-*-
 # Created by smithsp at 2015/03/10 11:52
 
-OMFITx.TitleGUI('TGYRO load existing run GUI')
+OMFITx.TitleGUI('读取已有 TGYRO 运行')
 
 
 def load_existing(location):
@@ -12,7 +12,7 @@ def load_existing(location):
 
 OMFITx.FilePicker(
     "scratch['existing_dir']",
-    lbl='Directory of existing TGYRO run',
+    lbl='已有 TGYRO 运行目录',
     default='',
     transferRemoteFile=None,
     directory=True,

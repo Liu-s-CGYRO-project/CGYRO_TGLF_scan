@@ -5,8 +5,11 @@ import glob
 setup = root['SETTINGS']['SETUP']
 p_tgyro = int(setup['p_tgyro'])
 numcore = int(setup['num_cores']) * int(setup['num_nodes'])
+if setup.get('gacode_shared', False) and p_tgyro > 0 and numcore >= p_tgyro:
+    # Use an even number of ranks per radius within the common CPU budget.
+    numcore = (numcore // p_tgyro) * p_tgyro
 if p_tgyro < 1 or numcore < p_tgyro or numcore % p_tgyro:
-    raise ValueError('Total cores must be a positive multiple of p_tgyro')
+    raise ValueError('总进程数需不少于 TGYRO 半径数，并可均匀分配到各半径。请检查统一环境中的资源设置。')
 coreppoint = numcore // p_tgyro
 run_input = root['INPUTS']['input.tgyro'].duplicate()
 run_input['DIR'].clear()

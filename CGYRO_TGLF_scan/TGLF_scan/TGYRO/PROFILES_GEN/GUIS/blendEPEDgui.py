@@ -19,19 +19,19 @@ if root['SETTINGS']['PHYSICS']['rho_nml'] <= 0:
 
 setdefault()
 OMFITx.CheckBox(
-    "root['SETTINGS']['PHYSICS']['rho_nml']", "Use EPED profiles", mapFalseTrue=[nml, 0.0], updateGUI=True, postcommand=setdefault
+    "root['SETTINGS']['PHYSICS']['rho_nml']", '使用 EPED 剖面', mapFalseTrue=[nml, 0.0], updateGUI=True, postcommand=setdefault
 )
 if root['SETTINGS']['PHYSICS']['rho_nml'] != 0:
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_core']", 'Core domain', updateGUI=True)
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_nml']", "no-man's-land domain", updateGUI=True)
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_ped']", "Pedestal domain", updateGUI=True)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_core']", '芯部区域', updateGUI=True)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_nml']", '过渡区域', updateGUI=True)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_ped']", '台基区域', updateGUI=True)
 
 if deadstart:
-    OMFITx.Button("Preview dead-start profiles", lambda: root['SCRIPTS']['blendEPED'].runNoGUI(deadstart=deadstart, test=True))
-    OMFITx.TitleGUI("EPED dead-start")
+    OMFITx.Button('预览初始剖面', lambda: root['SCRIPTS']['blendEPED'].runNoGUI(deadstart=deadstart, test=True))
+    OMFITx.TitleGUI('EPED 初始剖面')
 else:
     if 'input.gacode_base' in root['OUTPUTS']:
-        OMFITx.Button("Preview blend profiles", lambda: root['SCRIPTS']['blendEPED'].runNoGUI(deadstart=deadstart, test=True))
+        OMFITx.Button('预览混合剖面', lambda: root['SCRIPTS']['blendEPED'].runNoGUI(deadstart=deadstart, test=True))
     else:
-        OMFITx.Label("No input.gacode to show preview")
-    OMFITx.TitleGUI("EPED profiles blender")
+        OMFITx.Label('尚无 input.gacode，无法预览。')
+    OMFITx.TitleGUI('EPED 剖面混合')

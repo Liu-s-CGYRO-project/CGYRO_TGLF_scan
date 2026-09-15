@@ -1,14 +1,14 @@
 # -*-Python-*-
 # Created by thomek at 27 Sep 2016  16:15
 
-OMFITx.TitleGUI('TGYRO run GUI')
+OMFITx.TitleGUI('TGYRO 运行设置')
 
 from OMFITlib_general import fit_ne_EPED1
 
 defaultVars(showRunLoadButtons=True)
 
 if not showRunLoadButtons:
-    OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['reload']", 'Load exising solution (does not run TGYRO)', updateGUI=True)
+    OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['reload']", '读取已有结果', updateGUI=True)
 
 root.setdefault('RUN_DB', OMFITtree())
 
@@ -21,10 +21,10 @@ if 'output' not in root['OUTPUTS']:
 
 if not root['SETTINGS']['PHYSICS']['reload']:
 
-    OMFITx.Tab('Input profiles')
+    OMFITx.Tab('输入剖面')
     if root['INPUTS']['input.tgyro']['LOC_RESTART_FLAG']:
         OMFITx.Lock("root['SETTINGS']['PHYSICS']['runPROFILES_GEN']", False)
-        OMFITx.Label('simulation restart -> input profiles from last simulation')
+        OMFITx.Label('续算：使用上次计算的剖面')
     else:
         txt = "Update input profiles"
         if input_gacode is None:
@@ -47,24 +47,24 @@ if not root['SETTINGS']['PHYSICS']['reload']:
         OMFITx.Lock("root['INPUTS']['input.tgyro']['TGYRO_USE_RHO']", 1)
 
     r_str = ['r/a', 'rho'][root['INPUTS']['input.tgyro']['TGYRO_USE_RHO']]
-    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['TGYRO_USE_RHO']", 'Use rho', updateGUI=True, useInt=True)
+    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['TGYRO_USE_RHO']", '使用 rho 坐标', updateGUI=True, useInt=True)
     with OMFITx.same_row():
         OMFITx.ComboBox(
             "root['SETTINGS']['PHYSICS']['radial_distribution']",
             {'Uniform r': 'uniform_r', 'Uniform z': 'uniform_z', 'Variation z': 'variation_z', 'User': 'user'},
-            'Radial distribution',
+            '径向分布',
             postcommand=lambda location: setup_radii(),
             default='uniform_r',
             updateGUI=True,
         )
-        OMFITx.Button('Plot radial distibution', lambda: radii(doPlot=True))
+        OMFITx.Button('绘制径向分布', lambda: radii(doPlot=True))
 
     if root['SETTINGS']['PHYSICS']['radial_distribution'] == 'user':
         OMFITx.Entry("root['SETTINGS']['PHYSICS']['radii']", 'Radii', postcommand=lambda location: setup_radii(), updateGUI=True)
     else:
         OMFITx.Entry(
             "root['SETTINGS']['PHYSICS']['n_rad']",
-            'Number of radii',
+            '半径数量',
             postcommand=lambda location: setup_radii(),
             default=8,
             updateGUI=True,
@@ -105,11 +105,11 @@ if not root['SETTINGS']['PHYSICS']['reload']:
     # OMFITx.ComboBox("root['INPUTS']['input.tgyro']['LOC_BC_OFFSET']", fix_r_choices, lbl='Fixed Point', default=0)
 
     # Evolution
-    OMFITx.Tab('Evolution Controls')
-    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_EVOLVE_GRAD_ONLY_FLAG']", 'Only modify the gradients', useInt=True, default=0)
+    OMFITx.Tab('演化设置')
+    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_EVOLVE_GRAD_ONLY_FLAG']", '仅修改梯度', useInt=True, default=0)
     OMFITx.Separator('Temperatures')
-    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_TE_FEEDBACK_FLAG']", 'Evolve Te', useInt=True)
-    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_TI_FEEDBACK_FLAG']", 'Evolve Ti', useInt=True)
+    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_TE_FEEDBACK_FLAG']", '演化电子温度 Te', useInt=True)
+    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_TI_FEEDBACK_FLAG']", '演化离子温度 Ti', useInt=True)
     # Density evolution
 
     for i in range(max_nions):
@@ -161,7 +161,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
 
     OMFITx.CheckBox(
         "root['SETTINGS']['PHYSICS']['evolve_density']",
-        'Evolve density',
+        '演化密度',
         updateGUI=True,
         default=True,
         help='The default is recommended; select d to use.',
@@ -186,20 +186,20 @@ if not root['SETTINGS']['PHYSICS']['reload']:
                     "root['INPUTS']['input.tgyro']['TGYRO_DEN_METHOD{}']".format(k + 1), den_options, lbl=numd_ion_names[k], updateGUI=True
                 )
         else:
-            OMFITx.Label('To set density evolution for other ion species run PROFILES_GEN', align='left', foreground='red')
+            OMFITx.Label('其他离子物种的密度演化请在 PROFILES_GEN 中设置。', align='left', foreground='red')
     else:
         for k in range(max_nions + 1):
             # Lock electrons (0) and every ion (1..max_nions).
             den_str = 'TGYRO_DEN_METHOD' + str(k)
             root['INPUTS']['input.tgyro'][den_str] = 0
 
-    OMFITx.Separator('Electric Field (Rotation)')
-    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_ER_FEEDBACK_FLAG']", 'Evolve Er', useInt=True, updateGUI=True, default=0)
+    OMFITx.Separator('电场与旋转')
+    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_ER_FEEDBACK_FLAG']", '演化径向电场 Er', useInt=True, updateGUI=True, default=0)
     er_bc_choices = SortedDict()
     for k, v in [('Input omega0\'', 1), ('omega0\'=0', 2), ('omega0\'\'=0', 3)]:
         er_bc_choices[k] = v
     if eval("root['INPUTS']['input.tgyro']['LOC_ER_FEEDBACK_FLAG']") == 1:
-        OMFITx.ComboBox("root['INPUTS']['input.tgyro']['TGYRO_ER_BC']", er_bc_choices, lbl='Electric field r=0 boundary condition')
+        OMFITx.ComboBox("root['INPUTS']['input.tgyro']['TGYRO_ER_BC']", er_bc_choices, lbl='r=0 处电场边界条件')
 
     # pedestal
     if (
@@ -218,7 +218,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
     OMFITx.Separator('Pedestal')
     OMFITx.CheckBox(
         "root['INPUTS']['input.tgyro']['TGYRO_PED_MODEL']",
-        'Pedestal evolution',
+        '台基演化',
         mapFalseTrue=[1, 2],
         default=1,
         updateGUI=True,
@@ -254,7 +254,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
         OMFITx.ComboBox(
             "root['INPUTS']['input.tgyro']['TGYRO_NEPED']",
             options,
-            'Pedestal density [1E19]',
+            '台基密度（10¹⁹）',
             state='normal',
             default=-0.95,
             help='* negative values indicate radial location where to evaluate\n'
@@ -265,7 +265,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
         OMFITx.ComboBox(
             "root['INPUTS']['input.tgyro']['TGYRO_ZEFFPED']",
             options,
-            'Pedestal Zeff',
+            '台基 Zeff',
             state='normal',
             default=2.0,
             help='* negative values indicate radial location where to evaluate\n'
@@ -275,11 +275,11 @@ if not root['SETTINGS']['PHYSICS']['reload']:
         )
 
     # Solver controls
-    OMFITx.Tab('Solver Controls')
+    OMFITx.Tab('求解器设置')
     if 'output' in root['OUTPUTS']:
-        OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_RESTART_FLAG']", 'Restart Simulation', useInt=True, updateGUI=True)
+        OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_RESTART_FLAG']", '重新启动计算', useInt=True, updateGUI=True)
         OMFITx.Separator()
-    OMFITx.Entry("root['INPUTS']['input.tgyro']['TGYRO_RELAX_ITERATIONS']", 'Number of iterations', updateGUI=True)
+    OMFITx.Entry("root['INPUTS']['input.tgyro']['TGYRO_RELAX_ITERATIONS']", '迭代次数', updateGUI=True)
 
     # Required because Serial Block only works with >0 iterations
     if root['INPUTS']['input.tgyro']['TGYRO_RELAX_ITERATIONS'] == 0:
@@ -298,28 +298,28 @@ if not root['SETTINGS']['PHYSICS']['reload']:
     OMFITx.ComboBox(
         "root['INPUTS']['input.tgyro']['TGYRO_ITERATION_METHOD']",
         iteration_method_options,
-        lbl='Iteration method',
+        lbl='迭代方法',
         postcommand=set_residual,
         updateGUI=True,
     )
     residual_method_options = {'|f-g|': 2, '(f-g)^2': 3, '(f-g)^2/MAX(1,(f^2+g^2))': 4}
-    OMFITx.ComboBox("root['INPUTS']['input.tgyro']['LOC_RESIDUAL_METHOD']", residual_method_options, lbl='Residual method')
+    OMFITx.ComboBox("root['INPUTS']['input.tgyro']['LOC_RESIDUAL_METHOD']", residual_method_options, lbl='残差方法')
     OMFITx.Entry(
         "root['INPUTS']['input.tgyro']['TGYRO_RESIDUAL_TOL']",
-        'Residual tolerance',
+        '残差容限',
         default=0.0,
         delete_if_default=True,
         help='Use the residual tolerance to set a residual threshold after which TGYRO can stop iterating and exit.\n'
         'The default value is 0 such that TGYRO performs the specied number of iterations.',
     )
-    OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_DX']", "Jacobian step size")
-    OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_DX_MAX']", 'Max step size')
-    OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_RELAX']", 'Relaxation parameter')
-    OMFITx.Entry("root['SETTINGS']['SETUP']['n_cpu_rad']", 'CPUs per transport model instance', check=is_int)
+    OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_DX']", '雅可比步长')
+    OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_DX_MAX']", '最大步长')
+    OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_RELAX']", '松弛参数')
+    OMFITx.Entry("root['SETTINGS']['SETUP']['n_cpu_rad']", '每个输运模型实例的进程数', check=is_int)
 
     # Profiles
     if not eval("root['INPUTS']['input.tgyro']['LOC_RESTART_FLAG']"):
-        OMFITx.Tab('Scale parameters')
+        OMFITx.Tab('参数缩放')
         for name, desc in [
             ('DEN', 'Density'),
             ('TE', 'Te'),
@@ -329,18 +329,18 @@ if not root['SETTINGS']['PHYSICS']['reload']:
             ('FUSION', 'Fusion Power'),
         ]:
             OMFITx.Entry("root['INPUTS']['input.tgyro']['TGYRO_INPUT_%s_SCALE']" % name, 'Scale %s' % desc, default=1.0)
-        OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_BETAE_SCALE']", 'Scale beta_E', default=1.0)
-        OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_ME_MULTIPLIER']", 'Scale electron mass', default=1.0)
-        OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_NU_SCALE']", 'Scale collision frequency', default=1.0)
+        OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_BETAE_SCALE']", '缩放电子 β', default=1.0)
+        OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_ME_MULTIPLIER']", '缩放电子质量', default=1.0)
+        OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_NU_SCALE']", '缩放碰撞频率', default=1.0)
         if eval("root['INPUTS']['input.tgyro']['TGYRO_PED_MODEL']") == 2:
             OMFITx.Separator()
-            OMFITx.Entry("root['INPUTS']['input.tgyro']['TGYRO_PED_SCALE']", 'Scale pedestal pressure', default=1.0)
+            OMFITx.Entry("root['INPUTS']['input.tgyro']['TGYRO_PED_SCALE']", '缩放台基压强', default=1.0)
         OMFITx.Separator()
         OMFITx.CheckBox(
-            "root['INPUTS']['input.tgyro']['LOC_LOCK_PROFILE_FLAG']", 'Use exact profile in iteration 0', useInt=True, default=1
+            "root['INPUTS']['input.tgyro']['LOC_LOCK_PROFILE_FLAG']", '第 0 次迭代使用原始剖面', useInt=True, default=1
         )
         OMFITx.CheckBox(
-            "root['INPUTS']['input.tgyro']['TGYRO_CONSISTENT_FLAG']", 'Integrated scale-lengths match profiles', useInt=True, default=1
+            "root['INPUTS']['input.tgyro']['TGYRO_CONSISTENT_FLAG']", '积分梯度尺度长度以匹配剖面', useInt=True, default=1
         )
 
     # Models
@@ -349,7 +349,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
     OMFITx.ComboBox(
         "root['SETTINGS']['PHYSICS']['Turb_Model']",
         model_choices,
-        lbl='Turbulence Model',
+        lbl='湍流模型',
         default='TGLF',
         postcommand=lambda location: setup_radii(),
         updateGUI=True,
@@ -359,14 +359,14 @@ if not root['SETTINGS']['PHYSICS']['reload']:
     OMFITx.ComboBox(
         "root['INPUTS']['input.tgyro']['TGYRO_NEO_METHOD']",
         {'None': 0, 'Hinton-Hazeltine': 1, 'NEO': 2},
-        lbl='Neoclassical Model',
+        lbl='新经典模型',
         default=2,
     )
 
     pflux_choices = SortedDict()
     for k, v in [('No particle sources', 1), ('Only beam particle sources', 2), ('Beam + Wall sources', 3)]:
         pflux_choices[k] = v
-    OMFITx.ComboBox("root['INPUTS']['input.tgyro']['LOC_PFLUX_METHOD']", pflux_choices, lbl='Particle sources', default=1)
+    OMFITx.ComboBox("root['INPUTS']['input.tgyro']['LOC_PFLUX_METHOD']", pflux_choices, lbl='粒子源', default=1)
 
     scenario_choices = SortedDict()
     for k, v in [
@@ -376,16 +376,16 @@ if not root['SETTINGS']['PHYSICS']['reload']:
     ]:
         scenario_choices[k] = v
 
-    OMFITx.ComboBox("root['INPUTS']['input.tgyro']['LOC_SCENARIO']", scenario_choices, lbl='Power-balance scenario')
+    OMFITx.ComboBox("root['INPUTS']['input.tgyro']['LOC_SCENARIO']", scenario_choices, lbl='功率平衡方案')
     if root['INPUTS']['input.tgyro']['LOC_ER_FEEDBACK_FLAG']:
         OMFITx.Lock("root['INPUTS']['input.tgyro']['TGYRO_ROTATION_FLAG']", 1)
-    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['TGYRO_ROTATION_FLAG']", 'Trigger all rotation physics', default=1, mapFalseTrue=[0, 1])
+    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['TGYRO_ROTATION_FLAG']", '启用全部旋转物理项', default=1, mapFalseTrue=[0, 1])
 
     if input_gacode is not None:
         OMFITx.ComboBox(
             "root['SETTINGS']['PHYSICS']['INCLUDE_IONS']",
             ['thermal', 'user'],
-            'Ions used for fluxes calculation',
+            '参与通量计算的离子',
             'IONS in simulation: ' + ', '.join(input_gacode.ion_names()),
             default='thermal',
             help='These ions are used in the flux calculation in NEO and TGLF',
@@ -434,7 +434,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
                 scratch['NN'] = 1
             OMFITx.CheckBox(
                 "scratch['NN']",
-                'Use NN acceleration',
+                '使用神经网络加速',
                 postcommand=toggle_nn,
                 default=0,
                 updateGUI=True,
@@ -450,14 +450,14 @@ if not root['SETTINGS']['PHYSICS']['reload']:
             OMFITx.CompoundGUI(root['GUIS']['TGLFinputGUI'])
     elif root['SETTINGS']['PHYSICS']['Turb_Model'] == 'MMM':
         OMFITx.Tab('MMM')
-        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][0]", "Enable the Weiland component (ITG/TEM)", default=1.0)
-        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][1]", "Enable the DRIBM component", default=0.0)
-        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][2]", "Enable the H-J ETG component", default=1.0)
-        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][3]", "Enable the MTM component", default=1.0)
-        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][3]", "Enable the mETG component (testing)", default=0.0)
+        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][0]", '启用 Weiland 分量（ITG/TEM）', default=1.0)
+        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][1]", '启用 DRIBM 分量', default=0.0)
+        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][2]", '启用 H-J ETG 分量', default=1.0)
+        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][3]", '启用 MTM 分量', default=1.0)
+        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][3]", '启用 mETG 分量（测试）', default=0.0)
 
 OMFITx.Tab("")
 if showRunLoadButtons:
     if not root['SETTINGS']['PHYSICS']['reload']:
-        OMFITx.Button('Submit TGYRO Job', lambda: root['SCRIPTS']['runTGYRO'].run(reload=False))
-    OMFITx.Button('Load TGYRO Job', lambda: root['SCRIPTS']['runTGYRO'].run(reload=True))
+        OMFITx.Button('提交 TGYRO 作业', lambda: root['SCRIPTS']['runTGYRO'].run(reload=False))
+    OMFITx.Button('读取 TGYRO 作业', lambda: root['SCRIPTS']['runTGYRO'].run(reload=True))

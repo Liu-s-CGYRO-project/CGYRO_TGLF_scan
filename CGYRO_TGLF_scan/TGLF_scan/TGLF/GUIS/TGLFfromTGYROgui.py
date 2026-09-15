@@ -1,7 +1,7 @@
 # -*-Python-*-
 # Created by avdeevag at 01 Mar 2023  07:25
 
-OMFITx.TitleGUI('TGLF GUI')
+OMFITx.TitleGUI('TGLF 参数设置')
 
 defaultVars(
     inp_loc="root['FILES']['input.tglf']",
@@ -16,22 +16,22 @@ defaultVars(
 try:
     input_tglf = eval(inp_loc)
 except Exception:
-    OMFITx.ObjectPicker(inp_loc, lbl='input.tglf file', objectType=OMFITgacode)
+    OMFITx.ObjectPicker(inp_loc, lbl='input.tglf 输入文件', objectType=OMFITgacode)
     OMFITx.End()
 if 'USE_TRANSPORT_MODEL' not in input_tglf:
-    OMFITx.Label("This GUI is only valid for a TGLF input file (usually named input.tglf)")
+    OMFITx.Label('此页面需要有效的 TGLF 输入文件，通常为 input.tglf。')
     OMFITx.End()
 
 options = {
-    'TGLF-NN': ("Get fluxes with neural-network model", [True, 1e6]),
-    'TGLF': ("Get growth rate spectra and fluxes", [True, -1.0]),
-    'wavefunction': ("Get wavefunction at set ky", [False, -1.0]),
+    'TGLF-NN': ('使用神经网络模型计算通量', [True, 1e6]),
+    'TGLF': ('计算增长率谱与通量', [True, -1.0]),
+    'wavefunction': ('计算指定 ky 的本征函数', [False, -1.0]),
 }
 
 OMFITx.ComboBox(
     [inp_loc + "['USE_TRANSPORT_MODEL']", inp_loc + "['NN_MAX_ERROR']"],
     {options[k][0]: options[k][1] for k in allowOptions},
-    "TGLF mode",
+    'TGLF 计算模式',
     updateGUI=True,
     default=[True, -1.0],
 )

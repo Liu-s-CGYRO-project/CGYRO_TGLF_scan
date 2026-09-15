@@ -3,9 +3,10 @@ from builtins import all, int, isinstance, len, list, max, min, range, str, tupl
 import hashlib
 import tkinter as tk
 from tkinter import font as tkfont, ttk
+from OMFITlib_gui_context import bind_actions
 
 
-def finish_gui_layout(label):
+def finish_gui_layout(label, ui=None):
     """Style the page containing an OMFITx.Label, retaining native bindings.
 
     OMFITx.Label returns a label in a row frame in the GUI's content frame.
@@ -15,6 +16,7 @@ def finish_gui_layout(label):
     if not isinstance(label, tk.Misc):
         return
     content = label.master.master
+    bind_actions(content, ui)
     previous = getattr(content, '_cgyro_gui_layout', None)
     if previous is not None and getattr(previous, 'anchor', None) is label:
         return

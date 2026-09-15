@@ -10,18 +10,22 @@ import hashlib
 import json
 import math
 import uuid
+from collections import OrderedDict
+from OMFITlib_project_runtime import initialize_runtime, apply_runtime, shared_issues
 
 MODULES = {
     'transfer': ('Transfer_tool',), 'cgyro': ('CGYRO_scan',),
     'tglf': ('TGLF_scan', 'TGLF'), 'tgyro': ('TGLF_scan', 'TGYRO'),
     'profiles': ('TGLF_scan', 'TGYRO', 'PROFILES_GEN'),
 }
-LABELS = {'transfer': 'Transfer tool', 'cgyro': 'CGYRO', 'tglf': 'TGLF',
+LABELS = {'transfer': '输入转换', 'cgyro': 'CGYRO', 'tglf': 'TGLF',
           'tgyro': 'TGYRO', 'profiles': 'PROFILES_GEN'}
-PAGES = {'项目概览': 'overview', '输入与转换 · Transfer tool': 'transfer', '输入差异与覆盖': 'review',
-         'CGYRO 扫描': 'cgyro', 'TGLF 单文件与扫描': 'tglf',
-         'TGLF 多 input.gacode': 'multi', '运行与环境': 'run',
-         '绘图与对比': 'plots', '模板与 GitHub': 'templates'}
+PAGES = OrderedDict([
+    ('1 项目概览', 'overview'), ('2 环境配置与记录', 'run'),
+    ('3 输入准备与转换', 'transfer'), ('4 输入确认与覆盖', 'review'),
+    ('5 CGYRO 扫描', 'cgyro'), ('6 TGLF 单文件与扫描', 'tglf'),
+    ('7 TGLF 多剖面计算', 'multi'), ('8 绘图与对比', 'plots'), ('9 模板与 GitHub', 'templates'),
+])
 DEFAULTS = {'page': 'overview', 'runtime_module': 'cgyro', 'transfer_source': '',
             'cgyro_file': '', 'tglf_file': '', 'message': ''}
 
@@ -182,6 +186,8 @@ def module(root, name):
 
 def runtime_issues(root, name):
     """Check the fields actually used by each current execution route."""
+    if shared_issues(root):
+        return shared_issues(root)
     node = read(root, MODULES[name])
     if node is None:
         return ['缺少模块']
@@ -403,6 +409,30 @@ class ProjectActions:
             if picker == 'localhost':
                 cfg['scheduler'] = 'local'
         self.settings['message'] = LABELS[name] + '：已同步连接与工作目录，保留原命令和资源设置。'
+
+    def sync_runtime_endpoint(self):
+        config = initialize_runtime(self.root, self.factory)
+        picker = text_value(config, 'serverPicker')
+        if not picker:
+            raise ValueError('请先选择 OMFIT 服务器。')
+        endpoint = self.resolve_server(picker)
+        server = str(endpoint.get('server', None) or ('localhost' if picker == 'localhost' else ''))
+        if not server:
+            raise ValueError('OMFIT 个人配置未提供此服务器的连接信息。')
+        config.update(dict(server=server, tunnel=str(endpoint.get('tunnel', None) or '')))
+        if not text_value(config, 'workDir'):
+            config['workDir'] = str(self.workdir(self.root, server))
+        if picker == 'localhost':
+            config['scheduler'] = 'local'
+        elif config['scheduler'] == 'local':
+            config['scheduler'] = 'slurm'
+        self.settings['message'] = '已读取 OMFIT 连接信息。检查下方共用配置后点击“应用到整个工程”。'
+
+    def apply_runtime(self):
+        targets = apply_runtime(self.root, self.factory)
+        self.settings['message'] = '统一 GACODE 环境已应用到 {} 个模块；案例和结果保留。'.format(len(targets))
+        self._record('应用统一 GACODE 环境', status='complete', modules=targets)
+        return targets
 
     def run_cgyro(self, prepare=False):
         node = module(self.root, 'cgyro')

@@ -4,7 +4,7 @@
 
 import chaospy as cp
 
-OMFITx.TitleGUI('TGLF UQ GUI')
+OMFITx.TitleGUI('TGLF 不确定度分析')
 
 defaultVars(showButtons=True, show_constraints=True)
 
@@ -156,8 +156,8 @@ if 'input.tglf' in root['FILES']:
     # defining the input parameters
     OMFITx.ComboBox(
         "root['SETTINGS']['PHYSICS']['scanDimensions']",
-        {'1D': 1, '2D': 2, '3D': 3, '4D': 4, '5D': 5},
-        'UQ scan dimensions',
+        {'一维': 1, '二维': 2, '3D': 3, '4D': 4, '5D': 5},
+        '不确定度扫描维数',
         default=1,
         updateGUI=True,
         state='readonly',
@@ -170,7 +170,7 @@ if 'input.tglf' in root['FILES']:
         OMFITx.ComboBox(
             "root['SETTINGS']['PHYSICS']['scanParameter%s']" % str(paramN),
             choices,
-            'Pick variable to scan',
+            '选择扫描变量',
             updateGUI=True,
             default='RLNS_%s' % paramN,
             width='50',
@@ -178,7 +178,7 @@ if 'input.tglf' in root['FILES']:
         param = root['SETTINGS']['PHYSICS']['scanParameter' + str(paramN)]
         value = root['FILES']['input.tglf'][root['SETTINGS']['PHYSICS']['scanParameter' + str(paramN)]]
         if (param.startswith('RLTS_') or param.startswith('TAUS_')) and not param.endswith('_1'):
-            OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['single_Ti']", "All thermal ions have same temperature")
+            OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['single_Ti']", '全部热离子采用相同温度')
 
         OMFITx.Label("Experimental Value=%g" % value)
 
@@ -186,7 +186,7 @@ if 'input.tglf' in root['FILES']:
             OMFITx.ComboBox(
                 "root['SETTINGS']['PHYSICS']['inputParameterDistribution']",
                 ["Normal Distribution"],
-                'Select the type of distribution',
+                '选择分布类型',
                 updateGUI=True,
                 width='40',
                 default="Normal Distribution",
@@ -195,14 +195,14 @@ if 'input.tglf' in root['FILES']:
                 # Mean of normal distribution
                 OMFITx.Entry(
                     "root['SETTINGS']['PHYSICS']['scanParameter%sMean']" % str(paramN),
-                    'Mean of distribution',
+                    '分布均值',
                     updateGUI=True,
                     default=value,
                 )
                 # Std of normal distribution
                 OMFITx.Entry(
                     "root['SETTINGS']['PHYSICS']['scanParameter%sStd']" % str(paramN),
-                    'Standard deviation of distribution',
+                    '分布标准差',
                     updateGUI=True,
                     default=0.1 * value,
                 )
@@ -214,7 +214,7 @@ if 'input.tglf' in root['FILES']:
         root['SETTINGS']['PHYSICS']['scanParameters'].append(param)
 
     # Sampling details
-    OMFITx.Tab("Sampling Details")
+    OMFITx.Tab('采样设置')
     # Sampling options based on Chaospy definitions
     sampling_opts = {
         "Hammersley Sequence Sampling": "M",
@@ -224,15 +224,15 @@ if 'input.tglf' in root['FILES']:
     OMFITx.ComboBox(
         "root['SETTINGS']['PHYSICS']['inputParameterSamplingMethod']",
         sampling_opts,
-        'Sampling Method',
+        '采样方法',
         updateGUI=True,
         default='M',
         width='40',
     )
     # Number of samples
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['scanParameterSamples']", '# of Samples (runs)', updateGUI=True, default=15)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['scanParameterSamples']", '样本数（运行次数）', updateGUI=True, default=15)
     # Number of parallel runs
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['parallelScan']", '# of runs in parallel', updateGUI=True, default=16)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['parallelScan']", '并行运行数', updateGUI=True, default=16)
 
     # Fix the dimension mismatch if only one input parameter
     if root['SETTINGS']['PHYSICS']['UQInputSamples'].ndim == 1:
@@ -245,11 +245,11 @@ if 'input.tglf' in root['FILES']:
 
     OMFITx.CheckBox(
         "root['SETTINGS']['PHYSICS']['multiWindowDist']",
-        'Fit (multivariate) normal distribution to experimental sub-window data',
+        '对实验子时间窗数据拟合多元正态分布',
         default=False,
         updateGUI=True,
     )
 
 else:
-    OMFITx.Label("Need to setup root['FILES']['input.tglf']")
+    OMFITx.Label('请先在 FILES 中准备 input.tglf')
     OMFITx.ObjectPicker("root['FILES']['input.tglf']", "input.tglf", OMFITgacode)

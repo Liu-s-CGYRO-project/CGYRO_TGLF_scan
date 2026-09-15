@@ -374,3 +374,5 @@
 ['TGLF_CASES'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['PROJECT_STATE'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
+['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
+['LIB']['OMFITlib_project_runtime'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_runtime.py <-:-:-> {}

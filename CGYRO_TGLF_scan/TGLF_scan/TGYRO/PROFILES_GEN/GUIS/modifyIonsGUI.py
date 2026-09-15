@@ -8,7 +8,7 @@ that allows the user to add and remove ions from input.gacode
 """
 defaultVars(add_ion=True)
 
-OMFITx.TitleGUI('Modify Ions')
+OMFITx.TitleGUI('修改离子物种')
 
 ions = []
 for i in root['OUTPUTS']['input.gacode']['IONS']:
@@ -27,9 +27,9 @@ if scratch['modify_ions_add']:
     OMFITx.Entry("scratch['add_ions_mass']", 'Mass', default=19.0)
     OMFITx.Entry("scratch['add_ions_concen']", 'Concentration', default=1e-6)
     OMFITx.Entry("scratch['add_ions_aoLn']", 'a/Ln', default=None)
-    OMFITx.Entry("scratch['add_ions_num']", 'Number in list', default=3)
+    OMFITx.Entry("scratch['add_ions_num']", '列表序号', default=3)
     OMFITx.Button(
-        'Run MODIFY_IONS',
+        '运行离子修改',
         lambda: root['SCRIPTS']['modify_ions'].run(
             name=scratch['add_ions_name'],
             Z=scratch['add_ions_Z'],
@@ -45,7 +45,7 @@ else:
     OMFITx.ComboBox("scratch['remove_ions_name']", ions, 'Name', default=ions[-1], updateGUI=True)
     # EYES for next few lines
     OMFITx.Button(
-        'Run MODIFY_IONS',
+        '运行离子修改',
         lambda: root['SCRIPTS']['modify_ions'].run(
             name=scratch['remove_ions_name'].replace('[fast]', ''), thermal=not 'fast' in scratch.pop('remove_ions_name'), add=False
         ),
@@ -53,4 +53,4 @@ else:
     # OMFITx.CheckBox("scratch['remove_ions_thermal']",'Thermal',default=False)
     # OMFITx.Button('Run MODIFY_IONS', lambda: root['SCRIPTS']['modify_ions'].run(name=scratch['remove_ions_name'], thermal=scratch['remove_ions_thermal'], add=False))
 
-OMFITx.Button('Reset input.gacode', lambda: root['SCRIPTS']['modify_ions'].run(reset=True))
+OMFITx.Button('重置 input.gacode', lambda: root['SCRIPTS']['modify_ions'].run(reset=True))

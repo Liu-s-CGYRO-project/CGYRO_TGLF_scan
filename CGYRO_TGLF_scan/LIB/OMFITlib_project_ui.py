@@ -1,6 +1,8 @@
 """Native OMFIT workbench with dependency-aware workflow controls."""
 from builtins import dict, isinstance, len, list, next, str
+from collections import OrderedDict
 from OMFITlib_gui_layout import finish_gui_layout
+from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
 from OMFITlib_project import (LABELS, MODULES, PAGES, cgyro_input_issues, collect_issues, generated_tglf_sources,
     location, module, pending_inputs, read, runtime_issues, summary, text_value, tglf_input_issues, transfer_sources)
 
@@ -47,7 +49,7 @@ class ProjectUI:
             self.ui.CompoundGUI(task, title='')
 
     def render(self):
-        self.ui.TitleGUI('CGYRO / TGLF · Project 总控')
+        self.ui.TitleGUI('CGYRO / TGLF · 工程总控')
         intro = self.label('输入准备  →  传递与验证  →  运行与收集  →  绘图对比')
         with self.ui.same_row():
             self.ui.ComboBox(self.prefix + "['page']", PAGES, '工作页面', default='overview', updateGUI=True)
@@ -58,18 +60,18 @@ class ProjectUI:
         if pending_inputs(self.root) and self.settings['page'] != 'review':
             self.nav('有待确认的 TGLF 输入 · 查看差异', 'review')
         getattr(self, 'render_' + self.settings['page'])()
-        finish_gui_layout(intro)
+        finish_gui_layout(intro, self.ui)
 
     def render_overview(self):
         s = summary(self.root)
-        self.ui.Separator('1  Transfer tool · 输入准备')
+        self.ui.Separator('1  输入转换工具 · 输入准备')
         self.label('可用文件：{}；TGLF 剖面：{}。'.format(s['transfer_inputs'], '已载入' if s['profiles'] else '未载入'))
         with self.ui.same_row():
             self.nav('导入 / 转换 / 传递输入', 'transfer')
             self.nav('批量导入 input.gacode', 'multi')
         self.ui.Separator('2  CGYRO / TGLF · 计算任务')
         cg_issues = cgyro_input_issues(self.root)
-        self.label('CGYRO：' + ('；'.join(cg_issues) if cg_issues else 'Transfer 输入已准备并传递'))
+        self.label('CGYRO：' + ('；'.join(cg_issues) if cg_issues else '转换工具输入已准备并传递'))
         self.label('TGLF 单文件：{}；多剖面案例：{}，已选 {}。'.format(
             '已载入' if s['tglf_input'] else '未载入', s['multi_cases'], s['multi_selected']))
         with self.ui.same_row():
@@ -84,8 +86,8 @@ class ProjectUI:
             self.nav('绘图与模型对比', 'plots')
             self.nav('模板 / GitHub', 'templates')
         self.ui.Separator('流程规则')
-        self.label('CGYRO：先完成 Transfer 输入准备，再验证并传递。上游输入变化后需要重新传递。\n'
-                   '已有完整 input.cgyro 也从 Transfer tool 载入并验证。\n'
+        self.label('CGYRO：先完成 转换工具输入准备，再验证并传递。上游输入变化后需要重新传递。\n'
+                   '已有完整 input.cgyro 也从 输入转换工具 载入并验证。\n'
                    'TGLF 多剖面：导入 input.gacode → 生成局部输入 → 计算 → 结果对比。')
 
     def render_transfer(self):
@@ -103,13 +105,13 @@ class ProjectUI:
                 self.ui.Button('验证并送入 TGLF 单文件', lambda: self.actions.handoff('tglf'), updateGUI=True)
             with self.ui.same_row():
                 self.ui.Button('送入 TGLF 剖面流程', lambda: self.actions.handoff('profiles'), updateGUI=True)
-                self.ui.Button('设为 Transfer 当前剖面', lambda: self.actions.handoff('transfer'), updateGUI=True)
+                self.ui.Button('设为 转换工具当前剖面', lambda: self.actions.handoff('transfer'), updateGUI=True)
         else:
             self.label('先载入输入，或运行 profiles_gen 生成文件。缺少输入时无法传递到计算模块。')
         self.ui.Tab('生成与高级工具')
-        self.label('Transfer 的 TGYRO 生成步骤使用自己的 input.tglf 与 input.tgyro。先载入种子输入；已有 TGLF 输入时会先比较并询问是否替换。')
+        self.label('输入转换工具的 TGYRO 生成步骤使用自己的 input.tglf 与 input.tgyro。先载入种子输入；已有 TGLF 输入时会先比较并询问是否替换。')
         for kind in ('tglf', 'tgyro'):
-            self.ui.FilePicker(self.prefix + "['transfer_" + kind + "_file']", 'Transfer input.' + kind, default='',
+            self.ui.FilePicker(self.prefix + "['transfer_" + kind + "_file']", '转换工具 input.' + kind, default='',
                 postcommand=lambda location=None, kind=kind: self.actions.import_transfer_seed(kind), updateGUI=True)
         self.run_controls('transfer')
         with self.ui.same_row():
@@ -124,10 +126,10 @@ class ProjectUI:
             return
         base = MODULES['cgyro'] + ('SETTINGS',)
         self.ui.Tab('输入与扫描')
-        self.label('前置状态：' + ('；'.join(cgyro_input_issues(self.root)) or 'Transfer 输入已验证并传递'))
+        self.label('前置状态：' + ('；'.join(cgyro_input_issues(self.root)) or '转换工具输入已验证并传递'))
         with self.ui.same_row():
-            self.nav('回到 Transfer 输入准备', 'transfer')
-        self.ui.FilePicker(self.prefix + "['cgyro_file']", '载入已有 input.cgyro 到 Transfer tool', default='',
+            self.nav('回到 转换工具输入准备', 'transfer')
+        self.ui.FilePicker(self.prefix + "['cgyro_file']", '载入已有 input.cgyro 到 输入转换工具', default='',
                            postcommand=lambda location=None: self.actions.import_input('cgyro'), updateGUI=True)
         self.ui.Entry(location(base + ('EXPERIMENT', 'runid')), '运行名称')
         with self.ui.same_row():
@@ -191,11 +193,11 @@ class ProjectUI:
     def render_review(self):
         pending = pending_inputs(self.root)
         if not pending:
-            self.label('没有待确认的输入。可在 Transfer tool 选择转换结果并传入 TGLF。')
-            self.nav('返回 Transfer tool', 'transfer')
+            self.label('没有待确认的输入。可在 输入转换工具 选择转换结果并传入 TGLF。')
+            self.nav('返回 输入转换工具', 'transfer')
         for key, record in pending.items():
             self.ui.Separator(record['title'])
-            target = 'Transfer tool 的 TGLF 种子输入' if record.get('destination', None) == 'transfer' else 'TGLF 当前单文件输入'
+            target = '输入转换工具 的 TGLF 种子输入' if record.get('destination', None) == 'transfer' else 'TGLF 当前单文件输入'
             self.label('目标：' + target + '。当前文件可能由 TGYRO 生成或由你导入。\n'
                        '下面逐项比较参数；选择整体保留或整体替换，不自动混合两套输入。')
             with self.ui.same_row():
@@ -207,18 +209,18 @@ class ProjectUI:
                 self.label('差异共 {} 项。格式：参数 · 类型 ｜ 当前值 → 待传入值'.format(len(record['differences'])))
                 for name, change, before, after in record['differences']:
                     self.label('{} · {}\n当前：{}\n待传入：{}'.format(name, change, before, after))
-            self.label('选择覆盖后，原输入及其对应结果均保存在 Project → PROJECT_STATE → activity。')
+            self.label('选择覆盖后，原输入及其对应结果均保存在 工程 → PROJECT_STATE → activity。')
 
     def required_issues(self, name, paths):
         node = module(self.root, name)
-        pending = ['请先确认 Transfer tool 的 TGLF 输入'] if name == 'transfer' and pending_inputs(self.root, 'transfer') else []
+        pending = ['请先确认 输入转换工具 的 TGLF 输入'] if name == 'transfer' and pending_inputs(self.root, 'transfer') else []
         return pending + runtime_issues(self.root, name) + ['缺少 ' + '/'.join(path) for path in paths if read(node, path) is None]
 
     def run_controls(self, name):
         if read(self.root, MODULES[name]) is None:
             self.label('缺少 ' + LABELS[name])
             return
-        self.ui.Button('设置 ' + LABELS[name] + ' 运行环境', lambda: self.select_runtime(name), updateGUI=True)
+        self.nav('统一 GACODE 环境配置', 'run')
         if name == 'cgyro':
             issues = cgyro_input_issues(self.root) + runtime_issues(self.root, name)
             self.label('运行条件：' + ('；'.join(issues) or '输入已传递，基础配置已填写'))
@@ -238,17 +240,11 @@ class ProjectUI:
             self.label('配置检查：' + ('；'.join(runtime_issues(self.root, name)) or '基础字段已填写；目标程序与资源尚未验证'))
 
     def select_runtime(self, name):
-        self.settings.update(dict(runtime_module=name, page='run'))
+        self.settings['page'] = 'run'
 
     def render_run(self):
         self.ui.Tab('环境设置')
-        self.ui.ComboBox(self.prefix + "['runtime_module']", {LABELS[key]: key for key in MODULES}, '配置模块', updateGUI=True)
-        name = self.settings['runtime_module']
-        node = read(self.root, MODULES[name])
-        if node is None:
-            self.label('工程缺少此模块。')
-        else:
-            self.environment(name, node)
+        self.environment()
         self.ui.Tab('运行记录')
         manifest = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST'), {})
         self.ui.Separator('CGYRO 当前运行')
@@ -263,7 +259,7 @@ class ProjectUI:
             run = case.get('runs', {}).get(case.get('selected_run', None), {})
             self.label('{}：{}'.format(case.get('label', '未命名案例'), STATUS.get(run.get('status', None), run.get('status', '尚未运行'))))
         self.nav('选择记录 / 重试 / 查看错误', 'multi')
-        self.label('这里显示 Project 保存的状态。不会在打开页面时轮询或提交任务。')
+        self.label('这里显示 工程保存的状态。不会在打开页面时轮询或提交任务。')
         self.ui.Tab('操作与输入历史')
         records = read(self.root, ('PROJECT_STATE', 'activity'), {})
         if not records:
@@ -274,51 +270,58 @@ class ProjectUI:
                 '\n' + record['error'] if record.get('error', None) else ''))
             if record.get('previous_inputs', None):
                 self.label('保留的旧输入：' + '；'.join(record['previous_inputs'].keys()))
-        self.label('完整历史在 Project → PROJECT_STATE 中；输入历史和旧结果随工程保存。')
+        self.label('完整历史在 工程 → PROJECT_STATE 中；输入历史和旧结果随工程保存。')
 
-    def environment(self, name, node):
-        base = MODULES[name] + ('SETTINGS',)
-        remote = node['SETTINGS']['REMOTE_SETUP']
-        picker = text_value(remote, 'serverPicker')
-        choices = dict.fromkeys(['localhost'] + self.servers + [key for key in remote.keys() if isinstance(remote[key], dict)])
-        if picker:
-            choices[picker] = None
-        self.ui.ComboBox(location(base + ('REMOTE_SETUP', 'serverPicker')), list(choices), 'OMFIT 服务器', state='normal', updateGUI=True)
+    def environment(self):
+        config = initialize_runtime(self.root, self.actions.factory)
+        prefix = "root['SETTINGS']['GACODE_RUNTIME']"
+        self.label('CGYRO、TGLF、TGYRO 与剖面转换共用此连接和 GACODE 环境。各程序工作目录自动分开。')
+        self.ui.Separator('服务器与工作目录')
+        choices = list(dict.fromkeys(['localhost'] + self.servers + [str(config['serverPicker'])]))
+        self.ui.ComboBox(prefix + "['serverPicker']", [item for item in choices if item],
+                         'OMFIT 服务器', state='normal', updateGUI=True)
+        self.ui.Button('从 OMFIT 读取连接信息', self.actions.sync_runtime_endpoint, updateGUI=True)
+        self.ui.Entry(prefix + "['server']", '服务器地址')
+        self.ui.Entry(prefix + "['tunnel']", '连接隧道（可留空）')
+        self.ui.Entry(prefix + "['workDir']", '工作根目录')
+        self.label('此目录下自动使用 cgyro、tglf、tgyro、transfer 等子目录，避免同名输入互相覆盖。')
+        self.ui.Separator('共用 GACODE 环境')
+        self.ui.Entry(prefix + "['environment']", '环境初始化脚本', multiline=True,
+                      help='在此统一填写 module load、GACODE_ROOT 和 source gacode_setup 等命令。点击“…”可多行编辑。')
+        self.ui.Separator('CGYRO 扫描资源')
+        self.ui.ComboBox(prefix + "['scheduler']", OrderedDict([('本机执行', 'local'), ('Slurm', 'slurm'), ('PBS', 'pbs')]),
+                         '作业调度', updateGUI=True)
+        if config['scheduler'] != 'local':
+            with self.ui.same_row():
+                self.ui.Entry(prefix + "['queue']", '队列 / 分区')
+                self.ui.Entry(prefix + "['wall_time']", '运行时限')
         with self.ui.same_row():
-            self.ui.Button('同步 OMFIT 连接配置', lambda: self.actions.sync_endpoint(name), updateGUI=True)
-            if self.configure:
-                self.ui.Button('OMFIT 模块设置', lambda: self.configure(node), updateGUI=True)
-        for key, label in [('server', '实际服务器'), ('tunnel', '隧道'), ('workDir', '远程工作目录')]:
-            self.ui.Entry(location(base + ('REMOTE_SETUP', key)), label)
-        if name == 'cgyro':
-            cfg = remote.get(picker, None)
-            if isinstance(cfg, dict):
-                self.label('以下为 CGYRO 提交器实际使用的配置。')
-                path = base + ('REMOTE_SETUP', picker)
-                for key, label in [('server', '该配置服务器'), ('workDir', '该配置工作目录')]:
-                    self.ui.Entry(location(path + (key,)), label, default='')
-                self.ui.ComboBox(location(path + ('scheduler',)), ['local', 'slurm', 'pbs'], '调度器', default='', updateGUI=True)
-                self.ui.Entry(location(path + ('environment',)), '环境初始化', default='', multiline=True)
-                self.ui.Entry(location(path + ('executable',)), 'CGYRO 命令', default='', multiline=True)
-                if text_value(cfg, 'scheduler') in ('slurm', 'pbs'):
-                    keys = [('queue', '队列 / 分区', ''), ('w', '时限', ''), ('nodes', '节点数', 1)]
-                    keys += [('ntasks_per_node', '每节点 MPI 数', 1), ('array_parallel', '同时运行的扫描点', 1)] if cfg['scheduler'] == 'slurm' else [('ppn', '每节点核数', 1)]
-                    for key, label, default in keys:
-                        self.ui.Entry(location(path + (key,)), label, default=default)
-            else:
-                self.label('选择服务器后点击“同步 OMFIT 连接配置”，再填写命令和资源。')
+            self.ui.Entry(prefix + "['nodes']", '节点数', width=8)
+            self.ui.Entry(prefix + "['cores']", '每节点 MPI 数', width=8)
+        with self.ui.same_row():
+            self.ui.Entry(prefix + "['cpus_per_task']", '每进程线程数', width=8)
+            self.ui.Entry(prefix + "['array_parallel']", '同时运行的扫描点', width=8)
+        self.ui.CheckBox(self.prefix + "['runtime_advanced']", '显示程序命令与并行细节', default=False, updateGUI=True)
+        if self.settings.get('runtime_advanced', False):
+            for key, label in [('cgyro_command', 'CGYRO 扫描命令'), ('tglf_command', 'TGLF 计算命令'),
+                               ('tgyro_command', 'TGYRO 计算命令'), ('prepare_command', '多剖面输入生成命令')]:
+                self.ui.Entry(prefix + "[{!r}]".format(key), label, multiline=True)
+            self.label('{mpi} 自动使用节点数 × 每节点 MPI 数；{n_radii} 按 TGYRO 实际径向任务所需进程数替换。')
+            self.label('剖面转换与单次 TGLF 延续原来的同步执行方式；批作业命令可在此设置。')
+            transfer = read(self.root, MODULES['transfer'])
+            if transfer is not None:
+                self.ui.Entry(location(MODULES['transfer'] + ('SETTINGS', 'SETUP', 'p_tgyro')), '转换用 TGYRO 半径数')
+        issues = validate_runtime(config)
+        if applied_runtime(self.root) is None:
+            status = '已从现有 CGYRO 配置预填；点击应用后，各模块开始共用此配置。'
+        elif shared_issues(self.root):
+            status = '配置有未应用的修改，请应用后再运行。'
         else:
-            command = text_value(node['SETTINGS']['SETUP'], 'executable')
-            self.label('当前命令：\n' + (command or '未解析 / 未设置'))
-            if self.settings.get('command_module', None) != name:
-                self.settings.update(dict(command_module=name, command_draft=command))
-            self.ui.Entry(self.prefix + "['command_draft']", '编辑执行命令', default='', multiline=True)
-            self.ui.Button('保存为手动命令', lambda: self.actions.save_command(name), updateGUI=True)
-            if name == 'transfer':
-                self.label('Transfer 此处保存环境初始化脚本，具体程序由运行步骤追加。')
-                for key, label in [('num_nodes', '节点数'), ('num_cores', '每节点核数'), ('p_tgyro', 'TGYRO 半径数')]:
-                    self.ui.Entry(location(base + ('SETUP', key)), label)
-        self.label('检查结果：' + ('；'.join(runtime_issues(self.root, name)) or '基础字段已填写；未连接计算端验证'))
+            status = '统一配置已应用。环境只需在本页维护。'
+        self.label(status)
+        if issues:
+            self.label('待填写：' + '；'.join(issues))
+        self.guarded('应用到整个工程', self.actions.apply_runtime, issues)
 
     def render_plots(self):
         self.label('选择已有结果后绘图。支持 CGYRO 与 TGLF 的同模型和跨模型对比。')

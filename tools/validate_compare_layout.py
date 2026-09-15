@@ -116,7 +116,11 @@ class NativeWidgets:
         self.window.title(title)
 
     def __getattr__(self, name):
+        if name not in self.namespace:
+            raise AttributeError(name)
         function = self.namespace[name]
+        if name.startswith('_'):
+            return function
         if name == 'same_row':
             return function
         def call(*args, **kwargs):

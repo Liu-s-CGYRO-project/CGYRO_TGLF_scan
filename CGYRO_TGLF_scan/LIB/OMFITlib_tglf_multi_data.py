@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 import re
 import uuid
+from OMFITlib_project_runtime import shared_multi_settings
 
 DEFAULTS = {
     'radii': '0.5', 'coordinate': 'rho', 'execution': 'local', 'environment': '',
@@ -21,6 +22,7 @@ def initialize(root, factory=dict):
     settings = root['SETTINGS'].setdefault('TGLF_MULTI', {})
     for key, value in DEFAULTS.items():
         settings.setdefault(key, copy.deepcopy(value))
+    shared_multi_settings(root, settings)
     cases = root.setdefault('TGLF_CASES', factory())
     return settings, cases
 

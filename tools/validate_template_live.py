@@ -78,6 +78,7 @@ with tempfile.TemporaryDirectory(prefix='native-live-check-') as directory, patc
     tree = """['Demo'] <-:-:-> OMFITmodule <-:-:->  <-:-:-> {}
 ['Demo']['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['Demo']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./layout.py <-:-:-> {}
+['Demo']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./context.py <-:-:-> {}
 ['Demo']['GUIS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['Demo']['GUIS']['main'] <-:-:-> OMFITpythonGUI <-:-:-> ./main.py <-:-:-> {}
 ['Demo']['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./settings.json <-:-:-> {}
@@ -87,11 +88,12 @@ with tempfile.TemporaryDirectory(prefix='native-live-check-') as directory, patc
         return ('from OMFITlib_gui_layout import finish_gui_layout\nversion = ' + str(version) + '\n'
                 'label = OMFITx.Label("当前版本 ' + str(version) + ' · 计算结果保留", align="left")\n'
                 'OMFITx.Button("运行当前代码", lambda: root["SETTINGS"].__setitem__("clicked", ' + str(version) + '))\n'
-                'finish_gui_layout(label)\n')
+                'finish_gui_layout(label, OMFITx)\n')
     (directory / 'OMFITsave.txt').write_text(tree)
     (directory / 'settings.json').write_text(json.dumps({'MODULE': {'ID': 'Demo'}, 'PHYSICS': {'x': 99}}))
     (directory / 'main.py').write_text(program(1), encoding='utf-8')
     (directory / 'layout.py').write_bytes((REPO / 'CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py').read_bytes())
+    (directory / 'context.py').write_bytes((REPO / 'CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py').read_bytes())
     current = LiveOMFIT()
     current._OMFITkeyName = 'OMFIT'
     current['Demo'] = factory(directory / 'OMFITsave.txt')['Demo']
@@ -130,6 +132,7 @@ with tempfile.TemporaryDirectory(prefix='native-live-check-') as directory, patc
                 archive.writestr('OMFITsave.txt', tree)
                 archive.writestr('main.py', program(2))
                 archive.writestr('layout.py', (directory / 'layout.py').read_bytes())
+                archive.writestr('context.py', (directory / 'context.py').read_bytes())
                 archive.writestr('settings.json', json.dumps({'MODULE': {'ID': 'Demo'}, 'PHYSICS': {'x': 2, 'added': 4}}))
             template = api['publish'](source_zip, directory / 'library', dict(id='demo', name='Demo', author='test', version='2'), ['Demo'])
             plan = session.preview_live(api['Prepared'](template))

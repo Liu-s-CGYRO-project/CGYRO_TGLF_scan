@@ -1,6 +1,6 @@
 # -*-Python-*-
 # Created by meneghini at 2013/05/06 11:49
-OMFITx.TitleGUI('TGYRO GUI')
+OMFITx.TitleGUI('TGYRO 总控')
 
 if not compoundGUI and input_gacode is None:
     OMFITx.CompoundGUI(PROFILES_GEN['GUIS']['standaloneGUI'])
@@ -16,31 +16,31 @@ def no_spaces(x):
 OMFITx.ComboBox(
     "root['SETTINGS']['EXPERIMENT']['runid']",
     list(root['RUN_DB'].keys()),
-    'Simulation run-ID',
+    '计算运行名称',
     postcommand=lambda location=None: root['SCRIPTS']['reloadTGYRO'].runNoGUI(),
     updateGUI=True,
     state='normal',
     check=no_spaces,
 )
 
-OMFITx.Tab('Run TGYRO')
+OMFITx.Tab('运行 TGYRO')
 OMFITx.CompoundGUI(root['GUIS']['Rungui'], '')
 
 if 'input.gacode' in root['OUTPUTS'] or 'output' in root['OUTPUTS']:
-    OMFITx.Tab('Plot results')
+    OMFITx.Tab('绘制结果')
     OMFITx.CompoundGUI(root['GUIS']['Plotgui'], '')
 
     OMFITx.Tab('D&v profiles')
     OMFITx.CompoundGUI(root['GUIS']['D_and_v_gui'], '')
 
 if 'input.gacode' in root['OUTPUTS']:
-    OMFITx.Tab('Export')
+    OMFITx.Tab('导出')
     OMFITx.Separator()
 
     def ip_2_ods():
         root['OUTPUTS']['ods'] = root['OUTPUTS']['input.gacode'].to_omas()
 
-    OMFITx.Button("Generate ODS from input.gacode", ip_2_ods)
+    OMFITx.Button('从 input.gacode 生成 ODS', ip_2_ods)
 
     OMFITx.Separator('IMAS')
     OMFITx.ComboBox(
@@ -52,7 +52,7 @@ if 'input.gacode' in root['OUTPUTS']:
     )
     OMFITx.Entry("scratch['machine']", 'Machine', default=root['SETTINGS']['EXPERIMENT']['device'], help='IMAS machine')
     OMFITx.Entry("scratch['pulse']", 'Pulse', check=is_int, default=root['SETTINGS']['EXPERIMENT']['shot'], help='IMAS pulse')
-    OMFITx.Entry("scratch['run']", 'Run', check=is_int, default=root['SETTINGS']['EXPERIMENT']['time'], help='IMAS run')
+    OMFITx.Entry("scratch['run']", '运行', check=is_int, default=root['SETTINGS']['EXPERIMENT']['time'], help='IMAS run')
 
     def ip_2_ids():
         if 'ods' not in root['OUTPUTS']:
@@ -69,4 +69,4 @@ if 'input.gacode' in root['OUTPUTS']:
             new=True,
         )
 
-    e = OMFITx.Button('Save to IMAS', ip_2_ids, help='Choose a shot/run/device to export data to a IMAS database.')
+    e = OMFITx.Button('保存到 IMAS', ip_2_ids, help='Choose a shot/run/device to export data to a IMAS database.')

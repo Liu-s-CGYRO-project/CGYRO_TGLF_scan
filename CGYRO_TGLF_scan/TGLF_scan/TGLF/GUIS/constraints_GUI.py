@@ -15,7 +15,7 @@ def add_constraint(location):
 OMFITx.ComboBox(
     "scratch['add_constraint']",
     [''] + [k for k, v in sorted(input_tglf.items()) if not k.startswith('__') and not is_int(v)],
-    lbl="Add constraint",
+    lbl='添加约束',
     postcommand=add_constraint,
     help='Choose a variable that is constrained to be a function of other variables',
     default='',
@@ -36,7 +36,7 @@ if 'constraint_vars' in root:
         OMFITx.ComboBox(
             "scratch['delete_constraint']",
             [''] + sorted(root['constraint_vars'].keys()),
-            lbl="Delete constraint",
+            lbl='删除约束',
             postcommand=delete_constraint,
             default='',
             updateGUI=True,

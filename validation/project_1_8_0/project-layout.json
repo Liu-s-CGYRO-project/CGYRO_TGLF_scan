@@ -1,0 +1,103 @@
+{
+  "viewports": [
+    {
+      "page": "overview",
+      "font_size": 11,
+      "controls": 23,
+      "menu_order": [
+        "1 项目概览",
+        "2 环境配置与记录",
+        "3 输入准备与转换",
+        "4 输入确认与覆盖",
+        "5 CGYRO 扫描",
+        "6 TGLF 单文件与扫描",
+        "7 TGLF 多剖面计算",
+        "8 绘图与对比",
+        "9 模板与 GitHub"
+      ]
+    },
+    {
+      "page": "run",
+      "font_size": 11,
+      "controls": 42,
+      "menu_order": [
+        "1 项目概览",
+        "2 环境配置与记录",
+        "3 输入准备与转换",
+        "4 输入确认与覆盖",
+        "5 CGYRO 扫描",
+        "6 TGLF 单文件与扫描",
+        "7 TGLF 多剖面计算",
+        "8 绘图与对比",
+        "9 模板与 GitHub"
+      ]
+    },
+    {
+      "page": "transfer",
+      "font_size": 11,
+      "controls": 44,
+      "menu_order": [
+        "1 项目概览",
+        "2 环境配置与记录",
+        "3 输入准备与转换",
+        "4 输入确认与覆盖",
+        "5 CGYRO 扫描",
+        "6 TGLF 单文件与扫描",
+        "7 TGLF 多剖面计算",
+        "8 绘图与对比",
+        "9 模板与 GitHub"
+      ]
+    },
+    {
+      "page": "overview",
+      "font_size": 14,
+      "controls": 23,
+      "menu_order": [
+        "1 项目概览",
+        "2 环境配置与记录",
+        "3 输入准备与转换",
+        "4 输入确认与覆盖",
+        "5 CGYRO 扫描",
+        "6 TGLF 单文件与扫描",
+        "7 TGLF 多剖面计算",
+        "8 绘图与对比",
+        "9 模板与 GitHub"
+      ]
+    },
+    {
+      "page": "run",
+      "font_size": 14,
+      "controls": 42,
+      "menu_order": [
+        "1 项目概览",
+        "2 环境配置与记录",
+        "3 输入准备与转换",
+        "4 输入确认与覆盖",
+        "5 CGYRO 扫描",
+        "6 TGLF 单文件与扫描",
+        "7 TGLF 多剖面计算",
+        "8 绘图与对比",
+        "9 模板与 GitHub"
+      ]
+    },
+    {
+      "page": "transfer",
+      "font_size": 14,
+      "controls": 44,
+      "menu_order": [
+        "1 项目概览",
+        "2 环境配置与记录",
+        "3 输入准备与转换",
+        "4 输入确认与覆盖",
+        "5 CGYRO 扫描",
+        "6 TGLF 单文件与扫描",
+        "7 TGLF 多剖面计算",
+        "8 绘图与对比",
+        "9 模板与 GitHub"
+      ]
+    }
+  ],
+  "native_filepicker": true,
+  "no_control_overlap": true,
+  "full_server_session": false
+}

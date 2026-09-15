@@ -1,0 +1,16 @@
+{
+  "reproduced_original_KeyError": true,
+  "closed_window_callback_fixed": true,
+  "live_other_window_context_restored": true,
+  "owning_window_locks_respected": true,
+  "edited_correct_module_only": true,
+  "localized_native_editor": true,
+  "duplicate_wrapping_prevented": true,
+  "opened_submodule_callback_scoped": true,
+  "native_bodies": {
+    "_absLocation": "92fd1ffd1cd84ff1d6c3be6c3142ded1e3f3ae4d8018556de88498dc3d5bb205",
+    "_Text": "527af22bcc4c03578e4dfda071061a7df2735fbffca5bba7a8a94f6ff75bb7a5",
+    "Lock": "3619560c708c5221f3b46d38dfa4bdb8d36f9784c8025c93c341cc090b924474"
+  },
+  "complete_omfit_session_tested": false
+}

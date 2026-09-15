@@ -2,7 +2,7 @@
 # Created by grierson at 27 Apr 2016  13:59
 # modified by sciortino, 22 July 2019
 
-OMFITx.TitleGUI('TGLF Impurity Particle Transport Coefficients')
+OMFITx.TitleGUI('TGLF 杂质粒子输运系数')
 
 root.setdefault('TGLF_SCAN_DB', OMFITtree())
 
@@ -18,7 +18,7 @@ if not compoundGUI:  # OMFIT GUIs have the compoundGUI variable in their namespa
     OMFITx.ComboBox(
         "root['SETTINGS']['PHYSICS']['runs_label']",
         list(available_trees.keys()),
-        'Scan ID',
+        '扫描名称',
         postcommand=lambda location=None: root['SCRIPTS']['reloadDVscan'].runNoGUI(),
         updateGUI=True,
         state='normal',
@@ -55,11 +55,11 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
         # root['TGLF_SCAN_DB'][runs_label]['IONS'] = ion_list
         OMFITx.Label('Original Ion List:{}'.format(ion_list))
     else:
-        OMFITx.Label('**** No input.gacode! ****')
+        OMFITx.Label('尚未载入 input.gacode')
 
-    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['impElement']" % runs_label, 'Impurity Element', default='Ca')
-    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['impZ']" % runs_label, 'Impurity Charge (Z)', default=20)
-    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['impM']" % runs_label, 'Impurity Mass (amu)', default=40)
+    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['impElement']" % runs_label, '杂质元素', default='Ca')
+    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['impZ']" % runs_label, '杂质电荷数 Z', default=20)
+    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['impM']" % runs_label, '杂质质量（amu）', default=40)
     root['SETTINGS']['PHYSICS']['impElement'] = root['TGLF_SCAN_DB'][runs_label]['impElement']
     root['SETTINGS']['PHYSICS']['impZ'] = root['TGLF_SCAN_DB'][runs_label]['impZ']
     root['SETTINGS']['PHYSICS']['impM'] = root['TGLF_SCAN_DB'][runs_label]['impM']
@@ -67,7 +67,7 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
     OMFITx.Label('')
     OMFITx.CheckBox(
         "root['SETTINGS']['PHYSICS']['transport_matrix_method']",
-        'Use matrix inversion method to obtain transport coefficients ',
+        '使用矩阵求逆计算输运系数',
         default=True,
         updateGUI=True,
         help="If checked, transport coefficients are computed via a matrix inversion, "
@@ -78,7 +78,7 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
     if root['SETTINGS']['PHYSICS']['transport_matrix_method']:
         OMFITx.CheckBox(
             "root['SETTINGS']['PHYSICS']['compute_thermodiffusion']",
-            'Compute thermodiffusion',
+            '计算热扩散',
             default=True,
             updateGUI=True,
             help="If checked, compute diffusion (D), thermodiffusion (vT) and the residual convection term (vp), rather than just D,v. ",
@@ -86,7 +86,7 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
 
         OMFITx.CheckBox(
             "root['SETTINGS']['PHYSICS']['compute_rotodiffusion']",
-            'Compute rotodiffusion',
+            '计算旋转扩散',
             default=True,
             updateGUI=True,
             help="If checked, compute rotodiffusion (vR) as well as thermodiffusion (vT).",
@@ -114,7 +114,7 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
             # Obtain and store results using the plot_resp_matrix.py script (but don't plot now)
             root['PLOTS']['plot_resp_matrix'].run(runs_label=root['SETTINGS']['PHYSICS']['runs_label'], plot_results=False)
 
-        OMFITx.Button('Compute particles transport coefficients', get_transport_matrix, updateGUI=True)
+        OMFITx.Button('计算粒子输运系数', get_transport_matrix, updateGUI=True)
 
     else:
 
@@ -123,7 +123,7 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
             root['SCRIPTS']['particleDandVscan'].run()  # run TGLF scans
             root['SCRIPTS']['particleDandVprofile'].run()  # linear fit step
 
-        OMFITx.Button('Run TGLF scan', run_transport_scan, updateGUI=True)
+        OMFITx.Button('运行 TGLF 扫描', run_transport_scan, updateGUI=True)
 
     # === Plot ===
     if (
@@ -134,18 +134,18 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
         OMFITx.Label('')
         OMFITx.CheckBox(
             "root['SETTINGS']['PHYSICS']['plot_STRAHL_corrections']",
-            'Apply STRAHL-like corrections in plotting',
+            '绘图时采用 STRAHL 类修正',
             default=True,
             updateGUI=False,
         )
         OMFITx.CheckBox(
             "root['SETTINGS']['PHYSICS']['plot_normalized_coeffs']",
-            'Plot normalized transport coefficients',
+            '绘制归一化输运系数',
             default=False,
             updateGUI=False,
         )
 
         if root['SETTINGS']['PHYSICS']['transport_matrix_method']:
-            OMFITx.Button('Plot Scan and Profile', lambda: root['PLOTS']['plot_resp_matrix'].run(plot_results=True))
+            OMFITx.Button('绘制扫描与剖面', lambda: root['PLOTS']['plot_resp_matrix'].run(plot_results=True))
         else:
-            OMFITx.Button('Plot Scan and Profile', "root['PLOTS']['plotDandV']")
+            OMFITx.Button('绘制扫描与剖面', "root['PLOTS']['plotDandV']")

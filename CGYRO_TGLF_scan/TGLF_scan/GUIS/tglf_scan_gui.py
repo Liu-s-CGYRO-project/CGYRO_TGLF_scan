@@ -1,7 +1,7 @@
 # -*-Python-*-
 # Created by smithsp at 2013/11/07 15:41
 
-OMFITx.TitleGUI('TGLF scan GUI')
+OMFITx.TitleGUI('TGLF 参数与径向扫描')
 
 root.setdefault('scanResults', OMFITtree())
 root.setdefault('scanResults2D', OMFITtree())
@@ -14,18 +14,18 @@ param2 = root['TGLF']['SETTINGS']['PHYSICS']['scanParameter2D']
 
 OMFITx.CheckBox(
     "root['SETTINGS']['PHYSICS']['tglf_input_load']",
-    "Load input.tglf file - !load it before input.gacode!",
+    '载入 input.tglf（请先于 input.gacode 载入）',
     default=False,
     updateGUI=True,
-    help='This CheckBox oppens the GUI where the input.tglf file can be loaded. Click "Pick a different input.tglf file" to load a new file.',
+    help='展开 input.tglf 文件选择界面，可载入新的输入文件。',
 )
 
 OMFITx.CheckBox(
     "root['SETTINGS']['PHYSICS']['tglf_settings_from_TGYRO']",
-    "Load TGLF settings tab from TGYRO GUI",
+    '使用 TGYRO 中的 TGLF 参数设置页',
     default=False,
     updateGUI=True,
-    help='This CheckBox loads the same GUI as in TGYRO module to specify TGLF settings, otherwise the old TGLF_scan GUI will be loaded.',
+    help='勾选后使用 TGYRO 模块中的 TGLF 参数设置页。',
 )
 
 if not root['SETTINGS']['PHYSICS']['tglf_settings_from_TGYRO']:
@@ -48,16 +48,16 @@ if 'input.gacode' in root['TGYRO']['PROFILES_GEN']['OUTPUTS'] or (
 ):
 
     def show_reset():
-        OMFITx.Tab('Setup input profiles')
+        OMFITx.Tab('准备输入剖面')
         if start_over:
-            OMFITx.Button('Start over', "root['TGYRO']['PROFILES_GEN']['SCRIPTS']['reset']")
+            OMFITx.Button('重新开始', "root['TGYRO']['PROFILES_GEN']['SCRIPTS']['reset']")
         else:
             OMFITx.CompoundGUI(root['TGYRO']['PROFILES_GEN']['GUIS']['standaloneGUI'])
 
     # setup
     if not len(root['input.tglf']):
         root['TGYRO']['INPUTS']['input.tglf']['USE_TRANSPORT_MODEL'] = True
-        OMFITx.Tab("Setup TGLF input files")
+        OMFITx.Tab('准备 TGLF 输入文件')
         OMFITx.CompoundGUI(
             tglf_input_gui,
             inp_loc=treeLocation(root['TGYRO']['INPUTS']['input.tglf'])[-1],
@@ -69,14 +69,14 @@ if 'input.gacode' in root['TGYRO']['PROFILES_GEN']['OUTPUTS'] or (
             showNumSpecies=False,
         )
         if root['TGYRO']['PROFILES_GEN']['TRXPL']['SETTINGS']['EXPERIMENT']['multiwindow']:
-            OMFITx.Button('Setup TGLF Inputs', "root['SCRIPTS']['setup_batch_tglf']")
+            OMFITx.Button('生成 TGLF 输入', "root['SCRIPTS']['setup_batch_tglf']")
         else:
-            OMFITx.Button('Setup TGLF Inputs', "root['SCRIPTS']['setup_tglf']")
+            OMFITx.Button('生成 TGLF 输入', "root['SCRIPTS']['setup_tglf']")
         show_reset()
         OMFITx.End()
 
     # -------------------------
-    OMFITx.Tab('Run TGLF at specific radii')
+    OMFITx.Tab('指定半径运行 TGLF')
     rho = root['SETTINGS']['PHYSICS']['rho']
 
     def show_single_rho():
@@ -85,15 +85,15 @@ if 'input.gacode' in root['TGYRO']['PROFILES_GEN']['OUTPUTS'] or (
         OMFITx.ComboBox(
             "root['SETTINGS']['PHYSICS']['rho']",
             sorted(root['input.tglf'].keys()),
-            'Radius (%s)' % rad_lab,
+            '半径（%s）' % rad_lab,
             default=0.5,
             updateGUI=True,
             state='normal',
         )
-        OMFITx.Label('Uses the selected radial input. Project → TGLF can compare and adopt it as the single-file input.')
+        OMFITx.Label('使用所选半径的输入。可在工程总控 → TGLF 中比较后将其用作单文件输入。')
 
     def show_tglf_detail():
-        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['show_TGLF_details']", lbl="Show TGLF details", default=False, updateGUI=True)
+        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['show_TGLF_details']", lbl='显示 TGLF 详细设置', default=False, updateGUI=True)
         if root['SETTINGS']['PHYSICS']['show_TGLF_details']:
             OMFITx.CompoundGUI(
                 tglf_input_gui,
@@ -110,8 +110,8 @@ if 'input.gacode' in root['TGYRO']['PROFILES_GEN']['OUTPUTS'] or (
     if rho in root['input.tglf']:
         OMFITx.ComboBox(
             "root['SETTINGS']['PHYSICS']['scanDimensions']",
-            {'Radial': 0, '1D': 1, '2D': 2, 'UQ': 'UQ'},
-            'Scan dimensions',
+            {'径向扫描': 0, '一维': 1, '二维': 2, '不确定度': 'UQ'},
+            '扫描维数',
             default=0,
             updateGUI=True,
             state='readonly',
@@ -119,40 +119,40 @@ if 'input.gacode' in root['TGYRO']['PROFILES_GEN']['OUTPUTS'] or (
 
     def showPlots():
         OMFITx.Separator()
-        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['plot_mks']", 'Plot fluxes in MKS units', default=True)
-        OMFITx.CheckBox("root['TGLF']['SETTINGS']['PHYSICS']['combine_ions']", "Combine ions in plots", default=True)
-        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['tglf_sign_convention']", "Use TGLF Momentum Target Sign Convention", default=True)
-        OMFITx.CheckBox("root['SETTINGS']['PLOTS']['Use_x_log']", "Plot x as log scale", default=True)
-        OMFITx.CheckBox("root['SETTINGS']['PLOTS']['Use_y_log']", "Plot y as log scale", default=True)
-        OMFITx.CheckBox("root['SETTINGS']['PLOTS']['Divided ky']", "Plot the data divided ky", default=True)
-        OMFITx.Button('Plot %dD TGLF scan' % root['SETTINGS']['PHYSICS']['scanDimensions'], "root['PLOTS']['plotScanAtRho'].runNoGUI")
+        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['plot_mks']", '通量采用国际单位制', default=True)
+        OMFITx.CheckBox("root['TGLF']['SETTINGS']['PHYSICS']['combine_ions']", '绘图时合并离子', default=True)
+        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['tglf_sign_convention']", '采用 TGLF 动量目标的符号约定', default=True)
+        OMFITx.CheckBox("root['SETTINGS']['PLOTS']['Use_x_log']", 'X 轴采用对数坐标', default=True)
+        OMFITx.CheckBox("root['SETTINGS']['PLOTS']['Use_y_log']", 'Y 轴采用对数坐标', default=True)
+        OMFITx.CheckBox("root['SETTINGS']['PLOTS']['Divided ky']", '绘制数值除以 ky 后的数据', default=True)
+        OMFITx.Button('绘制 %d 维 TGLF 扫描' % root['SETTINGS']['PHYSICS']['scanDimensions'], "root['PLOTS']['plotScanAtRho'].runNoGUI")
         if root['SETTINGS']['PHYSICS']['scanDimensions'] == 1:
-            OMFITx.Button('Plot 1D TGLF scan spectra', "root['PLOTS']['plotScanSpecAtRho'].runNoGUI")
+            OMFITx.Button('绘制一维 TGLF 扫描谱', "root['PLOTS']['plotScanSpecAtRho'].runNoGUI")
         OMFITx.Separator()
         OMFITx.Button(
-            'Write %dD TGLF scan to file' % root['SETTINGS']['PHYSICS']['scanDimensions'],
+            '导出 %d 维 TGLF 扫描数据' % root['SETTINGS']['PHYSICS']['scanDimensions'],
             lambda: root['PLOTS']['plotScanAtRho'].runNoGUI(doSave=True),
         )
 
     def showUQPlots():
         OMFITx.Separator()
-        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['plot_mks']", 'Plot fluxes in MKS units', default=True)
-        OMFITx.CheckBox("root['TGLF']['SETTINGS']['PHYSICS']['combine_ions']", "Combine ions in plots", default=True)
-        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['tglf_sign_convention']", "Use TGLF Momentum Target Sign Convention", default=True)
-        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['exp_prob']", "Plot experimental sub-window probabilities", default=False)
+        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['plot_mks']", '通量采用国际单位制', default=True)
+        OMFITx.CheckBox("root['TGLF']['SETTINGS']['PHYSICS']['combine_ions']", '绘图时合并离子', default=True)
+        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['tglf_sign_convention']", '采用 TGLF 动量目标的符号约定', default=True)
+        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['exp_prob']", '绘制实验子时间窗概率', default=False)
         OMFITx.Button(
-            'Plot %dD TGLF scan UQ propagation' % root['TGLF']['SETTINGS']['PHYSICS']['scanDimensions'], "root['PLOTS']['plot_UQ'].runNoGUI"
+            '绘制 %d 维 TGLF 扫描不确定度传播' % root['TGLF']['SETTINGS']['PHYSICS']['scanDimensions'], "root['PLOTS']['plot_UQ'].runNoGUI"
         )
 
     # 1D scan
     if root['SETTINGS']['PHYSICS']['scanDimensions'] == 1 and rho in root['input.tglf']:
         start_over = True
-        OMFITx.Tab("Run TGLF at specific radii")
+        OMFITx.Tab('指定半径运行 TGLF')
         show_single_rho()
         show_tglf_detail()
-        OMFITx.Tab('Scan')
+        OMFITx.Tab('扫描设置')
         OMFITx.CompoundGUI(root['TGLF']['GUIS']['scanGUI'], showButtons=False, title='')
-        OMFITx.Button('Run 1D TGLF scan', lambda: root['SCRIPTS']['runScanAtRho'].run(copy_inputTGLF_rho=False))
+        OMFITx.Button('运行一维 TGLF 扫描', lambda: root['SCRIPTS']['runScanAtRho'].run(copy_inputTGLF_rho=False))
 
         if 'scanResults' in root and rho in root['scanResults'] and param in root['scanResults'][rho]:
             showPlots()
@@ -160,27 +160,27 @@ if 'input.gacode' in root['TGYRO']['PROFILES_GEN']['OUTPUTS'] or (
     # 2D scan
     elif root['SETTINGS']['PHYSICS']['scanDimensions'] == 2 and rho in root['input.tglf']:
         start_over = True
-        OMFITx.Tab("Run TGLF at specific radii")
+        OMFITx.Tab('指定半径运行 TGLF')
         show_single_rho()
         show_tglf_detail()
-        OMFITx.Tab('Scan')
+        OMFITx.Tab('扫描设置')
         OMFITx.CompoundGUI(root['TGLF']['GUIS']['scan2DGUI'], showButtons=False, title='')
-        OMFITx.Button('Run 2D TGLF scan at ' + str(rho), lambda: root['SCRIPTS']['runScanAtRho'].run(copy_inputTGLF_rho=False))
+        OMFITx.Button('运行二维 TGLF 扫描，半径：' + str(rho), lambda: root['SCRIPTS']['runScanAtRho'].run(copy_inputTGLF_rho=False))
         if 'scanResults2D' in root and rho in root['scanResults2D'] and param2 + '+' + param in root['scanResults2D'][rho]:
             showPlots()
 
     # UQ scan
     elif root['SETTINGS']['PHYSICS']['scanDimensions'] == 'UQ' and rho in root['input.tglf']:
         start_over = True
-        OMFITx.Tab("Run TGLF at specific radii")
+        OMFITx.Tab('指定半径运行 TGLF')
         show_single_rho()
         show_tglf_detail()
-        OMFITx.Tab('UQ Scan')
+        OMFITx.Tab('不确定度扫描')
         # Move rho information to TGLF submodule
         root['TGLF']['SETTINGS']['PHYSICS']['rho'] = root['SETTINGS']['PHYSICS']['rho']
         OMFITx.CompoundGUI(root['TGLF']['GUIS']['uqGUI'], showButtons=False, title='')
         uqparam = root['TGLF']['SETTINGS']['PHYSICS']['scanParameters']  # Gets set in uqGUI
-        OMFITx.Button('Run TGLF UQ scan', lambda: root['SCRIPTS']['runScanAtRho'].run(copy_inputTGLF_rho=False))
+        OMFITx.Button('运行 TGLF 不确定度扫描', lambda: root['SCRIPTS']['runScanAtRho'].run(copy_inputTGLF_rho=False))
         if 'UQResults' in root and rho in root['UQResults'] and '_'.join(uqparam) in root['UQResults'][rho]:
             showUQPlots()
 
@@ -193,10 +193,10 @@ else:
     # (PROFILES_GEN will clear the outputs if its inputs change)
     root['SCRIPTS']['reset'].runNoGUI()
 
-    OMFITx.Tab('Setup input profiles')
+    OMFITx.Tab('准备输入剖面')
     OMFITx.CompoundGUI(root['TGYRO']['PROFILES_GEN']['GUIS']['standaloneGUI'])
 
     if root['SETTINGS']['PHYSICS']['tglf_input_load']:
         inp_loc = "root['TGYRO']['INPUTS']['input.tglf']"
 
-        OMFITx.ObjectPicker(inp_loc, lbl='input.tglf file', objectType=OMFITgacode)
+        OMFITx.ObjectPicker(inp_loc, lbl='input.tglf 输入文件', objectType=OMFITgacode)

@@ -22,7 +22,7 @@ available_trees = {x: root['TGLF_SCAN_DB'][x] for x in root['TGLF_SCAN_DB'] if x
 OMFITx.ComboBox(
     "root['SETTINGS']['PHYSICS']['runs_label']",
     list(available_trees.keys()),
-    'Scan ID',
+    '扫描名称',
     postcommand=lambda location=None: root['SCRIPTS']['reloadDVscan'].runNoGUI(),
     updateGUI=True,
     state='normal',
@@ -36,15 +36,15 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
     OMFITx.CompoundGUI(root['TGYRO']['PROFILES_GEN']['GUIS']['standaloneGUI'])
 
     if 'input.gacode' in root['TGYRO']['PROFILES_GEN']['OUTPUTS']:
-        OMFITx.Tab("Background ions")
+        OMFITx.Tab('背景离子')
         # ==============================
         # Modify ions:
         OMFITx.Label('')
-        OMFITx.Label('Do not add trace impurities at this stage! Only set the background.', align='left')
+        OMFITx.Label('此处仅设置背景离子，暂不添加示踪杂质。', align='left')
         OMFITx.Label('')
         OMFITx.CompoundGUI(root['TGYRO']['PROFILES_GEN']['GUIS']['modifyIonsGUI'])
 
-        OMFITx.Tab("TGLF parameters")
+        OMFITx.Tab('TGLF 参数')
         OMFITx.CompoundGUI(
             root['TGLF']['GUIS']['TGLF_GUI'],
             inp_loc=treeLocation(root['TGYRO']['INPUTS']['input.tglf'])[-1],
@@ -54,13 +54,13 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
         )
 
         # ===============================
-        OMFITx.Tab("Particle transport radial profiles")
+        OMFITx.Tab('粒子输运径向剖面')
         OMFITx.CompoundGUI(root['GUIS']['particleDandVgui'])
 
         # ===============================
-        OMFITx.Tab("Scans / sensitivity analysis")
+        OMFITx.Tab('扫描与敏感性分析')
         OMFITx.CompoundGUI(root['GUIS']['DV_scans_subgui'])
 
 else:
     OMFITx.Label('')
-    OMFITx.Label('Set a scan ID in order to proceed with sensitivity analysis')
+    OMFITx.Label('填写扫描名称后进行敏感性分析')
