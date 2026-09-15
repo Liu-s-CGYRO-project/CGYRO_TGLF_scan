@@ -15,7 +15,8 @@ def finish_gui_layout(label):
     if not isinstance(label, tk.Misc):
         return
     content = label.master.master
-    if getattr(content, '_cgyro_gui_layout', None) is not None:
+    previous = getattr(content, '_cgyro_gui_layout', None)
+    if previous is not None and getattr(previous, 'anchor', None) is label:
         return
     content._cgyro_gui_layout = NativeLayout(content, label)
 
@@ -23,6 +24,7 @@ def finish_gui_layout(label):
 class NativeLayout:
     def __init__(self, content, label):
         self.content = content
+        self.anchor = label
         self.style = ttk.Style(content)
         base = label.cget('font') or self.style.lookup(label.cget('style') or 'TLabel', 'font') or 'TkDefaultFont'
         original = tkfont.Font(root=content, font=base).actual()

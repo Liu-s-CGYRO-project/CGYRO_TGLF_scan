@@ -27,6 +27,8 @@ from OMFITlib_template_archive import Project
 from OMFITlib_template_service import publish
 import OMFITlib_template_ui as ui
 from test_templates import fixture
+from test_live import current_fixture, factory
+from OMFITlib_template_session import OMFITSession
 
 
 def validate(source):
@@ -76,9 +78,14 @@ def validate(source):
             buttons = []
             host = SimpleNamespace(TitleGUI=lambda *args, **kw: None, Label=lambda *args, **kw: None,
                                    Button=lambda title, command: buttons.append(command))
+            live = current_fixture()
+            live.filename = str(old)
+            result_branch = live['Demo']['RUN_DB']
+            context.enter_context(patch('OMFITlib_template_session.OMFITSession',
+                lambda omfit, gui_api=None: OMFITSession(omfit, tree_factory=factory, gui_api=gui_api)))
             entry = MODULE / 'GUIS/main.py'
             exec(compile(entry.read_text(encoding='utf-8'), str(entry), 'exec'),
-                 {'OMFIT': SimpleNamespace(filename=str(old)), 'OMFITx': host})
+                 {'OMFIT': live, 'OMFITx': host})
             manager = root._omfit_template_manager
             assert manager.window.tk is root.tk
             assert isinstance(manager.window, namespace['Toplevel'])
@@ -138,16 +145,15 @@ def validate(source):
             manager.settings_policy.set('保留当前设置，补全新增项')
             manager._preview()
             wait()
-            output = folder / 'updated.zip'
-            manager.output.set(str(output))
+            before = old.read_bytes()
             manager._apply()
             wait()
-            with Project(old) as before, Project(output) as after:
-                after.require_entry_first()
-                assert before.read('Demo/data/v1.npy') == after.read('Demo/data/v1.npy')
+            assert live['Demo']['RUN_DB'] is result_branch
+            assert live['Demo']['SCRIPTS']['run'].read() == '# release 2'
+            assert old.read_bytes() == before and live.filename == str(old)
             report.update(real_module_gui_entry=True, native_patched_widgets=True, window_reused=True,
                           correct_master_and_initial_values=True, variable_traces=True,
-                          preview_and_generate=True, result_bytes_preserved=True, root_zip_entry=True)
+                          preview_and_live_update=True, result_objects_preserved=True, project_never_reloaded=True)
             manager.close()
             assert root.winfo_exists()
             report['parent_session_survives_close'] = True

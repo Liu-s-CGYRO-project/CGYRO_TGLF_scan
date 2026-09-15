@@ -16,6 +16,7 @@ from OMFITlib_template_proxy import PROXY_MODES, connection_label, manual_proxy,
 from OMFITlib_template_versions import MANAGER_VERSION, SORT_OPTIONS, sort_releases
 from OMFITlib_template_manager_ui import ManagerUpdateUI
 from OMFITlib_template_cli import CLI_REPOSITORY, ensure_cli
+from OMFITlib_template_live import Prepared
 from OMFITlib_template_service import (
     Cancelled, EXTENSION, Template, apply_update, inspect_project, list_library,
     plan_update, publish, read_history, release_name, transfer,
@@ -46,6 +47,7 @@ class TemplateManager(ManagerUpdateUI):
             saved, preference_error = {}, str(exc)
         self.busy = False
         self.plan = None
+        self.live_plan = None
         self.releases = []
         self.selected_release = None
         self.events = queue.Queue()
@@ -97,7 +99,7 @@ class TemplateManager(ManagerUpdateUI):
         self.status = tk.StringVar(master=window, value='连接 GitHub，选择版本；也可使用已下载的本地模板。')
         self.release_info = tk.StringVar(master=window, value='尚未选择模板。')
         self.inspection_info = tk.StringVar(master=window, value='先选择一个已保存的工程 ZIP，再读取模块和文件范围。')
-        self.plan_info = tk.StringVar(master=window, value='预览后才可生成工程。原 ZIP 始终保留。')
+        self.plan_info = tk.StringVar(master=window, value='预览后可直接更新当前会话。' if session is not None else '预览后才可生成工程。原 ZIP 始终保留。')
         self._configure()
         self._render()
         self._publish_states()
@@ -369,12 +371,16 @@ class TemplateManager(ManagerUpdateUI):
     def _render_update(self, page):
         heading = self._frame(page)
         heading.pack(fill='x')
-        self._label(heading, '预览变更 → 生成新工程 → 在 OMFIT 打开', muted=True).pack(side='left')
+        self._label(heading, '预览变更 → 更新当前会话 → 界面自动刷新' if self.session is not None else
+                    '预览变更 → 生成新工程 → 在 OMFIT 打开', muted=True).pack(side='left')
         if self.session is not None:
-            self._button(heading, '保存当前 OMFIT 会话…', self._save_session).pack(side='right')
-        self._path_row(page, '当前工程 ZIP', self.current, lambda: self._choose_zip(self.current))
+            self._label(page, '当前 OMFIT 工程：' + (self.current.get() or '未命名工程（尚未保存）'),
+                        muted=True, wraplength=1000).pack(fill='x', pady=7)
+        else:
+            self._path_row(page, '当前工程 ZIP', self.current, lambda: self._choose_zip(self.current))
         self._path_row(page, '选用模板包', self.template_path, lambda: self._choose_zip(self.template_path, template=True))
-        self._path_row(page, '输出工程 ZIP', self.output, self._choose_output)
+        if self.session is None:
+            self._path_row(page, '输出工程 ZIP', self.output, self._choose_output)
         row = self._frame(page)
         row.pack(fill='x', pady=7)
         data_label = self._label(row, '案例与结果')
@@ -390,21 +396,26 @@ class TemplateManager(ManagerUpdateUI):
                                 sticky='w', padx=(0 if stacked else 24, 8), pady=3)
             settings_choice.grid(row=1 if stacked else 0, column=1 if stacked else 3, sticky='w', pady=3)
         row.bind('<Configure>', layout_policies)
-        self._label(page, '“切换到示例”替换模板模块内的全部案例与结果；未保存的修改需先在 OMFIT 保存。',
+        self._label(page, ('直接更新内存中的工程，保留选中的案例与结果；照常保存工程即可持久保存。'
+                          '\n“切换到示例”会替换模板模块内的全部案例与结果。') if self.session is not None else
+                    '“切换到示例”替换模板模块内的全部案例与结果；未保存的修改需先在 OMFIT 保存。',
                     muted=True, wraplength=1000).pack(fill='x')
-        self.change_table = self._table(page, [('action', '变更', 85), ('path', '文件路径', 710), ('size', '大小', 100)])
+        self.change_table = self._table(page, [('action', '变更', 85), ('path', '节点路径' if self.session else '文件路径', 710), ('size', '大小', 100)])
         summary = self._label(page, variable=self.plan_info, wraplength=1000)
         actions = self._frame(page)
         actions.pack(side='bottom', fill='x', before=self.change_table.master)
         summary.pack(side='bottom', fill='x', pady=5, before=self.change_table.master)
         self._button(actions, '预览变更', self._preview).pack(side='left', padx=(0, 10))
-        self.apply_button = self._button(actions, '生成新工程', self._apply)
+        self.apply_button = self._button(actions, '更新当前工程' if self.session is not None else '生成新工程', self._apply)
         self.apply_button.pack(side='left', padx=(0, 10))
         self.report_button = self._button(actions, '导出完整变更清单', self._save_report)
         self.report_button.pack(side='left')
         self.open_button = self._button(actions, '备份并在 OMFIT 打开', self._open_in_omfit)
+        self.undo_button = None
         if self.session is not None:
-            self.open_button.pack(side='left', padx=(10, 0))
+            self.undo_button = self._button(actions, '撤销本次更新', self._undo_live)
+            self.undo_button.pack(side='left', padx=(10, 0))
+            self.undo_button.configure(state='normal' if self.session.can_undo_live() else 'disabled')
         self.open_button.configure(state='disabled')
         self.apply_button.configure(state='disabled')
         self.report_button.configure(state='disabled')
@@ -477,9 +488,9 @@ class TemplateManager(ManagerUpdateUI):
         self._log('使用流程\n\n'
             '1. 填写 GitHub 仓库并连接。登录按钮会打开 Linux 终端运行 gh auth login。\n'
             '2. 选择开发者和版本，“拉取并使用”会下载并校验模板，然后进入更新页。\n'
-            '3. 在 OMFIT 保存当前会话为 ZIP，选择保留案例与结果或使用模板示例。\n'
+            '3. 内置管理器直接更新当前内存工程；外部管理器选择已保存的工程 ZIP。\n'
             '4. 默认保留当前设置，并补全新版新增项；模块身份与依赖说明随模板更新。\n'
-            '5. 生成新工程后，可“备份并在 OMFIT 打开”；此按钮会先保存当前会话的完整备份。\n'
+            '5. 内置模式点击“更新当前工程”，界面自动刷新，照常保存即可；外部模式生成新的工程 ZIP。\n'
             '6. 发布时先准备模板包，查看文件清单与目标仓库，再发布到 GitHub Releases。\n\n'
             '范围说明\n\n'
             '支持自包含、未加密的 OMFIT 工程 ZIP，按顶层模块选择。更新要求模块名称匹配。\n'
@@ -561,6 +572,8 @@ class TemplateManager(ManagerUpdateUI):
         self.report_button.configure(state='normal' if self.plan is not None and not value else 'disabled')
         self._publish_states()
         self.open_button.configure(state='normal' if self.session is not None and self.last_output and not value else 'disabled')
+        if self.undo_button is not None:
+            self.undo_button.configure(state='normal' if not value and self.session.can_undo_live() else 'disabled')
         self._library_states()
 
     def _library_states(self):
@@ -979,7 +992,7 @@ class TemplateManager(ManagerUpdateUI):
             self.template_path.set(path)
             if not release['examples']:
                 self.data_policy.set(next(iter(DATA_OPTIONS)))
-            if self.current.get():
+            if self.session is None and self.current.get():
                 path = Path(self.current.get())
                 self.output.set(str(path.with_name(path.stem + '__' + release['author'] + '_' + release['version'] + '.zip')))
             self.tabs.select(self.pages[1])
@@ -1061,13 +1074,23 @@ class TemplateManager(ManagerUpdateUI):
 
     def _invalidate(self):
         self.plan = None
-        self.plan_info.set('选项已更改，请重新预览。原 ZIP 始终保留。')
+        self.live_plan = None
+        self.plan_info.set('选项已更改，请重新预览。' + ('将更新当前内存工程。' if self.session is not None else '原 ZIP 始终保留。'))
         self.apply_button.configure(state='disabled')
         self.report_button.configure(state='disabled')
         self.change_table.delete(*self.change_table.get_children())
 
     def _preview(self):
         self._invalidate()
+        if self.session is not None:
+            path = self.template_path.get().strip()
+            if not path:
+                self._error(TemplateError('请选择模板包'))
+                return
+            data, settings = DATA_OPTIONS[self.data_policy.get()], SETTING_OPTIONS[self.settings_policy.get()]
+            self._run('正在校验模板并准备当前会话更新…',
+                      lambda: Prepared(path, data, settings, cancel=self.cancel), self._live_prepared)
+            return
         args = (self.current.get().strip(), self.template_path.get().strip(),
                 DATA_OPTIONS[self.data_policy.get()], SETTING_OPTIONS[self.settings_policy.get()])
         if not args[0] or not args[1]:
@@ -1079,9 +1102,11 @@ class TemplateManager(ManagerUpdateUI):
         self.plan = plan
         labels = {'add': '新增', 'replace': '更新', 'delete': '删除'}
         for change in plan['changes'][:1500]:
-            self.change_table.insert('', 'end', values=(labels[change['action']], change['path'], human_size(change['bytes'])))
+            self.change_table.insert('', 'end', values=(labels[change['action']], change['path'],
+                                     '—' if plan.get('mode') == 'live' else human_size(change['bytes'])))
         counts = {action: sum(c['action'] == action for c in plan['changes']) for action in labels}
-        self.plan_info.set('新增 {add} · 更新 {replace} · 删除 {delete}；保留 {keep} 个文件，预计输出约 {size}。{tail}'.format(
+        self.plan_info.set('新增 {add} · 更新 {replace} · 删除 {delete} 个节点；直接在当前会话生效。'.format(**counts)
+            if plan.get('mode') == 'live' else '新增 {add} · 更新 {replace} · 删除 {delete}；保留 {keep} 个文件，预计输出约 {size}。{tail}'.format(
             **counts, keep=plan['preserved_files'], size=human_size(plan['output_bytes_estimate']),
             tail='列表显示前 1500 项，可导出完整清单。' if len(plan['changes']) > 1500 else ''))
         scope = []
@@ -1095,6 +1120,9 @@ class TemplateManager(ManagerUpdateUI):
 
     def _apply(self):
         if self.plan is None:
+            return
+        if self.session is not None:
+            self._apply_live()
             return
         path = self.output.get().strip()
         if not path:
@@ -1112,6 +1140,43 @@ class TemplateManager(ManagerUpdateUI):
         self._invalidate()
         self.last_output = path
         self._set_busy(False)
+
+    def _live_prepared(self, prepared):
+        if self.cancel.is_set():
+            return
+        self.live_plan = self.session.preview_live(prepared)
+        self._planned(self.live_plan.report())
+
+    def _apply_live(self):
+        if self.live_plan is None or self.busy:
+            return
+        self._set_busy(True)
+        self.status.set('正在更新当前内存工程并刷新界面…')
+        self.window.update_idletasks()
+        try:
+            report = self.session.apply_live(self.live_plan)
+            self._invalidate()
+            self.status.set('已更新当前工程至 ' + report['release']['version'] + '，已自动刷新界面。照常保存工程即可。')
+            self._log(self.status.get() + '\n' + '、'.join(report['updated_modules']))
+        except Exception as exc:
+            self._invalidate()
+            self._error(exc)
+        finally:
+            self._set_busy(False)
+
+    def _undo_live(self):
+        if self.busy or self.session is None:
+            return
+        self._set_busy(True)
+        try:
+            self.session.undo_live()
+            self._invalidate()
+            self.status.set('已撤销本次模板更新，恢复之前的代码和设置。')
+            self._log(self.status.get())
+        except Exception as exc:
+            self._error(exc)
+        finally:
+            self._set_busy(False)
 
     def _save_report(self):
         if self.plan is None:
@@ -1271,6 +1336,15 @@ class TemplateManager(ManagerUpdateUI):
         self._run('正在上传并发布 GitHub 版本…', work, uploaded)
 
     def _history(self):
+        if self.session is not None:
+            records = self.session.live_history()
+            for record in records:
+                release = record['release']
+                self._log('{} · {} · {} / {} / {}'.format(record['completed_at'],
+                    '撤销' if record.get('action') == 'undo' else '会话更新',
+                    release['author'], release['id'], release['version']))
+            self.status.set('当前会话有 {} 条模板更新记录。'.format(len(records)))
+            return
         path = self.current.get().strip()
         if not path:
             self._error(TemplateError('请先在“更新 / 切换”页选择工程 ZIP'))

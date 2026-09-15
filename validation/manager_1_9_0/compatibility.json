@@ -1,0 +1,52 @@
+{
+  "omfit_source": "OMFIT source checkout / omfit",
+  "python_files": 270,
+  "source_lines": 37178,
+  "registered_entries": 270,
+  "modules": 9,
+  "syntax_python39": true,
+  "counters": {
+    "bound_omfitx_calls": 873,
+    "literal_script_calls": 175,
+    "dynamic_script_calls": 392,
+    "registered_library_imports": 147
+  },
+  "findings": [
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_2d_gyro.py",
+      "line": 60,
+      "category": "missing_script_target",
+      "detail": "('PLOTS', 'gyroscan', 'assist', 'changeOMFITgyrogacode.py')",
+      "disabled_entry": true
+    },
+    {
+      "file": "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_gyro.py",
+      "line": 64,
+      "category": "missing_script_target",
+      "detail": "('PLOTS', 'gyroscan', 'assist', 'changeOMFITgyrogacode.py')",
+      "disabled_entry": true
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/omfit_qlgyro.py",
+      "line": 331,
+      "category": "missing_script_target",
+      "detail": "('TGLF_GACODE', 'SCRIPTS', 'runTGLF')",
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/omfit_qlgyro.py",
+      "line": 349,
+      "category": "missing_script_target",
+      "detail": "('GYRO_scan', 'SCRIPTS', 'runGYROscan')",
+      "disabled_entry": false
+    },
+    {
+      "file": "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SCRIPTS/omfit_qlgyro.py",
+      "line": 362,
+      "category": "missing_script_target",
+      "detail": "('GYRO_scan', 'SCRIPTS', 'downsyncGYROscan')",
+      "disabled_entry": false
+    }
+  ],
+  "complete_runtime_compatibility_proven": false
+}

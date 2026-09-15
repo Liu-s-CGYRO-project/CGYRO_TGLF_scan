@@ -1,5 +1,5 @@
-"""Small, main-thread-only adapter to OMFIT's public saveas/load methods."""
-from builtins import any, bool, dict, str, type
+"""Main-thread OMFIT operations, including updates to the existing module tree."""
+from builtins import any, bool, dict, id, list, set, str, type
 import copy
 from datetime import datetime
 from pathlib import Path
@@ -7,11 +7,96 @@ import threading
 import uuid
 
 from OMFITlib_template_archive import Project, TemplateError
+from OMFITlib_template_live import LivePlan, MISSING, lookup
 
 
 class OMFITSession:
-    def __init__(self, omfit):
+    def __init__(self, omfit, tree_factory=None, gui_api=None):
         self.omfit = omfit
+        self.tree_factory = tree_factory
+        self.gui_api = gui_api
+
+    def _live_state(self):
+        state = getattr(self.omfit, '_template_live_state', None)
+        if state is None:
+            state = {'undo': None, 'history': [], 'storage': []}
+            self.omfit._template_live_state = state
+        return state
+
+    def preview_live(self, prepared):
+        self._main_thread()
+        factory = self.tree_factory
+        if factory is None:
+            from omfit_classes.omfit_base import OMFITtree
+            factory = OMFITtree
+        plan = LivePlan(self.omfit, prepared, factory)
+        plan.windows = []
+        plan.closed_windows = set()
+        return plan
+
+    def _capture_live_windows(self, plan, undo=False):
+        paths = plan.current_gui_paths()
+        plan.windows = [item for item in plan.windows if undo and id(item[0]) in plan.closed_windows]
+        for gui in list(getattr(self.gui_api, '_GUIs', {}).values()):
+            path = paths.get(id(gui.pythonFile))
+            if path:
+                plan.windows.append((gui, path, gui.pythonFile))
+
+    def _refresh_live(self, plan, restoring):
+        # Rebind native GUI controllers to their replacement script nodes, then
+        # redraw their existing TopLevels. The project and its module roots stay.
+        for gui, path, previous in plan.windows:
+            node = lookup(self.omfit, path)
+            if not gui.top.winfo_exists():
+                if restoring and id(gui) in plan.closed_windows and node is not MISSING:
+                    node.run()
+                continue
+            if node is MISSING:
+                self.gui_api._clearClosedGUI(gui.top)
+                plan.closed_windows.add(id(gui))
+                continue
+            gui.pythonFile = node
+            try:
+                gui.update()
+            except Exception:
+                if not gui.top.winfo_exists():
+                    plan.closed_windows.add(id(gui))
+                raise
+        parent = getattr(self.gui_api, 'OMFITaux', {}).get('rootGUI', None)
+        if parent is not None:
+            parent.event_generate('<<update_treeGUI>>')
+
+    def apply_live(self, plan):
+        self._main_thread()
+        if plan.omfit is not self.omfit:
+            raise TemplateError('当前 OMFIT 工程已改变，请重新预览')
+        state = self._live_state()
+        self._capture_live_windows(plan)
+        plan.apply(self._refresh_live)
+        state['storage'].append(plan.prepared)  # Keep backing files alive through save/undo.
+        state['undo'] = plan
+        record = dict(plan.report(), completed_at=datetime.now().isoformat(timespec='seconds'))
+        state['history'].append(record)
+        return record
+
+    def can_undo_live(self):
+        return bool(getattr(self.omfit, '_template_live_state', {}).get('undo', None))
+
+    def undo_live(self):
+        self._main_thread()
+        state = self._live_state()
+        plan = state['undo']
+        if plan is None:
+            raise TemplateError('没有可撤销的更新')
+        self._capture_live_windows(plan, undo=True)
+        plan.undo(self._refresh_live)
+        state['undo'] = None
+        state['history'].append(dict(action='undo', release=plan.prepared.release,
+                                    completed_at=datetime.now().isoformat(timespec='seconds')))
+
+    def live_history(self):
+        self._main_thread()
+        return list(self._live_state()['history'])
 
     def _main_thread(self):
         if threading.current_thread() is not threading.main_thread():

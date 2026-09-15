@@ -1,0 +1,12 @@
+{
+  "native_GUI_update_sha256": "0b1e47f01fdf85f4fbc7627f672b4604d58980532f3e4d8b1e27be933408ee74",
+  "native_SortedDict": true,
+  "native_import_cleanup": true,
+  "same_TopLevel": true,
+  "old_module_and_result_identity_preserved": true,
+  "new_button_callback_used": true,
+  "layout_reapplied_on_redraw": true,
+  "undo": true,
+  "project_save_or_load_called": false,
+  "complete_omfit_session_tested": false
+}

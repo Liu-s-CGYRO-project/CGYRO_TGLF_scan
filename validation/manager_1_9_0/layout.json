@@ -1,0 +1,50 @@
+[
+  {
+    "embedded": true,
+    "font_size": 11,
+    "width": 940,
+    "controls_visible": true
+  },
+  {
+    "embedded": true,
+    "font_size": 11,
+    "width": 1180,
+    "controls_visible": true
+  },
+  {
+    "embedded": true,
+    "font_size": 14,
+    "width": 940,
+    "controls_visible": true
+  },
+  {
+    "embedded": true,
+    "font_size": 14,
+    "width": 1180,
+    "controls_visible": true
+  },
+  {
+    "embedded": false,
+    "font_size": 11,
+    "width": 940,
+    "controls_visible": true
+  },
+  {
+    "embedded": false,
+    "font_size": 11,
+    "width": 1180,
+    "controls_visible": true
+  },
+  {
+    "embedded": false,
+    "font_size": 14,
+    "width": 940,
+    "controls_visible": true
+  },
+  {
+    "embedded": false,
+    "font_size": 14,
+    "width": 1180,
+    "controls_visible": true
+  }
+]

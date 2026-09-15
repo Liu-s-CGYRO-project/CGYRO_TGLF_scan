@@ -751,13 +751,16 @@ class UITest(unittest.TestCase):
         self.assertEqual(manager.current.get(), '')
         manager.close()
 
-    def test_omfit_variable_factories_open_preview_and_generate_project(self):
-        from types import SimpleNamespace
-        from OMFITlib_template_archive import Project
+    def test_omfit_variable_factories_preview_and_update_current_memory(self):
         from OMFITlib_template_session import OMFITSession
+        from test_live import current_fixture, factory
+        live = current_fixture()
+        live.filename = str(self.old)
+        results = live['Demo']['RUN_DB']
+        original_zip = self.old.read_bytes()
         with omfit_variable_interceptors() as created:
             manager = open_manager(library=self.library, preferences=self.base / 'omfit-vars.json',
-                                   session=OMFITSession(SimpleNamespace(filename=str(self.old))))
+                                   session=OMFITSession(live, tree_factory=factory))
             self.addCleanup(lambda: manager.close() if manager.alive else None)
             self.assertGreater(len(created), 20)
             self.assertEqual(len({str(variable) for variable, _ in created}), len(created))
@@ -780,19 +783,24 @@ class UITest(unittest.TestCase):
             self.assertFalse(manager.busy)
             self.assertFalse(self.errors, self.errors)
             self.assertIsNotNone(manager.plan)
-            target = self.base / 'omfit-vars-updated.zip'
-            manager.output.set(str(target))
-            with patch('OMFITlib_template_ui.messagebox.showinfo'):
+            self.assertEqual(manager.apply_button.cget('text'), '更新当前工程')
+            self.assertFalse(manager.open_button.winfo_ismapped())
+            with patch('OMFITlib_template_ui.filedialog.asksaveasfilename', side_effect=AssertionError('No file dialog')):
                 manager._apply()
                 deadline = time.monotonic() + 10
                 while manager.busy and time.monotonic() < deadline:
                     self.pump(.02)
             self.assertFalse(manager.busy)
             self.assertFalse(self.errors, self.errors)
-            with Project(self.old) as source, Project(target) as result:
-                result.require_entry_first()
-                self.assertEqual(source.read('Demo/data/v1.npy'), result.read('Demo/data/v1.npy'))
+            self.assertIs(live['Demo']['RUN_DB'], results)
+            self.assertEqual(live['Demo']['SCRIPTS']['run'].read(), '# release 2')
+            self.assertEqual(self.old.read_bytes(), original_zip)
+            self.assertEqual(live.filename, str(self.old))
+            self.assertEqual(manager.output.get(), '')
             self.assertIsNone(manager.plan)
+            self.assertFalse(manager.undo_button.instate(['disabled']))
+            manager._undo_live()
+            self.assertEqual(live['Demo']['SCRIPTS']['run'].read(), '# locally edited run')
             manager.close()
         self.assertTrue(self.root.winfo_exists())
 
