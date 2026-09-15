@@ -1,8 +1,8 @@
 """Native OMFIT workbench with dependency-aware workflow controls."""
-from builtins import dict, isinstance, len, list, next, str
+from builtins import callable, dict, isinstance, len, list, next, str
 from collections import OrderedDict
 from OMFITlib_gui_layout import finish_gui_layout
-from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
+from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime, server_registration_issues
 from OMFITlib_project import (LABELS, MODULES, PAGES, cgyro_input_issues, collect_issues, generated_tglf_sources,
     location, module, pending_inputs, read, runtime_issues, summary, text_value, tglf_input_issues, transfer_sources)
 
@@ -16,11 +16,11 @@ STATUS.update(awaiting_choice='等待用户选择', accepted='使用传入输入
 
 
 class ProjectUI:
-    def __init__(self, actions, ui, configure=None, open_templates=None, servers=()):
+    def __init__(self, actions, ui, configure=None, open_templates=None, servers=(), open_servers=None):
         self.actions, self.root, self.ui = actions, actions.root, ui
         self.settings = actions.settings
         self.configure, self.open_templates = configure, open_templates
-        self.servers = list(servers)
+        self.servers, self.open_servers = servers, open_servers
         self.prefix = "root['SETTINGS']['WORKBENCH']"
 
     def label(self, value):
@@ -277,13 +277,32 @@ class ProjectUI:
         prefix = "root['SETTINGS']['GACODE_RUNTIME']"
         self.label('CGYRO、TGLF、TGYRO 与剖面转换共用此连接和 GACODE 环境。各程序工作目录自动分开。')
         self.ui.Separator('服务器与工作目录')
-        choices = list(dict.fromkeys(['localhost'] + self.servers + [str(config['serverPicker'])]))
-        self.ui.ComboBox(prefix + "['serverPicker']", [item for item in choices if item],
-                         'OMFIT 服务器', state='normal', updateGUI=True)
-        self.ui.Button('从 OMFIT 读取连接信息', self.actions.sync_runtime_endpoint, updateGUI=True)
-        self.ui.Entry(prefix + "['server']", '服务器地址')
-        self.ui.Entry(prefix + "['tunnel']", '连接隧道（可留空）')
-        self.ui.Entry(prefix + "['workDir']", '工作根目录')
+        servers = self.servers() if callable(self.servers) else self.servers
+        choices = OrderedDict([('localhost（本机）', 'localhost')])
+        for name in servers:
+            if name == 'localhost':
+                continue
+            caption = str(servers[name]) if isinstance(servers, dict) else str(name)
+            choices[caption] = name
+        picker = text_value(config, 'serverPicker')
+        if picker and picker not in choices.values():
+            choices[picker + '（工程保存的配置名）'] = picker
+        self.ui.ComboBox(prefix + "['serverPicker']", choices,
+                         '服务器配置名', state='normal', updateGUI=True)
+        server_issues = self.actions.runtime_server_issues()
+        with self.ui.same_row():
+            self.guarded('从 OMFIT 读取连接信息', self.actions.sync_runtime_endpoint, server_issues)
+            if self.open_servers is not None:
+                self.ui.Button('OMFIT 个人服务器设置', self.open_servers, updateGUI=True)
+        if server_issues:
+            self.label('；'.join(server_issues))
+        self.ui.Entry(prefix + "['server']", '服务器地址', updateGUI=True)
+        self.ui.Entry(prefix + "['tunnel']", '连接隧道（可留空）', updateGUI=True)
+        self.ui.Entry(prefix + "['workDir']", '工作根目录', updateGUI=True)
+        if server_issues and picker and self.actions.register_server is not None:
+            self.label('登记使用上面填写的用户名@主机、隧道和目录，并保存到 OMFIT 个人设置；不包含密码。')
+            self.guarded('登记此连接到 OMFIT', self.actions.register_runtime_endpoint,
+                         server_registration_issues(config))
         self.label('此目录下自动使用 cgyro、tglf、tgyro、transfer 等子目录，避免同名输入互相覆盖。')
         self.ui.Separator('共用 GACODE 环境')
         self.ui.Entry(prefix + "['environment']", '环境初始化脚本', multiline=True,
@@ -311,7 +330,7 @@ class ProjectUI:
             transfer = read(self.root, MODULES['transfer'])
             if transfer is not None:
                 self.ui.Entry(location(MODULES['transfer'] + ('SETTINGS', 'SETUP', 'p_tgyro')), '转换用 TGYRO 半径数')
-        issues = validate_runtime(config)
+        issues = validate_runtime(config) + self.actions.runtime_server_issues(match_connection=True)
         if applied_runtime(self.root) is None:
             status = '已从现有 CGYRO 配置预填；点击应用后，各模块开始共用此配置。'
         elif shared_issues(self.root):

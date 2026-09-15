@@ -2,6 +2,7 @@
 from builtins import any, bool, dict, int, isinstance, list, str, tuple
 from collections import OrderedDict
 import copy
+import re
 from pathlib import PurePosixPath
 
 
@@ -69,6 +70,41 @@ def initialize_runtime(root, factory=dict):
 
 def runtime_values(config):
     return {key: config.get(key, default) for key, default in DEFAULTS.items()}
+
+
+def server_registration_issues(config):
+    """Validate only the connection fields needed to create a personal server."""
+    issues = []
+    picker, server = text(config, 'serverPicker'), text(config, 'server')
+    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]*', picker) or picker.lower() in (
+            'localhost', 'default', 'default_tunnel', 'idl', 'matlab') or picker.lower().endswith('_username'):
+        issues.append('请填写独立的服务器配置名，例如 tyadmin09')
+    if not re.fullmatch(r'[^@:\s]+@[^@\s]+', server):
+        issues.append('服务器地址需要包含登录用户名，例如 用户名@tyadmin09；不要填写密码')
+    if '\n' in text(config, 'tunnel') or '\r' in text(config, 'tunnel'):
+        issues.append('连接隧道需要填写单行值')
+    directory = text(config, 'workDir')
+    if directory:
+        path = PurePosixPath(directory)
+        if not path.is_absolute() or '..' in path.parts or str(path) == '/':
+            issues.append('工作根目录需要填写 Linux 绝对路径')
+    return issues
+
+
+def register_runtime_server(registry, config, factory):
+    """Create a native NamelistName entry only after the Register button click."""
+    issues = server_registration_issues(config)
+    if issues:
+        raise ValueError('；'.join(issues))
+    picker = text(config, 'serverPicker')
+    if picker in registry:
+        raise ValueError('OMFIT 已有同名设置，不会覆盖；请在 OMFIT 个人服务器设置中修改：' + picker)
+    entry = factory()
+    entry.update(dict(server=text(config, 'server'), tunnel=text(config, 'tunnel')))
+    if text(config, 'workDir'):
+        entry['workDir'] = text(config, 'workDir').rstrip('/') + '/'
+    registry[picker] = entry
+    return picker
 
 
 def validate_runtime(config):

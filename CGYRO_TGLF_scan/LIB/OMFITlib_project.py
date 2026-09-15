@@ -268,11 +268,12 @@ def summary(root):
 
 
 class ProjectActions:
-    def __init__(self, root, factory=dict, readers=None, resolve_server=None, workdir=None):
+    def __init__(self, root, factory=dict, readers=None, resolve_server=None, workdir=None, register_server=None):
         self.root, self.factory = root, factory
         self.settings = initialize(root, factory)
         self.readers = readers or {}
         self.resolve_server, self.workdir = resolve_server, workdir
+        self.register_server = register_server
 
     def _record(self, title, **values):
         state = self.root.setdefault('PROJECT_STATE', self.factory())
@@ -410,12 +411,52 @@ class ProjectActions:
                 cfg['scheduler'] = 'local'
         self.settings['message'] = LABELS[name] + '：已同步连接与工作目录，保留原命令和资源设置。'
 
-    def sync_runtime_endpoint(self):
+    def runtime_server_issues(self, match_connection=False):
         config = initialize_runtime(self.root, self.factory)
         picker = text_value(config, 'serverPicker')
         if not picker:
-            raise ValueError('请先选择 OMFIT 服务器。')
-        endpoint = self.resolve_server(picker)
+            return ['请先选择或填写 OMFIT 服务器配置名']
+        if self.resolve_server is None:
+            return []
+        try:
+            endpoint = self.resolve_server(picker)
+        except KeyError:
+            return ['服务器“{}”未在当前 OMFIT 个人设置中登记。请选择已登记的服务器，'
+                    '或填写下方连接信息后点击“登记此连接到 OMFIT”。'.format(picker)]
+        if not text_value(endpoint, 'server'):
+            return ['OMFIT 服务器“{}”尚未填写有效的连接地址，请在个人服务器设置中补充。'.format(picker)]
+        if match_connection and any(text_value(config, key) != text_value(endpoint, key) for key in ('server', 'tunnel')):
+            return ['工程连接与 OMFIT 个人服务器配置不一致。请从 OMFIT 读取连接信息，'
+                    '或修改个人服务器设置后重新读取。']
+        return []
+
+    def register_runtime_endpoint(self):
+        if self.register_server is None:
+            self.settings['message'] = '当前宿主未提供服务器登记入口，请打开 OMFIT 的个人服务器设置。'
+            return
+        config = initialize_runtime(self.root, self.factory)
+        try:
+            persisted = self.register_server(config)
+        except ValueError as exc:
+            self.settings['message'] = str(exc)
+            return
+        self.settings['message'] = '已登记服务器“{}”；请点击“应用到整个工程”同步计算模块。'.format(
+            text_value(config, 'serverPicker'))
+        if not persisted:
+            self.settings['message'] += ' 当前会话已生效，但个人设置未能保存，请在 OMFIT 首选项中保存设置。'
+
+    def sync_runtime_endpoint(self):
+        config = initialize_runtime(self.root, self.factory)
+        picker = text_value(config, 'serverPicker')
+        issues = self.runtime_server_issues()
+        if issues:
+            self.settings['message'] = '；'.join(issues)
+            return
+        try:
+            endpoint = self.resolve_server(picker)
+        except KeyError:
+            self.settings['message'] = '服务器配置已变更，请刷新页面后重新选择；现有连接信息保持不变。'
+            return
         server = str(endpoint.get('server', None) or ('localhost' if picker == 'localhost' else ''))
         if not server:
             raise ValueError('OMFIT 个人配置未提供此服务器的连接信息。')
@@ -429,6 +470,10 @@ class ProjectActions:
         self.settings['message'] = '已读取 OMFIT 连接信息。检查下方共用配置后点击“应用到整个工程”。'
 
     def apply_runtime(self):
+        issues = self.runtime_server_issues(match_connection=True)
+        if issues:
+            self.settings['message'] = '；'.join(issues)
+            return
         targets = apply_runtime(self.root, self.factory)
         self.settings['message'] = '统一 GACODE 环境已应用到 {} 个模块；案例和结果保留。'.format(len(targets))
         self._record('应用统一 GACODE 环境', status='complete', modules=targets)
