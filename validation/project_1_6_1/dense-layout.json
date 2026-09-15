@@ -1,0 +1,29 @@
+[
+  {
+    "font_size": 11,
+    "controls": 49,
+    "no_text_or_control_overlap": true,
+    "footer_reachable": true,
+    "radii": 8,
+    "parameters": 10,
+    "selected_parameters": 3
+  },
+  {
+    "font_size": 14,
+    "controls": 49,
+    "no_text_or_control_overlap": true,
+    "footer_reachable": true,
+    "radii": 8,
+    "parameters": 10,
+    "selected_parameters": 3
+  },
+  {
+    "font_size": 18,
+    "controls": 49,
+    "no_text_or_control_overlap": true,
+    "footer_reachable": true,
+    "radii": 8,
+    "parameters": 10,
+    "selected_parameters": 3
+  }
+]

@@ -1,5 +1,6 @@
 """OMFIT page for importing, configuring and running multiple input.gacode files."""
 from builtins import all, any, bool, dict, len, list, str, sum
+from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_tglf_multi_data import DEFAULTS, case_plan, duplicate_case, initialize, profile_digest
 from OMFITlib_tglf_multi_plot import flux_summary
 
@@ -31,7 +32,7 @@ class MultiInputUI:
     def render(self):
         ui = self.ui
         ui.TitleGUI('TGLF 多 input.gacode 计算')
-        ui.Label('导入剖面 → 设置半径和 TGLF 参数 → 生成输入 → 计算与对比', align='left')
+        intro = ui.Label('导入剖面 → 设置半径和 TGLF 参数 → 生成输入 → 计算与对比', align='left')
         with ui.same_row():
             ui.Button('导入多个 input.gacode', self.command('import_tglf_multi'), updateGUI=True)
             ui.Button('从目录批量导入', self.command('import_tglf_multi', directory=True), updateGUI=True)
@@ -135,3 +136,4 @@ class MultiInputUI:
                     ui.Label(flux_summary(attempt['result']), align='left')
         ui.Separator('检查与运行消息')
         ui.Label(self.settings['status'] or '就绪。计算结果随当前 OMFIT 工程保存，不进入 GitHub 模板。', align='left')
+        finish_gui_layout(intro)

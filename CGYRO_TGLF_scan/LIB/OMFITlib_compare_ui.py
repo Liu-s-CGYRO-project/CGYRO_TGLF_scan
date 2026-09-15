@@ -13,6 +13,7 @@ from OMFITlib_compare_cases import (
     CaseSelection,
 )
 from OMFITlib_project import comparison_issues
+from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_compare_state import (
     MODES,
     MODE_LABELS,
@@ -66,11 +67,12 @@ class ComparisonUI(CaseSelection):
             status = '选择尚未完成 · {} 项待检查，请查看“导出与检查”。'.format(len(report['errors']))
         else:
             status = '当前选择已就绪 · 点击绘图读取所选结果。'
-        self.ui.Label(status, align='left')
+        status_label = self.ui.Label(status, align='left')
         with self.ui.same_row():
             self.ui.Button('检查选择', self._refresh_check, updateGUI=True, width=16)
             self.ui.Button('绘制所选数据', self._plot, state='disabled' if missing else 'normal', width=20,
                            help='按当前案例、参数和绘图设置生成图形。计算结果仅在点击后读取。')
+        finish_gui_layout(status_label)
 
     def _path(self, *keys):
         return self._dict_path(self.prefix, *keys)

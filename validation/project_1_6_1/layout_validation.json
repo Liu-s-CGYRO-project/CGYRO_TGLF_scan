@@ -1,0 +1,794 @@
+{
+  "viewports": [
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 11,
+      "tab": 1,
+      "width": 860,
+      "height": 640,
+      "controls": 24
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 11,
+      "tab": 2,
+      "width": 860,
+      "height": 640,
+      "controls": 39
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 11,
+      "tab": 3,
+      "width": 860,
+      "height": 640,
+      "controls": 40
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 11,
+      "tab": 4,
+      "width": 860,
+      "height": 640,
+      "controls": 18
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 11,
+      "tab": 1,
+      "width": 1080,
+      "height": 800,
+      "controls": 24
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 11,
+      "tab": 2,
+      "width": 1080,
+      "height": 800,
+      "controls": 39
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 11,
+      "tab": 3,
+      "width": 1080,
+      "height": 800,
+      "controls": 40
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 11,
+      "tab": 4,
+      "width": 1080,
+      "height": 800,
+      "controls": 18
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 11,
+      "tab": 1,
+      "width": 860,
+      "height": 640,
+      "controls": 35
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 11,
+      "tab": 2,
+      "width": 860,
+      "height": 640,
+      "controls": 25
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 11,
+      "tab": 3,
+      "width": 860,
+      "height": 640,
+      "controls": 40
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 11,
+      "tab": 4,
+      "width": 860,
+      "height": 640,
+      "controls": 17
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 11,
+      "tab": 1,
+      "width": 1080,
+      "height": 800,
+      "controls": 35
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 11,
+      "tab": 2,
+      "width": 1080,
+      "height": 800,
+      "controls": 25
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 11,
+      "tab": 3,
+      "width": 1080,
+      "height": 800,
+      "controls": 40
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 11,
+      "tab": 4,
+      "width": 1080,
+      "height": 800,
+      "controls": 17
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 11,
+      "tab": 1,
+      "width": 860,
+      "height": 640,
+      "controls": 24
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 11,
+      "tab": 2,
+      "width": 860,
+      "height": 640,
+      "controls": 16
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 11,
+      "tab": 3,
+      "width": 860,
+      "height": 640,
+      "controls": 43
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 11,
+      "tab": 4,
+      "width": 860,
+      "height": 640,
+      "controls": 20
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 11,
+      "tab": 1,
+      "width": 1080,
+      "height": 800,
+      "controls": 24
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 11,
+      "tab": 2,
+      "width": 1080,
+      "height": 800,
+      "controls": 16
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 11,
+      "tab": 3,
+      "width": 1080,
+      "height": 800,
+      "controls": 43
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 11,
+      "tab": 4,
+      "width": 1080,
+      "height": 800,
+      "controls": 20
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 11,
+      "tab": 1,
+      "width": 860,
+      "height": 640,
+      "controls": 35
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 11,
+      "tab": 2,
+      "width": 860,
+      "height": 640,
+      "controls": 25
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 11,
+      "tab": 3,
+      "width": 860,
+      "height": 640,
+      "controls": 40
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 11,
+      "tab": 4,
+      "width": 860,
+      "height": 640,
+      "controls": 17
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 11,
+      "tab": 1,
+      "width": 1080,
+      "height": 800,
+      "controls": 35
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 11,
+      "tab": 2,
+      "width": 1080,
+      "height": 800,
+      "controls": 25
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 11,
+      "tab": 3,
+      "width": 1080,
+      "height": 800,
+      "controls": 40
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 11,
+      "tab": 4,
+      "width": 1080,
+      "height": 800,
+      "controls": 17
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 14,
+      "tab": 1,
+      "width": 860,
+      "height": 640,
+      "controls": 24
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 14,
+      "tab": 2,
+      "width": 860,
+      "height": 640,
+      "controls": 39
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 14,
+      "tab": 3,
+      "width": 860,
+      "height": 640,
+      "controls": 40
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 14,
+      "tab": 4,
+      "width": 860,
+      "height": 640,
+      "controls": 18
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 14,
+      "tab": 1,
+      "width": 1080,
+      "height": 800,
+      "controls": 24
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 14,
+      "tab": 2,
+      "width": 1080,
+      "height": 800,
+      "controls": 39
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 14,
+      "tab": 3,
+      "width": 1080,
+      "height": 800,
+      "controls": 40
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 14,
+      "tab": 4,
+      "width": 1080,
+      "height": 800,
+      "controls": 18
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 14,
+      "tab": 1,
+      "width": 860,
+      "height": 640,
+      "controls": 35
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 14,
+      "tab": 2,
+      "width": 860,
+      "height": 640,
+      "controls": 25
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 14,
+      "tab": 3,
+      "width": 860,
+      "height": 640,
+      "controls": 40
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 14,
+      "tab": 4,
+      "width": 860,
+      "height": 640,
+      "controls": 17
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 14,
+      "tab": 1,
+      "width": 1080,
+      "height": 800,
+      "controls": 35
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 14,
+      "tab": 2,
+      "width": 1080,
+      "height": 800,
+      "controls": 25
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 14,
+      "tab": 3,
+      "width": 1080,
+      "height": 800,
+      "controls": 40
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 14,
+      "tab": 4,
+      "width": 1080,
+      "height": 800,
+      "controls": 17
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 14,
+      "tab": 1,
+      "width": 860,
+      "height": 640,
+      "controls": 24
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 14,
+      "tab": 2,
+      "width": 860,
+      "height": 640,
+      "controls": 16
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 14,
+      "tab": 3,
+      "width": 860,
+      "height": 640,
+      "controls": 43
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 14,
+      "tab": 4,
+      "width": 860,
+      "height": 640,
+      "controls": 20
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 14,
+      "tab": 1,
+      "width": 1080,
+      "height": 800,
+      "controls": 24
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 14,
+      "tab": 2,
+      "width": 1080,
+      "height": 800,
+      "controls": 16
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 14,
+      "tab": 3,
+      "width": 1080,
+      "height": 800,
+      "controls": 43
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 14,
+      "tab": 4,
+      "width": 1080,
+      "height": 800,
+      "controls": 20
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 14,
+      "tab": 1,
+      "width": 860,
+      "height": 640,
+      "controls": 35
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 14,
+      "tab": 2,
+      "width": 860,
+      "height": 640,
+      "controls": 25
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 14,
+      "tab": 3,
+      "width": 860,
+      "height": 640,
+      "controls": 40
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 14,
+      "tab": 4,
+      "width": 860,
+      "height": 640,
+      "controls": 17
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 14,
+      "tab": 1,
+      "width": 1080,
+      "height": 800,
+      "controls": 35
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 14,
+      "tab": 2,
+      "width": 1080,
+      "height": 800,
+      "controls": 25
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 14,
+      "tab": 3,
+      "width": 1080,
+      "height": 800,
+      "controls": 40
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 14,
+      "tab": 4,
+      "width": 1080,
+      "height": 800,
+      "controls": 17
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 18,
+      "tab": 1,
+      "width": 860,
+      "height": 640,
+      "controls": 24
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 18,
+      "tab": 2,
+      "width": 860,
+      "height": 640,
+      "controls": 39
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 18,
+      "tab": 3,
+      "width": 860,
+      "height": 640,
+      "controls": 40
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 18,
+      "tab": 4,
+      "width": 860,
+      "height": 640,
+      "controls": 18
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 18,
+      "tab": 1,
+      "width": 1080,
+      "height": 800,
+      "controls": 24
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 18,
+      "tab": 2,
+      "width": 1080,
+      "height": 800,
+      "controls": 39
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 18,
+      "tab": 3,
+      "width": 1080,
+      "height": 800,
+      "controls": 40
+    },
+    {
+      "mode": "CGYRO_vs_CGYRO",
+      "font_size": 18,
+      "tab": 4,
+      "width": 1080,
+      "height": 800,
+      "controls": 18
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 18,
+      "tab": 1,
+      "width": 860,
+      "height": 640,
+      "controls": 35
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 18,
+      "tab": 2,
+      "width": 860,
+      "height": 640,
+      "controls": 25
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 18,
+      "tab": 3,
+      "width": 860,
+      "height": 640,
+      "controls": 40
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 18,
+      "tab": 4,
+      "width": 860,
+      "height": 640,
+      "controls": 17
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 18,
+      "tab": 1,
+      "width": 1080,
+      "height": 800,
+      "controls": 35
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 18,
+      "tab": 2,
+      "width": 1080,
+      "height": 800,
+      "controls": 25
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 18,
+      "tab": 3,
+      "width": 1080,
+      "height": 800,
+      "controls": 40
+    },
+    {
+      "mode": "CGYRO_vs_TGLF",
+      "font_size": 18,
+      "tab": 4,
+      "width": 1080,
+      "height": 800,
+      "controls": 17
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 18,
+      "tab": 1,
+      "width": 860,
+      "height": 640,
+      "controls": 24
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 18,
+      "tab": 2,
+      "width": 860,
+      "height": 640,
+      "controls": 16
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 18,
+      "tab": 3,
+      "width": 860,
+      "height": 640,
+      "controls": 43
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 18,
+      "tab": 4,
+      "width": 860,
+      "height": 640,
+      "controls": 20
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 18,
+      "tab": 1,
+      "width": 1080,
+      "height": 800,
+      "controls": 24
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 18,
+      "tab": 2,
+      "width": 1080,
+      "height": 800,
+      "controls": 16
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 18,
+      "tab": 3,
+      "width": 1080,
+      "height": 800,
+      "controls": 43
+    },
+    {
+      "mode": "TGLF_vs_TGLF",
+      "font_size": 18,
+      "tab": 4,
+      "width": 1080,
+      "height": 800,
+      "controls": 20
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 18,
+      "tab": 1,
+      "width": 860,
+      "height": 640,
+      "controls": 35
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 18,
+      "tab": 2,
+      "width": 860,
+      "height": 640,
+      "controls": 25
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 18,
+      "tab": 3,
+      "width": 860,
+      "height": 640,
+      "controls": 40
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 18,
+      "tab": 4,
+      "width": 860,
+      "height": 640,
+      "controls": 17
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 18,
+      "tab": 1,
+      "width": 1080,
+      "height": 800,
+      "controls": 35
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 18,
+      "tab": 2,
+      "width": 1080,
+      "height": 800,
+      "controls": 25
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 18,
+      "tab": 3,
+      "width": 1080,
+      "height": 800,
+      "controls": 40
+    },
+    {
+      "mode": "TGLF_vs_CGYRO",
+      "font_size": 18,
+      "tab": 4,
+      "width": 1080,
+      "height": 800,
+      "controls": 17
+    }
+  ],
+  "complete_omfit_session_tested": false,
+  "solver_executed": false,
+  "native_widget_bodies": {
+    "_Entry": "3665c17af4b3c27bc40d6bb9cc20c76eac5e9804ed5d61d48fc04470e0ed7ac4",
+    "_Label": "266030abda9cbc4084d2b7710cf9eccb4d4069412701f3811897f41952d94b54",
+    "_helpButton": "9e209d5a1ba651086a54e54e6b935ad96897f0377165af16d87815cc0bac53ea",
+    "_urlButton": "5f4df79a6f544b181877a43aeb17239e592f19878868e7f16738e57362b1f3bb",
+    "Tab": "e3fff6c2572a26e6373d3ccadf86d237dd73123ec43a1b3265e8e34030dc080e",
+    "Entry": "32d5a1580113805bfb43e4f283ba4873d6cf5c86f3fdc3b4a4554cd1c797514e",
+    "ComboBox": "eedad83b64baa73e1bbe0b71441a26f9b09fea80b030f0525a9da65ba9a9f82f",
+    "same_row": "915c3a1f045848531cf0a8f0f081f389a4522ad326e9e023bea6894a645ba67e",
+    "Button": "8154b87d9857802d2d92a9d3bb5ab5711c6bf7502e02defc939ede87bdfdce93",
+    "Label": "6428bcfda8f369b1258aac6fca2fa58b08951fb0f763c1c524618a7f3daca3bd",
+    "Separator": "9685d95277d38051548506c21fc330d0ea69746e04e05f8e9b6d86a3bfd0646f",
+    "CheckBox": "5586c5e38ef0c07e4c788f479ae082bd8bd847abf3a613b2e5ca66e0fff2e5c7"
+  },
+  "tk": 8.6,
+  "all_controls_within_scrollable_content": true,
+  "footer_reachable_by_scrolling": true,
+  "global_omfit_style_preserved": true,
+  "no_control_overlap": true,
+  "actual_tk_button_invoked_after_native_import_cleanup": true
+}

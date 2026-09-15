@@ -409,3 +409,4 @@
 ['OMFITtemplates']['TESTS']['test_cli.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_cli.py <-:-:-> {}
 ['OMFITtemplates']['LIB']['OMFITlib_template_incremental'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_incremental.py <-:-:-> {}
 ['OMFITtemplates']['TESTS']['test_incremental.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_incremental.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py <-:-:-> {}

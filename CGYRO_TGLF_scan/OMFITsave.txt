@@ -373,3 +373,4 @@
 ['Transfer_tool']['Transfer_file'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['TGLF_CASES'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['PROJECT_STATE'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}

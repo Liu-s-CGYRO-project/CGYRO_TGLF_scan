@@ -1,0 +1,33 @@
+{
+  "project": {
+    "output": "CGYRO_TGLF_scan_code_only_1.6.1.zip",
+    "files": 326,
+    "bytes": 657888,
+    "sha256": "7a8613e76eda72efc3f13ff714a7e052e6007a7df240f56850b327dcc59f5f95",
+    "calculation_data_files": 0,
+    "modules": [
+      "CGYRO_TGLF_scan",
+      "OMFITtemplates"
+    ]
+  },
+  "template": "tdxy-liu__cgyro-tglf__1.6.1.omfittpl.zip",
+  "template_sha256": "25f3c65d262f95fff14aea8b1464db3fa8dd9f5d46149cbdca09fe58448ab873",
+  "changed_files": [
+    "CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_ui.py",
+    "OMFITsave.txt",
+    "PROJECT_CONTENTS.json",
+    "README.md",
+    "VALIDATION.md"
+  ],
+  "added_files": [
+    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py"
+  ],
+  "unchanged_manager_files": 29,
+  "native_project_zip_entry": true,
+  "packaged_native_gui_cold_start": true,
+  "previous_project_results_and_settings_preserved": true,
+  "complete_omfit_session_tested": false,
+  "solver_executed": false
+}

@@ -54,11 +54,17 @@ def screenshot(window, path):
 
 
 class NativeWidgets:
-    def __init__(self, source, root, window):
+    def __init__(self, source, root, window, font_size=11):
         self.window, self.root, self.events = window, root, []
-        body = ttk.Frame(window, padding=(12, 10))
-        # OMFIT sizes its canvas interior to the requested content height.
-        body.pack(fill='x', anchor='n')
+        canvas = self.canvas = tk.Canvas(window, highlightthickness=0)
+        scroll = ttk.Scrollbar(window, orient='vertical', command=canvas.yview)
+        scroll.pack(side='right', fill='y')
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side='left', fill='both', expand=True)
+        body = ttk.Frame(canvas, padding=(12, 10))
+        item = canvas.create_window(0, 0, window=body, anchor='nw')
+        canvas.bind('<Configure>', lambda event: canvas.itemconfigure(item, width=event.width))
+        body.bind('<Configure>', lambda event: canvas.configure(scrollregion=canvas.bbox('all')))
         self.body = body
         sentinel = object()
         aux = dict(parentGUI=body, topGUI=window, packing=tk.TOP, same_row=None, notebook=None,
@@ -92,7 +98,7 @@ class NativeWidgets:
             return value, True
         ns.update(_eval=evaluate, repr_eval=representation, _setDefault=default)
         self.helpers = ModuleType('utils_widgets')
-        self.helpers.OMFITfont = lambda weight='', size=0, *args: ('Helvetica', 11 + size, weight or 'normal')
+        self.helpers.OMFITfont = lambda weight='', size=0, *args: ('Helvetica', font_size + size, weight or 'normal')
         ns['OMFITfont'] = self.helpers.OMFITfont
         path = Path(source) / 'omfit_classes/OMFITx.py'
         text = path.read_text(encoding='utf-8')
@@ -120,35 +126,46 @@ class NativeWidgets:
         return call
 
     def settle(self):
-        self.window.update()
-        for frame, callback in self.aux['configure_size']:
-            # Native OMFIT binds these callbacks to Configure events. Hidden
-            # notebook pages have width=1 until shown and must not be wrapped.
-            if frame.winfo_ismapped() and frame.winfo_width() > 1:
-                callback()
+        for _ in range(4):
+            self.window.update()
+            for frame, callback in self.aux['configure_size']:
+                # Native OMFIT binds these callbacks to Configure events.
+                if frame.winfo_ismapped() and frame.winfo_width() > 1:
+                    callback()
         self.window.update()
 
-    def check_geometry(self):
+    def check_geometry(self, check_footer=True):
         self.settle()
-        left, top = self.window.winfo_rootx(), self.window.winfo_rooty()
-        right, bottom = left + self.window.winfo_width(), top + self.window.winfo_height()
+        left, top = self.body.winfo_rootx(), self.body.winfo_rooty()
+        right, bottom = left + self.body.winfo_width(), top + self.body.winfo_height()
         controls = []
         def walk(widget):
             for child in widget.winfo_children():
-                if child.winfo_ismapped() and child.winfo_class() in ('TEntry', 'TCombobox', 'TCheckbutton', 'TButton'):
+                if child.winfo_ismapped() and child.winfo_class() in ('TLabel', 'TEntry', 'TCombobox', 'TCheckbutton', 'TButton'):
                     x, y, w, h = child.winfo_rootx(), child.winfo_rooty(), child.winfo_width(), child.winfo_height()
                     assert w > 8 and h > 8, ('collapsed', child, w, h)
                     assert left <= x and top <= y and x + w <= right and y + h <= bottom, ('clipped', child, x-left, y-top, w, h)
                     controls.append((child, (x, y, x+w, y+h)))
+                    if child.winfo_class() == 'TLabel':
+                        font = tkfont.Font(root=child, font=child.cget('font'))
+                        assert h >= font.metrics('linespace') * max(1, len(str(child.cget('text')).splitlines())), ('label-height', child)
                 walk(child)
         walk(self.window)
         for index, (one, a) in enumerate(controls):
             for two, b in controls[index+1:]:
                 overlap = min(a[2], b[2]) > max(a[0], b[0]) and min(a[3], b[3]) > max(a[1], b[1])
                 assert not overlap, ('overlap', one, two)
-        footer = {args[0]: result for tab, name, args, result in self.events if tab == '' and name == 'Button'}
-        assert set(footer) == {'检查选择', '绘制所选数据'}
-        assert all(widget.winfo_ismapped() for widget in footer.values())
+        if check_footer:
+            footer = {args[0]: result for tab, name, args, result in self.events if tab == '' and name == 'Button'}
+            assert set(footer) == {'检查选择', '绘制所选数据'}
+            assert all(widget.winfo_ismapped() for widget in footer.values())
+            self.canvas.yview_moveto(1)
+            self.settle()
+            bottom = self.canvas.winfo_rooty() + self.canvas.winfo_height()
+            assert all(self.canvas.winfo_rooty() <= widget.winfo_rooty() and
+                       widget.winfo_rooty() + widget.winfo_height() <= bottom for widget in footer.values()), 'Footer unreachable by scrolling'
+        self.canvas.yview_moveto(0)
+        self.settle()
         return len(controls)
 
 
@@ -157,13 +174,14 @@ def validate(source, output):
     host = NativeHost(source)
     fixture = fixtures()
     report = dict(viewports=[], complete_omfit_session_tested=False, solver_executed=False)
-    for mode in ('CGYRO_vs_CGYRO', 'CGYRO_vs_TGLF', 'TGLF_vs_TGLF', 'TGLF_vs_CGYRO'):
+    for mode, font_size in ((mode, size) for size in (11, 14, 18)
+                           for mode in ('CGYRO_vs_CGYRO', 'CGYRO_vs_TGLF', 'TGLF_vs_TGLF', 'TGLF_vs_CGYRO')):
         window = tk.Tk()
         try:
             window.tk.call('tk', 'scaling', 1.5)
             style = ttk.Style(window)
             style.theme_use('clam')
-            style.configure('.', font=('Helvetica', 11))
+            style.configure('.', font=('Helvetica', font_size))
             style.configure('flat.TButton', width=2, padding=(2, 1))
             with patch.dict(sys.modules, {'omfit_classes.utils_base': host.registry}):
                 root = treeify(fixture['fixture'](mode), host.factory)
@@ -172,7 +190,8 @@ def validate(source, output):
             plotted = []
             root['PLOTS'] = {name: SimpleNamespace(plot=lambda name=name: plotted.append(name))
                              for name in ('CGYRO_vs_CGYRO', 'CGYRO_vs_TGLF')}
-            ui = NativeWidgets(source, root, window)
+            before_font = style.lookup('TLabel', 'font')
+            ui = NativeWidgets(source, root, window, font_size)
             with patch.dict(sys.modules, {'utils_widgets': ui.helpers, 'omfit_classes.utils_base': host.registry}):
                 entry = REPO / 'CGYRO_TGLF_scan/GUIS/CGYRO_vs_TGLF.py'
                 before = list(sys.meta_path)
@@ -180,15 +199,17 @@ def validate(source, output):
                              OMFIT={'OMFITtemplates': {'GUIS': {'main': SimpleNamespace(run=lambda: None)}}})
                 assert sys.meta_path == before
                 assert not any(name.startswith('OMFITlib_') for name in sys.modules)
+                assert style.lookup('TLabel', 'font') == before_font
                 for width, height in ((860, 640), (1080, 800)):
                     window.geometry('{}x{}+20+20'.format(width, height))
                     for index, page in enumerate(ui.aux['notebook'].tabs()):
                         ui.aux['notebook'].select(page)
                         ui.settle()
                         controls = ui.check_geometry()
-                        report['viewports'].append(dict(mode=mode, tab=index+1, width=width, height=height, visible_controls=controls))
-                        if width == 860 and mode in ('CGYRO_vs_CGYRO', 'CGYRO_vs_TGLF'):
-                            screenshot(window, output / ('{}_tab{}.png'.format(mode, index+1)))
+                        report['viewports'].append(dict(mode=mode, font_size=font_size, tab=index+1,
+                                                       width=width, height=height, controls=controls))
+                        if width == 860 and font_size in (11, 18) and mode in ('CGYRO_vs_CGYRO', 'CGYRO_vs_TGLF'):
+                            screenshot(window, output / ('{}_font{}_tab{}.png'.format(mode, font_size, index+1)))
                 for _, name, args, button in ui.events:
                     if name == 'Button' and args[0] == '绘制所选数据':
                         button.invoke()
@@ -201,7 +222,9 @@ def validate(source, output):
                 window.tk.call('after', 'cancel', callback)
             window.destroy()
     report['tk'] = tk.TkVersion
-    report['all_visible_controls_within_window'] = True
+    report['all_controls_within_scrollable_content'] = True
+    report['footer_reachable_by_scrolling'] = True
+    report['global_omfit_style_preserved'] = True
     report['no_control_overlap'] = True
     report['actual_tk_button_invoked_after_native_import_cleanup'] = True
     (output / 'layout_validation.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

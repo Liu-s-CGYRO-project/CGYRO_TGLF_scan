@@ -1,0 +1,39 @@
+test_accept_input_archives_old_results_without_relabelling (test_project.ProjectTest) ... ok
+test_all_pages_render_empty_project_without_running_any_task (test_project.ProjectTest) ... ok
+test_both_save_manifests_register_new_libraries_and_empty_state (test_project.ProjectTest) ... ok
+test_cached_local_generation_keeps_current_input_and_results (test_project.ProjectTest) ... ok
+test_change_to_cgyro_destination_blocks_running (test_project.ProjectTest) ... ok
+test_change_to_transfer_source_blocks_cgyro_again (test_project.ProjectTest) ... ok
+test_change_to_upstream_profile_invalidates_cgyro_handoff (test_project.ProjectTest) ... ok
+test_changed_target_cannot_accept_stale_diff (test_project.ProjectTest) ... ok
+test_changed_transfer_source_cannot_accept_stale_diff (test_project.ProjectTest) ... ok
+test_collect_publishes_correct_dimension_without_resubmission (test_project.ProjectTest) ... ok
+test_collect_rejects_prepared_only_run (test_project.ProjectTest) ... ok
+test_every_runtime_module_renders_with_missing_config (test_project.ProjectTest) ... ok
+test_existing_cgyro_file_cannot_bypass_transfer (test_project.ProjectTest) ... ok
+test_generated_tglf_requires_the_same_explicit_choice (test_project.ProjectTest) ... ok
+test_growth_scan_restores_single_file_after_success_or_failure (test_project.ProjectTest) ... ok
+test_import_existing_cgyro_file_goes_through_transfer (test_project.ProjectTest) ... ok
+test_imported_tglf_also_requires_choice (test_project.ProjectTest) ... ok
+test_invalid_import_does_not_replace_input (test_project.ProjectTest) ... ok
+test_keep_current_tglf_preserves_its_entire_result_container (test_project.ProjectTest) ... ok
+test_missing_prerequisites_disable_buttons_and_callbacks_recheck (test_project.ProjectTest) ... ok
+test_pending_input_blocks_tglf_until_choice_is_made (test_project.ProjectTest) ... ok
+test_prepare_exception_restores_flag_and_records_failure (test_project.ProjectTest) ... ok
+test_profile_handoff_archives_old_scan_and_invalidates_local_inputs (test_project.ProjectTest) ... ok
+test_radial_scans_pass_private_input_and_never_replace_single_file (test_project.ProjectTest) ... ok
+test_ready_button_rechecks_upstream_input_at_click_time (test_project.ProjectTest) ... ok
+test_review_page_renders_actual_values_and_both_choices (test_project.ProjectTest) ... ok
+test_run_rechecks_and_restores_run_flag (test_project.ProjectTest) ... ok
+test_successful_handoff_is_independent_and_preserves_previous_input (test_project.ProjectTest) ... ok
+test_sync_endpoint_keeps_command_and_resources (test_project.ProjectTest) ... ok
+test_tglf_conflict_only_stages_diff (test_project.ProjectTest) ... ok
+test_transfer_missing_tgyro_results_blocks_local_input_generation (test_project.ProjectTest) ... ok
+test_transfer_seed_has_its_own_choice_and_archives_old_tgyro (test_project.ProjectTest) ... ok
+test_transfer_tgyro_seed_invalidates_previous_generation (test_project.ProjectTest) ... ok
+test_wrong_transfer_file_type_cannot_replace_cgyro (test_project.ProjectTest) ... ok
+
+----------------------------------------------------------------------
+Ran 34 tests in 2.070s
+
+OK

@@ -1,0 +1,130 @@
+[
+  {
+    "page": "project",
+    "tab": 1,
+    "font_size": 11,
+    "width": 860,
+    "controls": 23,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "project",
+    "tab": 1,
+    "font_size": 11,
+    "width": 1080,
+    "controls": 23,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "project",
+    "tab": 1,
+    "font_size": 18,
+    "width": 860,
+    "controls": 23,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "project",
+    "tab": 1,
+    "font_size": 18,
+    "width": 1080,
+    "controls": 23,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "multi",
+    "tab": 1,
+    "font_size": 11,
+    "width": 860,
+    "controls": 12,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "multi",
+    "tab": 2,
+    "font_size": 11,
+    "width": 860,
+    "controls": 45,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "multi",
+    "tab": 3,
+    "font_size": 11,
+    "width": 860,
+    "controls": 14,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "multi",
+    "tab": 1,
+    "font_size": 11,
+    "width": 1080,
+    "controls": 12,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "multi",
+    "tab": 2,
+    "font_size": 11,
+    "width": 1080,
+    "controls": 45,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "multi",
+    "tab": 3,
+    "font_size": 11,
+    "width": 1080,
+    "controls": 14,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "multi",
+    "tab": 1,
+    "font_size": 18,
+    "width": 860,
+    "controls": 12,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "multi",
+    "tab": 2,
+    "font_size": 18,
+    "width": 860,
+    "controls": 45,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "multi",
+    "tab": 3,
+    "font_size": 18,
+    "width": 860,
+    "controls": 14,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "multi",
+    "tab": 1,
+    "font_size": 18,
+    "width": 1080,
+    "controls": 12,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "multi",
+    "tab": 2,
+    "font_size": 18,
+    "width": 1080,
+    "controls": 45,
+    "no_text_or_control_overlap": true
+  },
+  {
+    "page": "multi",
+    "tab": 3,
+    "font_size": 18,
+    "width": 1080,
+    "controls": 14,
+    "no_text_or_control_overlap": true
+  }
+]

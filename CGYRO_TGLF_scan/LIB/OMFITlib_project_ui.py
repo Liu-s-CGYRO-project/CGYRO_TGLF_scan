@@ -1,5 +1,6 @@
 """Native OMFIT workbench with dependency-aware workflow controls."""
 from builtins import dict, isinstance, len, list, next, str
+from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_project import (LABELS, MODULES, PAGES, cgyro_input_issues, collect_issues, generated_tglf_sources,
     location, module, pending_inputs, read, runtime_issues, summary, text_value, tglf_input_issues, transfer_sources)
 
@@ -21,7 +22,7 @@ class ProjectUI:
         self.prefix = "root['SETTINGS']['WORKBENCH']"
 
     def label(self, value):
-        self.ui.Label(value, align='left', wraplength=840)
+        return self.ui.Label(value, align='left', wraplength=840)
 
     def nav(self, label, page):
         self.ui.Button(label, lambda: self.actions.open_page(page), updateGUI=True)
@@ -47,7 +48,7 @@ class ProjectUI:
 
     def render(self):
         self.ui.TitleGUI('CGYRO / TGLF · Project 总控')
-        self.label('输入准备  →  传递与验证  →  运行与收集  →  绘图对比')
+        intro = self.label('输入准备  →  传递与验证  →  运行与收集  →  绘图对比')
         with self.ui.same_row():
             self.ui.ComboBox(self.prefix + "['page']", PAGES, '工作页面', default='overview', updateGUI=True)
             self.ui.Button('检查前置条件', self.actions.check, updateGUI=True)
@@ -57,6 +58,7 @@ class ProjectUI:
         if pending_inputs(self.root) and self.settings['page'] != 'review':
             self.nav('有待确认的 TGLF 输入 · 查看差异', 'review')
         getattr(self, 'render_' + self.settings['page'])()
+        finish_gui_layout(intro)
 
     def render_overview(self):
         s = summary(self.root)

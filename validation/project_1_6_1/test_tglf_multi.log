@@ -1,0 +1,30 @@
+test_all_cases_preflight_before_external_execution (test_tglf_multi.TestMultiInput) ... ok
+test_auxiliary_radius_is_inside_truncated_profile (test_tglf_multi.TestMultiInput) ... ok
+test_case_override_wins_and_copies_do_not_copy_results (test_tglf_multi.TestMultiInput) ... ok
+test_changed_profile_requires_regeneration_and_command_edits_are_used (test_tglf_multi.TestMultiInput) ... ok
+test_changed_settings_require_new_generated_inputs (test_tglf_multi.TestMultiInput) ... ok
+test_every_rerun_gets_new_directories_and_records (test_tglf_multi.TestMultiInput) ... ok
+test_failure_retry_retains_logs_and_completed_points (test_tglf_multi.TestMultiInput) ... ok
+test_generation_preserves_dump_before_model_overrides (test_tglf_multi.TestMultiInput) ... ok
+test_gui_can_render_empty_project_and_complete_history (test_tglf_multi.TestMultiInput) ... ok
+test_gui_no_selected_case_disables_run_and_plot (test_tglf_multi.TestMultiInput) ... ok
+test_gui_run_requires_generation_and_invalidates_changed_plan (test_tglf_multi.TestMultiInput) ... ok
+test_import_partial_failures_leave_valid_cases (test_tglf_multi.TestMultiInput) ... ok
+test_import_same_basename_in_two_directories_and_isolated_snapshot (test_tglf_multi.TestMultiInput) ... ok
+test_invalid_profile_fails_at_import (test_tglf_multi.TestMultiInput) ... ok
+test_keyboard_interrupt_records_cancelled_attempt (test_tglf_multi.TestMultiInput) ... ok
+test_missing_localdump_and_unknown_model_option_fail_generation (test_tglf_multi.TestMultiInput) ... ok
+test_missing_or_invalid_result_is_not_success (test_tglf_multi.TestMultiInput) ... ok
+test_one_case_failure_does_not_stop_other_cases (test_tglf_multi.TestMultiInput) ... ok
+test_overrides_do_not_execute_code_or_accept_nonfinite (test_tglf_multi.TestMultiInput) ... ok
+test_plot_uses_native_grid_and_selected_run (test_tglf_multi.TestMultiInput) ... ok
+test_prepare_does_not_run_tglf_or_overwrite_active_data (test_tglf_multi.TestMultiInput) ... ok
+test_radius_validation_and_coordinate_are_explicit (test_tglf_multi.TestMultiInput) ... ok
+test_remote_endpoints_use_unique_children_and_fail_unconfigured (test_tglf_multi.TestMultiInput) ... ok
+test_save_trees_register_page_scripts_and_empty_cases (test_tglf_multi.TestMultiInput) ... ok
+test_stop_on_error_is_respected (test_tglf_multi.TestMultiInput) ... ok
+
+----------------------------------------------------------------------
+Ran 25 tests in 0.360s
+
+OK

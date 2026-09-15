@@ -1,0 +1,51 @@
+test_all_omfit_file_registrations_resolve_in_result_free_project (test_compare.RefactorTest) ... ok
+test_ambiguous_reference_rejected_before_figure (test_compare.RefactorTest) ... ok
+test_buttons_use_omfit_cache_and_restore_action_flags (test_compare.RefactorTest) ... ok
+test_cgyro_raw_spectra_preserve_negative_gamma (test_compare.RefactorTest) ... ok
+test_cgyro_self_comparison_without_adjusttext (test_compare.RefactorTest) ... ok
+test_comparison_button_opens_sibling_module_with_its_own_library_scope (test_compare.RefactorTest) ... ok
+test_compatibility_shortcut (test_compare.RefactorTest) ... ok
+test_default_gui_handles_a_project_with_no_calculations (test_compare.RefactorTest) ... ok
+test_empty_project_panel_is_actionable (test_compare.RefactorTest) ... ok
+test_explicit_empty_2d_axis_is_not_all_values (test_compare.RefactorTest) ... ok
+test_export_preserves_signed_data_and_existing_exports (test_compare.RefactorTest) ... ok
+test_four_modes_have_same_ordered_tabs (test_compare.RefactorTest) ... ok
+test_gamma_ratio_independent_of_display_scaling (test_compare.RefactorTest) ... ok
+test_grid_toggle_is_effective (test_compare.RefactorTest) ... ok
+test_gui_never_mutates_result_tree (test_compare.RefactorTest) ... ok
+test_import_graph_and_python39_syntax (test_compare.RefactorTest) ... ok
+test_invalid_average_and_transform_stop_before_plot (test_compare.RefactorTest) ... ok
+test_invalid_cgyro_samples_are_reported (test_compare.RefactorTest) ... ok
+test_ky_zero_is_masked_without_warning_or_infinity (test_compare.RefactorTest) ... ok
+test_legacy_selected_keys_migrate_before_new_sort (test_compare.RefactorTest) ... ok
+test_mismatched_spectrum_lengths_are_not_truncated (test_compare.RefactorTest) ... ok
+test_no_overlap_missing_and_single_point_errors (test_compare.RefactorTest) ... ok
+test_numeric_key_resolution_is_unambiguous (test_compare.RefactorTest) ... ok
+test_omfit_pylab_namespace_cannot_shadow_builtin_reductions (test_compare.RefactorTest) ... ok
+test_outside_legend_toggle_and_callback_replacement (test_compare.RefactorTest) ... ok
+test_quoted_keys_safe_gui_path (test_compare.RefactorTest) ... ok
+test_ragged_2d_defaults_include_all_branches (test_compare.RefactorTest) ... ok
+test_real_matplotlib_difference_panels (test_compare.RefactorTest) ... ok
+test_real_matplotlib_overlay_and_style (test_compare.RefactorTest) ... ok
+test_reverse_mode_reads_every_selected_radius (test_compare.RefactorTest) ... ok
+test_runtime_globals_resolve_without_numpy_star (test_compare.RefactorTest) ... ok
+test_selection_identity_survives_insert_reorder_delete (test_compare.RefactorTest) ... ok
+test_source_switch_retains_independent_selections (test_compare.RefactorTest) ... ok
+test_tail_stats_zero_and_negative_means (test_compare.RefactorTest) ... ok
+test_tglf_2d_spectra_and_flux_use_selected_varying_axis (test_compare.RefactorTest) ... workspace/_publish/CGYRO_TGLF_scan_20260912/repository/CGYRO_TGLF_scan/LIB/OMFITlib_compare_dispatch.py:140: RuntimeWarning: Skipped 2 unavailable/invalid selections:
+TGLF scanResults2D_spectra / 0.3 / A+B / (1.0, 4.0): (1.0, 4.0)
+TGLF scanResults2D_spectra / 0.3 / A+B / (3.0, 2.0): (3.0, 2.0)
+  warnings.warn('Skipped {} unavailable/invalid selections:\n{}'.format(len(diagnostics), '\n'.join(diagnostics[:10])), RuntimeWarning)
+ok
+test_tglf_3d_ragged_spectra_render_without_second_mode (test_compare.RefactorTest) ... ok
+test_tglf_labels_are_unique_across_radii_parameters (test_compare.RefactorTest) ... ok
+test_tglf_only_1d_spectrum_and_flux_plot (test_compare.RefactorTest) ... ok
+test_two_dimensional_only_and_optional_second_mode (test_compare.RefactorTest) ... ok
+test_zero_selection_and_partial_2d_validation (test_compare.RefactorTest) ... ok
+
+----------------------------------------------------------------------
+Ran 40 tests in 4.726s
+
+OK
+Exported spectra to /tmp/tmpfox37x74/comparison_spectra_28xtoisn
+Exported spectra to /tmp/tmpfox37x74/comparison_spectra_i76di20f
