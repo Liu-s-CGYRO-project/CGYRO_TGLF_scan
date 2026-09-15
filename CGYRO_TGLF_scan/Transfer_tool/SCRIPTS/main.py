@@ -1,20 +1,54 @@
-# manage the whole workflow
-# you have two options to run
-#1. load the gfile, trpltout.nc and statefile.nc before running this script (recommendated)
-#2. load the input.profiles and input.profiles.geo
-if 'statefile' in root['INPUTS'] or 'statefile.nc' in root['INPUTS'] or 'pfile' in root['INPUTS'].keys() or 'input.profiles' in root['INPUTS'].keys():
-    # step 1, run the profiles_gen.py to generate the input.profiles
-    print('Running Profiles_gen....')
-    root['SCRIPTS']['profiles_gen.py'].run()
-    print('Finished Profiles_gen!')
-    # step 2, take the output of profiles_gen to be the input of TGYRO
-    root['INPUTS']['input.gacode']=root['OUTPUTS']['Profiles_gen']['input.gacode'].duplicate()
-#    root['INPUTS']['input.profiles.geo']=root['OUTPUTS']['Profiles_gen']['input.profiles.geo'].duplicate()
-# step 3, run tgyro to generate the target flux
-print('Running TGYRO for generating target flux')
-root['SCRIPTS']['tgyro_tglf.py'].run()
-# step 4, run profiles_gen to to get the input.tglf, input.cgyro and input.gyro
-print('Running profiles_gen for input.***')
-root['SCRIPTS']['profiles_gen4input.py'].run()
-#print('Transforming the input.cgyro to input.gyro')
-#root['SCRIPTS']['inputcgyro2gyro.py'].run()
+# -*-Python-*-
+"""Run the original command box 1 workflow from a single GUI action."""
+from datetime import datetime
+import copy
+from OMFITlib_transfer_workflow import generation_issues, prepare_tgyro, selected_profile
+
+defaultVars(profile_source=None, radial_settings=None)
+issues = generation_issues(root, profile_source, radial_settings)
+if issues:
+    raise ValueError('；'.join(issues))
+kind, key = selected_profile(root, profile_source)
+outputs = root['OUTPUTS']
+previous = {name: copy.deepcopy(outputs[name]) for name in ('Profiles_gen', 'TGYRO') if name in outputs}
+old_seeds = {name: root['INPUTS'][name] for name in ('input.tgyro', 'input.tglf') if name in root['INPUTS']}
+setup = root['SETTINGS']['SETUP']
+old_resources = {name: setup.get(name, None) for name in ('p_tgyro', 'num_nodes', 'num_cores')}
+old_profile = root['INPUTS'].get('input.gacode', None)
+old_transfer_profile = root['Transfer_file'].get('input.gacode', None)
+outputs['Profiles_gen'] = OMFITtree()
+outputs.pop('TGYRO', None)
+try:
+    if kind != 'input.gacode':
+        print('Transfer_tool：生成 input.gacode …')
+        root['SCRIPTS']['profiles_gen.py'].run(profile_source=kind)
+        root['INPUTS']['input.gacode'] = outputs['Profiles_gen']['input.gacode'].duplicate()
+    profile = root['INPUTS']['input.gacode']
+    prepare_tgyro(root, profile, radial_settings)
+    root['Transfer_file']['input.gacode'] = profile.duplicate()
+    print('Transfer_tool：运行 TGYRO …')
+    root['SCRIPTS']['tgyro_tglf.py'].run()
+    print('Transfer_tool：生成各半径的 input.cgyro / input.tglf …')
+    root['SCRIPTS']['profiles_gen4input.py'].run()
+except BaseException:
+    for name in ('input.tgyro', 'input.tglf'):
+        if name in old_seeds:
+            root['INPUTS'][name] = old_seeds[name]
+        else:
+            root['INPUTS'].pop(name, None)
+    setup.update(old_resources)
+    for name in ('Profiles_gen', 'TGYRO'):
+        if name in previous:
+            outputs[name] = previous[name]
+        else:
+            outputs.pop(name, None)
+    for branch, value in ((root['INPUTS'], old_profile), (root['Transfer_file'], old_transfer_profile)):
+        if value is None:
+            branch.pop('input.gacode', None)
+        else:
+            branch['input.gacode'] = value
+    raise
+if previous:
+    history = outputs.setdefault('History', OMFITtree())
+    history[datetime.now().strftime('%Y%m%d_%H%M%S_%f')] = previous
+print('Transfer_tool 完成。请在“生成结果与传递”选择要使用的半径输入。')

@@ -1,7 +1,9 @@
 """Native OMFIT workbench with dependency-aware workflow controls."""
 from builtins import callable, dict, isinstance, len, list, next, str
 from collections import OrderedDict
+import json
 from OMFITlib_gui_layout import finish_gui_layout
+from OMFITlib_transfer_workflow import generation_issues, initialize_generation, loaded_file
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime, server_registration_issues
 from OMFITlib_project import (LABELS, MODULES, PAGES, cgyro_input_issues, collect_issues, generated_tglf_sources,
     location, module, pending_inputs, read, runtime_issues, summary, text_value, tglf_input_issues, transfer_sources)
@@ -91,33 +93,42 @@ class ProjectUI:
                    'TGLF 多剖面：导入 input.gacode → 生成局部输入 → 计算 → 结果对比。')
 
     def render_transfer(self):
-        self.ui.Tab('导入与转换')
+        self.ui.Tab('Transfer_tool 运行')
         self.compound(('Transfer_tool', 'GUIS', 'transfer'))
-        self.ui.Tab('传递输入')
+        self.run_controls('transfer')
+        self.ui.Tab('生成结果与传递')
         sources = transfer_sources(self.root)
         if sources:
             if self.settings['transfer_source'] not in sources.values():
                 self.settings['transfer_source'] = next(iter(sources.values()))
             self.ui.ComboBox(self.prefix + "['transfer_source']", sources, '选择输入 / 生成结果', updateGUI=True)
-            self.label('按文件类型选择目标。验证通过才完成传递；目标原输入会保存在输入历史中。')
-            with self.ui.same_row():
+            self.label('选择本次要使用的半径输入，再送入对应计算程序。')
+            kind = json.loads(self.settings['transfer_source'])[-1].split('_')[0]
+            if kind == 'input.cgyro':
                 self.ui.Button('验证并送入 CGYRO', lambda: self.actions.handoff('cgyro'), updateGUI=True)
+            elif kind == 'input.tglf':
                 self.ui.Button('验证并送入 TGLF 单文件', lambda: self.actions.handoff('tglf'), updateGUI=True)
-            with self.ui.same_row():
+            elif kind == 'input.gacode':
                 self.ui.Button('送入 TGLF 剖面流程', lambda: self.actions.handoff('profiles'), updateGUI=True)
                 self.ui.Button('设为 转换工具当前剖面', lambda: self.actions.handoff('transfer'), updateGUI=True)
         else:
             self.label('先载入输入，或运行 profiles_gen 生成文件。缺少输入时无法传递到计算模块。')
-        self.ui.Tab('生成与高级工具')
-        self.label('输入转换工具的 TGYRO 生成步骤使用自己的 input.tglf 与 input.tgyro。先载入种子输入；已有 TGLF 输入时会先比较并询问是否替换。')
+        self.ui.Tab('局部输入互转')
+        self.compound(('Transfer_tool', 'GUIS', 'convert'))
+        self.ui.Tab('高级设置')
+        self.label('已有种子输入继续使用；缺少时，运行按钮自动使用内置种子。这里只在需要调整模型参数或换用其他种子时操作。')
+        node = module(self.root, 'transfer')
         for kind in ('tglf', 'tgyro'):
+            branch = 'INPUTS' if 'input.' + kind in node['INPUTS'] else 'TEMPLATES'
+            self.label(('当前输入 · ' if branch == 'INPUTS' else '内置种子 · ') + loaded_file(node, branch, 'input.' + kind))
+            value = read(node, (branch, 'input.' + kind))
+            if value is not None:
+                self.ui.EditASCIIobject(location(MODULES['transfer'] + (branch, 'input.' + kind)),
+                    '编辑 input.' + kind + ' 参数', updateGUI=True)
             self.ui.FilePicker(self.prefix + "['transfer_" + kind + "_file']", '转换工具 input.' + kind, default='',
                 postcommand=lambda location=None, kind=kind: self.actions.import_transfer_seed(kind), updateGUI=True)
-        self.run_controls('transfer')
-        with self.ui.same_row():
-            self.task('PROFILES_GEN / 离子设置', MODULES['profiles'] + ('GUIS', 'standaloneGUI'))
-            self.task('TGYRO 完整设置', MODULES['tgyro'] + ('GUIS', 'TGYROgui'))
-        self.label('生成的 input.cgyro_N / input.tglf_N 可在“传递输入”中逐个选择。')
+        self.label('起止半径、坐标和点数以“Transfer_tool 运行”页为准；离子数量、质量和电荷每次运行时从当前剖面同步。')
+        self.nav('统一 GACODE 环境配置', 'run')
 
     def render_cgyro(self):
         node = read(self.root, MODULES['cgyro'])
@@ -220,7 +231,8 @@ class ProjectUI:
         if read(self.root, MODULES[name]) is None:
             self.label('缺少 ' + LABELS[name])
             return
-        self.nav('统一 GACODE 环境配置', 'run')
+        if name != 'transfer':
+            self.nav('统一 GACODE 环境配置', 'run')
         if name == 'cgyro':
             issues = cgyro_input_issues(self.root) + runtime_issues(self.root, name)
             self.label('运行条件：' + ('；'.join(issues) or '输入已传递，基础配置已填写'))
@@ -229,13 +241,14 @@ class ProjectUI:
                 self.guarded('运行配置的扫描', self.actions.run_cgyro, issues)
                 self.guarded('收集当前结果', self.actions.collect, collect_issues(self.root))
         elif name == 'transfer':
-            for script, label, required in [
-                ('tgyro_tglf.py', '运行 TGYRO', (('INPUTS', 'input.gacode'), ('INPUTS', 'input.tglf'), ('INPUTS', 'input.tgyro'))),
-                ('profiles_gen4input.py', '生成各半径局部输入', (('INPUTS', 'input.gacode'), ('OUTPUTS', 'TGYRO')))]:
-                issues = self.required_issues(name, required)
-                self.guarded(label, lambda script=script, required=required: self.actions.run(name, script, required), issues)
-                if issues:
-                    self.label(label + '需要：' + '；'.join(issues))
+            node = module(self.root, 'transfer')
+            options = initialize_generation(node, self.actions.factory)
+            issues = self.required_issues('transfer', ()) + generation_issues(
+                node, node['SETTINGS']['PHYSICS']['start_from'], options)
+            self.guarded('运行 Transfer_tool', self.actions.run_transfer, issues)
+            self.label('运行顺序：同步离子与半径 → TGYRO → 生成各半径 input.cgyro / input.tglf。')
+            if issues:
+                self.label('需要补充：' + '；'.join(issues))
         else:
             self.label('配置检查：' + ('；'.join(runtime_issues(self.root, name)) or '基础字段已填写；目标程序与资源尚未验证'))
 

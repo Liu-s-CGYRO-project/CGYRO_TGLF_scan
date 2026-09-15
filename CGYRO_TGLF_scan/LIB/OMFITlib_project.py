@@ -12,6 +12,7 @@ import math
 import uuid
 from collections import OrderedDict
 from OMFITlib_project_runtime import initialize_runtime, apply_runtime, shared_issues
+from OMFITlib_transfer_workflow import generation_issues, initialize_generation
 
 MODULES = {
     'transfer': ('Transfer_tool',), 'cgyro': ('CGYRO_scan',),
@@ -126,7 +127,7 @@ def cgyro_input_issues(root):
         return ['先在 Transfer tool 准备 input.cgyro，再验证并传入 CGYRO']
     marker = read(root, ('PROJECT_STATE', 'pipeline', 'cgyro'), {})
     if not marker:
-        return ['Transfer 输入准备尚未确认；请在“传递输入”中验证并送入 CGYRO']
+        return ['Transfer 输入准备尚未确认；请在“生成结果与传递”中验证并送入 CGYRO']
     source_path = marker.get('source', None)
     if not isinstance(source_path, (list, tuple)) or not source_path or source_path[0] != 'Transfer_tool':
         return ['输入传递记录无效，请重新验证并传递']
@@ -329,7 +330,7 @@ class ProjectActions:
             target = MODULES['transfer'] + ('Transfer_file', 'input.cgyro')
             self.replace('载入 Transfer tool 待准备输入', [(target, obj)])
             self.settings.update(dict(cgyro_file='', page='transfer'))
-            self.settings['message'] = 'input.cgyro 已载入 Transfer tool。请在“传递输入”中验证并送入 CGYRO。'
+            self.settings['message'] = 'input.cgyro 已载入 Transfer tool。请在“生成结果与传递”中验证并送入 CGYRO。'
             return
         self.propose_tglf(obj, '导入 input.tglf：' + str(filename))
         self.settings[kind + '_file'] = ''
@@ -512,6 +513,23 @@ class ProjectActions:
         if name == 'tglf' and script == 'runTGLF':
             validate_input(node['FILES']['input.tglf'], 'tglf')
         return self.call(LABELS[name] + ' / ' + script, MODULES[name] + ('SCRIPTS', script))
+
+    def run_transfer(self):
+        node = module(self.root, 'transfer')
+        options = dict(initialize_generation(node, self.factory))
+        source = node['SETTINGS']['PHYSICS']['start_from']
+        issues = runtime_issues(self.root, 'transfer') + generation_issues(node, source, options)
+        if pending_inputs(self.root, 'transfer'):
+            issues.append('请先确认 Transfer_tool 的 TGLF 种子输入。')
+        if issues:
+            raise ValueError('；'.join(issues))
+        self.call('运行 Transfer_tool', MODULES['transfer'] + ('SCRIPTS', 'main.py'),
+                  profile_source=source, radial_settings=options)
+        sources = transfer_sources(self.root)
+        generated = [value for label, value in sources.items() if 'Profiles_gen / input.cgyro_' in label]
+        if generated:
+            self.settings['transfer_source'] = generated[0]
+        self.settings['message'] = 'Transfer_tool 已完成。请在“生成结果与传递”中选择半径输入。'
 
     def check(self):
         self.settings['message'] = '\n'.join(

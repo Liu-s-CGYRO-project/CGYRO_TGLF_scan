@@ -414,3 +414,9 @@
 ['OMFITtemplates']['TESTS']['test_live.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_live.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_project_runtime'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_project_runtime.py <-:-:-> {}
+['CGYRO_TGLF_scan']['Transfer_tool']['GUIS']['convert'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/GUIS/convert.py <-:-:-> {}
+['CGYRO_TGLF_scan']['Transfer_tool']['LIB']['OMFITlib_transfer_workflow'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_workflow.py <-:-:-> {}
+['CGYRO_TGLF_scan']['Transfer_tool']['TEMPLATES'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['CGYRO_TGLF_scan']['Transfer_tool']['TEMPLATES']['input.tgyro'] <-:-:-> OMFITgacode <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/TEMPLATES/input.tgyro <-:-:-> {'GACODEtype': None}
+['CGYRO_TGLF_scan']['Transfer_tool']['TEMPLATES']['input.tglf'] <-:-:-> OMFITgacode <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/TEMPLATES/input.tglf <-:-:-> {'GACODEtype': None}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_transfer_workflow'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_workflow.py <-:-:-> {}

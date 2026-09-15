@@ -4,10 +4,6 @@
 import numpy as np
 import scipy.linalg
 
-CGYRO = root['Transfer_file']['input.cgyro']
-TGLF = root['Transfer_file']['input.tglf']
-inputgacode = root['Transfer_file']['input.gacode']
-
 def _build_convert_tglf_to_cgyro(CGYRO,TGLF,inputgacode):
     CGYRO.clear()
     CGYRO['N_ENERGY'] = 8
@@ -527,13 +523,24 @@ convert_to_cgyro = root['SETTINGS']['PHYSICS']['Transfer to cgyro']
 tglf_is_out_tglf_localdump = root['SETTINGS']['PHYSICS']['tglf_is_out_tglf_localdump']
 
 
-if convert_to_tglf and convert_to_cgyro:
-    raise ValueError('Select only one conversion direction')
+if bool(convert_to_tglf) == bool(convert_to_cgyro):
+    raise ValueError('请选择一个转换方向。')
 
+files = root['Transfer_file']
+required = ('input.cgyro',) if convert_to_tglf else ('input.tglf', 'input.gacode')
+missing = [key for key in required if key not in files]
+if missing:
+    raise ValueError('请先载入：' + '、'.join(missing))
+pending = {}
 if convert_to_tglf:
-    convert_cgyro_to_tglf(CGYRO,TGLF)
-elif convert_to_cgyro:
-    if tglf_is_out_tglf_localdump:
-        convert_outtglf_to_cgyro(CGYRO,TGLF,inputgacode)
-    else:
-        convert_tglf_to_cgyro(CGYRO,TGLF,inputgacode)
+    convert_cgyro_to_tglf(files['input.cgyro'], pending)
+    target_name = 'input.tglf'
+else:
+    converter = convert_outtglf_to_cgyro if tglf_is_out_tglf_localdump else convert_tglf_to_cgyro
+    converter(pending, files['input.tglf'], files['input.gacode'])
+    target_name = 'input.cgyro'
+target = OMFITgacode(target_name, fromString='')
+target.update(pending)
+# Do not require or clear a destination file before conversion has succeeded.
+files[target_name] = target
+print('已生成 ' + target_name + '。请到“生成结果与传递”选择使用。')

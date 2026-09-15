@@ -376,3 +376,9 @@
 ['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
 ['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
 ['LIB']['OMFITlib_project_runtime'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_runtime.py <-:-:-> {}
+['Transfer_tool']['GUIS']['convert'] <-:-:-> OMFITpythonGUI <-:-:-> ./Transfer_tool/GUIS/convert.py <-:-:-> {}
+['Transfer_tool']['LIB']['OMFITlib_transfer_workflow'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_workflow.py <-:-:-> {}
+['Transfer_tool']['TEMPLATES'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['Transfer_tool']['TEMPLATES']['input.tgyro'] <-:-:-> OMFITgacode <-:-:-> ./Transfer_tool/TEMPLATES/input.tgyro <-:-:-> {'GACODEtype': None}
+['Transfer_tool']['TEMPLATES']['input.tglf'] <-:-:-> OMFITgacode <-:-:-> ./Transfer_tool/TEMPLATES/input.tglf <-:-:-> {'GACODEtype': None}
+['LIB']['OMFITlib_transfer_workflow'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_workflow.py <-:-:-> {}

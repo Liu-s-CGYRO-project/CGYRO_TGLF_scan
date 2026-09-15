@@ -1,7 +1,7 @@
 {
   "PHYSICS": {
     "Transfer to GENE": false,
-    "start_from": "statefile",
+    "start_from": "input.gacode",
     "use_trxpl": false,
     "Transfer to tglf": false,
     "Transfer to cgyro": true,

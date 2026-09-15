@@ -1,60 +1,13 @@
-.. This page will be published on the OMFIT modules documentation website:
-..          https://omfit.io/modules.html
-..
-.. The RST markup can be tested here: https://livesphinx.herokuapp.com/
-..
-.. The module name will be automatically added [DO NOT ADD]
-..
-.. The contacts for this module will be automatically added [DO NOT ADD]
-..
-.. The table of contents will be automatically added [DO NOT ADD]
-
-Short Description
------------------
-Run the FOO code
-
-Keywords
---------
-Sample, Foo, Documentation, Tutorial
-
-Long Description
-----------------
-This module prepares the input, runs, and postprocesses the output of the FOO code.
-
-Typical workflows
------------------
-This module is used to:
-
-* write `foo` many times on screen
-* translate the output of the BAR module to the ASD module
-* generate publication quality figures of `foo`
-
-Supported devices
------------------
-* DIII-D, NSTX, C-Mod
-
-Tutorials
----------
-* `YouTube video <http://youtube.com/foo>`_
-
-* `Google docs tutorial <http://docs.google.com/foo>`_
-
-Relevant publications
+Transfer_tool 使用流程
 ---------------------
-* A. Babel et al. `The art of FOO`, PoP 2018
 
-External resources
-------------------
-Official webpage: http://foo.com
+在工程总控的“输入准备与转换”中：
 
-Technical info
---------------
-Set the `foo` variable to True to run faster
+* Transfer_tool 运行：载入 input.gacode，设置坐标、起始半径、结束半径和点数，点击运行。
+* 运行按钮执行原 command box 1 的准备逻辑：同步离子，运行 TGYRO，再生成各半径 input.cgyro / input.tglf。
+* 生成结果与传递：选择本次半径输入，验证并送入 CGYRO 或 TGLF。TGLF 覆盖仍由用户决定。
+* 局部输入互转：转换已有局部输入，独立于剖面生成。
+* 高级设置：查看、编辑或更换 Transfer_tool 的种子输入。缺少时自动使用内置种子。
 
-.. Extra information will be automatically appended to this page
-.. when the online documentation is generated [DO NOT ADD]:
-.. * Classes
-.. * What are the related modules (super modules using this module, or submodules of this module)
-.. * List of contributors for the module [with commit counts]
-.. * List of top 10 users
-.. * License
+直接运行 SCRIPTS/main.py 仍可使用原命令框设置的 input.tgyro 半径及 SETUP/p_tgyro。
+统一计算环境在工程总控的“环境配置与记录”中配置。
