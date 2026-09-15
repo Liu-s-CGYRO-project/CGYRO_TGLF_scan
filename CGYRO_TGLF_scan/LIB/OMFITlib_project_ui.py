@@ -43,12 +43,12 @@ class ProjectUI:
             return self.actions.call(label, path, **kwargs)
         self.guarded(label, invoke, problems)
 
-    def compound(self, path):
+    def compound(self, path, **kwargs):
         task = read(self.root, path)
         if task is None:
             self.label('工程缺少此功能入口：' + '/'.join(path))
         else:
-            self.ui.CompoundGUI(task, title='')
+            self.ui.CompoundGUI(task, title='', **kwargs)
 
     def render(self):
         self.ui.TitleGUI('CGYRO / TGLF · 工程总控')
@@ -94,7 +94,7 @@ class ProjectUI:
 
     def render_transfer(self):
         self.ui.Tab('Transfer_tool 运行')
-        self.compound(('Transfer_tool', 'GUIS', 'transfer'))
+        self.compound(('Transfer_tool', 'GUIS', 'transfer'), show_run_button=False)
         self.run_controls('transfer')
         self.ui.Tab('生成结果与传递')
         sources = transfer_sources(self.root)

@@ -420,3 +420,5 @@
 ['CGYRO_TGLF_scan']['Transfer_tool']['TEMPLATES']['input.tgyro'] <-:-:-> OMFITgacode <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/TEMPLATES/input.tgyro <-:-:-> {'GACODEtype': None}
 ['CGYRO_TGLF_scan']['Transfer_tool']['TEMPLATES']['input.tglf'] <-:-:-> OMFITgacode <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/TEMPLATES/input.tglf <-:-:-> {'GACODEtype': None}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_transfer_workflow'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_workflow.py <-:-:-> {}
+['CGYRO_TGLF_scan']['Transfer_tool']['LIB']['OMFITlib_transfer_particles'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_particles.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_transfer_particles'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_particles.py <-:-:-> {}

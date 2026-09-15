@@ -2,6 +2,7 @@
 from builtins import any, dict, enumerate, float, int, list, range, str
 import math
 import re
+from OMFITlib_transfer_particles import PARTICLE_DEFAULTS, particle_options
 
 PROFILE_KEYS = {'input.gacode': ('input.gacode',), 'statefile': ('statefile', 'statefile.nc'),
                 'pfile': ('pfile',), 'input.profiles': ('input.profiles',)}
@@ -39,6 +40,8 @@ def initialize_generation(node, factory=dict):
                        ('points', node['SETTINGS']['SETUP'].get('p_tgyro', 3)),
                        ('coordinate', 'rho' if seed.get('TGYRO_USE_RHO', 1) else 'r/a')]:
         options.setdefault(key, value)
+    for key, value in PARTICLE_DEFAULTS.items():
+        options.setdefault(key, value)
     return options
 
 
@@ -73,6 +76,7 @@ def generation_issues(node, selected=None, options=None):
     if options is not None:
         try:
             minimum, maximum, points, coordinate = radial_values(options)
+            particle_options(options)
             setup = node['SETTINGS']['SETUP']
             if setup.get('gacode_shared', False) and int(setup['num_nodes']) * int(setup['num_cores']) < points:
                 issues.append('统一环境的 MPI 总数少于半径点数，请增加资源或减少点数。')
@@ -98,14 +102,25 @@ def prepare_tgyro(node, profile, options=None):
         charge, mass = float(ion[1]), float(ion[2])
         if not math.isfinite(charge) or not math.isfinite(mass) or mass <= 0:
             raise ValueError('input.gacode 的第 {} 个离子质量或电荷无效。'.format(index))
-        ions.append((charge, mass))
+        ions.append((charge, mass, str(ion[3]).strip().lower()))
+    if n_ions > 9:
+        raise ValueError('当前 TGYRO 接口最多支持 9 种离子，请选择粒子简化方案。')
     for key in list(prepared.keys()):
-        if re.fullmatch(r'LOC_MA\d+|LOC_Z\d*', str(key)):
+        if re.fullmatch(r'LOC_MA\d+|LOC_Z\d*|TGYRO_(?:CALC_FLAG|THERM_FLAG|DEN_METHOD)\d+', str(key)):
             del prepared[key]
     prepared['LOC_N_ION'] = n_ions
-    for index, (charge, mass) in enumerate(ions, 1):
+    for index, (charge, mass, kind) in enumerate(ions, 1):
         prepared['LOC_MA' + str(index)] = mass
         prepared['LOC_Z' if index == 1 else 'LOC_Z' + str(index)] = charge
+        prepared['TGYRO_CALC_FLAG' + str(index)] = 1
+        prepared['TGYRO_THERM_FLAG' + str(index)] = 0 if kind == 'fast' else 1
+    # The profile generator holds ne fixed and closes charge on its first ion.
+    prepared['TGYRO_DEN_METHOD0'] = 0
+    for index in range(1, 10):
+        prepared['TGYRO_DEN_METHOD' + str(index)] = -1 if index == 1 else 0
+        if index > n_ions:
+            prepared['TGYRO_CALC_FLAG' + str(index)] = 0
+            prepared['TGYRO_THERM_FLAG' + str(index)] = 1
     if options is not None:
         minimum, maximum, points, coordinate = radial_values(options)
         prepared['TGYRO_RMIN'], prepared['TGYRO_RMAX'] = minimum, maximum

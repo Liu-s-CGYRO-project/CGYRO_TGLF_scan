@@ -13,6 +13,7 @@ import uuid
 from collections import OrderedDict
 from OMFITlib_project_runtime import initialize_runtime, apply_runtime, shared_issues
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation
+from OMFITlib_transfer_particles import particle_options
 
 MODULES = {
     'transfer': ('Transfer_tool',), 'cgyro': ('CGYRO_scan',),
@@ -111,7 +112,8 @@ def transfer_upstream_digest(root):
     values = {}
     for path in [('Transfer_file', 'input.gacode'), ('Transfer_file', 'input.tglf'),
                  ('INPUTS', 'input.gacode'), ('INPUTS', 'input.tglf'), ('INPUTS', 'input.tgyro'),
-                 ('OUTPUTS', 'Profiles_gen', 'input.gacode')]:
+                 ('OUTPUTS', 'Profiles_gen', 'input.gacode'),
+                 ('SETTINGS', 'PHYSICS', 'generation')]:
         value = read(root, ('Transfer_tool',) + path)
         if value is not None:
             values['/'.join(path)] = input_digest(value)
@@ -346,6 +348,12 @@ class ProjectActions:
             if kind != 'input.' + target:
                 raise ValueError('此目标需要 input.' + target + '，请先转换或选择对应文件。')
             validate_input(source, target)
+            if source_path[:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
+                physics = self.root['Transfer_tool']['SETTINGS']['PHYSICS']
+                chosen = particle_options(physics.get('generation', {}))
+                previous_options = read(self.root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'options'))
+                if previous_options is None or input_digest(chosen) != input_digest(previous_options):
+                    raise ValueError('粒子方案已变化或旧结果缺少准中性记录，请重新运行 Transfer_tool 后再传递。')
             if target == 'tglf':
                 self.propose_tglf(source, 'Transfer tool → TGLF', source_path)
                 return

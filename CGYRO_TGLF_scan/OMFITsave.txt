@@ -382,3 +382,5 @@
 ['Transfer_tool']['TEMPLATES']['input.tgyro'] <-:-:-> OMFITgacode <-:-:-> ./Transfer_tool/TEMPLATES/input.tgyro <-:-:-> {'GACODEtype': None}
 ['Transfer_tool']['TEMPLATES']['input.tglf'] <-:-:-> OMFITgacode <-:-:-> ./Transfer_tool/TEMPLATES/input.tglf <-:-:-> {'GACODEtype': None}
 ['LIB']['OMFITlib_transfer_workflow'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_workflow.py <-:-:-> {}
+['Transfer_tool']['LIB']['OMFITlib_transfer_particles'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_particles.py <-:-:-> {}
+['LIB']['OMFITlib_transfer_particles'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_particles.py <-:-:-> {}
