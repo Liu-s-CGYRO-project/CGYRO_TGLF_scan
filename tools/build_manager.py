@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import tarfile
 import zipfile
-from omfit_help import validate_module_help
+from omfit_help import validate_module_help, validate_module_settings
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / 'OMFITtemplates'
@@ -51,6 +51,12 @@ OMFIT_TEMPLATE_PYTHON=/path/to/python bash start_manager.sh
 案例、结果和用户设置按所选策略保留，不需要保存中间 ZIP 或重新加载工程；照常保存即可。
 支持“撤销本次更新”。外部独立管理器保持生成新工程 ZIP 的流程。
 
+## 自动连接与更新检查
+
+启动后自动连接上次 GitHub 仓库，并独立后台检查管理器更新。
+当前版本及检查结果显示在标题下方；安装仍由用户选择。保留手动重试入口。
+选择本地或共享模板库后记住选择，离线时仍可使用已下载的模板。
+
 ## 排序和独立更新
 
 版本列表默认按实际发布时间从新到旧排列，搜索框右侧可切换版本号排序。
@@ -81,6 +87,7 @@ OMFIT 内只替换管理器模块；正常保存工程以保留更新。Linux �
 def build(directory):
     directory = Path(directory).expanduser().resolve()
     validate_module_help((MODULE / 'help.rst').read_bytes(), 'OMFITtemplates/help.rst')
+    validate_module_settings((MODULE / 'SettingsNamelist.txt').read_bytes(), 'OMFITtemplates/SettingsNamelist.txt')
     selected = {'OMFITsave.txt', 'SettingsNamelist.txt', 'help.rst'}
     for row in parse_tree((MODULE / 'OMFITsave.txt').read_bytes()):
         if row.ref:

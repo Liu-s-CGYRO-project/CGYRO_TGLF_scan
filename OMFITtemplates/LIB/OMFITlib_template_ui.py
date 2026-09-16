@@ -75,10 +75,14 @@ class TemplateManager(ManagerUpdateUI):
         self.proxy_dialog = None
         self.manager_update_dialog = None
         self.manager_update_result = None
-        self.connection_info = tk.StringVar(master=window, value='填写 GitHub 仓库地址后连接。公开模板可直接浏览；发布与私有仓库需要登录。')
+        self._manager_check_generation = 0
+        self._manager_auto_cancel = threading.Event()
+        self.manager_version_info = tk.StringVar(master=window, value='管理器 ' + MANAGER_VERSION)
+        self.connection_info = tk.StringVar(master=window, value='打开后自动连接上次的 GitHub 仓库。公开模板可直接浏览；发布与私有仓库需要登录。')
         self.upload_info = tk.StringVar(master=window, value='先准备模板包，核对仓库、账号和上传文件后发布。')
         self.publish_auth_info = tk.StringVar(master=window, value='')
-        self.view_source = tk.StringVar(master=window, value='本地模板库' if library is not None else 'GitHub')
+        source = saved.get('view_source', 'GitHub')
+        self.view_source = tk.StringVar(master=window, value=source if source in ('GitHub', '本地模板库', '共享模板库') else 'GitHub')
         self.search = tk.StringVar(master=window, value='')
         self.author_filter = tk.StringVar(master=window, value='全部作者')
         self._updating_authors = False
@@ -119,7 +123,16 @@ class TemplateManager(ManagerUpdateUI):
             variable.trace_add('write', lambda *args: self._invalidate_publish())
         window.protocol('WM_DELETE_WINDOW', self.close)
         self._poll_after = window.after(100, self._poll)
-        self._refresh_after = window.after(150, lambda: self.refresh() if self.view_source.get() != 'GitHub' else None)
+        self._refresh_after = window.after(150, self._startup)
+
+    def _startup(self):
+        self._refresh_after = None
+        if not self.alive or self.close_requested:
+            return
+        # Version checks have their own worker and cancellation; offline/local
+        # use stays available while GitHub responds or times out.
+        self._check_manager_update(automatic=True)
+        self.refresh(automatic=True)
 
     def _configure(self):
         w = self.window
@@ -268,7 +281,7 @@ class TemplateManager(ManagerUpdateUI):
         ttk.Label(header, text='OMFIT 模板管理', font=(self.font[0], 22, 'bold'), style='TM.Title.TLabel').pack(side='left')
         self.manager_update_button = self._button(header, '检查管理器更新', self._check_manager_update)
         self.manager_update_button.pack(side='right')
-        self._label(header, '管理器 ' + MANAGER_VERSION, muted=True).pack(side='right', padx=12)
+        self._label(main, variable=self.manager_version_info, muted=True, wraplength=1000).pack(fill='x', pady=(6, 0))
         self.tabs = ttk.Notebook(main, style='TM.TNotebook')
         self.tabs.pack(fill='both', expand=True, pady=(8, 10))
         self.pages = [self._frame(self.tabs, padding=16) for _ in range(4)]
@@ -489,7 +502,7 @@ class TemplateManager(ManagerUpdateUI):
         self.log.configure(yscrollcommand=scroll.set)
         self.log.pack(fill='both', expand=True, pady=(12, 0))
         self._log('使用流程\n\n'
-            '1. 填写 GitHub 仓库并连接。登录按钮会打开 Linux 终端运行 gh auth login。\n'
+            '1. 打开后自动连接上次的 GitHub 仓库，同时检查管理器更新。登录按钮会打开 Linux 终端运行 gh auth login。\n'
             '2. 选择开发者和版本，“拉取并使用”会下载并校验模板，然后进入更新页。\n'
             '3. 内置管理器直接更新当前内存工程；外部管理器选择已保存的工程 ZIP。\n'
             '4. 默认保留当前设置，并补全新版新增项；模块身份与依赖说明随模板更新。\n'
@@ -529,6 +542,7 @@ class TemplateManager(ManagerUpdateUI):
                 temporary = Path(stream.name)
                 stream.write(json_bytes({'library': self.library.get().strip(), 'shared': self.shared.get().strip(),
                                          'current': self.current.get().strip(), 'repository': self.repository.get().strip(),
+                                         'view_source': self.view_source.get(),
                                          'sort': SORT_OPTIONS.get(self.release_sort.get(), 'published'),
                                          'network': {'mode': PROXY_MODES.get(self.proxy_mode.get(), 'manual'),
                                                      'host': self.proxy_host.get().strip(), 'port': self.proxy_port.get().strip(),
@@ -616,7 +630,7 @@ class TemplateManager(ManagerUpdateUI):
         if not self.github_login:
             raise TemplateError('请先在“GitHub 版本”页登录并确认账号，再发布模板')
 
-    def _run(self, title, work, success):
+    def _run(self, title, work, success, failure=None):
         if self.busy:
             return
         self.cancel.clear()
@@ -628,7 +642,7 @@ class TemplateManager(ManagerUpdateUI):
                 result = work()
                 self.events.put(('success', success, result))
             except Exception as exc:
-                self.events.put(('error', exc))
+                self.events.put(('error', exc, failure))
         threading.Thread(target=runner, name='omfit-template-worker', daemon=True).start()
 
     def _progress(self, label, done, total):
@@ -658,7 +672,9 @@ class TemplateManager(ManagerUpdateUI):
         try:
             while True:
                 event = self.events.get_nowait()
-                if event[0] == 'login-check':
+                if event[0] == 'manager-check':
+                    self._automatic_manager_checked(*event[1:])
+                elif event[0] == 'login-check':
                     if self.busy:
                         self.events.put(event)
                         break
@@ -671,7 +687,8 @@ class TemplateManager(ManagerUpdateUI):
                     self._finish_progress(success=event[0] == 'success')
                     self._set_busy(False)
                     if self.close_requested:
-                        if event[0] == 'error' and not isinstance(event[1], Cancelled):
+                        if (event[0] == 'error' and not isinstance(event[1], Cancelled)
+                                and (len(event) < 3 or event[2] is None)):
                             self._error(event[1])
                         self.close()
                         return
@@ -685,6 +702,8 @@ class TemplateManager(ManagerUpdateUI):
                             self._error(exc)
                     elif isinstance(event[1], Cancelled):
                         self.status.set(str(event[1]))
+                    elif len(event) > 2 and event[2] is not None:
+                        event[2](event[1])
                     else:
                         self._error(event[1])
         except queue.Empty:
@@ -692,11 +711,11 @@ class TemplateManager(ManagerUpdateUI):
         if self.alive:
             self._poll_after = self.window.after(100, self._poll)
 
-    def refresh(self):
+    def refresh(self, automatic=False):
         if self.busy:
             return
         if self.view_source.get() == 'GitHub':
-            self._connect()
+            self._connect(automatic=automatic)
             return
         try:
             directory = self._directory(self.view_source.get() == '共享模板库')
@@ -792,14 +811,17 @@ class TemplateManager(ManagerUpdateUI):
             self.releases = []
             self._filter()
 
-    def _connect(self):
+    def _connect(self, automatic=False):
         if self.busy:
             return
         try:
             repo = repository(self.repository.get())
             proxy = self._selected_proxy()
         except TemplateError as exc:
-            self.status.set(str(exc))
+            if automatic:
+                self._automatic_connection_failed(exc)
+            else:
+                self.status.set(str(exc))
             return
         self._save_preferences()
         def work():
@@ -821,7 +843,14 @@ class TemplateManager(ManagerUpdateUI):
                 self.status.set('仓库已连接，尚无模板 Release。可在“发布模板”页准备首个版本。')
             if info.get('empty'):
                 self.status.set('仓库为空。登录后可在“设置与记录”页初始化，再发布首个模板版本。')
-        self._run('正在连接 GitHub 并读取版本…', work, connected)
+        self._run('正在连接 GitHub 并读取版本…', work, connected,
+                  failure=self._automatic_connection_failed if automatic else None)
+
+    def _automatic_connection_failed(self, exc):
+        message = '自动连接仓库未完成：{}。可点击“连接仓库”重试，或使用本地模板库。'.format(exc)
+        self.connection_info.set(message)
+        self.status.set('自动连接未完成，可重试或使用本地模板。')
+        self._log(message)
 
     def _login(self):
         if self.busy:
@@ -1383,6 +1412,7 @@ class TemplateManager(ManagerUpdateUI):
         self._run('正在读取更新记录…', lambda: read_history(path), loaded)
 
     def close(self):
+        self._manager_auto_cancel.set()
         if self.busy:
             self.close_requested = True
             self.cancel.set()
@@ -1393,6 +1423,8 @@ class TemplateManager(ManagerUpdateUI):
         self._stop_login_check()
         self._save_preferences()
         for callback in (self._poll_after, self._refresh_after):
+            if callback is None:
+                continue
             try:
                 self.window.after_cancel(callback)
             except tk.TclError:

@@ -3,6 +3,7 @@ from builtins import len, str
 from pathlib import Path
 import subprocess
 import sys
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import webbrowser
@@ -16,19 +17,28 @@ from OMFITlib_template_service import Cancelled
 
 
 class ManagerUpdateUI:
-    def _check_manager_update(self):
-        if self.busy:
+    def _check_manager_update(self, automatic=False):
+        if self.busy and not automatic:
             return
+        self._manager_check_generation += 1
+        generation = self._manager_check_generation
+        if not automatic:
+            self._manager_auto_cancel.set()
         try:
             proxy = self._selected_proxy()
-        except TemplateError as exc:
-            self._error(exc)
+            sources = self.session.manager_sources() if self.session is not None else {}
+        except Exception as exc:
+            if automatic:
+                self._automatic_manager_checked(generation, None, exc)
+            else:
+                self._error(exc)
             return
-        self._save_preferences()
-        sources = self.session.manager_sources() if self.session is not None else {}
+        if not automatic:
+            self._save_preferences()
+        cancel = self._manager_auto_cancel if automatic else self.cancel
         module_dir = Path(__file__).resolve().parents[1]
         def check():
-            client = GitHub(DEFAULT_REPOSITORY, token='', proxy=proxy, cancel=self.cancel)
+            client = GitHub(DEFAULT_REPOSITORY, token='', proxy=proxy, cancel=cancel)
             result = check_manager_update(client)
             if result['available'] and result.get('incremental'):
                 try:
@@ -38,7 +48,44 @@ class ManagerUpdateUI:
                 except TemplateError as exc:
                     result['incremental_error'] = str(exc)
             return result
-        self._run('正在检查管理器自身更新并比较本地文件…', check, self._show_manager_update)
+        if automatic:
+            self.manager_version_info.set('管理器 ' + MANAGER_VERSION + ' · 正在检查更新')
+            def runner():
+                try:
+                    result = check()
+                    self.events.put(('manager-check', generation, result, None))
+                except Exception as exc:
+                    self.events.put(('manager-check', generation, None, exc))
+            threading.Thread(target=runner, name='omfit-manager-update-check', daemon=True).start()
+        else:
+            self._run('正在检查管理器自身更新并比较本地文件…', check, self._show_manager_update,
+                      failure=self._manual_manager_check_failed)
+
+    def _manual_manager_check_failed(self, exc):
+        self.manager_version_info.set('管理器 ' + MANAGER_VERSION + ' · 更新检查未完成')
+        self._error(exc)
+
+    def _manager_version_hint(self, result):
+        if result['available']:
+            hint = '可更新至 ' + result['latest']
+        elif result['latest']:
+            hint = '已是最新稳定版' if result['latest'] == MANAGER_VERSION else '高于已发布版本'
+        else:
+            hint = '暂无独立更新'
+        self.manager_version_info.set('管理器 ' + MANAGER_VERSION + ' · ' + hint)
+
+    def _automatic_manager_checked(self, generation, result, error):
+        if not self.alive or self.close_requested or generation != self._manager_check_generation:
+            return
+        if error is not None:
+            if not isinstance(error, Cancelled):
+                self.manager_version_info.set('管理器 ' + MANAGER_VERSION + ' · 更新检查未完成')
+                self._log('自动检查管理器更新未完成，可点击“检查管理器更新”重试：' + str(error))
+            return
+        self.manager_update_result = result
+        self._manager_version_hint(result)
+        self._log('自动更新检查：' + self.manager_version_info.get() +
+                  ('。点击“检查管理器更新”查看并安装。' if result['available'] else '。'))
 
     def _close_manager_update(self):
         if self.busy:
@@ -51,6 +98,7 @@ class ManagerUpdateUI:
     def _show_manager_update(self, result):
         self._close_manager_update()
         self.manager_update_result = result
+        self._manager_version_hint(result)
         dialog = self.manager_update_dialog = tk.Toplevel(self.window)
         dialog.title('OMFIT Template Manager Updates')
         dialog.geometry('760x560')

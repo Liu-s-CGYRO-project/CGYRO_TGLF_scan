@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import sys
 import zipfile
-from omfit_help import validate_module_help
+from omfit_help import validate_module_help, validate_module_settings
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'OMFITtemplates/LIB'))
@@ -27,6 +27,8 @@ def build(output):
         if target.is_file():
             if row.kind == 'OMFIThelp':
                 validate_module_help(target.read_bytes(), row.ref)
+            elif row.kind == 'OMFITsettings':
+                validate_module_settings(target.read_bytes(), row.ref)
             selected.add(row.ref)
         elif target.is_dir():
             contents = [path for path in target.rglob('*') if path.is_file() and '__pycache__' not in path.parts]

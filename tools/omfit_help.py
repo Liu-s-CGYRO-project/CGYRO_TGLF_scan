@@ -1,5 +1,14 @@
-"""Static OMFIThelp format checks used by both release builders."""
+"""Static help/schema checks used by both release builders."""
+import json
 import re
+
+
+def validate_module_settings(data, filename):
+    # OMFIT treats MODULE.version as legacy documentation and rewrites even
+    # an otherwise valid help.rst into a commented migration skeleton.
+    settings = json.loads(data)
+    if 'version' in settings.get('MODULE', {}):
+        raise ValueError('{}: legacy MODULE.version would rewrite help.rst'.format(filename))
 
 
 def validate_module_help(data, filename):

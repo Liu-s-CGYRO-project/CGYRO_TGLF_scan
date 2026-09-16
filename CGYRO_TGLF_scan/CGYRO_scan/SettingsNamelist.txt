@@ -656,7 +656,6 @@
     "ID": "CGYRO_SCAN",
     "edited_by": "xiangjian",
     "date": "03 Jul 2016  15:34",
-    "version": "",
     "contact": {
       "__ndarray_tolist__": [
         "",
