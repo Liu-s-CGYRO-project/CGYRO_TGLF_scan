@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import sys
 import zipfile
+from omfit_help import validate_module_help
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'OMFITtemplates/LIB'))
@@ -24,6 +25,8 @@ def build(output):
         if ROOT.resolve() not in target.parents:
             raise TemplateError('工程引用跨出仓库：' + row.ref)
         if target.is_file():
+            if row.kind == 'OMFIThelp':
+                validate_module_help(target.read_bytes(), row.ref)
             selected.add(row.ref)
         elif target.is_dir():
             contents = [path for path in target.rglob('*') if path.is_file() and '__pycache__' not in path.parts]

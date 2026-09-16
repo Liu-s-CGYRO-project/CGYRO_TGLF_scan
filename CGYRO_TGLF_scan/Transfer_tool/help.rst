@@ -1,6 +1,13 @@
-Transfer_tool 使用流程
----------------------
+Short Description
+-----------------
+处理粒子剖面和准中性约束并生成各半径的 CGYRO / TGLF 输入
 
+Keywords
+--------
+GACODE, Transfer_tool, profiles, quasineutrality, CGYRO, TGLF
+
+Long Description
+----------------
 在工程总控“输入准备与转换 → Transfer_tool 运行”中，载入剖面，
 选择粒子处理方案、主离子和计算半径，点击唯一的“运行 Transfer_tool”按钮。
 程序依次准备粒子、运行 TGYRO、生成各半径 input.cgyro / input.tglf。

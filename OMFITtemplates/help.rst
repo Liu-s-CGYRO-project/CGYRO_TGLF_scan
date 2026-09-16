@@ -1,6 +1,13 @@
-OMFIT GitHub 模板管理器 1.9.1
-============================
+Short Description
+-----------------
+在 OMFIT 或 Linux 桌面通过 GitHub 管理工程模板与管理器更新
 
+Keywords
+--------
+OMFIT, GitHub, templates, versions, incremental updates
+
+Long Description
+----------------
 面向带桌面的 Linux，在 OMFIT 内浏览、拉取和发布不同开发者的模板版本。
 
 1.2.2 修复 Python 3.9 的字体初始化兼容问题，保留对当前 OMFIT Tk 窗口的显式绑定。

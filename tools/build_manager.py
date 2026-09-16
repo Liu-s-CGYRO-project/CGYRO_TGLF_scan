@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import tarfile
 import zipfile
+from omfit_help import validate_module_help
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / 'OMFITtemplates'
@@ -79,6 +80,7 @@ OMFIT 内只替换管理器模块；正常保存工程以保留更新。Linux �
 
 def build(directory):
     directory = Path(directory).expanduser().resolve()
+    validate_module_help((MODULE / 'help.rst').read_bytes(), 'OMFITtemplates/help.rst')
     selected = {'OMFITsave.txt', 'SettingsNamelist.txt', 'help.rst'}
     for row in parse_tree((MODULE / 'OMFITsave.txt').read_bytes()):
         if row.ref:

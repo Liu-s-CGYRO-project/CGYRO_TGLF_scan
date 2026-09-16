@@ -1,6 +1,13 @@
-CGYRO / TGLF Project workbench
------------------------------
+Short Description
+-----------------
+统一管理 CGYRO / TGLF 输入准备、计算运行、结果绘图和工程模板
 
+Keywords
+--------
+CGYRO, TGLF, GACODE, scans, plotting, templates
+
+Long Description
+----------------
 The default panel is ``GUIS/main``. It organizes Transfer tool, CGYRO, TGLF,
 multi-profile calculations, execution settings, result collection, plotting,
 input differences and GitHub templates. Advanced module GUIs remain available.

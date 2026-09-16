@@ -1,6 +1,13 @@
-CGYRO scan project
-==================
+Short Description
+-----------------
+准备 CGYRO 扫描输入、运行计算、收集和对比结果
 
+Keywords
+--------
+CGYRO, linear, nonlinear, scans, gyrokinetics
+
+Long Description
+----------------
 This project contains CGYRO scan preparation, result collection and plotting.
 The saved example is a two-species electromagnetic linear scan. Solver and
 cluster environments must be configured on the machine that will run it.
