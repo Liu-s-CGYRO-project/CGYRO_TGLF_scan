@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.12.3",
-  "parent_release": "1.12.2",
+  "version": "1.12.4",
+  "parent_release": "1.12.3",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -258,7 +258,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py": "9d9448f7a1bcd8a461c80efdf75ddf86d77c1f15878a760b04718fb4425b5fc4",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "0423ffb7114200709e216bdfb81c7b88f4fd8435eb500dbf49c213b25e1636bf",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project.py": "24e0348b142ab830ee0673d2bfc61c91d25cfa7faabf21f6630cbf72a7357293",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_project_runtime.py": "ffdd70d0c3a05410dee6a7d3590fcc94edebd000112e568805e6727064188015",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_project_runtime.py": "726e34bda3987d6f1f0d31afad3d7ab8ff0ab7f7b8e1411706fb134d01422613",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py": "9eed6292efb0654b574ad700654ef79dcadfb4d19c81753c7c59f8c8008391e4",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_data.py": "c2b7b1505f5c514be00b2603c8d8503c16ad5489add75ee1e8c60e54705b551d",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_plot.py": "631e45938afad95d823f06005dfab1d2b1632736434278ab24f07323ba09d8b4",
@@ -498,7 +498,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "a7af098c018348c56a4132da56bacad5f9967d6ca3940bb1a517004b6b6d65e2"
+    "VALIDATION.md": "3ef8f9f0c71f10142eb08b2c8252c52d8c5f8b6945a313d884b3b9c6b27d1de0"
   },
   "workbench_features": [
     "native_omfit_project_gui",

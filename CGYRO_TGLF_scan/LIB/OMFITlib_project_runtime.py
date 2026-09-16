@@ -224,8 +224,11 @@ def apply_runtime(root, factory=dict):
         elif name == 'transfer':
             # Transfer generation follows command box 1: one rank per radius.
             points = int(setup.get('p_tgyro', 3))
-            update.update(num_nodes=1, num_cores=points)
-            selected.update(nodes=1, ntasks_per_node=points, ppn=points, n=points, cpus_per_task=1)
+            update.update(dict(num_nodes=1, num_cores=points))
+            # OMFIT SortedDict/NamelistName accepts a mapping, but unlike the
+            # built-in dict its update() does not accept keyword arguments.
+            selected.update(dict(nodes=1, ntasks_per_node=points, ppn=points,
+                                 n=points, cpus_per_task=1))
             update['executable'] = environment
             update['gacode_shared'] = True
         elif name == 'tglf':

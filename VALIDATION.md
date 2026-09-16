@@ -1,3 +1,15 @@
+# 修订记录 · 工程 1.12.4 / 管理器 1.10.2
+
+工程 1.12.4：修复统一环境应用时的 OMFIT SortedDict 兼容错误。
+
+- “应用到整个工程”处理 Transfer_tool 资源时，原代码把 nodes、ntasks_per_node、ppn、n、cpus_per_task 作为关键字参数传给 update。Python dict 接受这种写法，但 OMFIT SortedDict / NamelistName 的 update 只接受一个映射，因此报 `update() got an unexpected keyword argument 'nodes'`。
+- 现在将 Transfer 资源字段构造成普通字典，再作为单个映射传入 OMFIT。相同运行配置路径中的 OMFIT 对象更新均使用映射参数。
+- 此异常出现在构建完整更新列表阶段，实际写入尚未开始，因此失败操作不会留下部分模块已更新的状态。更新后保留当前服务器和资源设置，重新点击“应用到整个工程”即可。
+
+内置管理器保持 1.10.2。拉取工程 1.12.4，预览后更新当前工程并照常保存；安装包不含计算案例或结果。
+
+按要求未运行回归测试、GUI 或求解器。仅完成源码审阅、Python 3.9 静态语法、OMFIT 库清单及分发包完整性检查；尚未在 Linux 桌面实测。
+
 # 修订记录 · 工程 1.12.3 / 管理器 1.10.2
 
 工程 1.12.3：在统一环境页直接新增服务器配置。
