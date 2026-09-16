@@ -2,9 +2,11 @@
 from builtins import callable, dict, isinstance, len, list, next, str
 from collections import OrderedDict
 import json
+import tkinter as tk
+from tkinter import ttk
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, loaded_file
-from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime, server_registration_issues
+from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
 from OMFITlib_project import (LABELS, MODULES, PAGES, cgyro_input_issues, collect_issues, generated_tglf_sources,
     location, module, pending_inputs, read, runtime_issues, summary, text_value, tglf_input_issues, transfer_sources)
 
@@ -297,24 +299,35 @@ class ProjectUI:
             caption = str(servers[name]) if isinstance(servers, dict) else str(name)
             choices[caption] = name
         picker = text_value(config, 'serverPicker')
+        draft = self.settings.get('server_draft', None)
         if picker and picker not in choices.values():
             choices[picker + '（工程保存的配置名）'] = picker
         self.ui.ComboBox(prefix + "['serverPicker']", choices,
-                         '服务器配置名', state='normal', updateGUI=True)
+                         '服务器配置名', state='disabled' if draft is not None else 'readonly', updateGUI=True,
+                         postcommand=lambda location=None: self.actions.sync_runtime_endpoint(replace_directory=True))
         server_issues = self.actions.runtime_server_issues()
         with self.ui.same_row():
-            self.guarded('从 OMFIT 读取连接信息', self.actions.sync_runtime_endpoint, server_issues)
+            self.guarded('新增服务器', self.actions.begin_runtime_server,
+                         ['请先保存或取消当前新增'] if draft is not None else
+                         ([] if self.actions.register_server is not None else ['当前宿主未提供服务器登记入口']))
+            self.guarded('从 OMFIT 读取连接信息', self.actions.sync_runtime_endpoint,
+                         server_issues + (['请先保存或取消当前新增'] if draft is not None else []))
             if self.open_servers is not None:
                 self.ui.Button('OMFIT 个人服务器设置', self.open_servers, updateGUI=True)
-        if server_issues:
+        if server_issues and draft is None:
             self.label('；'.join(server_issues))
-        self.ui.Entry(prefix + "['server']", '服务器地址', updateGUI=True)
-        self.ui.Entry(prefix + "['tunnel']", '连接隧道（可留空）', updateGUI=True)
-        self.ui.Entry(prefix + "['workDir']", '工作根目录', updateGUI=True)
-        if server_issues and picker and self.actions.register_server is not None:
-            self.label('登记使用上面填写的用户名@主机、隧道和目录，并保存到 OMFIT 个人设置；不包含密码。')
-            self.guarded('登记此连接到 OMFIT', self.actions.register_runtime_endpoint,
-                         server_registration_issues(config))
+        if draft is not None:
+            self.ui.Separator('新增服务器')
+            for key, label in [('serverPicker', '新配置名'), ('server', '服务器地址（用户名@主机[:端口]）'),
+                               ('tunnel', '连接隧道（可留空）'), ('workDir', '工作根目录')]:
+                self.server_text_entry(draft, key, label)
+            with self.ui.same_row():
+                self.ui.Button('保存并选用', self.actions.register_runtime_endpoint, updateGUI=True)
+                self.ui.Button('取消新增', self.actions.cancel_runtime_server, updateGUI=True)
+        else:
+            self.ui.Entry(prefix + "['server']", '服务器地址', updateGUI=True)
+            self.ui.Entry(prefix + "['tunnel']", '连接隧道（可留空）', updateGUI=True)
+            self.ui.Entry(prefix + "['workDir']", '工作根目录', updateGUI=True)
         self.label('此目录下自动使用 cgyro、tglf、tgyro、transfer 等子目录，避免同名输入互相覆盖。')
         self.ui.Separator('共用 GACODE 环境')
         self.ui.Entry(prefix + "['environment']", '环境初始化脚本', multiline=True,
@@ -343,16 +356,38 @@ class ProjectUI:
             if transfer is not None:
                 self.ui.Entry(location(MODULES['transfer'] + ('SETTINGS', 'SETUP', 'p_tgyro')), '转换用 TGYRO 半径数')
         issues = validate_runtime(config) + self.actions.runtime_server_issues(match_connection=True)
-        if applied_runtime(self.root) is None:
+        if draft is not None:
+            issues = ['请先保存或取消新增服务器']
+        if draft is not None:
+            status = '新增配置尚未保存。'
+        elif applied_runtime(self.root) is None:
             status = '已从现有 CGYRO 配置预填；点击应用后，各模块开始共用此配置。'
         elif shared_issues(self.root):
             status = '配置有未应用的修改，请应用后再运行。'
         else:
             status = '统一配置已应用。环境只需在本页维护。'
         self.label(status)
-        if issues:
+        if issues and draft is None:
             self.label('待填写：' + '；'.join(issues))
         self.guarded('应用到整个工程', self.actions.apply_runtime, issues)
+
+    def server_text_entry(self, draft, key, caption):
+        """Plain text in an OMFIT row, without Python expression evaluation.
+
+        Write only the isolated draft as the user types, so Save also sees the
+        last field without an extra Enter/FocusOut. Keep the Tk variable alive.
+        """
+        label = self.ui.Label(caption + ' = ', align='left')
+        variable = tk.StringVar(master=label.master, value=str(draft.get(key, '') or ''))
+        entry = ttk.Entry(label.master, textvariable=variable)
+        entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 0))
+        trace = variable.trace_add('write', lambda *args: draft.__setitem__(key, variable.get()))
+        def release(event):
+            if event.widget is entry:
+                variable.trace_remove('write', trace)
+        entry.bind('<Destroy>', release, add='+')
+        entry._server_text_variable = variable
+        return entry
 
     def render_plots(self):
         self.label('选择已有结果后绘图。支持 CGYRO 与 TGLF 的同模型和跨模型对比。')

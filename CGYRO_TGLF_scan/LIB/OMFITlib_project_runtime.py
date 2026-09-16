@@ -79,12 +79,16 @@ def server_registration_issues(config):
     if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_.-]*', picker) or picker.lower() in (
             'localhost', 'default', 'default_tunnel', 'idl', 'matlab') or picker.lower().endswith('_username'):
         issues.append('请填写独立的服务器配置名，例如 tyadmin09')
-    if not re.fullmatch(r'[^@:\s]+@[^@\s]+', server):
-        issues.append('服务器地址需要包含登录用户名，例如 用户名@tyadmin09；不要填写密码')
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+(?::[0-9]+)?', server):
+        issues.append('服务器地址请填写 用户名@主机 或 用户名@主机:端口，不加引号，不包含密码')
+    elif ':' in server and not 1 <= int(server.rsplit(':', 1)[1]) <= 65535:
+        issues.append('SSH 端口必须为 1 至 65535 的整数')
     if '\n' in text(config, 'tunnel') or '\r' in text(config, 'tunnel'):
         issues.append('连接隧道需要填写单行值')
     directory = text(config, 'workDir')
-    if directory:
+    if not directory:
+        issues.append('请填写服务器上的工作根目录')
+    else:
         path = PurePosixPath(directory)
         if not path.is_absolute() or '..' in path.parts or str(path) == '/':
             issues.append('工作根目录需要填写 Linux 绝对路径')

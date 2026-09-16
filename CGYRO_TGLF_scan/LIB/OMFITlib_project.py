@@ -430,8 +430,7 @@ class ProjectActions:
         try:
             endpoint = self.resolve_server(picker)
         except KeyError:
-            return ['服务器“{}”未在当前 OMFIT 个人设置中登记。请选择已登记的服务器，'
-                    '或填写下方连接信息后点击“登记此连接到 OMFIT”。'.format(picker)]
+            return ['服务器“{}”尚未登记，请选择已有配置或点击“新增服务器”。'.format(picker)]
         if not text_value(endpoint, 'server'):
             return ['OMFIT 服务器“{}”尚未填写有效的连接地址，请在个人服务器设置中补充。'.format(picker)]
         if match_connection and any(text_value(config, key) != text_value(endpoint, key) for key in ('server', 'tunnel')):
@@ -439,22 +438,48 @@ class ProjectActions:
                     '或修改个人服务器设置后重新读取。']
         return []
 
-    def register_runtime_endpoint(self):
+    def begin_runtime_server(self):
+        """Edit a separate connection draft; opening/cancelling cannot switch jobs."""
         if self.register_server is None:
             self.settings['message'] = '当前宿主未提供服务器登记入口，请打开 OMFIT 的个人服务器设置。'
             return
         config = initialize_runtime(self.root, self.factory)
+        draft = self.factory()
+        # Offer recovery for a project carrying an unregistered server name.
+        missing = self.runtime_server_issues()
+        draft.update({key: text_value(config, key) if missing else ''
+                      for key in ('serverPicker', 'server', 'tunnel', 'workDir')})
+        self.settings['server_draft'] = draft
+        self.settings['message'] = ''
+
+    def cancel_runtime_server(self):
+        self.settings.pop('server_draft', None)
+        self.settings['message'] = ''
+
+    def register_runtime_endpoint(self):
+        if self.register_server is None:
+            self.settings['message'] = '当前宿主未提供服务器登记入口，请打开 OMFIT 的个人服务器设置。'
+            return
+        draft = self.settings.get('server_draft', None)
+        config = draft if draft is not None else initialize_runtime(self.root, self.factory)
         try:
             persisted = self.register_server(config)
         except ValueError as exc:
             self.settings['message'] = str(exc)
             return
+        if draft is not None:
+            current = initialize_runtime(self.root, self.factory)
+            current.update({key: text_value(draft, key) for key in ('serverPicker', 'server', 'tunnel', 'workDir')})
+            if current['scheduler'] == 'local':
+                current['scheduler'] = 'slurm'
+            self.settings.pop('server_draft', None)
         self.settings['message'] = '已登记服务器“{}”；请点击“应用到整个工程”同步计算模块。'.format(
             text_value(config, 'serverPicker'))
         if not persisted:
             self.settings['message'] += ' 当前会话已生效，但个人设置未能保存，请在 OMFIT 首选项中保存设置。'
+        return True
 
-    def sync_runtime_endpoint(self):
+    def sync_runtime_endpoint(self, replace_directory=False):
         config = initialize_runtime(self.root, self.factory)
         picker = text_value(config, 'serverPicker')
         issues = self.runtime_server_issues()
@@ -469,9 +494,16 @@ class ProjectActions:
         server = str(endpoint.get('server', None) or ('localhost' if picker == 'localhost' else ''))
         if not server:
             raise ValueError('OMFIT 个人配置未提供此服务器的连接信息。')
-        config.update(dict(server=server, tunnel=str(endpoint.get('tunnel', None) or '')))
-        if not text_value(config, 'workDir'):
-            config['workDir'] = str(self.workdir(self.root, server))
+        values = dict(server=server, tunnel=str(endpoint.get('tunnel', None) or ''))
+        if replace_directory or not text_value(config, 'workDir'):
+            directory = text_value(endpoint, 'workDir')
+            if not directory and self.workdir is not None:
+                try:
+                    directory = str(self.workdir(self.root, server))
+                except (KeyError, ValueError, TypeError):
+                    directory = ''
+            values['workDir'] = directory
+        config.update(values)
         if picker == 'localhost':
             config['scheduler'] = 'local'
         elif config['scheduler'] == 'local':
@@ -479,6 +511,9 @@ class ProjectActions:
         self.settings['message'] = '已读取 OMFIT 连接信息。检查下方共用配置后点击“应用到整个工程”。'
 
     def apply_runtime(self):
+        if self.settings.get('server_draft', None) is not None:
+            self.settings['message'] = '请先保存或取消新增服务器。'
+            return
         issues = self.runtime_server_issues(match_connection=True)
         if issues:
             self.settings['message'] = '；'.join(issues)

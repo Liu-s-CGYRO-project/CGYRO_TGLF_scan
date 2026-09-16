@@ -8,6 +8,17 @@ CGYRO, TGLF, GACODE, scans, plotting, templates
 
 Long Description
 ----------------
+在“2 环境配置与记录 → 服务器与工作目录”点击“新增服务器”，填写新配置名、
+用户名@主机（可带端口）、可选连接隧道及 Linux 工作根目录，再点“保存并选用”。
+新增表单使用普通文本，不用加 Python 引号，也不用在每一项输入后按回车。
+成功后配置写入 OMFIT 个人服务器设置并自动选中；确认统一 GACODE 环境后，
+点击“应用到整个工程”同步各模块。
+
+新增期间使用独立草稿；取消不会改动原连接，同名配置不会被覆盖。
+切换已有服务器时自动读取它的地址、隧道及工作目录；“从 OMFIT 读取连接信息”
+用于刷新当前连接，并保留已填写的工作根目录。个人设置保存失败时会明确提示，
+此时只在当前会话生效。新增和切换配置本身不建立 SSH 连接或提交计算。
+
 The default panel is ``GUIS/main``. It organizes Transfer tool, CGYRO, TGLF,
 multi-profile calculations, execution settings, result collection, plotting,
 input differences and GitHub templates. Advanced module GUIs remain available.
