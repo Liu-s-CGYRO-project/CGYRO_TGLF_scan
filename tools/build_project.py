@@ -1,5 +1,6 @@
 """Build a result-free, self-contained OMFIT project from reviewed tree references."""
 import argparse
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -30,6 +31,34 @@ def validate_tgyro_seed(data, name):
                 raise TemplateError(name + ':' + str(number) + '：参数行缺少等号')
 
 
+def validate_library_imports(rows, base):
+    """Statically match native OMFIT's current-root LIB lookup, without execution."""
+    modules = {row.keys for row in rows if row.kind == 'OMFITmodule'}
+    by_key = {row.keys: row for row in rows}
+    imports = {}
+    for row in rows:
+        if not row.ref or not row.kind.startswith('OMFITpython'):
+            continue
+        module = max((key for key in modules if row.keys[:len(key)] == key), key=len, default=())
+        if row.ref not in imports:
+            path = (base / row.ref).resolve()
+            if base.resolve() not in path.parents or not path.is_file():
+                raise TemplateError('无效的 Python 文件引用：' + row.ref)
+            tree = ast.parse(path.read_text(encoding='utf-8-sig'), filename=row.ref, feature_version=(3, 9))
+            names = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    names.extend((item.name, node.lineno) for item in node.names if item.name.startswith('OMFITlib_'))
+                elif isinstance(node, ast.ImportFrom) and (node.module or '').startswith('OMFITlib_'):
+                    names.append((node.module, node.lineno))
+            imports[row.ref] = names
+        for name, line in imports[row.ref]:
+            library = by_key.get(module + ('LIB', name))
+            if library is None or library.kind != 'OMFITpythonTask' or not library.ref:
+                raise TemplateError('{}:{}：模块 {} 的 LIB 未登记 {}'.format(
+                    row.ref, line, '/'.join(map(str, module)) or 'root', name))
+
+
 def build(output):
     output = Path(output).expanduser().resolve()
     rows = parse_tree((ROOT / 'OMFITsave.txt').read_bytes())
@@ -58,6 +87,10 @@ def build(output):
             raise TemplateError('缺少工程引用：' + row.ref)
     if any((ROOT / name).is_symlink() for name in selected):
         raise TemplateError('分发工程不允许符号链接')
+    validate_library_imports(rows, ROOT)
+    for manifest in (ROOT / 'CGYRO_TGLF_scan/OMFITsave.txt', ROOT / 'OMFITtemplates/OMFITsave.txt'):
+        if manifest.is_file():
+            validate_library_imports(parse_tree(manifest.read_bytes()), manifest.parent)
     metadata = json.loads((ROOT / 'PROJECT_CONTENTS.json').read_bytes())
     metadata['files'] = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in sorted(selected)}
     (ROOT / 'PROJECT_CONTENTS.json').write_bytes(json_bytes(metadata))

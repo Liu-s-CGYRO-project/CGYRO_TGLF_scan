@@ -34,7 +34,10 @@ try:
     outputs['Profiles_gen']['input.gacode'] = profile.duplicate()
     outputs['Particle_processing'] = report
     print('本轮主离子：' + '；'.join(main_ion_label(ion) for ion in report['main_ions']))
-    print('粒子处理后：' + '；'.join(species_label(ion) for ion in report['after']))
+    if report.get('equivalent_stage', None) == 'local_inputs':
+        print('全部非主离子将在各半径合成等效杂质（Z、密度、MASS）。')
+    else:
+        print('粒子处理后：' + '；'.join(species_label(ion) for ion in report['after']))
     if report.get('thermal_reference', None):
         print('独立热化的温度 / 流速来源：' + species_label(report['thermal_reference']))
     print('准中性：密度残差 {:.3g}，密度梯度残差 {:.3g}。'.format(report['density_residual'], report['gradient_residual']))

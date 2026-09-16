@@ -18,12 +18,13 @@ PRESETS = OrderedDict([
 DESCRIPTIONS = {
     'all': '保留全部离子及热 / 快类型，所有主离子按原密度比例共同校正准中性。',
     'thermalize': '同种热杂质合并；对应任一主离子的快离子独立保留，温度、环向及极向流速采用所选热杂质的值。缺少所需热离子时停止。此为热化近似，压力会改变。',
-    'equivalent': '保留电子、全部主离子和一种等效杂质；保持主离子密度比例、准中性及初次校正后的 Zeff。等效杂质的温度和流速采用平均 ni/ne 最高的主离子值。',
+    'equivalent': '全部非主离子合成一种等效杂质，各半径分别计算 Z、密度和 MASS；保持总电荷、Zeff 贡献、总质量及压力。主离子全部保留，密度和密度梯度均满足准中性。',
     'main_only': '保留电子和全部主离子；各半径按原主离子密度比例补齐电荷，分别沿用各主离子的温度和流速。',
 }
-PARTICLE_DEFAULTS = {'particle_mode': 'all', 'equivalent_ion': 0, 'thermal_reference_ion': 0}
+PARTICLE_DEFAULTS = {'particle_mode': 'all', 'thermal_reference_ion': 0}
 MAIN_ION_THRESHOLD = 0.30
 MAIN_ION_RULE = 'mean_ni_over_ne_in_radial_interval_v1'
+EQUIVALENT_RULE = 'all_nonmain_local_charge_zeff_mass_pressure_v1'
 TOLERANCE = 1e-8
 ROUND_OFF = 64 * np.finfo(float).eps
 
@@ -32,10 +33,10 @@ def particle_options(options):
     values = {key: options.get(key, default) for key, default in PARTICLE_DEFAULTS.items()}
     if values['particle_mode'] not in DESCRIPTIONS:
         raise ValueError('请选择有效的粒子处理方案。')
-    for key in ('equivalent_ion', 'thermal_reference_ion'):
+    for key in ('thermal_reference_ion',):
         raw = float(values[key])
         if not math.isfinite(raw) or raw < 0 or int(raw) != raw:
-            raise ValueError('粒子选择无效，请重新选择等效杂质或温度 / 流速来源。')
+            raise ValueError('粒子选择无效，请重新选择温度 / 流速来源。')
         values[key] = int(raw)
     try:
         minimum, maximum = float(options['minimum']), float(options['maximum'])
@@ -49,6 +50,8 @@ def particle_options(options):
     # Include the rule and interval in provenance, invalidating old/manual results.
     values.update(minimum=minimum, maximum=maximum, coordinate=coordinate,
                   main_ion_rule=MAIN_ION_RULE, main_ion_threshold=MAIN_ION_THRESHOLD)
+    if values['particle_mode'] == 'equivalent':
+        values['equivalent_rule'] = EQUIVALENT_RULE
     return values
 
 
@@ -73,16 +76,6 @@ def species_label(ion):
     return '{}：{} · Z={:g}，A={:g} · {}'.format(
         ion['index'], ion['name'], ion['charge'], ion['mass'],
         '原快离子（独立热化）' if ion.get('thermalized_fast', False) else ('快离子' if ion['kind'] == 'fast' else '热离子'))
-
-
-def ion_choices(profile, main_ions):
-    result = OrderedDict([('自动（选取电荷最高的非主离子）', 0)])
-    main_indices = [ion['index'] for ion in main_ions]
-    if profile is not None:
-        for ion in species(profile):
-            if ion['index'] not in main_indices:
-                result[species_label(ion)] = ion['index']
-    return result
 
 
 def thermal_reference_choices(profile, main_ions):
@@ -300,26 +293,6 @@ def _pressure_nt(profile):
         np.zeros_like(profile['ne']))
 
 
-def _equivalent_density(ne, reference_zeff, main_charges, main_densities, z_eq, other_charge):
-    """Keep Zeff and the density ratios of every retained main population."""
-    charge = np.sum(main_charges[:, None] * main_densities, axis=0)
-    if np.any(charge <= 0):
-        raise ValueError('主离子总密度为零处无法按原比例构造等效杂质。')
-    z_main = np.sum(main_charges[:, None] ** 2 * main_densities, axis=0) / charge
-    difference = reference_zeff - z_main
-    denominator = z_eq * (z_eq - z_main)
-    same_charge = np.abs(z_eq - z_main) <= ROUND_OFF * np.maximum(z_eq, z_main)
-    if np.any(same_charge & (np.abs(difference) > ROUND_OFF * np.maximum(1.0, reference_zeff))):
-        raise ValueError('所选等效杂质电荷与主离子组的有效电荷相同，无法保持 Zeff。')
-    # In the equal-charge case Zeff does not fix the split; retain removed charge.
-    density = np.divide(ne * difference, denominator, out=other_charge / z_eq, where=~same_charge)
-    remaining = ne - z_eq * density
-    if (not np.all(np.isfinite(density)) or np.any(density < -ROUND_OFF * ne / z_eq)
-            or np.any(remaining < -ROUND_OFF * ne)):
-        raise ValueError('所选等效杂质无法同时保持 Zeff、主离子比例和非负密度，请选择其他杂质或保留所有粒子。')
-    return np.minimum(np.maximum(density, 0.0), ne / z_eq)
-
-
 def prepare_particles(source, options):
     """Return (processed OMFITinputgacode, compact provenance), preserving source."""
     options = particle_options(options)
@@ -332,46 +305,25 @@ def prepare_particles(source, options):
     main_count = len(mains)
     thermal_reference = (_thermal_reference(profile, options, before, mains)
                          if options['particle_mode'] == 'thermalize' else None)
-    representative = None
-    if options['particle_mode'] == 'equivalent':
-        candidates = [ion for ion in before if ion['index'] not in main_indices]
-        if options['equivalent_ion']:
-            candidates = [ion for ion in candidates if ion['index'] == options['equivalent_ion']]
-            if not candidates:
-                raise ValueError('等效杂质必须来自本轮识别的非主离子，请重新选择。')
-        if candidates:
-            representative = max(candidates, key=lambda ion: (ion['charge'], -ion['index']))
     profile.reorder_ions(main_indices + [ion['index'] for ion in before if ion['index'] not in main_indices], verbose=False)
     # Native del_ion adds removed charge to ion 1. Restore these ratios afterwards.
     main_densities = np.array([profile['ni_' + str(i)] for i in range(1, main_count + 1)], copy=True)
-    main_charges = np.array([ion['charge'] for ion in mains])
     _close_density(profile, main_count)
     reference_zeff = np.array(profile.calc_zeff(), dtype=float, copy=True)
     changes = {'merged': [], 'kept_separate': []}
     mode = options['particle_mode']
     if mode == 'thermalize':
         changes = _thermalize(profile, main_count, thermal_reference)
-    elif mode in ('main_only', 'equivalent'):
-        equivalent_density = None
-        if mode == 'equivalent' and representative is not None:
-            z_eq = representative['charge']
-            if int(z_eq) != z_eq:
-                raise ValueError('OMFIT add_ion 要求等效杂质为整数电荷，请选择其他杂质。')
-            other_charge = sum((ion['charge'] * profile['ni_' + str(ion['index'])]
-                                for ion in species(profile)[main_count:]), np.zeros_like(ne_before))
-            equivalent_density = _equivalent_density(ne_before, reference_zeff, main_charges,
-                                                     main_densities, z_eq, other_charge)
+    elif mode == 'main_only':
         for index in range(int(profile['N_ION']), main_count, -1):
             profile.del_ion(index, add_density_to_ion=1, verbose=False)
-        if equivalent_density is not None:
-            # Add the slot without stealing density from a single main ion.
-            profile.add_ion(main_count + 1, representative['name'], z_eq, representative['mass'], ni=np.zeros_like(ne_before),
-                            thermal=True, remove_density_from_ion=1, temperature_and_velocities_from_ion=1, verbose=False)
-            profile['ni_' + str(main_count + 1)] = equivalent_density
         for index in range(main_count):
             profile['ni_' + str(index + 1)] = main_densities[index].copy()
+    # A profile has one scalar Z/MASS per species. Keep its full composition for
+    # native locpargen; collapse impurities separately in each generated input.
+    # This also avoids add_ion/locpargen truncating an effective fractional Z.
     if int(profile['N_ION']) > 9:
-        raise ValueError('当前 Transfer_tool 的 TGYRO 接口最多支持 9 种离子，请选择粒子简化方案。')
+        raise ValueError('当前 Transfer_tool 的 TGYRO 接口最多支持 9 种离子；等效方案在局部输入阶段合成，请先简化源剖面。')
     density_error = _close_density(profile, main_count)
     # Rebuild OMFIT/GACODE derived fields after deleting/reordering ion arrays.
     profile.consistent_derived()
@@ -401,10 +353,13 @@ def prepare_particles(source, options):
         ion['is_main'] = index < main_count
         if ion['is_main']:
             ion.update(source_index=mains[index]['index'], mean_fraction=mains[index]['mean_fraction'])
+        elif mode == 'equivalent':
+            ion['source_index'] = [original['index'] for original in before
+                                   if original['index'] not in main_indices][index - main_count]
     for item in changes['kept_separate']:
         after[item['index'] - 1]['thermalized_fast'] = True
     report = dict(options=options, before=before, after=after, main_ions=mains, main_count=main_count,
-                  equivalent_reference=representative,
+                  equivalent_stage='local_inputs' if mode == 'equivalent' else None,
                   thermal_reference=thermal_reference['species'] if thermal_reference is not None else None,
                   density_residual=density_error, gradient_residual=gradient_error,
                   main_ratio_residual=ratio_error,

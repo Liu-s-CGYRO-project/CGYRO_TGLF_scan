@@ -4,7 +4,7 @@ from collections import OrderedDict
 from builtins import dict, next
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, loaded_file, PROFILE_KEYS
 from OMFITlib_gui_layout import finish_gui_layout
-from OMFITlib_transfer_particles import (PRESETS, DESCRIPTIONS, detect_main_ions, ion_choices,
+from OMFITlib_transfer_particles import (PRESETS, DESCRIPTIONS, detect_main_ions,
                                         main_ion_label, species_label, thermal_reference_choices)
 
 # compoundGUI is reserved by OMFIT and must not be reset through defaultVars.
@@ -24,7 +24,6 @@ def load_profile(location=None):
     value = readers[kind](filename)
     value.keys()
     root['INPUTS'][kind] = value
-    physics['generation']['equivalent_ion'] = 0
     physics['generation']['thermal_reference_ion'] = 0
     if kind == 'input.gacode':
         root['Transfer_file']['input.gacode'] = value.duplicate()
@@ -63,7 +62,6 @@ with OMFITx.same_row():
 OMFITx.Separator('粒子处理')
 source_profile = root['INPUTS'].get('input.gacode', None) if kind == 'input.gacode' else None
 if kind != 'input.gacode':
-    physics['generation']['equivalent_ion'] = 0
     physics['generation']['thermal_reference_ion'] = 0
 main_ions = []
 particle_issue = ''
@@ -87,10 +85,12 @@ details = [
 if main_ions:
     details.append('当前识别：\n' + '\n'.join(main_ion_label(ion) for ion in main_ions))
 if source_profile is None and kind != 'input.gacode':
-    details.append('其他剖面来源在生成 input.gacode 后自动识别；指定杂质或热化参考时可使用已生成的 input.gacode。')
+    details.append('其他剖面来源在生成 input.gacode 后自动识别；指定热化参考时可使用已生成的 input.gacode。')
 last_report = root['OUTPUTS'].get('Particle_processing', {})
 if last_report.get('after', None):
-    details.append('上次生成：\n' + '\n'.join(species_label(ion) for ion in last_report['after']))
+    details.append('上次剖面组成：\n' + '\n'.join(species_label(ion) for ion in last_report['after']))
+    if last_report.get('equivalent_stage', None) == 'local_inputs':
+        details.append('各半径等效杂质的 Z、密度、MASS 和来源记录在 OUTPUTS/Particle_processing/local_inputs。')
     details.append('上次残差：密度 {:.2g}，梯度 {:.2g}；总压力最大相对变化 {:.2%}。'.format(
         last_report.get('density_residual', 0.0), last_report.get('gradient_residual', 0.0),
         last_report.get('max_relative_pressure_change', 0.0)))
@@ -98,10 +98,7 @@ if last_report.get('thermal_reference', None):
     details.append('上次热化参考：' + species_label(last_report['thermal_reference']))
 OMFITx.ComboBox(prefix + "['particle_mode']", PRESETS, '处理方案', updateGUI=True, help='\n\n'.join(details))
 if not particle_issue:
-    if physics['generation']['particle_mode'] == 'equivalent':
-        OMFITx.ComboBox(prefix + "['equivalent_ion']", ion_choices(source_profile, main_ions),
-                       '等效杂质', updateGUI=True)
-    elif physics['generation']['particle_mode'] == 'thermalize':
+    if physics['generation']['particle_mode'] == 'thermalize':
         OMFITx.ComboBox(prefix + "['thermal_reference_ion']",
                        thermal_reference_choices(source_profile, main_ions),
                        '温度 / 流速来源', updateGUI=True,

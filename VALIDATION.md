@@ -1,3 +1,17 @@
+# 修订记录 · 工程 1.12.2 / 管理器 1.10.2
+
+工程 1.12.2：修复 Transfer_tool 库登记，重做全部杂质的等效处理。
+
+- 修复 `OMFIT module library files should be in root['LIB']['OMFITlib_...']`：在 Transfer_tool 自身的 LIB 中登记共享的 GUI 字体与窗口上下文库，补齐整个工程和模块入口的清单。打包时按 OMFIT 当前模块规则静态检查所有 OMFITlib 导入。
+- 删除“选择等效杂质”下拉框及旧代表粒子设置。将全部非主离子合成一个等效粒子；在每个计算半径用 C1=sum(nZ)、C2=sum(nZ²)、M1=sum(nMASS)，计算 Z=C2/C1、N=C1²/C2、MASS=M1/N。
+- 保持杂质的总电荷、Zeff 贡献、总质量和总压力；温度和梯度由对应总量计算。所有主离子保留，密度与密度梯度继续满足准中性。等效电荷允许小数，粒子数及 CGYRO/TGLF 所有相关字段一并更新。
+- 在原生局部输入生成之后合成，避免 add_ion / locpargen 把小数电荷取整。原 input.gacode 保留完整粒子组成，逐半径的实际等效参数与残差记录到 OUTPUTS/Particle_processing/local_inputs；缺少生成信息或约束不满足时不发布部分输出。旧代表粒子方案的结果必须重新生成。
+- CGYRO 曲率使用原生 out.locpargen 的归一化，按 expro 的定义合并电荷与压力二阶导数；不拷贝某一种杂质的参数。TGLF 流速和剪切按杂质质量密度加权。
+
+内置管理器保持 1.10.2。拉取工程 1.12.2，预览后更新当前工程并照常保存；重新运行 Transfer_tool 生成新的等效输入。发布包不含计算案例或结果。
+
+按要求未运行回归测试、GUI 或求解器。仅进行源码审阅、Python 3.9 静态语法、OMFIT 库清单及分发包完整性检查。参考本地 OMFIT 加载器与 GACODE 官方 expro/locpargen 源码；尚未在用户的 Linux 会话实测。
+
 # 修订记录 · 工程 1.12.1 / 管理器 1.10.2
 
 工程 1.12.1：修正 Transfer_tool 命令与资源分配，精简界面和调整中文日志显示。
