@@ -246,7 +246,6 @@ class ProjectUI:
             issues = self.required_issues('transfer', ()) + generation_issues(
                 node, node['SETTINGS']['PHYSICS']['start_from'], options)
             self.guarded('运行 Transfer_tool', self.actions.run_transfer, issues)
-            self.label('运行顺序：同步离子与半径 → TGYRO → 生成各半径 input.cgyro / input.tglf。')
             if issues:
                 self.label('需要补充：' + '；'.join(issues))
         else:

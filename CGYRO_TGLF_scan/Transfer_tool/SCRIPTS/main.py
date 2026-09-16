@@ -4,7 +4,9 @@ from datetime import datetime
 import copy
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, prepare_tgyro, selected_profile
 from OMFITlib_transfer_particles import main_ion_label, prepare_particles, species_label
+from OMFITlib_gui_layout import fix_console_layout
 
+fix_console_layout()
 defaultVars(profile_source=None, radial_settings=None)
 issues = generation_issues(root, profile_source, radial_settings)
 if issues:

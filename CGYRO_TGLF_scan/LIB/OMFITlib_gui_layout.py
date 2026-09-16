@@ -1,6 +1,7 @@
 """Local font and geometry adjustments for this project's native OMFIT pages."""
 from builtins import all, int, isinstance, len, list, max, min, range, str, tuple
 import hashlib
+import threading
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_gui_context import bind_actions
@@ -10,17 +11,71 @@ def finish_gui_layout(label, ui=None):
     """Style the page containing an OMFITx.Label, retaining native bindings.
 
     OMFITx.Label returns a label in a row frame in the GUI's content frame.
-    Only that content subtree is changed; OMFIT's fonts and global theme remain
-    intact. Non-Tk hosts (batch checks and tree-only tests) require no layout.
+    Style the content subtree and OMFIT consoles without changing global named
+    fonts or the theme. Non-Tk hosts require no layout.
     """
     if not isinstance(label, tk.Misc):
         return
+    fix_console_layout(label)
     content = label.master.master
     bind_actions(content, ui)
     previous = getattr(content, '_cgyro_gui_layout', None)
     if previous is not None and getattr(previous, 'anchor', None) is label:
         return
     content._cgyro_gui_layout = NativeLayout(content, label)
+
+
+def _style_console(console):
+    """Use a real CJK font so Tk measures the glyphs that it actually draws."""
+    try:
+        previous = getattr(console, '_cgyro_console_layout', None)
+        current = str(console.cget('font'))
+        if previous is not None and current == str(previous['font']):
+            return
+        original = tkfont.Font(root=console, font=current or 'TkFixedFont').actual()
+        probe = tkfont.Font(root=console, **original)
+        family = str(console.tk.call('font', 'actual', str(probe), '-family', '中'))
+        # Prefer CJK monospace fonts for aligned numerical output when installed.
+        families = console.tk.splitlist(console.tk.call('font', 'families'))
+        for candidate in ('Noto Sans Mono CJK SC', 'Sarasa Mono SC', 'WenQuanYi Zen Hei Mono'):
+            if candidate in families:
+                family = candidate
+                break
+        original['family'] = family
+        font = tkfont.Font(root=console, **original)
+        gap = max(3, font.metrics('linespace') // 5)
+        console.configure(font=font, spacing1=gap, spacing2=gap, spacing3=gap)
+        # Keep the named font alive; changing fonts does not edit log contents.
+        console._cgyro_console_layout = {'font': font}
+    except tk.TclError:
+        # A window can disappear during a project GUI refresh.
+        return
+
+
+def fix_console_layout(anchor=None):
+    """Adjust OMFIT consoles only, including newly opened output windows."""
+    if threading.current_thread() is not threading.main_thread():
+        return
+    root = anchor._root() if isinstance(anchor, tk.Misc) else getattr(tk, '_default_root', None)
+    console_type = getattr(tk, 'ConsoleTextGUI', None)
+    if root is None or console_type is None:
+        return
+    try:
+        # A single Map hook per Tk interpreter; reloads replace only our handler.
+        root._cgyro_style_console = _style_console
+        if not getattr(root, '_cgyro_console_map_binding', None):
+            def mapped(event):
+                if isinstance(event.widget, console_type):
+                    root._cgyro_style_console(event.widget)
+            root._cgyro_console_map_binding = root.bind_class('Text', '<Map>', mapped, add='+')
+        pending = [root]
+        while pending:
+            widget = pending.pop()
+            if isinstance(widget, console_type):
+                _style_console(widget)
+            pending.extend(widget.winfo_children())
+    except tk.TclError:
+        return
 
 
 class NativeLayout:

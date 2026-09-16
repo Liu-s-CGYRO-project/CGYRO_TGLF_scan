@@ -78,12 +78,32 @@ def generation_issues(node, selected=None, options=None):
         try:
             minimum, maximum, points, coordinate = radial_values(options)
             particle_options(options)
-            setup = node['SETTINGS']['SETUP']
-            if setup.get('gacode_shared', False) and int(setup['num_nodes']) * int(setup['num_cores']) < points:
-                issues.append('统一环境的 MPI 总数少于半径点数，请增加资源或减少点数。')
         except (KeyError, TypeError, ValueError, OverflowError) as exc:
             issues.append(str(exc))
+    try:
+        tgyro_batch_settings(node)
+    except ValueError as exc:
+        issues.append(str(exc))
     return issues
+
+
+def tgyro_batch_settings(node):
+    """Use the shared scheduler, retaining direct execution for legacy setups."""
+    settings = node['SETTINGS']
+    setup, remote = settings['SETUP'], settings.get('REMOTE_SETUP', {})
+    selected = remote.get(str(remote.get('serverPicker', '') or ''), {})
+    scheduler = str(selected.get('scheduler', '') or '').strip().lower()
+    if not scheduler and not setup.get('gacode_shared', False):
+        return None
+    if scheduler == 'local':
+        return None
+    if scheduler not in ('slurm', 'pbs'):
+        raise ValueError('Transfer_tool 缺少调度器配置，请重新应用统一环境。')
+    queue = str(selected.get('queue', None) or setup.get('pbs_queue', '') or '').strip()
+    wall_time = str(selected.get('w', None) or setup.get('wall_time', '') or '').strip()
+    if any(not value or '\n' in value or '\r' in value for value in (queue, wall_time)):
+        raise ValueError('请在统一环境中填写队列 / 分区和时限。')
+    return dict(batch_type=scheduler.upper(), partition=queue, job_time=wall_time)
 
 
 def prepare_tgyro(node, profile, options=None):
@@ -127,8 +147,11 @@ def prepare_tgyro(node, profile, options=None):
         prepared['TGYRO_RMIN'], prepared['TGYRO_RMAX'] = minimum, maximum
         prepared['TGYRO_USE_RHO'] = 1 if coordinate == 'rho' else 0
         setup['p_tgyro'] = points
-        if not setup.get('gacode_shared', False):
-            setup['num_nodes'], setup['num_cores'] = 1, points
+        # Command box 1 uses one MPI rank per radius, not the CGYRO CPU budget.
+        setup['num_nodes'], setup['num_cores'] = 1, points
+        prepared['DIR'].clear()
+        for index in range(1, points + 1):
+            prepared['DIR']['TGLF' + str(index)] = 1
     if 'input.tglf' not in inputs:
         inputs['input.tglf'] = templates['input.tglf'].duplicate()
     inputs['input.tgyro'] = prepared

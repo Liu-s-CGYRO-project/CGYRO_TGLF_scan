@@ -218,6 +218,10 @@ def apply_runtime(root, factory=dict):
         if name == 'cgyro':
             update['cpus_per_task'] = int(values['cpus_per_task'])
         elif name == 'transfer':
+            # Transfer generation follows command box 1: one rank per radius.
+            points = int(setup.get('p_tgyro', 3))
+            update.update(num_nodes=1, num_cores=points)
+            selected.update(nodes=1, ntasks_per_node=points, ppn=points, n=points, cpus_per_task=1)
             update['executable'] = environment
             update['gacode_shared'] = True
         elif name == 'tglf':
