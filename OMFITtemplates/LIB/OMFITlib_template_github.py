@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+from time import monotonic
 from urllib import error, parse, request
 
 from OMFITlib_template_archive import CHUNK, TemplateError, json_bytes, parse_json
@@ -19,6 +20,7 @@ API = 'https://api.github.com'
 DEFAULT_REPOSITORY = 'Liu-s-CGYRO-project/CGYRO_TGLF_scan'
 MAX_ASSET = 2 * 1024 ** 3  # GitHub requires each asset to be strictly below 2 GiB.
 MAX_RESPONSE = 16 * 1024 ** 2
+DOWNLOAD_CHUNK = 64 * 1024
 MARKER = '<!-- omfit-template-release-v1\n'
 API_VERSION = '2026-03-10'
 INITIAL_README = '''# OMFIT 模板库
@@ -316,24 +318,40 @@ class GitHub:
             raise TemplateError('GitHub 附件信息无效')
         # Repository and asset ID isolate different teams' identically named versions.
         target = Path(library).expanduser().resolve() / 'github' / self.repo.lower() / str(identity) / name
+        check_cancel(self.cancel)
         if target.exists():
+            if self.progress:
+                self.progress('正在校验已缓存的模板…', 0, 0)
             self._verify_download(target, release)
             return str(target)
+        if self.progress:
+            self.progress('正在连接 GitHub 下载模板…', 0, 0)
         with new_file(target) as temporary:
             with self._open(self.base + '/releases/assets/' + str(identity), accept='application/octet-stream') as response:
+                # HTTPResponse.read(CHUNK) waits for 4 MiB or EOF. Most templates
+                # are smaller, so use available network blocks and throttle only
+                # UI events, not reads or cancellation checks.
+                read_block = getattr(response, 'read1', response.read)
+                next_progress = 0.0
+                if self.progress:
+                    self.progress('正在从 GitHub 拉取', 0, release['archive_bytes'])
                 with open(temporary, 'wb') as stream:
                     done = 0
                     while True:
                         check_cancel(self.cancel)
-                        chunk = response.read(CHUNK)
+                        chunk = read_block(DOWNLOAD_CHUNK)
                         if not chunk:
                             break
                         done += len(chunk)
                         if done > release['archive_bytes']:
                             raise TemplateError('下载超过声明大小，已停止')
                         stream.write(chunk)
-                        if self.progress:
+                        now = monotonic()
+                        if self.progress and (now >= next_progress or done == release['archive_bytes']):
                             self.progress('正在从 GitHub 拉取', done, release['archive_bytes'])
+                            next_progress = now + 0.1
+            if self.progress:
+                self.progress('下载完成，正在校验模板…', 0, 0)
             self._verify_download(temporary, release)
         return str(target)
 

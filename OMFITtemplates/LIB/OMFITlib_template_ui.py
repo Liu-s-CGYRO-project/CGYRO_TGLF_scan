@@ -173,6 +173,8 @@ class TemplateManager(ManagerUpdateUI):
         style.configure('TM.Treeview.Heading', font=(font[0], font[1], 'bold'))
         style.configure('TM.TNotebook', background='#f4f6fa', tabmargins=(0, 6, 0, 0))
         style.configure('TM.TNotebook.Tab', font=font, padding=(18, 10))
+        style.configure('TM.Horizontal.TProgressbar', background='#2476b8', troughcolor='#e1e7ef',
+                        lightcolor='#2476b8', darkcolor='#2476b8', bordercolor='#b4c1d1')
         w.configure(background='#f4f6fa')
 
     def _frame(self, parent, **kwargs):
@@ -281,7 +283,8 @@ class TemplateManager(ManagerUpdateUI):
         footer.columnconfigure(0, weight=1)
         status_label = self._label(footer, variable=self.status, wraplength=750)
         status_label.grid(row=0, column=0, sticky='w')
-        self.progress = ttk.Progressbar(footer, length=120, mode='determinate')
+        self.progress = ttk.Progressbar(footer, length=180, mode='determinate', maximum=100,
+                                        style='TM.Horizontal.TProgressbar')
         self.progress.grid(row=0, column=1, padx=10)
         self.cancel_button = ttk.Button(footer, text='取消操作', command=self.cancel.set, state='disabled',
                                         style='TM.TButton', width=0)
@@ -617,8 +620,7 @@ class TemplateManager(ManagerUpdateUI):
         if self.busy:
             return
         self.cancel.clear()
-        self.status.set(title)
-        self.progress.configure(value=0)
+        self._show_progress(title)
         self._set_busy(True)
 
         def runner():
@@ -631,6 +633,24 @@ class TemplateManager(ManagerUpdateUI):
 
     def _progress(self, label, done, total):
         self.events.put(('progress', label, done, total))
+
+    def _show_progress(self, label, done=0, total=0):
+        """Update Tk on the main thread; unknown work shows activity, not a percent."""
+        if total:
+            self.progress.stop()
+            percent = max(0, min(100, 100 * done / total))
+            self.progress.configure(mode='determinate', maximum=100, value=percent)
+            self.status.set('{} · {:.1f}% · {} / {}'.format(label, percent, human_size(done), human_size(total)))
+        else:
+            if str(self.progress.cget('mode')) != 'indeterminate':
+                self.progress.stop()
+                self.progress.configure(mode='indeterminate', maximum=100, value=0)
+                self.progress.start(60)
+            self.status.set(label + (' · 已接收 ' + human_size(done) if done else ''))
+
+    def _finish_progress(self, success=False):
+        self.progress.stop()
+        self.progress.configure(mode='determinate', maximum=100, value=100 if success else 0)
 
     def _poll(self):
         if not self.alive:
@@ -645,9 +665,10 @@ class TemplateManager(ManagerUpdateUI):
                     self._login_checked(*event[1:])
                 elif event[0] == 'progress':
                     _, label, done, total = event
-                    self.status.set(label + (' · ' + human_size(done) + ' / ' + human_size(total) if total else '…'))
-                    self.progress.configure(value=min(100, 100 * done / total) if total else 0)
+                    if not self.close_requested:
+                        self._show_progress(label, done, total)
                 else:
+                    self._finish_progress(success=event[0] == 'success')
                     self._set_busy(False)
                     if self.close_requested:
                         if event[0] == 'error' and not isinstance(event[1], Cancelled):
@@ -655,12 +676,12 @@ class TemplateManager(ManagerUpdateUI):
                         self.close()
                         return
                     if event[0] == 'success':
-                        self.progress.configure(value=100)
                         try:
                             event[1](event[2])
                             if not self.alive:
                                 return
                         except Exception as exc:
+                            self._finish_progress()
                             self._error(exc)
                     elif isinstance(event[1], Cancelled):
                         self.status.set(str(event[1]))
@@ -1368,6 +1389,7 @@ class TemplateManager(ManagerUpdateUI):
             self.status.set('正在取消操作并清理临时文件…')
             return
         self.alive = False
+        self.progress.stop()
         self._stop_login_check()
         self._save_preferences()
         for callback in (self._poll_after, self._refresh_after):
