@@ -3,7 +3,7 @@
 Work on a duplicate. Electron density is fixed; the selected main ion closes
 charge density and its radial derivative. No slowing-down distribution is fitted.
 """
-from builtins import abs, dict, float, int, len, list, max, min, next, range, round, str, sum
+from builtins import abs, any, dict, float, int, len, list, max, min, next, range, round, str, sum
 from collections import OrderedDict
 import math
 import numpy as np
@@ -16,11 +16,11 @@ PRESETS = OrderedDict([
 ])
 DESCRIPTIONS = {
     'all': '保留全部离子及热 / 快类型，调整主离子满足准中性。',
-    'thermalize': '同种热杂质合并；对应所选主离子的快离子保留为独立粒子。温度和流速采用同种热离子的值；无匹配热离子时停止。此为热化近似，压力会改变。',
+    'thermalize': '同种热杂质合并；对应主离子的快离子独立保留，温度、环向及极向流速采用所选热杂质的值。缺少所需热离子时停止。此为热化近似，压力会改变。',
     'equivalent': '保留电子、主离子和一种等效杂质；保持准中性及初次准中性校正后的 Zeff，杂质温度和流速采用主离子值。',
     'main_only': '保留电子和选定主离子；电子密度不变，主离子密度设为 ne / Z，沿用主离子温度和流速。',
 }
-PARTICLE_DEFAULTS = {'particle_mode': 'all', 'main_ion': 0, 'equivalent_ion': 0}
+PARTICLE_DEFAULTS = {'particle_mode': 'all', 'main_ion': 0, 'equivalent_ion': 0, 'thermal_reference_ion': 0}
 TOLERANCE = 1e-8
 ROUND_OFF = 64 * np.finfo(float).eps
 
@@ -29,10 +29,10 @@ def particle_options(options):
     values = {key: options.get(key, default) for key, default in PARTICLE_DEFAULTS.items()}
     if values['particle_mode'] not in DESCRIPTIONS:
         raise ValueError('请选择有效的粒子处理方案。')
-    for key in ('main_ion', 'equivalent_ion'):
+    for key in ('main_ion', 'equivalent_ion', 'thermal_reference_ion'):
         raw = float(values[key])
         if not math.isfinite(raw) or raw < 0 or int(raw) != raw:
-            raise ValueError('粒子选择无效，请重新选择主离子 / 等效杂质。')
+            raise ValueError('粒子选择无效，请重新选择主离子、等效杂质或温度 / 流速来源。')
         values[key] = int(raw)
     return values
 
@@ -65,6 +65,17 @@ def ion_choices(profile, impurity=False):
     if profile is not None:
         for ion in species(profile):
             if impurity or ion['kind'] == 'therm':
+                result[species_label(ion)] = ion['index']
+    return result
+
+
+def thermal_reference_choices(profile, selected_main=0):
+    result = OrderedDict([('自动（剖面中的首个热杂质）', 0)])
+    if profile is not None:
+        ions = species(profile)
+        main = ions[_main_index(ions, selected_main) - 1]
+        for ion in ions:
+            if ion['kind'] == 'therm' and ion['charge'] > main['charge']:
                 result[species_label(ion)] = ion['index']
     return result
 
@@ -167,7 +178,23 @@ def _same_species(left, right):
             and abs(left['mass'] - mass_number) < 0.05 and abs(right['mass'] - mass_number) < 0.05)
 
 
-def _thermalize(profile):
+def _thermal_reference(profile, options, ions, main):
+    """Snapshot the chosen thermal impurity before ion reordering/deletion."""
+    if not any(ion['kind'] == 'fast' and _same_species(ion, main) for ion in ions):
+        return None
+    candidates = [ion for ion in ions if ion['kind'] == 'therm' and ion['charge'] > main['charge']]
+    selected = options['thermal_reference_ion']
+    if selected:
+        candidates = [ion for ion in candidates if ion['index'] == selected]
+    if not candidates:
+        raise ValueError('对应主离子的快离子独立热化需要热杂质作为温度 / 流速来源；请选择电荷高于主离子的热杂质或补充该剖面。')
+    reference = candidates[0]
+    suffix = str(reference['index'])
+    return dict(species=dict(reference), arrays={quantity: profile[quantity + suffix].copy()
+                for quantity in ('Ti_', 'vtor_', 'vpol_')})
+
+
+def _thermalize(profile, thermal_reference=None):
     changes = {'merged': [], 'kept_separate': []}
     # Recompute indices after each deletion; isotope identity is charge AND mass.
     while True:
@@ -181,10 +208,13 @@ def _thermalize(profile):
         target = targets[0]
         if target['index'] == 1:
             # Keep main-isotope fast ions as separate thermalized populations.
-            # Density is retained; no density is transferred to the main species.
-            changes['kept_separate'].append(dict(index=fast['index'], source=species_label(fast), reference=species_label(target)))
+            # Only Ti/vtor/vpol are copied, from the selected thermal impurity.
+            if thermal_reference is None:
+                raise ValueError('缺少热杂质的温度 / 流速参考，已停止独立热化。')
+            changes['kept_separate'].append(dict(index=fast['index'], source=species_label(fast),
+                reference=species_label(thermal_reference['species']), reference_kind='thermal_impurity'))
             for quantity in ('Ti_', 'vtor_', 'vpol_'):
-                profile[quantity + str(fast['index'])] = profile[quantity + '1'].copy()
+                profile[quantity + str(fast['index'])] = thermal_reference['arrays'][quantity].copy()
             profile['IONS'][fast['index']][3] = 'therm'
         else:
             changes['merged'].append('{} → {}'.format(species_label(fast), species_label(target)))
@@ -207,6 +237,8 @@ def prepare_particles(source, options):
     pressure_before = _pressure_nt(profile)
     main_index = _main_index(before, options['main_ion'])
     main = before[main_index - 1]
+    thermal_reference = (_thermal_reference(profile, options, before, main)
+                         if options['particle_mode'] == 'thermalize' else None)
     representative = None
     if options['particle_mode'] == 'equivalent':
         candidates = [ion for ion in before if ion['charge'] > main['charge']]
@@ -222,7 +254,7 @@ def prepare_particles(source, options):
     changes = {'merged': [], 'kept_separate': []}
     mode = options['particle_mode']
     if mode == 'thermalize':
-        changes = _thermalize(profile)
+        changes = _thermalize(profile, thermal_reference)
     elif mode in ('main_only', 'equivalent'):
         for index in range(int(profile['N_ION']), 1, -1):
             profile.del_ion(index, add_density_to_ion=1, verbose=False)
@@ -247,6 +279,10 @@ def prepare_particles(source, options):
     if not np.array_equal(np.asarray(profile['ne']), ne_before):
         raise ValueError('派生量更新改变了电子密度，已停止生成。')
     _validate_profile(profile)
+    for item in changes['kept_separate']:
+        for quantity in ('Ti_', 'vtor_', 'vpol_'):
+            if not np.allclose(profile[quantity + str(item['index'])], thermal_reference['arrays'][quantity], rtol=1e-12, atol=0):
+                raise ValueError('派生量更新未保留所选热杂质的温度 / 流速，已停止独立热化。')
     density_error = max(density_error, _close_density(profile))
     gradient_error = _close_profile_gradient(profile)
     zeff_error = float(np.max(np.abs(profile['z_eff'] - reference_zeff)))
@@ -256,6 +292,7 @@ def prepare_particles(source, options):
     for item in changes['kept_separate']:
         after[item['index'] - 1]['thermalized_fast'] = True
     report = dict(options=options, before=before, after=after,
+                  thermal_reference=thermal_reference['species'] if thermal_reference is not None else None,
                   density_residual=density_error, gradient_residual=gradient_error,
                   max_zeff_change=zeff_error,
                   max_relative_pressure_change=float(np.max(np.abs(_pressure_nt(profile) / pressure_before - 1.0))))

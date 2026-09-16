@@ -3,7 +3,7 @@
 from collections import OrderedDict
 from builtins import dict, next
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, loaded_file, PROFILE_KEYS
-from OMFITlib_transfer_particles import PRESETS, DESCRIPTIONS, ion_choices, species_label
+from OMFITlib_transfer_particles import PRESETS, DESCRIPTIONS, ion_choices, species_label, thermal_reference_choices
 
 # compoundGUI is reserved by OMFIT and must not be reset through defaultVars.
 defaultVars(show_run_button=True)
@@ -24,6 +24,7 @@ def load_profile(location=None):
     root['INPUTS'][kind] = value
     physics['generation']['main_ion'] = 0
     physics['generation']['equivalent_ion'] = 0
+    physics['generation']['thermal_reference_ion'] = 0
     if kind == 'input.gacode':
         root['Transfer_file']['input.gacode'] = value.duplicate()
     scratch['profile_filename'] = ''
@@ -59,11 +60,17 @@ source_profile = root['INPUTS'].get('input.gacode', None) if kind == 'input.gaco
 if kind != 'input.gacode':
     physics['generation']['main_ion'] = 0
     physics['generation']['equivalent_ion'] = 0
+    physics['generation']['thermal_reference_ion'] = 0
 try:
     OMFITx.ComboBox(prefix + "['main_ion']", ion_choices(source_profile), '主离子', updateGUI=True)
     if physics['generation']['particle_mode'] == 'equivalent':
         OMFITx.ComboBox(prefix + "['equivalent_ion']", ion_choices(source_profile, impurity=True),
                        '等效杂质', updateGUI=True)
+    elif physics['generation']['particle_mode'] == 'thermalize':
+        OMFITx.ComboBox(prefix + "['thermal_reference_ion']",
+                       thermal_reference_choices(source_profile, physics['generation']['main_ion']),
+                       '温度 / 流速来源', updateGUI=True,
+                       help='用于对应主离子、独立保留的快离子。可指定热杂质；自动取剖面中首个电荷高于主离子的热杂质。')
 except (KeyError, TypeError, ValueError) as exc:
     OMFITx.Label('剖面粒子信息：' + str(exc), align='left', wraplength=840)
 OMFITx.Label(DESCRIPTIONS.get(physics['generation']['particle_mode'], '请选择粒子方案。'), align='left', wraplength=840)
@@ -74,6 +81,9 @@ if source_profile is None and kind != 'input.gacode':
     OMFITx.Label('其他剖面来源在生成 input.gacode 后自动识别粒子；需要指定粒子时，可改用已生成的 input.gacode。',
                  align='left', wraplength=840)
 last_report = root['OUTPUTS'].get('Particle_processing', {})
+if last_report.get('thermal_reference', None):
+    OMFITx.Label('上次独立热化的温度 / 流速来源：' + species_label(last_report['thermal_reference']),
+                 align='left', wraplength=840)
 if last_report.get('after', None):
     OMFITx.Label('上次生成：' + '；'.join(species_label(ion) for ion in last_report['after']), align='left', wraplength=840)
     OMFITx.Label('上次校正残差：密度 {:.2g}，密度梯度 {:.2g}；总压力最大相对变化 {:.2%}。'.format(

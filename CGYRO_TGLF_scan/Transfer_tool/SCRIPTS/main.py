@@ -32,6 +32,8 @@ try:
     outputs['Profiles_gen']['input.gacode'] = profile.duplicate()
     outputs['Particle_processing'] = report
     print('粒子处理后：' + '；'.join(species_label(ion) for ion in report['after']))
+    if report.get('thermal_reference', None):
+        print('独立热化的温度 / 流速来源：' + species_label(report['thermal_reference']))
     print('准中性：密度残差 {:.3g}，密度梯度残差 {:.3g}。'.format(report['density_residual'], report['gradient_residual']))
     prepare_tgyro(root, profile, radial_settings)
     root['Transfer_file']['input.gacode'] = profile.duplicate()
