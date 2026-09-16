@@ -7,17 +7,18 @@ import json
 from pathlib import Path
 import sys
 import tarfile
+import tempfile
 import zipfile
 from omfit_help import validate_module_help, validate_module_settings
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / 'OMFITtemplates'
 sys.path.insert(0, str(MODULE / 'LIB'))
-from OMFITlib_template_archive import parse_tree
+from OMFITlib_template_archive import json_bytes, parse_json, parse_tree, tree_bytes
 from OMFITlib_template_manager_update import package_names
 from OMFITlib_template_service import new_file
 from OMFITlib_template_versions import MANAGER_VERSION
-from OMFITlib_template_incremental import FORMAT, manifest_name, validate_manifest
+from OMFITlib_template_incremental import FORMAT, _verify_tree, manifest_name, validate_manifest
 
 README = '''# OMFIT 模板管理器 {version}
 
@@ -67,6 +68,7 @@ OMFIT_TEMPLATE_PYTHON=/path/to/python bash start_manager.sh
 更新源固定为 Liu-s-CGYRO-project/CGYRO_TGLF_scan 的独立管理器 Release。
 优先显示文件级增量更新：比较本地 SHA-256，只下载变更文件，在界面内安装并重新打开。
 OMFIT 内只替换管理器模块；正常保存工程以保留更新。Linux 原启动入口会自动进入新版。
+1.10.1 修复增量安装的版本不匹配提示，旧版可直接在界面内安装修复。
 取消或校验失败保留当前版本；完整安装包下载继续作为兼容入口。
 1.6.0 及更早版本需先完整安装一次 1.7.0，之后可使用增量流程。
 原安装目录保留，运行 bash start_manager.sh --no-update-redirect 可返回原目录版本。
@@ -77,7 +79,7 @@ OMFIT 内只替换管理器模块；正常保存工程以保留更新。Linux �
 点击“登录 GitHub”时自动检测 gh，缺少时下载官方 Linux 包，校验后安装到用户目录并打开登录。
 无需 sudo 或配置 PATH，进度在窗口底部显示，可取消。
 路径标签、下拉框、按钮与表格按字体尺寸布局，较窄窗口自动换行。
-窗口标题为 OMFIT Template Manager，版本号在界面右上角显示。
+窗口标题为 OMFIT Template Manager，版本及检查结果显示在标题下方。
 未登录时整个发布页置灰；授权完成后自动读取 GitHub 登录名，作者 ID 只读。
 账号切换或登录失效后清除旧发布准备信息。
 公开版本检查与下载不需要 GitHub 登录；私有仓库和发布仍使用各自的 GitHub 账号。
@@ -97,6 +99,21 @@ def build(directory):
             selected.add(path.relative_to(MODULE).as_posix())
     payload = {'OMFITtemplates/' + name: (MODULE / name).read_bytes().replace(b'\r\n', b'\n')
                for name in sorted(selected)}
+    # Existing v1 installers require MODULE.version at this exact path. Keep
+    # their descriptor, but point native OMFIT at clean settings so it never
+    # sees the legacy version field and never rewrites help.rst.
+    native_settings = 'OMFITtemplates/SettingsOMFIT.txt'
+    legacy_settings = 'OMFITtemplates/SettingsNamelist.txt'
+    payload[native_settings] = payload[legacy_settings]
+    descriptor = parse_json(payload[legacy_settings])
+    descriptor['MODULE']['version'] = MANAGER_VERSION
+    payload[legacy_settings] = json_bytes(descriptor)
+    rows = parse_tree(payload['OMFITtemplates/OMFITsave.txt'])
+    settings_rows = [row for row in rows if row.keys == ('SETTINGS',) and row.kind == 'OMFITsettings']
+    if len(settings_rows) != 1 or settings_rows[0].ref != 'SettingsNamelist.txt':
+        raise ValueError('Manager settings registration changed; review updater compatibility')
+    settings_rows[0].fields[2] = './SettingsOMFIT.txt'
+    payload['OMFITtemplates/OMFITsave.txt'] = tree_bytes(rows)
     payload['README.md'] = README.format(version=MANAGER_VERSION).encode('utf-8')
     payload['start_manager.sh'] = (b'#!/bin/sh\nset -eu\n'
         b'task_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\n'
@@ -144,9 +161,26 @@ def build(directory):
             with new_file(destination) as temporary:
                 temporary.write_bytes(gzip.compress(data, mtime=0))
     validate_manifest(manifest, MANAGER_VERSION)
+    # Validate the actual artifact metadata/registered tree, not just the
+    # manifest syntax. These are static file checks; no GUI or code execution.
+    with tempfile.TemporaryDirectory(prefix='.verify-manager-', dir=directory) as temporary:
+        stage = Path(temporary)
+        for name, data in payload.items():
+            target = stage / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        _verify_tree(stage, manifest)
+    legacy_identity = parse_json(payload[legacy_settings])['MODULE']
+    if legacy_identity.get('ID') != 'OMFITtemplates' or legacy_identity.get('version') != MANAGER_VERSION:
+        raise ValueError('Old manager installers would reject the package descriptor')
+    validate_module_settings(payload[native_settings], native_settings)
+    registered = parse_tree(payload['OMFITtemplates/OMFITsave.txt'])
+    if any(row.ref == 'SettingsNamelist.txt' for row in registered):
+        raise ValueError('Legacy update descriptor must not be loaded by OMFIT')
     with new_file(incremental / manifest_name(MANAGER_VERSION)) as temporary:
         temporary.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    return dict(version=MANAGER_VERSION, files=len(selected), incremental=str(incremental), packages=[
+    return dict(version=MANAGER_VERSION, files=sum(name.startswith('OMFITtemplates/') for name in payload),
+        incremental=str(incremental), legacy_installer_descriptor_checked=True, native_settings_checked=True, packages=[
         dict(path=str(path), bytes=path.stat().st_size, sha256=hashlib.sha256(path.read_bytes()).hexdigest())
         for path in (linux, module)])
 

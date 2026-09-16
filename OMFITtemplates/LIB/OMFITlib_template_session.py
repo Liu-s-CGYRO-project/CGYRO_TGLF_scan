@@ -123,6 +123,8 @@ class OMFITSession:
             filename = str(getattr(node, 'filename', '') or '')
             if filename:
                 sources['OMFITtemplates/' + name] = filename
+                if key == 'SETTINGS':
+                    sources['OMFITtemplates/SettingsOMFIT.txt'] = filename
         return sources
 
     def replace_manager(self, module_dir):

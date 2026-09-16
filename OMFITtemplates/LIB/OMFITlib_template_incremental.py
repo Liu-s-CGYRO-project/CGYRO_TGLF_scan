@@ -1,5 +1,6 @@
 """Verified file-level manager updates staged outside the running installation."""
 from builtins import all, any, bool, bytearray, bytes, dict, int, len, list, max, min, open, set, sorted, str, sum, tuple, type
+import ast
 import gzip
 import hashlib
 import os
@@ -122,20 +123,45 @@ def plan_incremental(client, release, module_dir, source_overrides=None):
                 download_bytes=sum(item['size'] for item in assets.values()), total_files=len(manifest['files']))
 
 
+def _source_version(data):
+    """Read the packaged version literal without importing downloaded code."""
+    try:
+        tree = ast.parse(data)
+        values = [node.value for node in tree.body if isinstance(node, ast.Assign)
+                  and any(isinstance(target, ast.Name) and target.id == 'MANAGER_VERSION' for target in node.targets)]
+        if len(values) != 1:
+            raise ValueError('MANAGER_VERSION must occur once')
+        version = ast.literal_eval(values[0])
+        if not isinstance(version, str) or semantic_version(version) is None:
+            raise ValueError('MANAGER_VERSION must be a version string')
+        return version
+    except (SyntaxError, ValueError, TypeError, UnicodeError) as exc:
+        raise TemplateError('管理器版本文件无效，不能确认安装版本') from exc
+
+
 def _verify_tree(directory, manifest):
     files = manifest['files']
     for name, spec in files.items():
         if not file_matches(directory / name, spec):
             raise TemplateError('管理器文件校验失败：' + name)
     module = directory / 'OMFITtemplates'
-    identity = parse_json((module / 'SettingsNamelist.txt').read_bytes()).get('MODULE', {})
-    if identity.get('ID') != 'OMFITtemplates' or identity.get('version') != manifest['version']:
-        raise TemplateError('管理器模块标识或版本不匹配')
-    for row in parse_tree((module / 'OMFITsave.txt').read_bytes()):
+    rows = parse_tree((module / 'OMFITsave.txt').read_bytes())
+    settings = 'SettingsNamelist.txt'
+    for row in rows:
         if row.ref:
             ref = row.ref[2:] if row.ref.startswith('./') else row.ref
             if 'OMFITtemplates/' + safe_name(ref) not in files:
                 raise TemplateError('管理器树引用缺失：' + row.ref)
+            if row.keys == ('SETTINGS',):
+                if row.kind != 'OMFITsettings':
+                    raise TemplateError('管理器设置节点类型不匹配')
+                settings = ref
+    identity = parse_json((module / settings).read_bytes()).get('MODULE', {})
+    if identity.get('ID') != 'OMFITtemplates':
+        raise TemplateError('管理器模块标识不匹配')
+    version = _source_version((module / 'LIB/OMFITlib_template_versions.py').read_bytes())
+    if version != manifest['version']:
+        raise TemplateError('管理器代码版本与更新清单不匹配：{} / {}'.format(version, manifest['version']))
 
 
 def install_incremental(client, plan, directory=None):
