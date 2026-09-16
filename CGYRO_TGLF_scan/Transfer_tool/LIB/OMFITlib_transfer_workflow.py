@@ -1,5 +1,6 @@
 """Input preparation shared by the Transfer GUI and command box 1."""
 from builtins import any, dict, enumerate, float, int, list, range, str
+import hashlib
 import math
 import re
 from OMFITlib_transfer_particles import PARTICLE_DEFAULTS, particle_options
@@ -104,7 +105,20 @@ def tgyro_batch_settings(node):
     wall_time = str(selected.get('w', None) or setup.get('wall_time', '') or '').strip()
     if any(not value or '\n' in value or '\r' in value for value in (queue, wall_time)):
         raise ValueError('请在统一环境中填写队列 / 分区和时限。')
-    return dict(batch_type=scheduler.upper(), partition=queue, job_time=wall_time)
+    shared = str(selected.get('workDir', None) or remote.get('workDir', None) or '').strip()
+    if (not shared.startswith('/') or shared == '/' or shared == '/tmp'
+            or shared.startswith('/tmp/') or '\n' in shared or '\r' in shared):
+        raise ValueError('批处理工作根目录必须是计算节点可见的共享绝对路径，不能使用 /tmp。')
+    local = str(setup.get('workDir', None) or '').strip()
+    if not local:
+        raise ValueError('Transfer_tool 缺少 OMFIT 本地工作目录。')
+    # A stable suffix isolates concurrent OMFIT sessions without exposing the
+    # local /tmp path to compute nodes.  OMFIT keeps local result collection in
+    # SETUP/workDir and stages the batch in this explicit shared directory.
+    token = hashlib.sha256(local.encode('utf-8')).hexdigest()[:16]
+    remotedir = shared.rstrip('/') + '/OMFIT_run_' + token + '/'
+    return dict(batch_type=scheduler.upper(), partition=queue, job_time=wall_time,
+                remotedir=remotedir)
 
 
 def prepare_tgyro(node, profile, options=None):

@@ -33,6 +33,21 @@ command = 'tgyro -e . -n ' + str(p_tgyro)
 executable += command + '\n'
 workdir = setup['workDir']
 print('Transfer_tool：' + command + ('（' + batch['batch_type'] + '）' if batch else ''))
+
+
+def job_log_tail():
+    details = []
+    for filename in ('transfer_tgyro.err', 'transfer_tgyro.out'):
+        path = os.path.join(workdir, filename)
+        if not os.path.isfile(path):
+            continue
+        with open(path, 'rb') as stream:
+            content = stream.read()[-4000:].decode('utf-8', 'replace').strip()
+        if content:
+            details.append(filename + '：\n' + content)
+    return '\n'.join(details)
+
+
 if batch:
     outputs.extend(['transfer_tgyro.out', 'transfer_tgyro.err'])
     # The batch allocation and input.tgyro DIR layout request the same ranks.
@@ -41,7 +56,7 @@ if batch:
     OMFITx.submit_job(root, batch_command=executable, inputs=inputs, outputs=outputs,
                      ntasks=p_tgyro, nproc_per_task=1, out_name='TransferTGYRO', batch_option=batch_option,
                      std_out='transfer_tgyro.out', std_err='transfer_tgyro.err', workdir=workdir,
-                     ignoreReturnCode=False, **batch)
+                     ignoreReturnCode=True, **batch)
 else:
     ret_code = OMFITx.executable(root, inputs=inputs, outputs=outputs, executable=executable,
                                 workdir=workdir, ignoreReturnCode=False)
@@ -49,13 +64,19 @@ else:
         raise RuntimeError('TGYRO failed with return code {}'.format(ret_code))
 status_path = os.path.join(workdir, status_file)
 if not os.path.isfile(status_path):
-    raise RuntimeError('TGYRO 未完成，请查看作业输出。')
+    details = job_log_tail()
+    message = 'TGYRO 作业未进入或未完成执行脚本。'
+    if batch:
+        message += '共享作业目录：' + batch['remotedir']
+    raise RuntimeError(message + ('\n' + details if details else ''))
 with open(status_path) as stream:
     status = stream.read().strip()
 if status != '0':
-    raise RuntimeError('TGYRO 运行失败，退出码：' + status)
+    details = job_log_tail()
+    raise RuntimeError('TGYRO 运行失败，退出码：' + status + ('\n' + details if details else ''))
 if not glob.glob(os.path.join(workdir, 'out.tgyro.*')):
-    raise RuntimeError('TGYRO outputs were not downloaded to the local work directory')
+    details = job_log_tail()
+    raise RuntimeError('TGYRO 已退出但未返回 out.tgyro.*。' + ('\n' + details if details else ''))
 result = OMFITtgyro(workdir)
 result.keys()  # Validate/load before replacing the previous results.
 root['OUTPUTS']['TGYRO'] = result

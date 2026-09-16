@@ -124,6 +124,8 @@ def validate_runtime(config):
         issues.append('请选择本机、Slurm 或 PBS')
     elif (text(config, 'serverPicker') == 'localhost') != (scheduler == 'local'):
         issues.append('本机执行请配套选择 localhost 与本机调度；远程 CGYRO 扫描请选择 Slurm 或 PBS')
+    if scheduler != 'local' and (str(path) == '/tmp' or str(path).startswith('/tmp/')):
+        issues.append('Slurm / PBS 工作根目录必须位于计算节点可见的共享文件系统，不能使用 /tmp')
     for key, label in [('nodes', '节点数'), ('cores', '每节点 MPI 数'),
                        ('cpus_per_task', '每进程线程数'), ('array_parallel', '扫描并行点数')]:
         try:
