@@ -13,6 +13,23 @@ from OMFITlib_template_archive import Project, TemplateError, json_bytes, parse_
 from OMFITlib_template_service import new_file
 
 
+def validate_tgyro_seed(data, name):
+    """Match native OMFITgacode's requirement for leading DIR directives."""
+    past_directories = False
+    for number, line in enumerate(data.decode('utf-8').splitlines(), 1):
+        if line.lstrip().startswith('DIR '):
+            if past_directories or not line.startswith('DIR '):
+                raise TemplateError(name + ':' + str(number) + '：DIR 行必须连续放在文件开头，注释在其后')
+            fields = line.split()
+            if len(fields) != 3 or not fields[2].isdigit():
+                raise TemplateError(name + ':' + str(number) + '：内置 TGYRO 模板需使用 DIR 目录名 进程数')
+        else:
+            past_directories = True
+            text = line.strip()
+            if text and not text.startswith('#') and '=' not in text:
+                raise TemplateError(name + ':' + str(number) + '：参数行缺少等号')
+
+
 def build(output):
     output = Path(output).expanduser().resolve()
     rows = parse_tree((ROOT / 'OMFITsave.txt').read_bytes())
@@ -29,6 +46,8 @@ def build(output):
                 validate_module_help(target.read_bytes(), row.ref)
             elif row.kind == 'OMFITsettings':
                 validate_module_settings(target.read_bytes(), row.ref)
+            elif row.kind == 'OMFITgacode' and target.name == 'input.tgyro':
+                validate_tgyro_seed(target.read_bytes(), row.ref)
             selected.add(row.ref)
         elif target.is_dir():
             contents = [path for path in target.rglob('*') if path.is_file() and '__pycache__' not in path.parts]

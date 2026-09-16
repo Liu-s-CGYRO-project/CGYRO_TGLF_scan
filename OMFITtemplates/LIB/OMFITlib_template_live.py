@@ -1,5 +1,5 @@
 """Stage template files and patch an existing OMFIT tree without project I/O."""
-from builtins import all, any, bytes, dict, getattr, id, isinstance, len, list, open, repr, reversed, set, sorted, str, tuple, type
+from builtins import all, any, bytes, dict, getattr, hasattr, id, isinstance, iter, len, list, object, open, repr, reversed, set, sorted, str, tuple, type
 import hashlib
 from pathlib import Path
 import shutil
@@ -22,10 +22,13 @@ def keys(node):
     return list(dict.keys(node))
 
 
-def materialize(node):
+def materialize(node, path):
     # Only called for module scaffolding, code and settings, never result trees.
     if isinstance(node, dict) and getattr(node, '__dict__', {}).get('dynaLoad', False):
-        node.keys()
+        try:
+            node.keys()
+        except Exception as exc:
+            raise TemplateError('无法读取更新节点 ' + location(path) + '：' + str(exc)) from exc
 
 
 def module(node):
@@ -34,6 +37,12 @@ def module(node):
 
 def python_node(node):
     return any(base.__name__.startswith('OMFITpython') for base in type(node).__mro__)
+
+
+def file_node(node):
+    # OMFITgacode, OMFIThelp and other file objects can also inherit dict.
+    # They are complete file payloads, not ordinary tree branches to merge.
+    return any(base.__name__ == 'OMFITobject' for base in type(node).__mro__)
 
 
 def location(path):
@@ -50,6 +59,17 @@ def lookup(tree, path):
 
 def stamp(value):
     """Detect edits to touched code/settings; never inspect calculation data."""
+    if any(base.__name__ == 'OMFITexpression' for base in type(value).__mro__):
+        return (id(value), str(value.expression))
+    if file_node(value):
+        digest = hashlib.sha256()
+        with open(value.filename, 'rb') as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(block)
+        # Read the existing dictionary without invoking its lazy loader. This
+        # also protects unsaved edits to an already opened input/help file.
+        memory = tuple((key, stamp(raw(value, key))) for key in keys(value)) if isinstance(value, dict) else None
+        return (id(value), str(value.filename), digest.hexdigest(), memory)
     if isinstance(value, dict):
         return (id(value), tuple((key, stamp(raw(value, key))) for key in keys(value)))
     if isinstance(value, (list, tuple)):
@@ -105,7 +125,10 @@ class Prepared:
 class LivePlan:
     def __init__(self, omfit, prepared, factory):
         self.omfit, self.prepared = omfit, prepared
-        self.incoming = factory(str(prepared.entry), quiet=True, developerMode=False)
+        try:
+            self.incoming = factory(str(prepared.entry), quiet=True, developerMode=False)
+        except Exception as exc:
+            raise TemplateError('无法载入模板树，尚未更新当前工程：' + str(exc)) from exc
         self.operations, self.guards, self.gui_paths = [], [], {}
         for name in prepared.release['roots']:
             new, old = raw(self.incoming, name), raw(omfit, name)
@@ -116,13 +139,20 @@ class LivePlan:
 
     def _operation(self, path, old, new, data=False):
         parent = lookup(self.omfit, path[:-1])
-        fingerprint = None if data else stamp(old)
+        try:
+            fingerprint = None if data else stamp(old)
+        except Exception as exc:
+            raise TemplateError('无法比较更新节点 ' + location(path) + '：' + str(exc)) from exc
         self.operations.append(dict(path=path, parent=parent, old=old, new=new,
                                     stamp=fingerprint, data=data))
 
-    def _tree(self, path, old, new, keep=False):
-        materialize(old)
-        materialize(new)
+    def _tree(self, path, old, new, keep=False, merge_settings=False):
+        if not merge_settings and (file_node(old) or file_node(new)):
+            if not keep or old is MISSING:
+                self._operation(path, old, new)
+            return
+        materialize(old, path)
+        materialize(new, path)
         if isinstance(old, dict) and isinstance(new, dict):
             self.guards.append((path, old, tuple(keys(old))))
             for key in keys(new):
@@ -138,17 +168,17 @@ class LivePlan:
             self._operation(path, old, new)
 
     def _settings(self, path, old, new):
-        materialize(old)
-        materialize(new)
+        materialize(old, path)
+        materialize(new, path)
         if self.prepared.settings_policy != 'keep' or not isinstance(old, dict) or not isinstance(new, dict):
-            self._tree(path, old, new)
+            self._tree(path, old, new, merge_settings=True)
             return
         self.guards.append((path, old, tuple(keys(old))))
         for key in keys(new):
             self._tree(path + (key,), raw(old, key), raw(new, key), key not in ('MODULE', 'DEPENDENCIES'))
 
     def _guis(self, node, path):
-        materialize(node)
+        materialize(node, path)
         if python_node(node):
             self.gui_paths[id(node)] = path
         elif isinstance(node, dict):
@@ -170,8 +200,8 @@ class LivePlan:
         return self.gui_paths
 
     def _module(self, path, old, new):
-        materialize(old)
-        materialize(new)
+        materialize(old, path)
+        materialize(new, path)
         if old is MISSING:
             new.filename = ''
             self._operation(path, old, new, data=True)

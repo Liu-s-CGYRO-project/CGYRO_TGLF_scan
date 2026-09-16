@@ -1,7 +1,7 @@
-# Transfer_tool seed: ion data is filled from input.gacode at run time.
 DIR TGLF1 1
 DIR TGLF2 1
 DIR TGLF3 1
+# Transfer_tool seed: ion data is filled from input.gacode at run time.
 TGYRO_MODE=1
 TGYRO_RELAX_ITERATIONS=0
 LOC_NU_SCALE=1.0

@@ -5,6 +5,7 @@ from pathlib import Path
 import queue
 import tempfile
 import threading
+import traceback
 import webbrowser
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
@@ -578,7 +579,12 @@ class TemplateManager(ManagerUpdateUI):
             self._set_github_login('')
         self.status.set(str(exc))
         self._log('错误：' + str(exc))
-        messagebox.showerror('OMFIT Template Manager', str(exc), parent=self.window)
+        if exc.__traceback__ is not None:
+            # Keep chained exceptions and source locations, never local values
+            # (which could include GitHub/proxy credentials).
+            self._log('错误详情：\n' + ''.join(traceback.TracebackException.from_exception(
+                exc, capture_locals=False).format()))
+        messagebox.showerror('OMFIT Template Manager', str(exc) + '\n\n详细调用位置见“设置与记录”。', parent=self.window)
 
     def _set_busy(self, value):
         self.busy = value
