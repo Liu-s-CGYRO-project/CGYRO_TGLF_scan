@@ -35,6 +35,7 @@ def initialize_generation(node, factory=dict):
     if seed is None:
         seed = node.get('TEMPLATES', {}).get('input.tgyro', {})
     options = physics.setdefault('generation', factory())
+    options.pop('main_ion', None)  # Main populations are now determined by ni/ne.
     for key, value in [('minimum', seed.get('TGYRO_RMIN', 0.2)),
                        ('maximum', seed.get('TGYRO_RMAX', 0.8)),
                        ('points', node['SETTINGS']['SETUP'].get('p_tgyro', 3)),

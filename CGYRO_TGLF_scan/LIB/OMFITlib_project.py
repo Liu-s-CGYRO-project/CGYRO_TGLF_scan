@@ -353,7 +353,7 @@ class ProjectActions:
                 chosen = particle_options(physics.get('generation', {}))
                 previous_options = read(self.root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'options'))
                 if previous_options is None or input_digest(chosen) != input_digest(previous_options):
-                    raise ValueError('粒子方案已变化或旧结果缺少准中性记录，请重新运行 Transfer_tool 后再传递。')
+                    raise ValueError('粒子方案或主离子识别半径已变化，或旧结果缺少自动识别记录；请重新运行 Transfer_tool 后再传递。')
             if target == 'tglf':
                 self.propose_tglf(source, 'Transfer tool → TGLF', source_path)
                 return
