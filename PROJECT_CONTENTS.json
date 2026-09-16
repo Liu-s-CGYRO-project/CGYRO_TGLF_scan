@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.12.4",
-  "parent_release": "1.12.3",
+  "version": "1.12.5",
+  "parent_release": "1.12.4",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -455,9 +455,9 @@
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/convert_file.py": "2030aaafc480d6fb355c24bc0baf882fcb2093431b5b071818047b5ebd843e29",
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/inputcgyro2gyro.py": "64233c8f541c2b0753d3fc15128689f940715f5f2be0f03e0660859c9b29de08",
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/main.py": "d20e049ad8b5d7afe623e5225283a5585de1c8737556d5690405b6f2b20eb022",
-    "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen.py": "7e35bbd600f0ad8ea4ea6fc0531d2cfd9c4345ae02ec3ab0339e156429ebe70b",
-    "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen4input.py": "0cee44e82b5234ae18b9fb618e7de45d8419249393faf9c5ab78a0a14ba171a1",
-    "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/tgyro_tglf.py": "98850819628b4f6102e3cc027270cc88a9411e1d2074e03cdb83f9c29e28134e",
+    "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen.py": "18ae459c4622e6f398baa0f0af48d2dde84bea1c4d5c91afa4002372b8438ad0",
+    "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen4input.py": "71a4e727b858aecfd8f93916ccc13a8f3fc990608a527fc2b2dc69ea35fd0344",
+    "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/tgyro_tglf.py": "7f44b62c18b3435b2700be83d4a96d4274ae8dfac1de286b273ef9fd75c81977",
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/update.py": "359efd51ba3b1d746699872872344191a0806b41cd8d2e0618a4735eb0343da9",
     "CGYRO_TGLF_scan/Transfer_tool/SettingsNamelist.txt": "50ba024c515d35f09ee8cc4a8b4f7898b006355fe41c0f5ca96635ea3f4eb0cc",
     "CGYRO_TGLF_scan/Transfer_tool/TEMPLATES/input.tglf": "525b1f49e6da0ba79e0380c554a97dc73cf549dfa5e98d271289bf500e3f21bd",
@@ -498,7 +498,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "3ef8f9f0c71f10142eb08b2c8252c52d8c5f8b6945a313d884b3b9c6b27d1de0"
+    "VALIDATION.md": "f8ee684d8eda50e33b24ace0d45044a86e3b3f1cc8908ccf85c7cf0b72a18be4"
   },
   "workbench_features": [
     "native_omfit_project_gui",

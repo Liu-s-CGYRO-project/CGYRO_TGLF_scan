@@ -3,6 +3,11 @@
 import os
 from OMFITlib_transfer_particles import EQUIVALENT_RULE, MAIN_ION_RULE, close_local_input
 from OMFITlib_transfer_equivalent import equivalent_local_input, locpargen_rhostar
+
+# OMFITx.execute() reads SHELL directly.  Desktop/VNC sessions may omit it.
+if not os.environ.get('SHELL'):
+    os.environ['SHELL'] = '/bin/bash'
+
 particle_report = root['OUTPUTS'].get('Particle_processing', {})
 if (particle_report.get('options', {}).get('main_ion_rule', '') != MAIN_ION_RULE
         or not particle_report.get('main_count', 0) or not particle_report.get('after', None)):

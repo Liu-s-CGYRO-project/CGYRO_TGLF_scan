@@ -2,6 +2,10 @@
 """Generate profiles using the source selected by the Transfer GUI."""
 import os
 
+# OMFITx.execute() reads SHELL directly.  Desktop/VNC sessions may omit it.
+if not os.environ.get('SHELL'):
+    os.environ['SHELL'] = '/bin/bash'
+
 
 def prepare_profiles_input(input_nodes, selected=None):
     aliases = {'statefile': ('statefile', 'statefile.nc'), 'pfile': ('pfile',),

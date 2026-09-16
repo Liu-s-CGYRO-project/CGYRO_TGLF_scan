@@ -4,6 +4,10 @@ import os
 import glob
 from OMFITlib_transfer_workflow import tgyro_batch_settings
 
+# OMFITx.execute() reads SHELL directly.  Desktop/VNC sessions may omit it.
+if not os.environ.get('SHELL'):
+    os.environ['SHELL'] = '/bin/bash'
+
 setup = root['SETTINGS']['SETUP']
 p_tgyro = int(setup['p_tgyro'])
 if p_tgyro < 2 or p_tgyro != float(setup['p_tgyro']):
