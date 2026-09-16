@@ -3,12 +3,13 @@
 Reading the dashboard never submits jobs, inspects large result arrays, or
 replaces inputs. All mutations below are explicit button actions.
 """
-from builtins import all, any, bool, dict, float, int, isinstance, len, list, set, sorted, str, sum, tuple
+from builtins import abs, all, any, bool, dict, enumerate, float, int, isinstance, len, list, next, range, set, sorted, str, sum, tuple
 import copy
 from datetime import datetime, timezone
 import hashlib
 import json
 import math
+import re
 import uuid
 from collections import OrderedDict
 from OMFITlib_project_runtime import initialize_runtime, apply_runtime, shared_issues
@@ -29,7 +30,102 @@ PAGES = OrderedDict([
     ('7 TGLF 多剖面计算', 'multi'), ('8 绘图与对比', 'plots'), ('9 模板与 GitHub', 'templates'),
 ])
 DEFAULTS = {'page': 'overview', 'runtime_module': 'cgyro', 'transfer_source': '',
-            'cgyro_file': '', 'tglf_file': '', 'message': ''}
+            'cgyro_file': '', 'tglf_file': '', 'cgyro_source_mode': 'generated',
+            'message': ''}
+ISOTOPE_MASSES = OrderedDict([('H', 0.5), ('D', 1.0), ('T', 1.5)])
+ION_CASES = OrderedDict([('BASE', '原始'), ('H', 'H'), ('D', 'D'), ('T', 'T')])
+
+
+def sync_cgyro_ion_cases(settings, factory=dict):
+    """Create the unified original/H/D/T case selector and migrate old settings."""
+    cases = settings.get('cgyro_ion_cases', None)
+    if not hasattr(cases, 'keys'):
+        cases = factory()
+        settings['cgyro_ion_cases'] = cases
+    if not cases:
+        legacy_mode = settings.get('cgyro_scan_mode', 'isotope')
+        legacy = settings.get('cgyro_isotopes', {})
+        cases['BASE'] = legacy_mode == 'radius'
+        for isotope in ISOTOPE_MASSES:
+            cases[isotope] = legacy_mode != 'radius' and bool(legacy.get(isotope, True))
+    for key in ION_CASES:
+        cases.setdefault(key, False)
+    for key in list(cases.keys()):
+        if key not in ION_CASES:
+            cases.pop(key)
+    return cases
+
+
+def cgyro_scan_axes(root):
+    """Return the configured 1-3 independent CGYRO parameter axes."""
+    node = read(root, MODULES['cgyro'])
+    if node is None:
+        raise ValueError('工程缺少 CGYRO_scan 模块。')
+    setup, physics = node['SETTINGS']['SETUP'], node['SETTINGS']['PHYSICS']
+    dimensions = int(setup.get('idimrun', 1))
+    keys = {
+        1: (('Para', 'Range'),),
+        2: (('Para_x', 'Range_x'), ('Para_y', 'Range_y')),
+        3: (('Para_x', 'Range_x'), ('Para_y', 'Range_y'), ('Para_z', 'Range_z')),
+    }.get(dimensions)
+    if keys is None:
+        raise ValueError('参数轴数量只能是 1、2 或 3。')
+    group = physics[str(dimensions) + 'd']
+    axes, names = [], set()
+    for parameter_key, range_key in keys:
+        parameter = str(group.get(parameter_key, '')).strip()
+        if not re.match(r'^[A-Za-z][A-Za-z0-9_]*$', parameter) or parameter.upper() == 'KY':
+            raise ValueError('扫描参数名无效：{}'.format(parameter or '空'))
+        if parameter in names:
+            raise ValueError('扫描参数重复：' + parameter)
+        names.add(parameter)
+        values = group.get(range_key, [])
+        try:
+            values = list(values)
+        except TypeError:
+            raise ValueError('{} 的取值必须是列表。'.format(parameter))
+        if not values:
+            raise ValueError('{} 没有扫描值。'.format(parameter))
+        for value in values:
+            try:
+                number = float(value)
+            except (TypeError, ValueError, OverflowError):
+                raise ValueError('{} 包含非数值扫描点。'.format(parameter))
+            if not math.isfinite(number):
+                raise ValueError('{} 包含非有限扫描点。'.format(parameter))
+        axes.append(dict(name=parameter, values=values))
+    ky = list(physics.get('kyarr', []))
+    if not ky:
+        raise ValueError('ky 列表不能为空。')
+    for value in ky:
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError('ky 列表包含非数值。')
+        if not math.isfinite(number) or number <= 0:
+            raise ValueError('ky 必须是有限正数。')
+    return dimensions, axes, ky
+
+
+def cgyro_plan_summary(root):
+    """Count input cases and flat scan tasks without opening result objects."""
+    settings = read(root, ('SETTINGS', 'WORKBENCH'), {})
+    rows = sync_cgyro_choices(root, settings)
+    selected = [row for row in rows if bool(settings.get('cgyro_radii', {}).get(row['key'], False))]
+    ion_cases = sum(1 for key in ION_CASES
+                    if bool(sync_cgyro_ion_cases(settings).get(key, False)))
+    dimensions, axes, ky = cgyro_scan_axes(root)
+    points_per_case = len(ky)
+    for axis in axes:
+        points_per_case *= len(axis['values'])
+    cases = len(selected) * ion_cases
+    return dict(dimensions=dimensions, axes=axes, ky=len(ky), cases=cases,
+                points_per_case=points_per_case, total_points=cases * points_per_case)
+
+
+def _cgyro_case_id(row, ion_case):
+    rho = 'unknown' if row.get('rho', None) is None else '{:.8g}'.format(float(row['rho']))
+    return 'nr={}__rho={}__ion={}'.format(row['nr'], rho, ion_case)
 
 
 def read(node, path, default=None):
@@ -120,33 +216,158 @@ def transfer_upstream_digest(root):
     return input_digest(values)
 
 
+def _cgyro_radius_number(name, fallback):
+    try:
+        value = int(str(name).rsplit('_', 1)[1])
+        return value if value > 0 else fallback
+    except (IndexError, TypeError, ValueError):
+        return fallback
+
+
+def cgyro_sources(root):
+    """Return the complete radial CGYRO input set, in Transfer_tool order."""
+    settings = read(root, ('SETTINGS', 'WORKBENCH'), {})
+    mode = settings.get('cgyro_source_mode', 'generated')
+    generated = read(root, ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'), {})
+    imported = read(root, ('Transfer_tool', 'Transfer_file'), {})
+    branch, prefix = ({}, ())
+    if mode == 'imported' and 'input.cgyro' in imported:
+        branch, prefix = imported, ('Transfer_tool', 'Transfer_file')
+    elif any(str(key).startswith('input.cgyro_') for key in generated.keys()):
+        branch, prefix = generated, ('Transfer_tool', 'OUTPUTS', 'Profiles_gen')
+    elif 'input.cgyro' in imported:
+        branch, prefix = imported, ('Transfer_tool', 'Transfer_file')
+    else:
+        inputs = read(root, ('Transfer_tool', 'INPUTS'), {})
+        if 'input.cgyro' in inputs:
+            branch, prefix = inputs, ('Transfer_tool', 'INPUTS')
+    rows = []
+    keys = [key for key in branch.keys()
+            if str(key) == 'input.cgyro' or str(key).startswith('input.cgyro_')]
+    keys = sorted(keys, key=lambda key: (_cgyro_radius_number(key, 1), str(key)))
+    for fallback, key in enumerate(keys, 1):
+        value = branch[key]
+        nr = _cgyro_radius_number(key, fallback)
+        try:
+            rho = float(value.get('rho', None))
+            if not math.isfinite(rho):
+                rho = None
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            rho = None
+        rows.append(dict(key=str(key), nr=nr, rho=rho, path=prefix + (key,)))
+    return rows
+
+
+def sync_cgyro_choices(root, settings, factory=dict):
+    sync_cgyro_ion_cases(settings, factory)
+    radii = settings.setdefault('cgyro_radii', factory())
+    rows = cgyro_sources(root)
+    available = [row['key'] for row in rows]
+    for key in available:
+        radii.setdefault(key, True)
+    for key in list(radii.keys()):
+        if key not in available:
+            radii.pop(key)
+    return rows
+
+
+def _generated_particle_record(root):
+    physics = read(root, ('Transfer_tool', 'SETTINGS', 'PHYSICS'), {})
+    previous = read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'options'))
+    if previous is None:
+        return None, None
+    return particle_options(physics.get('generation', {})), previous
+
+
+def _cgyro_main_indices(root, source, source_path):
+    count = int(float(source['N_SPECIES']))
+    if source_path[:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
+        main_count = read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'main_count'))
+        try:
+            main_count = int(main_count)
+        except (TypeError, ValueError):
+            raise ValueError('Transfer_tool 结果缺少主离子记录，请重新运行。')
+        if main_count < 1 or main_count >= count:
+            raise ValueError('Transfer_tool 主离子记录无效，请重新运行。')
+        return list(range(1, main_count + 1))
+    electron_density = 1.0
+    for index in range(1, count + 1):
+        if float(source.get('Z_' + str(index), 0.0)) < 0:
+            electron_density = float(source.get('DENS_' + str(index), 1.0))
+            break
+    if electron_density <= 0:
+        raise ValueError('input.cgyro 的电子密度必须为正数。')
+    result = [index for index in range(1, count + 1)
+              if float(source.get('Z_' + str(index), 0.0)) > 0 and
+              float(source.get('DENS_' + str(index), 0.0)) / electron_density > 0.30]
+    if not result:
+        raise ValueError('input.cgyro 中没有密度占电子密度 30% 以上的主离子。')
+    return result
+
+
+def _isotope_input(source, isotope, main_indices):
+    value = source.duplicate() if hasattr(source, 'duplicate') else copy.deepcopy(source)
+    changed = []
+    for index in main_indices:
+        if abs(float(value.get('Z_' + str(index), 0.0)) - 1.0) <= 1e-8:
+            value['MASS_' + str(index)] = ISOTOPE_MASSES[isotope]
+            changed.append(index)
+    if not changed:
+        raise ValueError('主离子中没有 Z=1 粒子，不能建立 H/D/T 扫描。')
+    return value, changed
+
+
+def _original_ion_label(source, main_indices):
+    labels = []
+    known = ((0.5, 'H'), (1.0, 'D'), (1.5, 'T'))
+    for index in main_indices:
+        if abs(float(source.get('Z_' + str(index), 0.0)) - 1.0) > 1e-8:
+            continue
+        mass = float(source.get('MASS_' + str(index), 0.0))
+        label = next((name for value, name in known if abs(mass - value) <= 0.08), None)
+        label = label or 'M{:g}'.format(mass)
+        if label not in labels:
+            labels.append(label)
+    return '+'.join(labels) if labels else 'BASE'
+
+
+def cgyro_plan_issues(root):
+    settings = read(root, ('SETTINGS', 'WORKBENCH'), {})
+    runid = text_value(read(root, MODULES['cgyro'] + ('SETTINGS', 'EXPERIMENT'), {}), 'runid')
+    if not runid:
+        return ['请填写结果集名称']
+    rows = sync_cgyro_choices(root, settings)
+    if not rows:
+        return ['请先运行 Transfer_tool 生成 input.cgyro']
+    if not any(bool(settings['cgyro_radii'].get(row['key'], False)) for row in rows):
+        return ['至少选择一个 nr']
+    ion_cases = sync_cgyro_ion_cases(settings)
+    if not any(bool(ion_cases.get(key, False)) for key in ION_CASES):
+        return ['至少选择一个主离子方案']
+    try:
+        cgyro_scan_axes(root)
+        chosen, previous = _generated_particle_record(root)
+        if rows[0]['path'][:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
+            if previous is None or input_digest(chosen) != input_digest(previous):
+                raise ValueError('粒子方案或半径设置已变化，请重新运行 Transfer_tool。')
+        for row in rows:
+            if not settings['cgyro_radii'].get(row['key'], False):
+                continue
+            source = read(root, row['path'])
+            validate_input(source, 'cgyro')
+            mains = _cgyro_main_indices(root, source, row['path'])
+            if any(bool(ion_cases.get(key, False)) for key in ISOTOPE_MASSES) and not any(
+                    abs(float(source.get('Z_' + str(index), 0.0)) - 1.0) <= 1e-8 for index in mains):
+                raise ValueError('nr={} 的主离子中没有 Z=1 粒子。'.format(row['nr']))
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        return [str(exc)]
+    return []
+
+
 def cgyro_input_issues(root):
     if pending_inputs(root, 'transfer'):
         return ['请先处理 Transfer tool 的 TGLF 输入覆盖选择']
-    node = read(root, MODULES['cgyro'], {})
-    current = node.get('INPUTS', {}).get('input.cgyro', None)
-    if current is None:
-        return ['先在 Transfer tool 准备 input.cgyro，再验证并传入 CGYRO']
-    marker = read(root, ('PROJECT_STATE', 'pipeline', 'cgyro'), {})
-    if not marker:
-        return ['Transfer 输入准备尚未确认；请在“生成结果与传递”中验证并送入 CGYRO']
-    source_path = marker.get('source', None)
-    if not isinstance(source_path, (list, tuple)) or not source_path or source_path[0] != 'Transfer_tool':
-        return ['输入传递记录无效，请重新验证并传递']
-    source = read(root, source_path)
-    if source is None:
-        return ['Transfer 源输入已移除，请重新准备和传递输入']
-    try:
-        validate_input(current, 'cgyro')
-        if transfer_upstream_digest(root) != marker.get('upstream_digest', None):
-            return ['Transfer 上游剖面或 TGLF 输入已经变化，请重新生成并传递 CGYRO 输入']
-        if input_digest(source) != marker.get('source_digest', None):
-            return ['Transfer 输入已经变化，请重新验证并传递给 CGYRO']
-        if input_digest(current) != marker.get('input_digest', None):
-            return ['CGYRO 输入已经变化，请在 Transfer tool 重新准备并传递']
-    except (TypeError, ValueError) as exc:
-        return [str(exc)]
-    return []
+    return cgyro_plan_issues(root)
 
 
 def collect_issues(root):
@@ -173,6 +394,8 @@ def initialize(root, factory=dict):
     settings = root.setdefault('SETTINGS', factory()).setdefault('WORKBENCH', factory())
     for key, value in DEFAULTS.items():
         settings.setdefault(key, value)
+    sync_cgyro_ion_cases(settings, factory)
+    settings.setdefault('cgyro_radii', factory())
     if settings['page'] not in PAGES.values():
         settings['page'] = 'overview'
     if settings['runtime_module'] not in MODULES:
@@ -331,20 +554,23 @@ class ProjectActions:
         if kind == 'cgyro':
             target = MODULES['transfer'] + ('Transfer_file', 'input.cgyro')
             self.replace('载入 Transfer tool 待准备输入', [(target, obj)])
-            self.settings.update(dict(cgyro_file='', page='transfer'))
-            self.settings['message'] = 'input.cgyro 已载入 Transfer tool。请在“生成结果与传递”中验证并送入 CGYRO。'
+            self.settings.update(dict(cgyro_file='', page='cgyro', cgyro_source_mode='imported'))
+            sync_cgyro_choices(self.root, self.settings, self.factory)
+            self.settings['message'] = 'input.cgyro 已载入，可直接设置 CGYRO 扫描。'
             return
         self.propose_tglf(obj, '导入 input.tglf：' + str(filename))
         self.settings[kind + '_file'] = ''
 
     def handoff(self, target):
+        if target == 'cgyro':
+            return self.prepare_cgyro_batch()
         selected = self.settings['transfer_source']
         if selected not in transfer_sources(self.root).values():
             raise ValueError('请先选择 Transfer tool 中的输入或生成结果。')
         source_path = tuple(json.loads(selected))
         source = read(self.root, source_path)
         kind = str(source_path[-1]).split('_')[0]
-        if target in ('cgyro', 'tglf'):
+        if target == 'tglf':
             if kind != 'input.' + target:
                 raise ValueError('此目标需要 input.' + target + '，请先转换或选择对应文件。')
             validate_input(source, target)
@@ -354,19 +580,8 @@ class ProjectActions:
                 previous_options = read(self.root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'options'))
                 if previous_options is None or input_digest(chosen) != input_digest(previous_options):
                     raise ValueError('粒子方案或主离子识别半径已变化，或旧结果缺少自动识别记录；请重新运行 Transfer_tool 后再传递。')
-            if target == 'tglf':
-                self.propose_tglf(source, 'Transfer tool → TGLF', source_path)
-                return
-            source_digest = input_digest(source)
-            upstream_digest = transfer_upstream_digest(self.root) if target == 'cgyro' else None
-            path = MODULES[target] + (('INPUTS', kind) if target == 'cgyro' else ('FILES', kind))
-            self.replace('送入 ' + LABELS[target], [(path, source)])
-            if target == 'cgyro':
-                pipeline = self.root['PROJECT_STATE'].setdefault('pipeline', self.factory())
-                marker = self.factory()
-                marker.update(dict(source=list(source_path), source_digest=source_digest,
-                              input_digest=input_digest(read(self.root, path)), upstream_digest=upstream_digest, status='ready'))
-                pipeline['cgyro'] = marker
+            self.propose_tglf(source, 'Transfer tool → TGLF', source_path)
+            return
         elif target == 'transfer':
             if kind != 'input.gacode':
                 raise ValueError('请先选择 input.gacode。')
@@ -397,6 +612,59 @@ class ProjectActions:
             pg['DEPENDENCIES']['profpowbal'] = "root['INPUTS']['input.gacode']"
         else:
             raise ValueError('未知输入目标。')
+
+    def prepare_cgyro_batch(self):
+        problems = cgyro_plan_issues(self.root)
+        if problems:
+            raise ValueError('；'.join(problems))
+        rows = sync_cgyro_choices(self.root, self.settings, self.factory)
+        ion_cases = [key for key in ION_CASES
+                     if bool(sync_cgyro_ion_cases(self.settings, self.factory).get(key, False))]
+        batch, records, plan = self.factory(), self.factory(), []
+        for row in rows:
+            if not bool(self.settings['cgyro_radii'].get(row['key'], False)):
+                continue
+            source = read(self.root, row['path'])
+            mains = _cgyro_main_indices(self.root, source, row['path'])
+            nr_key = str(row['nr'])
+            radial = self.factory()
+            source_ion_label = _original_ion_label(source, mains)
+            for ion_case in ion_cases:
+                value = (source.duplicate() if hasattr(source, 'duplicate') else copy.deepcopy(source))
+                changed = []
+                if ion_case in ISOTOPE_MASSES:
+                    value, changed = _isotope_input(source, ion_case, mains)
+                radial[ion_case] = value
+                plan.append(dict(nr=row['nr'], rho=row['rho'], ion_case=ion_case,
+                                 ion_label=source_ion_label if ion_case == 'BASE' else ion_case,
+                                 case_id=_cgyro_case_id(row, ion_case), source_key=row['key'],
+                                 source=list(row['path']), changed_main_species=changed))
+            batch[nr_key] = radial
+            record = self.factory()
+            record.update(dict(source=list(row['path']), source_digest=input_digest(source),
+                               rho=row['rho'], main_species=mains, cases=ion_cases,
+                               original_ion_label=source_ion_label))
+            records[nr_key] = record
+        if not plan:
+            raise ValueError('没有可运行的 CGYRO 组合。')
+        node = module(self.root, 'cgyro')
+        first = plan[0]
+        active = batch[str(first['nr'])][first['ion_case']]
+        node['BATCH_INPUTS'] = batch
+        node['INPUTS']['input.cgyro'] = active.duplicate() if hasattr(active, 'duplicate') else copy.deepcopy(active)
+        self._record('准备 CGYRO 批量输入', status='ready', combinations=len(plan),
+                     batch_digest=input_digest(batch))
+        pipeline = self.root.setdefault('PROJECT_STATE', self.factory()).setdefault('pipeline', self.factory())
+        marker = self.factory()
+        scan = cgyro_plan_summary(self.root)
+        marker.update(dict(status='ready', inputs=records,
+                           upstream_digest=transfer_upstream_digest(self.root),
+                           batch_digest=input_digest(batch), combinations=len(plan),
+                           scan_axes=copy.deepcopy(scan['axes']),
+                           points_per_case=scan['points_per_case'], total_points=scan['total_points']))
+        pipeline['cgyro'] = marker
+        self.settings['message'] = 'CGYRO 已准备 {} 个组合。'.format(len(plan))
+        return plan
 
     def sync_endpoint(self, name):
         node = module(self.root, name)
@@ -527,19 +795,40 @@ class ProjectActions:
         node = module(self.root, 'cgyro')
         if node['SETTINGS']['SETUP'].get('icgyro', None) != 1:
             raise ValueError('此页面使用 CGYRO；旧 GYRO 提交后端不可用。')
-        issues = cgyro_input_issues(self.root) + runtime_issues(self.root, 'cgyro')
+        issues = cgyro_input_issues(self.root)
+        if not prepare:
+            issues += runtime_issues(self.root, 'cgyro')
         if issues:
             raise ValueError('；'.join(issues))
+        plan = self.prepare_cgyro_batch()
+        if prepare:
+            return plan
         setup = node['SETTINGS']['SETUP']
-        previous = setup.get('irun', None)
+        physics = node['SETTINGS']['PHYSICS']
+        if int(physics.get('restart_mode', 0)) == 1 and len(plan) != 1:
+            raise ValueError('重启只能运行一个 nr 与一个主离子案例；批量组合请使用“新计算”。')
+        previous = dict(irun=setup.get('irun', None), idownsync=setup.get('idownsync', None))
+        record = self._record('CGYRO 批量扫描', status='running', combinations=copy.deepcopy(plan))
+        completed = []
         try:
-            setup['irun'] = 0 if prepare else 1
-            if prepare:
-                return self.call('CGYRO 生成输入', MODULES['cgyro'] + ('SCRIPTS', 'subscan_lin.py'),
-                                 scan_dimensions=int(setup['idimrun']))
-            return self.call('CGYRO 运行扫描', MODULES['cgyro'] + ('SCRIPTS', 'runCGYRO.py'))
+            setup['irun'], setup['idownsync'] = 1, 1
+            for item in plan:
+                nr, ion_case = item['nr'], item['ion_case']
+                node['INPUTS']['input.cgyro'] = node['BATCH_INPUTS'][str(nr)][ion_case].duplicate()
+                physics['nr'], physics['rho'], physics['mass'] = nr, item['rho'], ion_case
+                physics['case_id'] = item['case_id']
+                self.call('CGYRO {}'.format(item['case_id']),
+                           MODULES['cgyro'] + ('SCRIPTS', 'runCGYRO.py'))
+                completed.append(item['case_id'])
+            record.update(dict(status='complete', completed=completed))
+            self.settings['message'] = 'CGYRO 批量扫描完成：{}。'.format('；'.join(completed))
+            return completed
+        except BaseException as exc:
+            record.update(dict(status='cancelled' if isinstance(exc, KeyboardInterrupt) else 'failed',
+                               completed=completed, error=str(exc)))
+            raise
         finally:
-            setup['irun'] = previous
+            setup['irun'], setup['idownsync'] = previous['irun'], previous['idownsync']
 
     def run(self, name, script, required=()):
         node = module(self.root, name)
@@ -568,11 +857,9 @@ class ProjectActions:
             raise ValueError('；'.join(issues))
         self.call('运行 Transfer_tool', MODULES['transfer'] + ('SCRIPTS', 'main.py'),
                   profile_source=source, radial_settings=options)
-        sources = transfer_sources(self.root)
-        generated = [value for label, value in sources.items() if 'Profiles_gen / input.cgyro_' in label]
-        if generated:
-            self.settings['transfer_source'] = generated[0]
-        self.settings['message'] = 'Transfer_tool 已完成。请在“生成结果与传递”中选择半径输入。'
+        self.settings['cgyro_source_mode'] = 'generated'
+        rows = sync_cgyro_choices(self.root, self.settings, self.factory)
+        self.settings['message'] = 'Transfer_tool 已完成：已生成 {} 个 CGYRO 半径输入。'.format(len(rows))
 
     def check(self):
         self.settings['message'] = '\n'.join(
@@ -591,8 +878,7 @@ class ProjectActions:
         old_run, old_download = setup.get('irun', None), setup.get('idownsync', None)
         try:
             setup['irun'], setup['idownsync'] = 0, 0
-            script = 'CGYROScan.py' if node['RUN_MANIFEST']['dimensions'] == 1 else 'CGYROScan_2d.py'
-            return self.call('归档已收集的 CGYRO 结果', MODULES['cgyro'] + ('SCRIPTS', script))
+            return self.call('归档已收集的 CGYRO 结果', MODULES['cgyro'] + ('SCRIPTS', 'CGYROScan.py'))
         finally:
             setup['irun'], setup['idownsync'] = old_run, old_download
 

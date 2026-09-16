@@ -7,8 +7,10 @@ from tkinter import ttk
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, loaded_file
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
-from OMFITlib_project import (LABELS, MODULES, PAGES, cgyro_input_issues, collect_issues, generated_tglf_sources,
-    location, module, pending_inputs, read, runtime_issues, summary, text_value, tglf_input_issues, transfer_sources)
+from OMFITlib_project import (ION_CASES, LABELS, MODULES, PAGES, cgyro_input_issues,
+    cgyro_plan_issues, cgyro_plan_summary, collect_issues, generated_tglf_sources, location, module,
+    pending_inputs, read, runtime_issues, summary, sync_cgyro_choices, sync_cgyro_ion_cases, text_value,
+    tglf_input_issues, transfer_sources)
 
 STATUS = {'prepared': '输入已准备', 'submitted': '已提交', 'loaded': '结果已读取',
           'submitted_or_finished': '已提交或执行返回',
@@ -90,8 +92,8 @@ class ProjectUI:
             self.nav('绘图与模型对比', 'plots')
             self.nav('模板 / GitHub', 'templates')
         self.ui.Separator('流程规则')
-        self.label('CGYRO：先完成 转换工具输入准备，再验证并传递。上游输入变化后需要重新传递。\n'
-                   '已有完整 input.cgyro 也从 输入转换工具 载入并验证。\n'
+        self.label('CGYRO：Transfer_tool 生成半径输入后，选择输入案例与 1–3 个参数轴批量运行。\n'
+                   '已有完整 input.cgyro 也可直接载入并作为一个 nr 使用。\n'
                    'TGLF 多剖面：导入 input.gacode → 生成局部输入 → 计算 → 结果对比。')
 
     def render_transfer(self):
@@ -99,16 +101,25 @@ class ProjectUI:
         self.compound(('Transfer_tool', 'GUIS', 'transfer'), show_run_button=False)
         self.run_controls('transfer')
         self.ui.Tab('生成结果与传递')
-        sources = transfer_sources(self.root)
+        radial = sync_cgyro_choices(self.root, self.settings, self.actions.factory)
+        if radial:
+            details = ['nr={}'.format(row['nr']) +
+                       (' (rho={:g})'.format(row['rho']) if row['rho'] is not None else '') for row in radial]
+            self.label('CGYRO：{}。无需逐个选择输入。'.format('，'.join(details)))
+            with self.ui.same_row():
+                self.guarded('准备 CGYRO 批量输入', lambda: self.actions.run_cgyro(prepare=True),
+                             cgyro_plan_issues(self.root))
+                self.nav('设置 CGYRO 扫描', 'cgyro')
+        else:
+            self.label('CGYRO：运行 Transfer_tool 后自动读取全部 nr。')
+        sources = {label: value for label, value in transfer_sources(self.root).items()
+                   if not json.loads(value)[-1].split('_')[0] == 'input.cgyro'}
         if sources:
             if self.settings['transfer_source'] not in sources.values():
                 self.settings['transfer_source'] = next(iter(sources.values()))
-            self.ui.ComboBox(self.prefix + "['transfer_source']", sources, '选择输入 / 生成结果', updateGUI=True)
-            self.label('选择本次要使用的半径输入，再送入对应计算程序。')
+            self.ui.ComboBox(self.prefix + "['transfer_source']", sources, 'TGLF / 剖面输入', updateGUI=True)
             kind = json.loads(self.settings['transfer_source'])[-1].split('_')[0]
-            if kind == 'input.cgyro':
-                self.ui.Button('验证并送入 CGYRO', lambda: self.actions.handoff('cgyro'), updateGUI=True)
-            elif kind == 'input.tglf':
+            if kind == 'input.tglf':
                 self.ui.Button('验证并送入 TGLF 单文件', lambda: self.actions.handoff('tglf'), updateGUI=True)
             elif kind == 'input.gacode':
                 self.ui.Button('送入 TGLF 剖面流程', lambda: self.actions.handoff('profiles'), updateGUI=True)
@@ -139,27 +150,56 @@ class ProjectUI:
             return
         base = MODULES['cgyro'] + ('SETTINGS',)
         self.ui.Tab('输入与扫描')
-        self.label('前置状态：' + ('；'.join(cgyro_input_issues(self.root)) or '转换工具输入已验证并传递'))
+        self.label('前置状态：' + ('；'.join(cgyro_input_issues(self.root)) or 'CGYRO 半径输入已就绪'))
         with self.ui.same_row():
             self.nav('回到 转换工具输入准备', 'transfer')
         self.ui.FilePicker(self.prefix + "['cgyro_file']", '载入已有 input.cgyro 到 输入转换工具', default='',
                            postcommand=lambda location=None: self.actions.import_input('cgyro'), updateGUI=True)
-        self.ui.Entry(location(base + ('EXPERIMENT', 'runid')), '运行名称')
+        self.ui.Entry(location(base + ('EXPERIMENT', 'runid')), '结果集名称')
+        rows = sync_cgyro_choices(self.root, self.settings, self.actions.factory)
+        self.ui.Separator('输入案例')
+        if rows:
+            with self.ui.same_row():
+                for row in rows:
+                    label = 'nr={}'.format(row['nr'])
+                    if row['rho'] is not None:
+                        label += ' · rho={:g}'.format(row['rho'])
+                    self.ui.CheckBox(self.prefix + "['cgyro_radii'][{!r}]".format(row['key']), label)
+        else:
+            self.label('尚无 CGYRO 半径输入，请先运行 Transfer_tool。')
+        self.ui.Separator('主离子方案')
+        sync_cgyro_ion_cases(self.settings, self.actions.factory)
         with self.ui.same_row():
-            self.ui.Entry(location(base + ('PHYSICS', 'nr')), '半径标识 nr')
-            self.ui.Entry(location(base + ('PHYSICS', 'mass')), '案例标签 mass')
-        self.label('nr 与 mass 用于结果分组；实际物种以输入为准。此入口执行线性扫描。')
-        self.ui.ComboBox(location(base + ('SETUP', 'idimrun')), {'一维扫描': 1, '二维扫描': 2}, '扫描维数', updateGUI=True)
+            for key, label in ION_CASES.items():
+                self.ui.CheckBox(self.prefix + "['cgyro_ion_cases'][{!r}]".format(key), label)
+        self.label('每个半径与所选方案自动组合；“原始”保持粒子组成，H/D/T 只改 Z=1 主离子质量。')
+        self.ui.Separator('参数扫描')
+        self.ui.ComboBox(location(base + ('SETUP', 'idimrun')),
+                         {'1 个参数': 1, '2 个参数': 2, '3 个参数': 3}, '参数轴数量', updateGUI=True)
         self.ui.Entry(location(base + ('PHYSICS', 'kyarr')), 'ky 列表', help='例如 [0.1, 0.2, 0.3]')
-        dim = node['SETTINGS']['SETUP']['idimrun']
-        keys = [('1d', 'Para', '扫描参数'), ('1d', 'Range', '参数值列表')] if dim == 1 else [
-            ('2d', 'Para_x', '参数 X'), ('2d', 'Range_x', 'X 值列表'), ('2d', 'Para_y', '参数 Y'), ('2d', 'Range_y', 'Y 值列表')]
+        dim = int(node['SETTINGS']['SETUP']['idimrun'])
+        keys = {
+            1: [('1d', 'Para', '参数 1'), ('1d', 'Range', '参数 1 取值')],
+            2: [('2d', 'Para_x', '参数 1'), ('2d', 'Range_x', '参数 1 取值'),
+                ('2d', 'Para_y', '参数 2'), ('2d', 'Range_y', '参数 2 取值')],
+            3: [('3d', 'Para_x', '参数 1'), ('3d', 'Range_x', '参数 1 取值'),
+                ('3d', 'Para_y', '参数 2'), ('3d', 'Range_y', '参数 2 取值'),
+                ('3d', 'Para_z', '参数 3'), ('3d', 'Range_z', '参数 3 取值')],
+        }.get(dim, [])
         for group, key, label in keys:
             self.ui.Entry(location(base + ('PHYSICS', group, key)), label)
+        problems = cgyro_plan_issues(self.root)
+        if not problems:
+            plan = cgyro_plan_summary(self.root)
+            axis_text = ' × '.join('{}({})'.format(axis['name'], len(axis['values'])) for axis in plan['axes'])
+            self.label('{} × ky({})；输入案例 {} 个；共 {} 个计算点。'.format(
+                axis_text, plan['ky'], plan['cases'], plan['total_points']))
+        else:
+            self.label('扫描计划：' + '；'.join(problems))
         self.ui.ComboBox(location(base + ('PHYSICS', 'restart_mode')), {'新计算': 0, '从匹配结果重启': 1}, '运行方式')
         self.ui.Tab('运行与收集')
         self.run_controls('cgyro')
-        self.ui.CheckBox(location(base + ('SETUP', 'idownsync')), '扫描返回后收集结果')
+        self.label('每个计算点自动编号；只需管理结果集、输入案例和参数轴。')
         self.nav('进入统一绘图页', 'plots')
 
     def render_tglf(self):
@@ -237,10 +277,10 @@ class ProjectUI:
             self.nav('统一 GACODE 环境配置', 'run')
         if name == 'cgyro':
             issues = cgyro_input_issues(self.root) + runtime_issues(self.root, name)
-            self.label('运行条件：' + ('；'.join(issues) or '输入已传递，基础配置已填写'))
+            self.label('运行条件：' + ('；'.join(issues) or '批量输入与运行配置已就绪'))
             with self.ui.same_row():
-                self.guarded('仅生成输入', lambda: self.actions.run_cgyro(prepare=True), issues)
-                self.guarded('运行配置的扫描', self.actions.run_cgyro, issues)
+                self.guarded('刷新批量输入', lambda: self.actions.run_cgyro(prepare=True), cgyro_plan_issues(self.root))
+                self.guarded('运行所选组合', self.actions.run_cgyro, issues)
                 self.guarded('收集当前结果', self.actions.collect, collect_issues(self.root))
         elif name == 'transfer':
             node = module(self.root, 'transfer')
@@ -390,8 +430,10 @@ class ProjectUI:
         return entry
 
     def render_plots(self):
-        self.label('选择已有结果后绘图。支持 CGYRO 与 TGLF 的同模型和跨模型对比。')
+        self.label('扫描结果浏览以数值表显示 1–3 个参数轴；对比绘图用于跨案例或跨模型比较。')
         with self.ui.same_row():
+            self.task('CGYRO 扫描结果浏览', ('GUIS', 'CGYRO_results'),
+                      issues=[] if read(self.root, ('CGYRO_scan', 'RUN_DB'), {}) else ['尚无已收集的 CGYRO 扫描结果'])
             self.nav('多 input.gacode 结果对比', 'multi')
             self.task('TGYRO 结果绘图', MODULES['tgyro'] + ('GUIS', 'Plotgui'))
         self.compound(('GUIS', 'CGYRO_vs_TGLF'))

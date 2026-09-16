@@ -51,7 +51,9 @@ class ComparisonWidgets:
     def _intersection_of_keysets(self, collections):
         if not collections:
             return []
-        return stable_keys(dict.fromkeys(set.intersection(*(set(v) for v in collections.values()))))
+        visible = ({key for key in values if not str(key).startswith('__')}
+                   for values in collections.values())
+        return stable_keys(dict.fromkeys(set.intersection(*visible)))
 
 
     def _split_2d_param_name(self, name):

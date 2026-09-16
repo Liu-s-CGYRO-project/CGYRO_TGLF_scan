@@ -28,6 +28,14 @@ the workbench. Changing the transferred input or its upstream profiles invalidat
 the handoff. Only a submitted/executed run can be collected. Collection archives
 the loaded results without resubmitting the scan.
 
+CGYRO radius inputs and original/H/D/T ion variants are combined as input cases.
+Each case can scan one, two or three physical parameters in addition to ky.
+Calculation directories use flat point IDs. ``RUN_DB`` stores the task coordinates,
+run metadata and actual results together. Use ``GUIS/CGYRO_results`` to open a
+numeric table of all parameters, ky, mean omega/gamma and relative fluctuations;
+two-axis scans select ky, and three-axis scans also select the third-axis slice.
+Plotting remains optional, and existing comparison GUIs use the same result tree.
+
 When a TGLF destination already has an input, the workbench displays parameter
 differences and waits for an explicit keep/replace choice. It does not merge model
 parameters automatically. Replacement archives the old input and its associated

@@ -52,7 +52,9 @@ def natural_key(value):
 
 def stable_keys(mapping):
     """Stable numeric/natural ordering; never sorts a saved OMFIT tree in-place."""
-    keys = list(mapping.keys())
+    # CGYRO RUN_DB stores inspectable metadata beside physical result branches.
+    # Reserved keys must never appear as selectable cases or scan parameters.
+    keys = [key for key in mapping.keys() if not str(key).startswith('__')]
     try:
         if all(math.isfinite(float(k)) for k in keys):
             return sorted(keys, key=lambda k: (float(k), str(k)))

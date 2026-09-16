@@ -139,8 +139,42 @@
         ]
       }
     },
+    "3d": {
+      "Para_x": "BETAE_UNIT",
+      "Para_y": "S",
+      "Para_z": "RLTS_1",
+      "Range_x": {
+        "__ndarray_tolist__": [
+          0.0001
+        ],
+        "dtype": "float64",
+        "shape": [
+          1
+        ]
+      },
+      "Range_y": {
+        "__ndarray_tolist__": [
+          1.0
+        ],
+        "dtype": "float64",
+        "shape": [
+          1
+        ]
+      },
+      "Range_z": {
+        "__ndarray_tolist__": [
+          1.0
+        ],
+        "dtype": "float64",
+        "shape": [
+          1
+        ]
+      }
+    },
     "mode": "lin",
     "nr": 5,
+    "rho": null,
+    "case_id": "",
     "mass": "T"
   },
   "SETUP": {

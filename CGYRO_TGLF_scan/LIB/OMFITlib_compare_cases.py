@@ -32,7 +32,7 @@ class CaseSelection(ComparisonWidgets):
         selected_key = 'nr_CGYRO' if legacy else 'nr_selected'
         if select_radii:
             sync_flags(state, 'nr_flag', radii, selected_key)
-            self.ui.Label('选择 CGYRO 半径', align='left')
+            self.ui.Label('选择 CGYRO 输入案例', align='left')
             self._render_index_checkbox_grid(path('nr_flag')+'[{idx}]', radii)
             state[selected_key] = selected_items(state['nr_flag'], radii)
         return runs.get(runid, {}), radii
@@ -112,7 +112,7 @@ class CaseSelection(ComparisonWidgets):
         for rho in tg.get('rho_selected', []):
             cfg = pairs.setdefault(str(rho), {})
             sync_flags(cfg, 'nr_flag', radii, 'nr_selected')
-            self.ui.Label('TGLF {} → 配对 CGYRO 半径'.format(rho), align='left')
+            self.ui.Label('TGLF {} → 配对 CGYRO 输入案例'.format(rho), align='left')
             self._render_index_checkbox_grid(path('CGYRO', 'rho_pair_cfg', str(rho), 'nr_flag')+'[{idx}]', radii)
             cfg['nr_selected'] = selected_items(cfg['nr_flag'], radii)
             paired_radii.extend(cfg['nr_selected'])
@@ -136,7 +136,7 @@ class CaseSelection(ComparisonWidgets):
         if not radii:
             return
         self.ui.Separator('扫描参数与取值')
-        self.ui.CheckBox(path('force_read_all_nr_items'), '各半径分别选择参数',
+        self.ui.CheckBox(path('force_read_all_nr_items'), '各输入案例分别选择参数',
                          default=False, updateGUI=True)
         if not state.get('force_read_all_nr_items', None):
             parameters = self._intersection_of_keysets({nr: run[nr].keys() for nr in radii if nr in run})

@@ -1,3 +1,5 @@
+from builtins import (Exception, TypeError, ValueError, any, dict, enumerate, float,
+                      int, len, list, range, set, sorted, str, tuple, zip)
 import numpy as np
 import os
 import re
@@ -115,9 +117,10 @@ def runtime_abs_path(path):
     return os.path.abspath(path)
 
 
-# One engine prepares both scan dimensions, with immutable per-run paths.
+# One engine prepares 1-3 parameter axes, with immutable per-run paths.
 import copy
 import hashlib
+import itertools
 import json
 import tempfile
 import uuid
@@ -126,46 +129,89 @@ import posixpath
 defaultVars(scan_dimensions=1)
 
 
-def scan_points(physics, dimensions, effnum):
-    """Return point names and complete scan overrides; reject ambiguous names."""
-    points = []
+def json_scalar(value):
+    return value.item() if isinstance(value, np.generic) else value
+
+
+def configured_axes(physics, dimensions):
+    """Return 1-3 Cartesian axes, including any legacy linked parameters."""
     if dimensions == 1:
         conf = physics['1d']
         axes = [(conf['Para'], conf['Range'], 'Para', 'Range')]
-        combinations = [((i, value),) for i, value in enumerate(conf['Range'])]
-    elif dimensions == 2:
-        conf = physics['2d']
-        axes = [(conf['Para_x'], conf['Range_x'], 'Para_x', 'Range_x'),
-                (conf['Para_y'], conf['Range_y'], 'Para_y', 'Range_y')]
-        combinations = [((i, x), (j, y)) for i, x in enumerate(conf['Range_x'])
-                        for j, y in enumerate(conf['Range_y'])]
+    elif dimensions in (2, 3):
+        conf = physics[str(dimensions) + 'd']
+        suffixes = ('x', 'y') if dimensions == 2 else ('x', 'y', 'z')
+        axes = [(conf['Para_' + suffix], conf['Range_' + suffix],
+                 'Para_' + suffix, 'Range_' + suffix) for suffix in suffixes]
     else:
-        raise ValueError('scan_dimensions must be 1 or 2')
+        raise ValueError('scan_dimensions must be 1, 2, or 3')
+    return conf, axes
+
+
+def scan_points(physics, dimensions, effnum):
+    """Return flat point IDs, overrides, result paths and an axis manifest."""
+    conf, axes = configured_axes(physics, dimensions)
+    points, axis_manifest, result_keys = [], [], set()
+    names = []
+    for parameter, values, pkey, rkey in axes:
+        if not re.match(r'^[A-Za-z][A-Za-z0-9_]*$', str(parameter)) or str(parameter).upper() == 'KY':
+            raise ValueError('Invalid scan parameter: %s' % parameter)
+        if str(parameter) in names:
+            raise ValueError('Duplicate scan parameter: %s' % parameter)
+        names.append(str(parameter))
+        if len(values) == 0:
+            raise ValueError('Empty scan axis: %s' % parameter)
+        for value in values:
+            try:
+                finite = np.isfinite(float(value))
+            except (TypeError, ValueError, OverflowError):
+                finite = False
+            if not finite:
+                raise ValueError('Non-finite scan value for %s' % parameter)
+        linked = []
+        n = 2
+        while pkey + str(n) in conf or rkey + str(n) in conf:
+            if pkey + str(n) not in conf or rkey + str(n) not in conf:
+                raise ValueError('Incomplete linked scan axis %s%d' % (pkey, n))
+            if len(conf[rkey + str(n)]) != len(values):
+                raise ValueError('Linked scan range length differs from primary axis')
+            linked_name = str(conf[pkey + str(n)])
+            if not re.match(r'^[A-Za-z][A-Za-z0-9_]*$', linked_name) or linked_name.upper() == 'KY':
+                raise ValueError('Invalid linked scan parameter: %s' % linked_name)
+            if linked_name in names or any(item['name'] == linked_name for item in linked):
+                raise ValueError('Duplicate linked scan parameter: %s' % linked_name)
+            linked.append(dict(name=linked_name,
+                               values=[json_scalar(value) for value in conf[rkey + str(n)]]))
+            n += 1
+        axis_manifest.append(dict(name=str(parameter), values=[json_scalar(value) for value in values],
+                                  linked=linked))
+    combinations = itertools.product(*[list(enumerate(axis[1])) for axis in axes])
     for combination in combinations:
         overrides = {}
-        name = []
+        result_path = []
         for (parameter, values, pkey, rkey), (index, value) in zip(axes, combination):
-            if not re.match(r'^[A-Za-z][A-Za-z0-9_]*$', str(parameter)):
-                raise ValueError('Invalid scan parameter: %s' % parameter)
             overrides[parameter] = value
-            name.extend([parameter, num2str_xj(value, effnum)])
+            result_path.extend([str(parameter), num2str_xj(value, effnum)])
             n = 2
             while pkey + str(n) in conf or rkey + str(n) in conf:
-                if pkey + str(n) not in conf or rkey + str(n) not in conf:
-                    raise ValueError('Incomplete linked scan axis %s%d' % (pkey, n))
-                if len(conf[rkey + str(n)]) != len(values):
-                    raise ValueError('Linked scan range length differs from primary axis')
                 overrides[conf[pkey + str(n)]] = conf[rkey + str(n)][index]
                 n += 1
         for ky in physics['kyarr']:
             if not np.isfinite(ky) or ky <= 0:
                 raise ValueError('Linear scan ky must be finite and positive')
             point = dict(overrides, KY=ky)
-            points.append(('~'.join(name + ['ky', num2str_xj(ky, effnum)]), point))
-    names = [name for name, _ in points]
-    if not names or len(set(names)) != len(names):
-        raise ValueError('Empty scan or point names collide at selected effnum')
-    return points
+            point_id = 'p{:06d}'.format(len(points) + 1)
+            stored_path = result_path + ['lin', num2str_xj(ky, effnum)]
+            result_key = tuple(stored_path)
+            if result_key in result_keys:
+                raise ValueError('Scan values collide at effnum=%s; increase effnum or separate the values' % effnum)
+            result_keys.add(result_key)
+            metadata = dict(values={str(key): json_scalar(value) for key, value in point.items()},
+                            result_path=stored_path)
+            points.append((point_id, point, metadata))
+    if not points:
+        raise ValueError('Empty scan')
+    return points, axis_manifest
 
 
 def validate_restart_input(previous, current):
@@ -190,12 +236,17 @@ previous_cases = caseRoot.get(caseName, OMFITtree())
 restart_mode = int(physics['restart_mode'])
 if restart_mode not in (0, 1):
     raise ValueError('restart_mode must be 0 or 1')
-points = scan_points(physics, scan_dimensions, setup['effnum'])
+previous_manifest = root.get('RUN_MANIFEST', {})
+if previous_cases and previous_manifest and previous_manifest.get('status', None) not in ('published',):
+    raise ValueError('The previous CGYRO run has not been published; collect it before starting another run')
+points, scan_axes = scan_points(physics, scan_dimensions, setup['effnum'])
 if restart_mode and not previous_cases:
     raise ValueError('No saved cases are available for restart')
 run_token = uuid.uuid4().hex
 base_workdir = runtime_abs_path(setup_workdir())
-submit_workdir = os.path.join(base_workdir, 'runs', run_token)
+case_id = str(physics.get('case_id', '') or 'nr={}__ion={}'.format(physics['nr'], physics['mass']))
+relative_run_dir = os.path.join('runs', run_token)
+submit_workdir = os.path.join(base_workdir, relative_run_dir)
 os.makedirs(submit_workdir)
 remote_server = 'localhost' if local_submit else cfg_str(server_setup, 'server', cfg_str(rmt_setup, 'server', ''))
 remote_tunnel = '' if local_submit else cfg_str(server_setup, 'tunnel', cfg_str(rmt_setup, 'tunnel', ''))
@@ -220,7 +271,8 @@ prepared_cases = OMFITtree()
 inputs = []
 dir_list = []
 input_checksums = {}
-for new_dir, overrides in points:
+point_table = {}
+for new_dir, overrides, point_metadata in points:
     stage = os.path.join(submit_workdir, 'staging', new_dir)
     # OMFITobject.deploy(existing_dir) appends its original basename. Supply a
     # nonexistent destination when copying a result directory (framework API).
@@ -266,24 +318,26 @@ for new_dir, overrides in points:
     inputs.append(prepared['zip'])
     dir_list.append(new_dir)
     input_checksums[new_dir] = checksums
+    point_table[new_dir] = point_metadata
 
 # Commit the prepared run only after every point passes validation and packaging.
-if 'RUN_HISTORY' not in root:
-    root['RUN_HISTORY'] = OMFITtree()
 if previous_cases:
     history_key = root.get('RUN_MANIFEST', {}).get('run_token', 'imported-' + run_token)
+    if 'RUN_HISTORY' not in root:
+        root['RUN_HISTORY'] = OMFITtree()
     if history_key not in root['RUN_HISTORY']:
         root['RUN_HISTORY'][history_key] = OMFITtree()
-    root['RUN_HISTORY'][history_key]['Cases'] = copy.deepcopy(previous_cases)
-    root['RUN_HISTORY'][history_key]['OUTPUTScan'] = copy.deepcopy(root['OUTPUTScan'])
-    if 'RUN_MANIFEST' in root:
-        root['RUN_HISTORY'][history_key]['manifest'] = copy.deepcopy(root['RUN_MANIFEST'])
+    archived_manifest = copy.deepcopy(previous_manifest)
+    archived_manifest.pop('point_table', None)  # Permanent task rows live once in RUN_DB.
+    root['RUN_HISTORY'][history_key]['manifest'] = archived_manifest
 manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': scan_dimensions,
             'points': dir_list, 'server': remote_server, 'tunnel': remote_tunnel,
             'workDir': remote_workdir, 'local_workDir': submit_workdir,
             'serverPicker': cfg_str(rmt_setup, 'serverPicker'),
             'runid': root['SETTINGS']['EXPERIMENT']['runid'], 'nr': physics['nr'],
-            'mass': physics['mass'], 'input_sha256': input_checksums, 'status': 'prepared'}
+            'rho': physics.get('rho', None), 'mass': physics['mass'], 'case_id': case_id,
+            'scan_axes': scan_axes, 'point_table': point_table,
+            'input_sha256': input_checksums, 'status': 'prepared'}
 root['RUN_MANIFEST'] = OMFITtree(manifest)
 caseRoot[caseName] = prepared_cases
 with open(os.path.join(submit_workdir, 'manifest.json'), 'w') as handle:

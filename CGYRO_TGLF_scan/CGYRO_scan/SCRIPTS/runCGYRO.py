@@ -1,4 +1,4 @@
-# this script is used to do the overall call for the 1D and 2D scan
+# Validate the selected endpoint, then run the unified 1D/2D/3D collector.
 rmt_setup=root['SETTINGS']['REMOTE_SETUP']
 setup=root['SETTINGS']['SETUP']
 
@@ -38,8 +38,7 @@ elif cfg_missing(rmt_setup, 'server') or cfg_missing(rmt_setup, 'workDir'):
 if setup['icgyro'] == 0 and 'input.gyro' not in root['INPUTS']:
     config_error('GYRO mode requires a validated input.gyro; this example supplies CGYRO input only')
 
-idimrun=setup['idimrun']
-if idimrun==1:
-    root['SCRIPTS']['CGYROScan.py'].run()
-else:
-    root['SCRIPTS']['CGYROScan_2d.py'].run()
+idimrun = int(setup['idimrun'])
+if idimrun not in (1, 2, 3):
+    config_error('CGYRO parameter-axis count must be 1, 2, or 3')
+root['SCRIPTS']['CGYROScan.py'].run()

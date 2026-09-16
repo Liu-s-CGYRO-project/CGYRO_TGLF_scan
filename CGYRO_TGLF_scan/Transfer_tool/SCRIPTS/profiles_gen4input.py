@@ -46,7 +46,16 @@ for k, rho in enumerate(rho_arr, 1):
         else:
             result = close_local_input(obj, code, particle_report['main_count'], particle_report['after'])
         result['rho'] = float(rho)
+        # The closure helpers mutate the actual local input and return only a
+        # compact audit record.  Keep rho on both objects: downstream batch
+        # planning reads it from input.cgyro_N, while the report remains useful
+        # for inspecting neutrality corrections.
+        obj['rho'] = float(rho)
         neutrality['input.{}_{}'.format(code, k)] = result
         pending['input.{}_{}'.format(code, k)] = obj.duplicate()
-root['OUTPUTS'].setdefault('Profiles_gen', OMFITtree()).update(pending)
+# Replace the completed set atomically so a new, shorter radial grid cannot
+# leave stale input.cgyro_N / input.tglf_N entries from an earlier run.
+complete = OMFITtree()
+complete.update(pending)
+root['OUTPUTS']['Profiles_gen'] = complete
 root['OUTPUTS'].setdefault('Particle_processing', OMFITtree())['local_inputs'] = neutrality

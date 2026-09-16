@@ -219,16 +219,19 @@
 ['PLOTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['PLOTS']['CGYRO_vs_TGLF'] <-:-:-> OMFITpythonPlot <-:-:-> ./PLOTS/CGYRO_vs_TGLF.py <-:-:-> {}
 ['PLOTS']['CGYRO_vs_CGYRO'] <-:-:-> OMFITpythonPlot <-:-:-> ./PLOTS/CGYRO_vs_CGYRO.py <-:-:-> {}
+['PLOTS']['CGYRO_results'] <-:-:-> OMFITpythonPlot <-:-:-> ./PLOTS/CGYRO_results.py <-:-:-> {}
 ['PLOTS']['TGLF_multi'] <-:-:-> OMFITpythonPlot <-:-:-> ./PLOTS/TGLF_multi.py <-:-:-> {}
 ['GUIS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['GUIS']['main'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/main.py <-:-:-> {}
 ['GUIS']['CGYRO_vs_TGLF'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/CGYRO_vs_TGLF.py <-:-:-> {}
 ['GUIS']['CGYRO_vs_CGYRO'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/CGYRO_vs_CGYRO.py <-:-:-> {}
+['GUIS']['CGYRO_results'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/CGYRO_results.py <-:-:-> {}
 ['GUIS']['Template_manager'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/Template_manager.py <-:-:-> {}
 ['GUIS']['TGLF_multi'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/TGLF_multi.py <-:-:-> {}
 ['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['LIB']['OMFITlib_project'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project.py <-:-:-> {}
 ['LIB']['OMFITlib_project_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_ui.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_results'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_results.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cases.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro_selection'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro_selection.py <-:-:-> {}
@@ -337,6 +340,8 @@
 ['CGYRO_scan']['help'] <-:-:-> OMFIThelp <-:-:-> ./CGYRO_scan/help.rst <-:-:-> {}
 ['CGYRO_scan']['OUTPUTScan'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_scan']['RUN_DB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['CGYRO_scan']['RUN_HISTORY'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['CGYRO_scan']['BATCH_INPUTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_scan']['Cases'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_scan']['tmp.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/tmp.py.py <-:-:-> {}
 ['Transfer_tool'] <-:-:-> OMFITmodule <-:-:->  <-:-:-> {}

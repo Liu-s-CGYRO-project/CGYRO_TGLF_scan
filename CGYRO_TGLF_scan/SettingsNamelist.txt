@@ -136,6 +136,20 @@
     "transfer_source": "",
     "cgyro_file": "",
     "tglf_file": "",
+    "cgyro_source_mode": "generated",
+    "cgyro_ion_cases": {
+      "BASE": false,
+      "H": true,
+      "D": true,
+      "T": true
+    },
+    "cgyro_radii": {},
+    "cgyro_result_view": {
+      "run_token": "",
+      "ky": "",
+      "slice_value": "",
+      "tail_fraction": 0.02
+    },
     "message": ""
   },
   "TGLF_MULTI": {
