@@ -1,3 +1,7 @@
+# 修订记录 · 工程 1.13.3 / 管理器 1.10.3
+
+Transfer_tool 从原生文件选择器记录原始路径、服务器和隧道，保存到 SETTINGS/PHYSICS/file_sources；OMFIT 读取和缓存仍采用原生文件类。刷新时只显示记录的地址，旧对象可从 originalFilename 恢复真实源路径。原生文件选择器使用 transferRemoteFile=None，解析器接收字符串文件名和 server/tunnel 关键字。已对照本地 OMFIT FilePicker、OMFITobject 以及各读取器构造函数核对接口。仅完成 Python 3.9 静态语法、OMFIT 格式和发布包完整性检查，未运行回归、GUI 或求解器测试。
+
 # 修订记录 · 工程 1.13.2 / 管理器 1.10.3
 
 Transfer_tool 不再在载入成功后清空文件路径框；界面刷新时从当前已载入对象恢复路径，切换剖面来源时显示对应文件。平衡文件同样恢复，并识别 gEQDSK / gfile。内置已发布的管理器 1.10.3。仅完成 Python 3.9 静态语法、原生 OMFIT 帮助/设置格式、模块库登记与发布包完整性检查，未运行回归测试、GUI 或求解器。

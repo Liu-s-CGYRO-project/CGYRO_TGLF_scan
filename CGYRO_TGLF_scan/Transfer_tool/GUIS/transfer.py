@@ -1,8 +1,8 @@
 # -*-Python-*-
 """Profile and radius controls for Transfer_tool's command-box workflow."""
 from collections import OrderedDict
-from builtins import dict, getattr, next, str
-from OMFITlib_transfer_workflow import generation_issues, initialize_generation, loaded_file, PROFILE_KEYS
+from builtins import dict, getattr, isinstance, len, list, next, str, tuple
+from OMFITlib_transfer_workflow import generation_issues, initialize_generation, PROFILE_KEYS
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_transfer_particles import (PRESETS, DESCRIPTIONS, detect_main_ions,
                                         main_ion_label, species_label, thermal_reference_choices)
@@ -12,6 +12,19 @@ defaultVars(show_run_button=True)
 OMFITx.TitleGUI('Transfer_tool · 剖面生成')
 physics = root['SETTINGS']['PHYSICS']
 initialize_generation(root, OMFITtree)
+source_files = physics.setdefault('file_sources', OMFITtree())
+
+
+def selected_file(selection):
+    # Keep the chooser's path before an OMFIT reader copies it into /tmp.
+    # transferRemoteFile=None also preserves the original remote address.
+    if isinstance(selection, (tuple, list)):
+        if len(selection) != 3:
+            raise ValueError('请选择有效的文件地址。')
+        path, server, tunnel = selection
+    else:
+        path, server, tunnel = selection, 'localhost', ''
+    return dict(path=str(path), server=str(server or 'localhost'), tunnel=str(tunnel or ''))
 
 
 def load_profile(location=None):
@@ -21,25 +34,50 @@ def load_profile(location=None):
     kind = physics['start_from']
     readers = {'statefile': OMFITnc, 'pfile': OMFITpFile,
                'input.profiles': OMFITgacode, 'input.gacode': OMFITinputgacode}
-    value = readers[kind](filename)
+    source = selected_file(filename)
+    value = readers[kind](source['path'], server=source['server'], tunnel=source['tunnel'])
     value.keys()
+    source_files[kind] = source
     root['INPUTS'][kind] = value
     physics['generation']['thermal_reference_ion'] = 0
     if kind == 'input.gacode':
         root['Transfer_file']['input.gacode'] = value.duplicate()
+    scratch['profile_filename'] = source['path']
 
 
 def load_equilibrium(location=None):
     filename = scratch.get('equilibrium_filename', '')
     if filename:
-        value = OMFITgeqdsk(filename)
+        source = selected_file(filename)
+        value = OMFITgeqdsk(source['path'], server=source['server'], tunnel=source['tunnel'])
         value.keys()
+        source_files['gEQDSK'] = source
+        source_files.pop('gfile', None)
         root['INPUTS']['gEQDSK'] = value
+        scratch['equilibrium_filename'] = source['path']
 
 
-def current_filename(key):
+def source_filename(key, source_key=None):
     value = root['INPUTS'].get(key, None)
-    return str(getattr(value, 'filename', '') or '')
+    if value is None:
+        return ''
+    source_key = source_key or key
+    source = source_files.get(source_key, {})
+    if source.get('path', ''):
+        return str(source['path'])
+    # Older live objects may still remember the chosen address. A reloaded
+    # project only remembers its working copy; never present that as a source.
+    original = str(getattr(value, 'originalFilename', '') or '')
+    normalized = original.replace('\\', '/')
+    if not original or ('/OMFIT/OMFIT_' in normalized and '/project/' in normalized):
+        return ''
+    source_files[source_key] = dict(path=original, server='localhost', tunnel='')
+    return original
+
+
+def source_help(key, source_key=None):
+    path = source_filename(key, source_key)
+    return '原始文件地址：' + path if path else '请选择原始文件，地址会随工程保存。'
 
 
 OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['start_from']",
@@ -48,17 +86,18 @@ OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['start_from']",
                lbl='剖面来源', default='input.gacode', updateGUI=True)
 kind = physics['start_from']
 key = next((key for key in PROFILE_KEYS[kind] if key in root['INPUTS']), kind)
-# FilePicker refreshes after loading or switching sources. Derive its path
-# from the loaded object so reopening the GUI cannot leave a blank/stale field.
-scratch['profile_filename'] = current_filename(key)
+# Display the recorded selection, never the object's mutable cache filename.
+scratch['profile_filename'] = source_filename(key, kind)
 OMFITx.FilePicker("scratch['profile_filename']", '剖面文件', default='',
-                  updateGUI=True, postcommand=load_profile, help=loaded_file(root, 'INPUTS', key))
+                  transferRemoteFile=None, updateGUI=True, postcommand=load_profile, help=source_help(key, kind))
 anchor = OMFITx.Label('当前剖面：' + key + ('（已载入）' if key in root['INPUTS'] else '（未载入）'), align='left')
+if key in root['INPUTS'] and not scratch['profile_filename']:
+    OMFITx.Label('原始地址未记录，请重新选择文件。', align='left')
 if kind in ('statefile', 'pfile'):
     equilibrium_key = next((name for name in ('gEQDSK', 'gfile') if name in root['INPUTS']), 'gEQDSK')
-    scratch['equilibrium_filename'] = current_filename(equilibrium_key)
+    scratch['equilibrium_filename'] = source_filename(equilibrium_key)
     OMFITx.FilePicker("scratch['equilibrium_filename']", '平衡文件（p-file 必需）', default='',
-                      updateGUI=True, postcommand=load_equilibrium, help=loaded_file(root, 'INPUTS', equilibrium_key))
+                      transferRemoteFile=None, updateGUI=True, postcommand=load_equilibrium, help=source_help(equilibrium_key))
     OMFITx.Label('平衡文件：' + ('已载入' if equilibrium_key in root['INPUTS'] else '未载入'), align='left')
 prefix = "root['SETTINGS']['PHYSICS']['generation']"
 OMFITx.Separator('计算半径')
