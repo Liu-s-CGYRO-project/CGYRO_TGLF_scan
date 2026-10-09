@@ -297,9 +297,9 @@ class ProjectUI:
         value = mapping.get(key, False)
         value = str(value).lower() in ('true', '.true.', '1', '1.0')
         mapping[key] = value
-        variable = tk.BooleanVar(value=value)
-        control = self.ui.CheckBox(path, caption, default=False, updateGUI=True,
-                                   variable=variable, onvalue=1, offvalue=0)
+        control = self.ui.CheckBox(path, caption, default=False, updateGUI=True)
+        variable = tk.BooleanVar(master=control, value=value)
+        control.configure(variable=variable, onvalue=1, offvalue=0)
         variable.set(value)
         control.state(['!alternate', 'selected' if value else '!selected'])
         control._cgyro_boolean = variable
