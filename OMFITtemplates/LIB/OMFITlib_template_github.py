@@ -3,11 +3,13 @@ from builtins import all, any, bool, bytes, dict, int, len, list, max, min, open
 import hashlib
 import base64
 import os
+from http.client import IncompleteRead, RemoteDisconnected
 from pathlib import Path
 import re
 import shutil
+import ssl
 import subprocess
-from time import monotonic
+from time import monotonic, sleep
 from urllib import error, parse, request
 
 from OMFITlib_template_archive import CHUNK, TemplateError, json_bytes, parse_json
@@ -21,6 +23,7 @@ DEFAULT_REPOSITORY = 'Liu-s-CGYRO-project/CGYRO_TGLF_scan'
 MAX_ASSET = 2 * 1024 ** 3  # GitHub requires each asset to be strictly below 2 GiB.
 MAX_RESPONSE = 16 * 1024 ** 2
 DOWNLOAD_CHUNK = 64 * 1024
+READ_ATTEMPTS = 3
 MARKER = '<!-- omfit-template-release-v1\n'
 API_VERSION = '2026-03-10'
 INITIAL_README = '''# OMFIT 模板库
@@ -104,6 +107,10 @@ class GitHubError(TemplateError):
         self.status = status
 
 
+class GitHubNetworkError(TemplateError):
+    """Transient connection or response-body failure, without credential data."""
+
+
 class SafeRedirect(request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         target = parse.urlsplit(newurl)
@@ -166,6 +173,33 @@ class GitHub:
         self.connection = connection_label(proxy)
         self.opener = request.build_opener(proxy_handler(proxy), ClosingTunnelHTTPSHandler(), SafeRedirect())
 
+    def _connection_error(self, exc):
+        reason = getattr(exc, 'reason', exc)
+        if isinstance(reason, ssl.SSLCertVerificationError):
+            return TemplateError('GitHub HTTPS 证书验证失败，请检查系统证书与代理配置。')
+        if '407' in str(reason):
+            return TemplateError('HTTP 代理认证失败，请检查代理用户名和密码；公共代理的用户名和密码应留空。')
+        if isinstance(reason, (ConnectionResetError, RemoteDisconnected)):
+            problem = '连接被对端断开'
+        elif isinstance(reason, IncompleteRead):
+            problem = '响应尚未读完整，连接已断开'
+        elif isinstance(reason, TimeoutError):
+            problem = '连接或读取超时'
+        else:
+            problem = '网络连接失败'
+        return GitHubNetworkError('GitHub {}（{}）。'.format(problem, self.connection))
+
+    def _wait_read_retry(self, next_attempt):
+        check_cancel(self.cancel)
+        if self.progress:
+            self.progress('GitHub 连接中断，正在重试（{}/{}）…'.format(next_attempt, READ_ATTEMPTS), 0, 0)
+        delay = next_attempt - 1  # Wait 1s, then 2s; cancellation remains active.
+        if self.cancel is not None:
+            self.cancel.wait(delay)
+        else:
+            sleep(delay)
+        check_cancel(self.cancel)
+
     def _open(self, path, method='GET', data=None, accept='application/vnd.github+json', upload=False, size=None):
         check_cancel(self.cancel)
         origin = 'https://uploads.github.com' if upload else API
@@ -194,17 +228,47 @@ class GitHub:
                 message = 'GitHub API 限额已用完，请稍后重试；公开仓库也可登录后提高可用限额。'
             raise GitHubError(status, message) from None
         except (error.URLError, OSError, TimeoutError) as exc:
-            if '407' in str(getattr(exc, 'reason', exc)):
-                raise TemplateError('HTTP 代理认证失败，请检查代理用户名和密码；公共代理的用户名和密码应留空。') from None
-            raise TemplateError('连接 GitHub 失败或超时（{}）。请检查代理地址、端口与网络。'.format(self.connection)) from None
+            raise self._connection_error(exc) from None
 
     def _json(self, path, method='GET', payload=None, **kwargs):
         data = json_bytes(payload) if payload is not None else None
-        with self._open(path, method, data=data, **kwargs) as response:
-            content = response.read(MAX_RESPONSE + 1)
-        if len(content) > MAX_RESPONSE:
-            raise TemplateError('GitHub 响应过大，已停止读取')
-        return parse_json(content)
+        # Restart the complete GET, including response.read(), on a fresh
+        # connection.  An uncertain POST/PUT/PATCH must never be sent twice.
+        read_only = method.upper() == 'GET' and data is None and not kwargs.get('upload', False)
+        attempts = READ_ATTEMPTS if read_only else 1
+        for attempt in range(1, attempts + 1):
+            check_cancel(self.cancel)
+            try:
+                with self._open(path, method, data=data, **kwargs) as response:
+                    content = response.read(MAX_RESPONSE + 1)
+                    if len(content) > MAX_RESPONSE:
+                        raise TemplateError('GitHub 响应过大，已停止读取')
+                    declared = getattr(response, 'headers', {}).get('Content-Length', None)
+                    if declared is not None:
+                        try:
+                            expected = int(declared)
+                        except (TypeError, ValueError):
+                            raise TemplateError('GitHub 响应长度格式无效') from None
+                        if expected < 0:
+                            raise TemplateError('GitHub 响应长度格式无效')
+                        if len(content) < expected:
+                            raise IncompleteRead(content, expected - len(content))
+            except GitHubNetworkError as exc:
+                failure = exc
+            except (error.URLError, OSError, TimeoutError, IncompleteRead, RemoteDisconnected) as exc:
+                failure = self._connection_error(exc)
+                if not isinstance(failure, GitHubNetworkError):
+                    raise failure from None
+            else:
+                return parse_json(content)
+            if attempt == attempts:
+                if read_only:
+                    message = '{}已尝试 {} 次，请稍后重新连接，或检查代理服务与网络；也可导入本地模板包。'.format(
+                        failure, attempts)
+                else:
+                    message = '{}请先检查 GitHub 上的操作状态，再决定是否重试。'.format(failure)
+                raise GitHubNetworkError(message) from None
+            self._wait_read_retry(attempt + 1)
 
     def probe(self):
         self._json('/rate_limit')

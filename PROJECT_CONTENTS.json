@@ -473,7 +473,7 @@
     "OMFITtemplates/GUIS/main.py": "d5cc35803ceaa5a30489b5ddfb52251ba7df8443907ef6f3c3cab04b080b44d7",
     "OMFITtemplates/LIB/OMFITlib_template_archive.py": "04623f787ba7f11d20e4a40160f531a216d835679fd819ba16097942d284e965",
     "OMFITtemplates/LIB/OMFITlib_template_cli.py": "e65c3c29a64b441b05e18ec054c408d1abf44d8bcdddbbc8a4ee80cc3a459b04",
-    "OMFITtemplates/LIB/OMFITlib_template_github.py": "b1b22be05c4059c4b45c30f7d6698e94e63338b5fe0e76de6f74b10e8db2fd81",
+    "OMFITtemplates/LIB/OMFITlib_template_github.py": "dd4586bb1dae54b2b06673abbaa80321d4a47706c11fbbad84f13af3285bb1d4",
     "OMFITtemplates/LIB/OMFITlib_template_incremental.py": "fe6ad11e471e7c33623ffed9c146958ab97d833bffc963b3351acd832043a783",
     "OMFITtemplates/LIB/OMFITlib_template_live.py": "16d244910de7c5a148079c8cd287ce6fc00b783124051c49a5a8f30a3aadf2ca",
     "OMFITtemplates/LIB/OMFITlib_template_manager_ui.py": "6f96e3018f8afb00a5e54583159aff0e77e6b0533406edc7511c9f641edf51ef",
@@ -483,9 +483,9 @@
     "OMFITtemplates/LIB/OMFITlib_template_service.py": "61f12979e6939db0341ba9c0b2ac631bab288b3e3ac719f99435d7f85e3a0432",
     "OMFITtemplates/LIB/OMFITlib_template_session.py": "903523c5c56768049701e382ed199d44b8b9fabb764b0fc5ab539fa4e4c7da09",
     "OMFITtemplates/LIB/OMFITlib_template_ui.py": "7bb4fc4021f0ef23a8995105d7e8a99ecdf4ef51386396639c9fd2e7078566ce",
-    "OMFITtemplates/LIB/OMFITlib_template_versions.py": "c84f6afb27bba1a5e86e0700acc8f68f0c575f00954e37e9651b970a3708fd20",
-    "OMFITtemplates/SettingsNamelist.txt": "ec2c05ce3cff05fe73e18bc596e0030a0b09751b27ac797b3105d554937af5bd",
-    "OMFITtemplates/help.rst": "66f55f9b622f477303e4d0d14c7169b6e5cac7ad3777a7df36f6c68e9c6764c8",
+    "OMFITtemplates/LIB/OMFITlib_template_versions.py": "d47e354c1d9fdf77fa642f107d77d0e808d0439f9dcd8725b403dd2287cb1f0e",
+    "OMFITtemplates/SettingsNamelist.txt": "634ad7f2c6bfffd9df64fd7b1a9d94bb1c7112f1557ccf2334db530363a35c86",
+    "OMFITtemplates/help.rst": "56f74ac54d1a086b70d171f1b061d1b8199ed9c032d6e1c53d417ffd6382851b",
     "OMFITtemplates/install_desktop.py": "bf8756ba6db72a6a35edf22871dbb3d8ab6570a5c74772e2f182fe67a784199e",
     "OMFITtemplates/launch.py": "9476139dc95fe0324a7cf601e0d3e1c7caa15e5c68caee98fb0da1a041306496",
     "OMFITtemplates/omfit-templates.svg": "3a71b80ec0c9d60ddeb4a5a7dd2045c365b34a94b3528b84ffe6e0228f51d534",
@@ -501,7 +501,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "1f32e1a9f473f0d397403d62269f5b532c685d494c4c3440d8104a9319f4d40c"
+    "VALIDATION.md": "9bf3ae070a6003a90cd7ce567a31a4093e2df5fafd3b680c5940d51ec08505ca"
   },
   "workbench_features": [
     "native_omfit_project_gui",
@@ -518,5 +518,5 @@
   "support_archive_sha256": "cb71c03e57997da7bba99b724ca9a757fff6bad5a62f9daf4639bc6f6588618b",
   "private_python_paths_required": false,
   "version_scheme": "semantic",
-  "manager_version": "1.10.2"
+  "manager_version": "1.10.3"
 }
