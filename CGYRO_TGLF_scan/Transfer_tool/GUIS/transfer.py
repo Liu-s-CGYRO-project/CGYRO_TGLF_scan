@@ -1,7 +1,7 @@
 # -*-Python-*-
 """Profile and radius controls for Transfer_tool's command-box workflow."""
 from collections import OrderedDict
-from builtins import dict, next
+from builtins import dict, getattr, next, str
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, loaded_file, PROFILE_KEYS
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_transfer_particles import (PRESETS, DESCRIPTIONS, detect_main_ions,
@@ -27,7 +27,6 @@ def load_profile(location=None):
     physics['generation']['thermal_reference_ion'] = 0
     if kind == 'input.gacode':
         root['Transfer_file']['input.gacode'] = value.duplicate()
-    scratch['profile_filename'] = ''
 
 
 def load_equilibrium(location=None):
@@ -36,7 +35,11 @@ def load_equilibrium(location=None):
         value = OMFITgeqdsk(filename)
         value.keys()
         root['INPUTS']['gEQDSK'] = value
-        scratch['equilibrium_filename'] = ''
+
+
+def current_filename(key):
+    value = root['INPUTS'].get(key, None)
+    return str(getattr(value, 'filename', '') or '')
 
 
 OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['start_from']",
@@ -45,13 +48,18 @@ OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['start_from']",
                lbl='剖面来源', default='input.gacode', updateGUI=True)
 kind = physics['start_from']
 key = next((key for key in PROFILE_KEYS[kind] if key in root['INPUTS']), kind)
+# FilePicker refreshes after loading or switching sources. Derive its path
+# from the loaded object so reopening the GUI cannot leave a blank/stale field.
+scratch['profile_filename'] = current_filename(key)
 OMFITx.FilePicker("scratch['profile_filename']", '剖面文件', default='',
                   updateGUI=True, postcommand=load_profile, help=loaded_file(root, 'INPUTS', key))
 anchor = OMFITx.Label('当前剖面：' + key + ('（已载入）' if key in root['INPUTS'] else '（未载入）'), align='left')
 if kind in ('statefile', 'pfile'):
+    equilibrium_key = next((name for name in ('gEQDSK', 'gfile') if name in root['INPUTS']), 'gEQDSK')
+    scratch['equilibrium_filename'] = current_filename(equilibrium_key)
     OMFITx.FilePicker("scratch['equilibrium_filename']", '平衡文件（p-file 必需）', default='',
-                      updateGUI=True, postcommand=load_equilibrium, help=loaded_file(root, 'INPUTS', 'gEQDSK'))
-    OMFITx.Label('平衡文件：' + ('已载入' if 'gEQDSK' in root['INPUTS'] else '未载入'), align='left')
+                      updateGUI=True, postcommand=load_equilibrium, help=loaded_file(root, 'INPUTS', equilibrium_key))
+    OMFITx.Label('平衡文件：' + ('已载入' if equilibrium_key in root['INPUTS'] else '未载入'), align='left')
 prefix = "root['SETTINGS']['PHYSICS']['generation']"
 OMFITx.Separator('计算半径')
 OMFITx.ComboBox(prefix + "['coordinate']", OrderedDict([('rho', 'rho'), ('r/a', 'r/a')]), '径向坐标', updateGUI=True)
