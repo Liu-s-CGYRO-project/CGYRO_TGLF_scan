@@ -15,7 +15,7 @@ from urllib import error, parse, request
 from OMFITlib_template_archive import CHUNK, TemplateError, json_bytes, parse_json
 from OMFITlib_template_service import EXTENSION, Template, check_cancel, new_file, release_name
 from OMFITlib_template_proxy import ClosingTunnelHTTPSHandler, connection_label, login_environment, normalize_proxy, proxy_handler
-from OMFITlib_template_versions import sort_releases
+from OMFITlib_template_versions import sort_releases, template_choices
 from OMFITlib_template_cli import find_cli
 
 API = 'https://api.github.com'
@@ -324,7 +324,7 @@ class GitHub:
     def list_releases(self):
         entries, errors = [], []
         for release in self._pages(self.base + '/releases'):
-            if release.get('draft'):
+            if release.get('draft') or str(release.get('tag_name', '') or '').startswith('omfit-manager/'):
                 continue
             metadata = summary_from_body(release.get('body'))
             assets = release.get('assets', [])
@@ -354,7 +354,7 @@ class GitHub:
                     entries.append(item)
                 except (ValueError, KeyError, TypeError, TemplateError) as exc:
                     errors.append('忽略模板附件 {}：{}'.format(name, exc))
-        return sort_releases(entries), errors
+        return sort_releases(template_choices(entries)), errors
 
     def _verify_download(self, path, release):
         if Path(path).stat().st_size != release['archive_bytes']:

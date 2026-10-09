@@ -1,3 +1,7 @@
+# 修订记录 · 管理器 1.10.4
+
+GitHub 模板读取跳过独立管理器 Release；本地/共享库读取与界面筛选统一排除 omfit-manager 标识或仅含 OMFITtemplates 的包。筛选后的作者选项、行号、数量和选择状态保持一致。管理器更新仍读取完整 Release 数据；本次只发布增量和完整安装包。仅完成 Python 3.9 静态语法、原生设置/帮助格式和分发包完整性检查，未运行回归或 GUI 测试。
+
 # 修订记录 · 工程 1.13.3 / 管理器 1.10.3
 
 Transfer_tool 从原生文件选择器记录原始路径、服务器和隧道，保存到 SETTINGS/PHYSICS/file_sources；OMFIT 读取和缓存仍采用原生文件类。刷新时只显示记录的地址，旧对象可从 originalFilename 恢复真实源路径。原生文件选择器使用 transferRemoteFile=None，解析器接收字符串文件名和 server/tunnel 关键字。已对照本地 OMFIT FilePicker、OMFITobject 以及各读取器构造函数核对接口。仅完成 Python 3.9 静态语法、OMFIT 格式和发布包完整性检查，未运行回归、GUI 或求解器测试。

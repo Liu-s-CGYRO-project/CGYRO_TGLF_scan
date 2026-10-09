@@ -9,7 +9,7 @@ import re
 import shutil
 import uuid
 import zipfile
-from OMFITlib_template_versions import sort_releases
+from OMFITlib_template_versions import sort_releases, template_choices
 
 from OMFITlib_template_archive import (
     CHUNK, CODE_BRANCHES, MAX_METADATA, Project, TemplateError, contains_path,
@@ -234,7 +234,7 @@ def list_library(library):
                 releases.append(dict(template.manifest, path=str(path.resolve()), archive_bytes=path.stat().st_size))
         except (TemplateError, OSError, KeyError, zipfile.BadZipFile) as exc:
             errors.append(path.name + ': ' + str(exc))
-    return sort_releases(releases), errors
+    return sort_releases(template_choices(releases)), errors
 
 
 def transfer(source, destination, cancel=None, progress=None):

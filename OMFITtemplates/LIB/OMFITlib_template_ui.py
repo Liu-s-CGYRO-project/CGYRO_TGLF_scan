@@ -14,7 +14,7 @@ from OMFITlib_template_archive import TemplateError, human_size, json_bytes, par
 from OMFITlib_template_paths import default_library, legacy_preferences_path, preferences_path
 from OMFITlib_template_github import DEFAULT_REPOSITORY, INITIAL_README, GitHub, GitHubError, login, repository
 from OMFITlib_template_proxy import PROXY_MODES, connection_label, manual_proxy, network_preferences
-from OMFITlib_template_versions import MANAGER_VERSION, SORT_OPTIONS, sort_releases
+from OMFITlib_template_versions import MANAGER_VERSION, SORT_OPTIONS, sort_releases, template_choices
 from OMFITlib_template_manager_ui import ManagerUpdateUI
 from OMFITlib_template_cli import CLI_REPOSITORY, ensure_cli
 from OMFITlib_template_live import Prepared
@@ -974,6 +974,9 @@ class TemplateManager(ManagerUpdateUI):
             self._filter()
 
     def _filter(self):
+        # Also discard cached entries before building author choices, row IDs,
+        # counts and the selected package. Manager updates use their own page.
+        self.releases = template_choices(self.releases)
         authors = sorted({str(item.get('author', '')) for item in self.releases if item.get('author')}, key=str.casefold)
         choices = ['全部作者'] + authors
         self.author_combo.configure(values=choices)
