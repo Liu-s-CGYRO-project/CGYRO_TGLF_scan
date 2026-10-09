@@ -3,17 +3,21 @@
 Reading the dashboard never submits jobs, inspects large result arrays, or
 replaces inputs. All mutations below are explicit button actions.
 """
-from builtins import abs, all, any, bool, dict, enumerate, float, int, isinstance, len, list, next, range, set, sorted, str, sum, tuple
+from builtins import abs, all, any, bool, dict, enumerate, float, int, isinstance, iter, len, list, next, ord, range, set, sorted, str, sum, tuple
 import copy
 from datetime import datetime, timezone
 import hashlib
 import json
 import math
+import os
 import re
+import shlex
 import uuid
 from collections import OrderedDict
 from OMFITlib_project_runtime import initialize_runtime, apply_runtime, shared_issues
-from OMFITlib_transfer_workflow import generation_issues, initialize_generation
+from OMFITlib_gacode_installations import (PROGRAMS, installation_issues, merge_probe,
+    parse_probe, probe_script, valid_path)
+from OMFITlib_transfer_workflow import generation_issues, initialize_generation, tgyro_batch_settings
 from OMFITlib_transfer_particles import particle_options
 
 MODULES = {
@@ -452,10 +456,20 @@ def runtime_issues(root, name):
                 if not text_value(cfg, key) and not text_value(remote, key):
                     problems.append('远程 ' + key + '未填写')
     else:
-        if not text_value(remote, 'server'):
-            problems.append('实际执行服务器未解析；可同步 OMFIT 连接配置')
-        if not text_value(setup, 'executable'):
-            problems.append('执行命令为空或表达式无法求值')
+        if name == 'transfer':
+            try:
+                tgyro_batch_settings(node)
+            except ValueError as exc:
+                problems.append(str(exc))
+            selected = remote.get(text_value(remote, 'serverPicker'), {}) or {}
+            if not (text_value(selected, 'environment') or text_value(remote, 'environment')
+                    or text_value(setup, 'executable')):
+                problems.append('GACODE 环境初始化为空，请应用统一环境')
+        else:
+            if not text_value(remote, 'server'):
+                problems.append('实际执行服务器未解析；可同步 OMFIT 连接配置')
+            if not text_value(setup, 'executable'):
+                problems.append('执行命令为空或表达式无法求值')
     return problems
 
 
@@ -494,12 +508,14 @@ def summary(root):
 
 
 class ProjectActions:
-    def __init__(self, root, factory=dict, readers=None, resolve_server=None, workdir=None, register_server=None):
+    def __init__(self, root, factory=dict, readers=None, resolve_server=None, workdir=None, register_server=None,
+                 remote_execute=None):
         self.root, self.factory = root, factory
         self.settings = initialize(root, factory)
         self.readers = readers or {}
         self.resolve_server, self.workdir = resolve_server, workdir
         self.register_server = register_server
+        self.remote_execute = remote_execute
 
     def _record(self, title, **values):
         state = self.root.setdefault('PROJECT_STATE', self.factory())
@@ -778,14 +794,103 @@ class ProjectActions:
             config['scheduler'] = 'slurm'
         self.settings['message'] = '已读取 OMFIT 连接信息。检查下方共用配置后点击“应用到整个工程”。'
 
+    def begin_gacode_install(self, edit=False):
+        config = initialize_runtime(self.root, self.factory)
+        name = str(self.settings.get('gacode_entry', '') or '') if edit else ''
+        installs = config['gacode_installs']
+        if edit and name not in installs:
+            raise ValueError('请先选择要编辑的 GACODE 安装')
+        self.settings['gacode_draft'] = dict(name=name, path=str(installs.get(name, '') or ''), original=name)
+
+    def save_gacode_install(self):
+        draft = self.settings.get('gacode_draft', None)
+        if draft is None:
+            return
+        name, path = str(draft['name']).strip(), str(draft['path']).strip().rstrip('/')
+        if not name or len(name) > 100 or any(ord(char) < 32 for char in name):
+            raise ValueError('请填写有效的安装名称')
+        if not valid_path(path):
+            raise ValueError('请填写 GACODE 根目录的绝对路径')
+        config = initialize_runtime(self.root, self.factory)
+        installs, original = config['gacode_installs'], draft['original']
+        if name in installs and name != original:
+            raise ValueError('安装名称已存在，请换一个名称')
+        if any(str(value) == path and key != original for key, value in installs.items()):
+            raise ValueError('此路径已在安装列表中')
+        if original and original != name:
+            installs.pop(original)
+            for program in PROGRAMS:
+                if config[program + '_install'] == original:
+                    config[program + '_install'] = name
+        installs[name] = path
+        self.settings['gacode_entry'] = name
+        self.settings.pop('gacode_draft', None)
+        self.settings['message'] = '安装路径已保存；点击自动检测检查程序。'
+
+    def cancel_gacode_install(self):
+        self.settings.pop('gacode_draft', None)
+
+    def remove_gacode_install(self):
+        config = initialize_runtime(self.root, self.factory)
+        name = str(self.settings.get('gacode_entry', '') or '')
+        if any(config[program + '_install'] == name for program in PROGRAMS):
+            raise ValueError('此安装仍被使用，请先更换下方程序选择')
+        config['gacode_installs'].pop(name, None)
+        self.settings['gacode_entry'] = ''
+        self.settings['message'] = '已从安装列表移除；服务器文件保留。'
+
+    def _probe_gacode(self, scan=True):
+        if self.remote_execute is None:
+            raise ValueError('当前宿主未提供服务器检测入口')
+        config = initialize_runtime(self.root, self.factory)
+        issues = self.runtime_server_issues(match_connection=True)
+        if issues:
+            raise ValueError('；'.join(issues))
+        stdout, stderr = [], []
+        os.environ.setdefault('SHELL', '/bin/bash')
+        code = self.remote_execute(str(config['server']), 'bash -c ' + shlex.quote(probe_script(config, scan)),
+                                   '.', tunnel=str(config.get('tunnel', '') or ''), std_out=stdout, std_err=stderr,
+                                   quiet=True, ignoreReturnCode=True, use_bang_command=False)
+        if code != 0:
+            raise RuntimeError('GACODE 自动检测失败；原列表保留。\n' + '\n'.join(stderr)[-2000:])
+        records = parse_probe(stdout)
+        added, detection = merge_probe(config, records, self.factory)
+        state = self.root.setdefault('PROJECT_STATE', self.factory())
+        previous = state.get('gacode_detection', {})
+        if previous.get('endpoint', {}) == detection['endpoint']:
+            entries = dict(previous.get('entries', {}))
+            entries.update(records)
+            detection['entries'] = entries
+        state['gacode_detection'] = detection
+        if self.settings.get('gacode_entry', '') not in config['gacode_installs']:
+            self.settings['gacode_entry'] = next(iter(config['gacode_installs']), '')
+        return added, detection
+
+    def detect_gacode(self):
+        if self.settings.get('gacode_draft', None) is not None:
+            raise ValueError('请先保存或取消正在编辑的安装')
+        added, detection = self._probe_gacode()
+        self.settings['message'] = '检测完成：{} 套安装，新增 {} 套。选择各程序版本后应用。'.format(
+            len(detection['entries']), added)
+        return detection
+
     def apply_runtime(self):
         if self.settings.get('server_draft', None) is not None:
             self.settings['message'] = '请先保存或取消新增服务器。'
+            return
+        if self.settings.get('gacode_draft', None) is not None:
+            self.settings['message'] = '请先保存或取消 GACODE 安装编辑。'
             return
         issues = self.runtime_server_issues(match_connection=True)
         if issues:
             self.settings['message'] = '；'.join(issues)
             return
+        config = initialize_runtime(self.root, self.factory)
+        if config['gacode_installs']:
+            _, detection = self._probe_gacode(scan=False)
+            issues = installation_issues(config, detection)
+            if issues:
+                raise ValueError('；'.join(issues))
         targets = apply_runtime(self.root, self.factory)
         self.settings['message'] = '统一 GACODE 环境已应用到 {} 个模块；案例和结果保留。'.format(len(targets))
         self._record('应用统一 GACODE 环境', status='complete', modules=targets)

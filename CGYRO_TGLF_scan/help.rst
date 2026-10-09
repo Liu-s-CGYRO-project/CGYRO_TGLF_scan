@@ -19,6 +19,18 @@ Long Description
 用于刷新当前连接，并保留已填写的工作根目录。个人设置保存失败时会明确提示，
 此时只在当前会话生效。新增和切换配置本身不建立 SSH 连接或提交计算。
 
+GACODE 安装与自动检测
+~~~~~~~~~~~~~~~~~~~~
+
+在同一环境页填写搜索目录，点击“自动检测”，读取该目录下 Gacode* 安装的实际程序。
+检测不会启动求解器，也不申请计算节点；现有安装和程序选择保留。
+可用“新增路径”“编辑路径”维护其他安装，路径随工程保存；移除只改变列表，不删除服务器文件。
+分别选择 CGYRO、TGYRO、TGLF 和 profiles_gen 版本，然后点击“应用到整个工程”。
+各程序共用连接、MPI 基础环境及资源设置，但使用所选安装的 GACODE_ROOT。
+例如 CGYRO 使用专用版本，TGYRO 和 profiles_gen 使用完整的标准安装。
+应用时重新检测；执行时在实际节点再次检查二进制文件，缺失时直接报告路径。
+检测只检查文件和执行权限，不代表二进制依赖或计算正确性已验证。
+
 The default panel is ``GUIS/main``. It organizes Transfer tool, CGYRO, TGLF,
 multi-profile calculations, execution settings, result collection, plotting,
 input differences and GitHub templates. Advanced module GUIs remain available.
@@ -47,9 +59,9 @@ TGYRO-generated local inputs remain stored by radius. The TGLF page lets the use
 compare and adopt one as the current single-file input. Radial scans use private
 inputs and keep the existing single-file input and results, including on failure.
 
-Execution checks validate configured fields and prerequisites. They do not probe
-the solver installation or choose hardware resources automatically. Legacy TGLF
-batch scheduling still uses the existing backend.
+Execution checks validate configured fields and prerequisites. The explicit GACODE
+inventory checks installation files; it does not choose hardware resources or run
+solvers. Legacy TGLF batch scheduling still uses the existing backend.
 
 Compare saved CGYRO linear scans and TGLF spectra or integrated flux scans in
 the workbench's plotting page or ``GUIS/CGYRO_vs_TGLF``. The legacy

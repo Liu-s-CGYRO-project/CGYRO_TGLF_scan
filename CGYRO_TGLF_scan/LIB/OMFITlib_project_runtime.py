@@ -4,6 +4,8 @@ from collections import OrderedDict
 import copy
 import re
 from pathlib import PurePosixPath
+from OMFITlib_gacode_installations import (INSTALL_DEFAULTS, initialize_installations,
+    installation_issues, program_environment)
 
 
 TARGETS = OrderedDict([
@@ -18,6 +20,7 @@ DEFAULTS = dict(serverPicker='', server='', tunnel='', workDir='', environment='
     cpus_per_task=1, array_parallel=40,
     cgyro_command='cgyro -e . -n {mpi}', tglf_command='tglf -e .',
     tgyro_command='tgyro -e . -n {n_radii}', prepare_command='tgyro -t . -n {n_radii}')
+DEFAULTS.update(INSTALL_DEFAULTS)
 
 
 def node_at(root, path):
@@ -38,7 +41,8 @@ def text(mapping, key, default=''):
 def initialize_runtime(root, factory=dict):
     settings = root['SETTINGS']
     if 'GACODE_RUNTIME' not in settings:
-        values = dict(DEFAULTS)
+        values = copy.deepcopy(DEFAULTS)
+        values.pop('gacode_installs')  # Allow literal legacy GACODE_ROOT migration.
         cg = node_at(root, TARGETS['cgyro']) or {}
         remote = cg.get('SETTINGS', {}).get('REMOTE_SETUP', {})
         picker = text(remote, 'serverPicker')
@@ -63,13 +67,14 @@ def initialize_runtime(root, factory=dict):
         settings['GACODE_RUNTIME'] = factory()
         settings['GACODE_RUNTIME'].update(values)
     result = settings['GACODE_RUNTIME']
+    initialize_installations(result, factory)
     for key, value in DEFAULTS.items():
-        result.setdefault(key, value)
+        result.setdefault(key, copy.deepcopy(value))
     return result
 
 
 def runtime_values(config):
-    return {key: config.get(key, default) for key, default in DEFAULTS.items()}
+    return {key: copy.deepcopy(config.get(key, default)) for key, default in DEFAULTS.items()}
 
 
 def server_registration_issues(config):
@@ -141,7 +146,7 @@ def validate_runtime(config):
     for key in ('cgyro_command', 'tglf_command', 'tgyro_command', 'prepare_command'):
         if not text(config, key):
             issues.append('运行命令不能为空：' + key)
-    return issues
+    return issues + installation_issues(config)
 
 
 def applied_runtime(root):
@@ -163,7 +168,7 @@ def shared_issues(root):
         expected = dict(serverPicker=str(applied['serverPicker']).strip(), server=str(applied['server']).strip(),
                         tunnel=str(applied['tunnel']),
                         workDir=str(PurePosixPath(str(applied['workDir'])) / name) + '/',
-                        environment=str(applied['environment']).strip() or ':')
+                        environment=program_environment(applied, target_program(name)))
         if any(text(remote, key) != value for key, value in expected.items()):
             return ['模块连接配置与统一环境不一致，请重新应用统一配置：' + name]
         selected = remote.get(expected['serverPicker'], {})
@@ -177,7 +182,13 @@ def shared_multi_settings(root, settings):
     if config is None:
         return
     settings.update(dict(execution='module', environment=config['environment'],
+                    tgyro_environment=program_environment(config, 'tgyro'),
+                    tglf_environment=program_environment(config, 'tglf'),
                     tgyro_command=config['prepare_command'], tglf_command=config['tglf_command']))
+
+
+def target_program(name):
+    return {'transfer': 'tgyro', 'trxpl': 'profiles'}.get(name, name)
 
 
 def apply_runtime(root, factory=dict):
@@ -187,7 +198,6 @@ def apply_runtime(root, factory=dict):
         raise ValueError('；'.join(issues))
     values = runtime_values(config)
     picker, server = str(values['serverPicker']).strip(), str(values['server']).strip()
-    environment = str(values['environment']).strip() or ':'
     mpi = int(values['nodes']) * int(values['cores'])
     cgyro_command = str(values['cgyro_command']).replace('{mpi}', str(mpi))
     operations, backups = [], factory()
@@ -198,11 +208,13 @@ def apply_runtime(root, factory=dict):
             continue
         settings = module['SETTINGS']
         current = settings.get('REMOTE_SETUP', {})
+        environment = program_environment(values, target_program(name))
         # Copy only configuration, never module inputs, cases or result objects.
         remote = copy.deepcopy(current)
         directory = str(PurePosixPath(str(values['workDir'])) / name) + '/'
         endpoint = dict(serverPicker=picker, server=server, tunnel=str(values['tunnel']),
-                        workDir=directory, environment=environment)
+                        workDir=directory, environment=environment,
+                        scheduler=values['scheduler'], queue=values['queue'], w=values['wall_time'])
         remote.update(endpoint)
         selected = remote.setdefault(picker, factory())
         selected.update(endpoint)
@@ -232,7 +244,9 @@ def apply_runtime(root, factory=dict):
             selected.update(dict(nodes=1, ntasks_per_node=points, ppn=points,
                                  n=points, cpus_per_task=1))
             update['executable'] = environment
+            update['profiles_environment'] = program_environment(values, 'profiles')
             update['gacode_shared'] = True
+            update['scheduler'] = values['scheduler']
         elif name == 'tglf':
             update['executable'] = environment + '\n' + str(values['tglf_command'])
         elif name == 'tgyro':

@@ -8,6 +8,7 @@
     "tglf_is_out_tglf_localdump": false
   },
   "SETUP": {
+    "scheduler": "slurm",
     "workDir": null,
     "executable": "#!/bin/bash\nset -e\n# Load the modules required by the target cluster here, then set GACODE_ROOT.\n: \"${GACODE_ROOT:?Set GACODE_ROOT to the installed GACODE version on the execution host}\"\nif [ ! -r \"$GACODE_ROOT/shared/bin/gacode_setup\" ]; then\n    echo \"Missing $GACODE_ROOT/shared/bin/gacode_setup\" >&2\n    exit 1\nfi\nsource \"$GACODE_ROOT/shared/bin/gacode_setup\"\n",
     "pbs_queue": "parallel31",

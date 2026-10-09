@@ -51,7 +51,8 @@ class OMFITRunner:
         # A fresh leaf and clean=False protect every previous calculation.
         Path(local).mkdir(parents=True, exist_ok=False)
         record.update(dict(workdir=local, remotedir=remote, server=server, command=command, stdout=[], stderr=[]))
-        script = '#!/bin/bash\nset -e\n' + str(settings['environment']) + '\n' + command + '\n'
+        environment = settings.get(name.lower() + '_environment', settings['environment'])
+        script = '#!/bin/bash\nset -e\n' + str(environment) + '\n' + command + '\n'
         record['script'] = script
         code = self.ui.executable(module, inputs=inputs, outputs=['./'], clean=False,
                                   executable='bash %s', script=(script, 'run_case.sh'),

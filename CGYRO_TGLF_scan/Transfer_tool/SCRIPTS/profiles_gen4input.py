@@ -3,6 +3,7 @@
 import os
 from OMFITlib_transfer_particles import EQUIVALENT_RULE, MAIN_ION_RULE, close_local_input
 from OMFITlib_transfer_equivalent import equivalent_local_input, locpargen_rhostar
+from OMFITlib_gacode_installations import program_guard
 
 # OMFITx.execute() reads SHELL directly.  Desktop/VNC sessions may omit it.
 if not os.environ.get('SHELL'):
@@ -25,7 +26,8 @@ rho_arr = root['OUTPUTS']['TGYRO']['rho'][0][1:]
 pending = {}
 neutrality = {}
 for k, rho in enumerate(rho_arr, 1):
-    executable = (setup.get('executable', '') + '\nset -e\ncommand -v profiles_gen >/dev/null\n'
+    environment = setup.get('profiles_environment', None) or setup.get('executable', '')
+    executable = ('#!/bin/bash\nset -e\n' + environment + '\n' + program_guard('profiles')
                   + 'profiles_gen -i input.gacode -loc_rho ' + str(float(rho)))
     ret_code = OMFITx.executable(root, inputs=inputs, outputs=outputs, workdir=workdir,
                                 executable=executable, clean=True, ignoreReturnCode=False)

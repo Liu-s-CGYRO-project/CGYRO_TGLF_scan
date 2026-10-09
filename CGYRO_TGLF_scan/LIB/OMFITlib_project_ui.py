@@ -1,5 +1,5 @@
 """Native OMFIT workbench with dependency-aware workflow controls."""
-from builtins import callable, dict, isinstance, len, list, next, str
+from builtins import any, callable, dict, isinstance, iter, len, list, next, str
 from collections import OrderedDict
 import json
 import tkinter as tk
@@ -7,6 +7,7 @@ from tkinter import ttk
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, loaded_file
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
+from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choices, installation_issues
 from OMFITlib_project import (ION_CASES, LABELS, MODULES, PAGES, cgyro_input_issues,
     cgyro_plan_issues, cgyro_plan_summary, collect_issues, generated_tglf_sources, location, module,
     pending_inputs, read, runtime_issues, summary, sync_cgyro_choices, sync_cgyro_ion_cases, text_value,
@@ -329,7 +330,7 @@ class ProjectUI:
     def environment(self):
         config = initialize_runtime(self.root, self.actions.factory)
         prefix = "root['SETTINGS']['GACODE_RUNTIME']"
-        self.label('CGYRO、TGLF、TGYRO 与剖面转换共用此连接和 GACODE 环境。各程序工作目录自动分开。')
+        self.label('各程序共用服务器和基础环境，GACODE 版本可分别选择。')
         self.ui.Separator('服务器与工作目录')
         servers = self.servers() if callable(self.servers) else self.servers
         choices = OrderedDict([('localhost（本机）', 'localhost')])
@@ -371,7 +372,8 @@ class ProjectUI:
         self.label('此目录下自动使用 cgyro、tglf、tgyro、transfer 等子目录，避免同名输入互相覆盖。')
         self.ui.Separator('共用 GACODE 环境')
         self.ui.Entry(prefix + "['environment']", '环境初始化脚本', multiline=True,
-                      help='在此统一填写 module load、GACODE_ROOT 和 source gacode_setup 等命令。点击“…”可多行编辑。')
+                      help='统一填写编译器、MPI、GACODE_PLATFORM 等基础环境。下方所选安装会覆盖 GACODE_ROOT 并重新载入 gacode_setup。')
+        self.gacode_installations(config, prefix, draft is not None)
         self.ui.Separator('CGYRO 扫描资源')
         self.ui.ComboBox(prefix + "['scheduler']", OrderedDict([('本机执行', 'local'), ('Slurm', 'slurm'), ('PBS', 'pbs')]),
                          '作业调度', updateGUI=True)
@@ -395,9 +397,13 @@ class ProjectUI:
             transfer = read(self.root, MODULES['transfer'])
             if transfer is not None:
                 self.ui.Entry(location(MODULES['transfer'] + ('SETTINGS', 'SETUP', 'p_tgyro')), '转换用 TGYRO 半径数')
-        issues = validate_runtime(config) + self.actions.runtime_server_issues(match_connection=True)
+        detection = self.root.get('PROJECT_STATE', {}).get('gacode_detection', {})
+        issues = (validate_runtime(config) + installation_issues(config, detection)
+                  + self.actions.runtime_server_issues(match_connection=True))
         if draft is not None:
             issues = ['请先保存或取消新增服务器']
+        if self.settings.get('gacode_draft', None) is not None:
+            issues = ['请先保存或取消 GACODE 安装编辑']
         if draft is not None:
             status = '新增配置尚未保存。'
         elif applied_runtime(self.root) is None:
@@ -410,6 +416,45 @@ class ProjectUI:
         if issues and draft is None:
             self.label('待填写：' + '；'.join(issues))
         self.guarded('应用到整个工程', self.actions.apply_runtime, issues)
+
+    def gacode_installations(self, config, prefix, server_draft=False):
+        self.ui.Separator('GACODE 安装与自动检测')
+        self.server_text_entry(config, 'gacode_scan_dir', '搜索目录')
+        detection = self.root.get('PROJECT_STATE', {}).get('gacode_detection', {})
+        installs = config['gacode_installs']
+        draft = self.settings.get('gacode_draft', None)
+        with self.ui.same_row():
+            self.guarded('自动检测', self.actions.detect_gacode,
+                         ['请先保存或取消编辑'] if draft is not None or server_draft else [])
+            self.guarded('新增路径', self.actions.begin_gacode_install,
+                         ['请先保存或取消编辑'] if draft is not None else [])
+        self.label('扫描搜索目录下的 Gacode* 文件夹；检查实际程序，不运行计算。')
+        if installs:
+            options = installation_choices(config, detection)
+            if self.settings.get('gacode_entry', '') not in installs:
+                self.settings['gacode_entry'] = next(iter(installs))
+            self.ui.ComboBox(self.prefix + "['gacode_entry']", options, '安装列表',
+                             state='disabled' if draft is not None else 'readonly', updateGUI=True)
+            name = self.settings['gacode_entry']
+            self.label(str(installs[name]))
+            with self.ui.same_row():
+                self.guarded('编辑路径', lambda: self.actions.begin_gacode_install(edit=True),
+                             ['请先保存或取消编辑'] if draft is not None else [])
+                used = any(config[program + '_install'] == name for program in PROGRAMS)
+                self.guarded('移除路径', self.actions.remove_gacode_install,
+                             ['请先更换使用此安装的程序'] if used else
+                             (['请先保存或取消编辑'] if draft is not None else []))
+        if draft is not None:
+            self.server_text_entry(draft, 'name', '安装名称')
+            self.server_text_entry(draft, 'path', '安装根目录')
+            with self.ui.same_row():
+                self.ui.Button('保存路径', self.actions.save_gacode_install, updateGUI=True)
+                self.ui.Button('取消编辑', self.actions.cancel_gacode_install, updateGUI=True)
+        for program, (caption, _) in PROGRAMS.items():
+            self.ui.ComboBox(prefix + "[{!r}]".format(program + '_install'),
+                             installation_choices(config, detection, program), caption + ' 版本',
+                             state='readonly', updateGUI=True)
+        self.label('TGYRO 与 profiles_gen 可用完整安装；CGYRO 可保留专用版本。应用时再次检查路径。')
 
     def server_text_entry(self, draft, key, caption):
         """Plain text in an OMFIT row, without Python expression evaluation.

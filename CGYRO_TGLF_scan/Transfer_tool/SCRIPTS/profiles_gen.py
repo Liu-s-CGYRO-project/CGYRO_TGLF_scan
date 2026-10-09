@@ -1,6 +1,7 @@
 # -*-Python-*-
 """Generate profiles using the source selected by the Transfer GUI."""
 import os
+from OMFITlib_gacode_installations import program_guard
 
 # OMFITx.execute() reads SHELL directly.  Desktop/VNC sessions may omit it.
 if not os.environ.get('SHELL'):
@@ -32,7 +33,8 @@ defaultVars(profile_source=None)
 inputs, command = prepare_profiles_input(root['INPUTS'], profile_source or root['SETTINGS']['PHYSICS'].get('start_from', None))
 setup = root['SETTINGS']['SETUP']
 workdir = setup['workDir']
-executable = setup.get('executable', '') + '\nset -e\ncommand -v profiles_gen >/dev/null\n' + command
+environment = setup.get('profiles_environment', None) or setup.get('executable', '')
+executable = '#!/bin/bash\nset -e\n' + environment + '\n' + program_guard('profiles') + command
 ret_code = OMFITx.executable(root, inputs=inputs, outputs=['input.gacode'],
                             executable=executable, workdir=workdir, ignoreReturnCode=False)
 if ret_code != 0:

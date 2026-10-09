@@ -90,24 +90,36 @@ def generation_issues(node, selected=None, options=None):
 
 
 def tgyro_batch_settings(node):
-    """Use the shared scheduler, retaining direct execution for legacy setups."""
+    """Require an explicit scheduler; only local mode may run without a job."""
     settings = node['SETTINGS']
     setup, remote = settings['SETUP'], settings.get('REMOTE_SETUP', {})
-    selected = remote.get(str(remote.get('serverPicker', '') or ''), {})
-    scheduler = str(selected.get('scheduler', '') or '').strip().lower()
-    if not scheduler and not setup.get('gacode_shared', False):
-        return None
+    selected = remote.get(str(remote.get('serverPicker', '') or ''), {}) or {}
+    picker = str(remote.get('serverPicker', '') or '').strip()
+    server = str(selected.get('server', None) or remote.get('server', '') or '').strip()
+    # An explicitly empty tunnel means a direct connection; do not inherit an
+    # old top-level tunnel when the selected server has its own tunnel field.
+    tunnel = selected['tunnel'] if 'tunnel' in selected else remote.get('tunnel', '')
+    tunnel = str(tunnel or '')
+    scheduler = str(selected.get('scheduler', None) or remote.get('scheduler', None)
+                    or setup.get('scheduler', '') or '').strip().lower()
     if scheduler == 'local':
+        if picker != 'localhost' or server not in ('localhost', '127.0.0.1', '::1'):
+            raise ValueError('本机执行必须明确选择 localhost；计算服务器请选择 Slurm / PBS 并应用统一环境。')
         return None
     if scheduler not in ('slurm', 'pbs'):
-        raise ValueError('Transfer_tool 缺少调度器配置，请重新应用统一环境。')
-    queue = str(selected.get('queue', None) or setup.get('pbs_queue', '') or '').strip()
-    wall_time = str(selected.get('w', None) or setup.get('wall_time', '') or '').strip()
+        raise ValueError('请在统一环境中选择 Slurm / PBS 并应用；Transfer_tool 必须先申请计算资源。')
+    if not server or '\n' in server or '\r' in server:
+        raise ValueError('Transfer_tool 缺少有效的提交服务器，请应用统一环境中的服务器连接配置。')
+    queue = str(selected.get('queue', None) or remote.get('queue', None)
+                or setup.get('pbs_queue', '') or '').strip()
+    wall_time = str(selected.get('w', None) or remote.get('w', None)
+                    or setup.get('wall_time', '') or '').strip()
     if any(not value or '\n' in value or '\r' in value for value in (queue, wall_time)):
         raise ValueError('请在统一环境中填写队列 / 分区和时限。')
     shared = str(selected.get('workDir', None) or remote.get('workDir', None) or '').strip()
     if (not shared.startswith('/') or shared == '/' or shared == '/tmp'
-            or shared.startswith('/tmp/') or '\n' in shared or '\r' in shared):
+            or shared.startswith('/tmp/') or '..' in shared.split('/')
+            or '\n' in shared or '\r' in shared):
         raise ValueError('批处理工作根目录必须是计算节点可见的共享绝对路径，不能使用 /tmp。')
     local = str(setup.get('workDir', None) or '').strip()
     if not local:
@@ -118,7 +130,7 @@ def tgyro_batch_settings(node):
     token = hashlib.sha256(local.encode('utf-8')).hexdigest()[:16]
     remotedir = shared.rstrip('/') + '/OMFIT_run_' + token + '/'
     return dict(batch_type=scheduler.upper(), partition=queue, job_time=wall_time,
-                remotedir=remotedir)
+                remotedir=remotedir, server=server, tunnel=tunnel)
 
 
 def prepare_tgyro(node, profile, options=None):

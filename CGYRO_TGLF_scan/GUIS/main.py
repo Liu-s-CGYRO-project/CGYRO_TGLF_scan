@@ -16,7 +16,8 @@ def register_server(config):
 
 
 actions = ProjectActions(root, OMFITtree, readers={'cgyro': OMFITgacode, 'tglf': OMFITgacode, 'tgyro': OMFITgacode},
-                         resolve_server=lambda node: SERVER[node], workdir=OMFITworkDir, register_server=register_server)
+                         resolve_server=lambda node: SERVER[node], workdir=OMFITworkDir, register_server=register_server,
+                         remote_execute=OMFITx.remote_execute)
 configure = lambda node: OMFIT['scratch']['__moduleSetupGUI__'].run(base_override=relativeLocations(node))
 open_templates = (lambda: OMFIT['OMFITtemplates']['GUIS']['main'].run()) if 'OMFITtemplates' in OMFIT else None
 ProjectUI(actions, OMFITx, configure=configure, open_templates=open_templates,
