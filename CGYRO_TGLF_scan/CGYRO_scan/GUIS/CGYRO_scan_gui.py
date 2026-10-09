@@ -1,17 +1,7 @@
-OMFITx.TitleGUI('CGYRO 扫描')
-OMFITx.Tab('运行与检查')
+"""Use the same CGYRO workbench from the original module entry."""
+from builtins import getattr
 
-def prepare_only():
-    setup = root['SETTINGS']['SETUP']
-    previous = setup['irun']
-    try:
-        setup['irun'] = 0
-        root['SCRIPTS']['subscan_lin.py'].run(scan_dimensions=int(setup['idimrun']))
-    finally:
-        setup['irun'] = previous
-
-OMFITx.Button('仅生成输入', prepare_only)
-OMFITx.Button('运行已配置扫描', lambda: root['SCRIPTS']['runCGYRO.py'].run())
-OMFITx.Button('读取当前运行结果', lambda: root['SCRIPTS']['downsync.py'].run())
-OMFITx.Button('绘制线性频率与增长率', lambda: root['PLOTS']['CGYROscan']['linCGYRO.py'].run())
-OMFITx.Button('绘制准线性权重', lambda: root['PLOTS']['CGYROscan']['qlflux.py'].run())
+project = getattr(root, '_OMFITparent', None)
+if project is None or project.get('CGYRO_scan', None) is not root or 'main' not in project.get('GUIS', {}):
+    raise ValueError('此入口需要完整 CGYRO / TGLF 工程，请从工程总控打开 CGYRO 扫描。')
+OMFITx.CompoundGUI(project['GUIS']['main'], title='', panel_only=True)

@@ -41,7 +41,10 @@ the handoff. Only a submitted/executed run can be collected. Collection archives
 the loaded results without resubmitting the scan.
 
 CGYRO radius inputs and original/H/D/T ion variants are combined as input cases.
-Each case can scan one, two or three physical parameters in addition to ky.
+The rebuilt CGYRO page selects the source, cases, ky and optional physical axes,
+then prepares, submits and collects with one Run action. The second tab shows
+records and numerical results. Each case can scan ky alone, or add one to three
+physical parameters. The original CGYRO module GUI uses the same interface.
 Calculation directories use flat point IDs. ``RUN_DB`` stores the task coordinates,
 run metadata and actual results together. Use ``GUIS/CGYRO_results`` to open a
 numeric table of all parameters, ky, mean omega/gamma and relative fluctuations;

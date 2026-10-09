@@ -3,7 +3,7 @@
     "restart_mode": 0,
     "time_scheme": {
       "__ndarray_tolist__": [
-        1.0,
+        0.0,
         0.01,
         500.0
       ],
@@ -188,7 +188,7 @@
     "wall_time": "24:00:00",
     "pbs_queue": "tyhcnormal",
     "iloadmthd": 0,
-    "idimrun": 1,
+    "idimrun": 0,
     "effnum": 5,
     "irun": 1,
     "idownsync": 1,
@@ -688,6 +688,7 @@
   },
   "MODULE": {
     "ID": "CGYRO_SCAN",
+    "defaultGUI": "root['GUIS']['CGYRO_scan']",
     "edited_by": "xiangjian",
     "date": "03 Jul 2016  15:34",
     "contact": {

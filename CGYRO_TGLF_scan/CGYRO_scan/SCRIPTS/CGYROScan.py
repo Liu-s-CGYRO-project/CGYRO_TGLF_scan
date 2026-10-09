@@ -5,8 +5,8 @@ setup = root['SETTINGS']['SETUP']
 if setup['icgyro'] != 1:
     raise RuntimeError('Legacy GYRO submission is unavailable in this repaired CGYRO package')
 dimensions = int(setup['idimrun'])
-if dimensions not in (1, 2, 3):
-    raise ValueError('CGYRO parameter-axis count must be 1, 2, or 3')
+if dimensions not in (0, 1, 2, 3):
+    raise ValueError('CGYRO parameter-axis count must be 0, 1, 2, or 3')
 
 if setup['irun'] == 1:
     root['SCRIPTS']['subscan_lin.py'].run(scan_dimensions=dimensions)
@@ -81,6 +81,7 @@ def publish_loaded_run(root):
     info.update(dict(run_token=manifest['run_token'], runid=run_id, case_id=case_key,
                      source_nr=manifest['nr'], rho=manifest.get('rho', None),
                      ion_case=manifest['mass'], dimensions=manifest['dimensions'],
+                     scan_dimensions=manifest.get('scan_dimensions', manifest['dimensions']),
                      scan_axes=copy.deepcopy(manifest.get('scan_axes', [])),
                      parameters=list(fresh_output.keys()), points=len(manifest['loaded_points']),
                      workDir=manifest['workDir'], job_id=manifest.get('job_id', None),

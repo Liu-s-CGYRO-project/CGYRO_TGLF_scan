@@ -1,3 +1,11 @@
+# 修订记录 · 工程 1.15.0 / 管理器 1.10.4
+
+对照本地原生 omfit_classes/omfit_base.py 中 OMFITtree(filename='', ...) 的构造签名，修复 CGYRO 运行记录和准线性缓存误将字典作为路径的调用，统一使用空树加 update(mapping)。核对原生 ComboBox、Entry、CheckBox 和 CompoundGUI 的回调、额外 Tk 参数和命名空间行为，重做 CGYRO 两页界面并让模块入口复用同一套控件。
+
+新增仅扫 ky 的选择；结果记录使用输入中真实的固定 beta（缺少时使用 RMIN）坐标兼容旧绘图结构，明确 scan_dimensions=0，计算时不把该坐标作为覆盖参数。输入案例、参数轴和 ky 的任务计数保持一致，RUN_DB/__INFO__/__TASKS__ 继续保存实际结果和来源。既有新建或重启配置保留；运行后恢复源输入、当前 nr/rho/离子方案和运行开关，已归档运行不重复收集。sbatch/qsub 返回码不再被 cat 覆盖；提交日志回读使用 std_out 列表，符合 remote_execute 返回整数的原生接口。
+
+仅做 Python 3.9 静态语法、设置 JSON、OMFIT 帮助/引用与分发包完整性检查。按用户要求未运行回归测试、GUI 或求解器，未提交计算任务；未将静态检查视为实际桌面或求解器运行验收。
+
 # 修订记录 · 工程 1.14.0 / 管理器 1.10.4
 
 在已授权的太原 tyadmin09 进行只读安装自动检测：识别七个 Gacode 目录。Gacode-260630 与 Gacode-260821 的 CGYRO、TGYRO、TGLF、prgen/locpargen 均存在且有执行权限；专用目录分别缺少部分二进制。现有失败作业的日志显示 mpirun 缺少 tgyro_main，但 transfer_tgyro.exit 为 0，确认启动器的退出码不能单独证明成功。

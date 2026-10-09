@@ -39,6 +39,6 @@ if setup['icgyro'] == 0 and 'input.gyro' not in root['INPUTS']:
     config_error('GYRO mode requires a validated input.gyro; this example supplies CGYRO input only')
 
 idimrun = int(setup['idimrun'])
-if idimrun not in (1, 2, 3):
-    config_error('CGYRO parameter-axis count must be 1, 2, or 3')
+if idimrun not in (0, 1, 2, 3):
+    config_error('CGYRO parameter-axis count must be 0, 1, 2, or 3')
 root['SCRIPTS']['CGYROScan.py'].run()

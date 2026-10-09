@@ -1,11 +1,11 @@
-from builtins import (Exception, TypeError, ValueError, any, dict, enumerate, float,
-                      int, len, list, range, set, sorted, str, tuple, zip)
+from builtins import (Exception, TypeError, ValueError, all, any, dict, enumerate, float,
+                      int, isinstance, len, list, max, range, set, sorted, str, tuple, zip)
 import numpy as np
 import os
 import re
 from OMFITlib_cgyro_read import *
 
-if 'SHELL' not in os.environ:
+if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
 
 
@@ -134,7 +134,9 @@ def json_scalar(value):
 
 
 def configured_axes(physics, dimensions):
-    """Return 1-3 Cartesian axes, including any legacy linked parameters."""
+    """Return 0-3 Cartesian axes, including any legacy linked parameters."""
+    if dimensions == 0:
+        return {}, []
     if dimensions == 1:
         conf = physics['1d']
         axes = [(conf['Para'], conf['Range'], 'Para', 'Range')]
@@ -144,14 +146,21 @@ def configured_axes(physics, dimensions):
         axes = [(conf['Para_' + suffix], conf['Range_' + suffix],
                  'Para_' + suffix, 'Range_' + suffix) for suffix in suffixes]
     else:
-        raise ValueError('scan_dimensions must be 1, 2, or 3')
+        raise ValueError('scan_dimensions must be 0, 1, 2, or 3')
     return conf, axes
 
 
-def scan_points(physics, dimensions, effnum):
+def scan_points(physics, dimensions, effnum, source):
     """Return flat point IDs, overrides, result paths and an axis manifest."""
     conf, axes = configured_axes(physics, dimensions)
     points, axis_manifest, result_keys = [], [], set()
+    fixed = {}
+    if dimensions == 0:
+        # Retain a real, unchanged input coordinate for legacy plotting views.
+        # It is not an override or a scan axis: only KY is varied in this mode.
+        reference = 'BETAE_UNIT' if 'BETAE_UNIT' in source else 'RMIN'
+        fixed[reference] = json_scalar(source[reference])
+        axis_manifest.append(dict(name=reference, values=[fixed[reference]], fixed=True))
     names = []
     for parameter, values, pkey, rkey in axes:
         if not re.match(r'^[A-Za-z][A-Za-z0-9_]*$', str(parameter)) or str(parameter).upper() == 'KY':
@@ -159,6 +168,8 @@ def scan_points(physics, dimensions, effnum):
         if str(parameter) in names:
             raise ValueError('Duplicate scan parameter: %s' % parameter)
         names.append(str(parameter))
+        if str(parameter) not in source:
+            raise ValueError('input.cgyro does not contain scan parameter: ' + str(parameter))
         if len(values) == 0:
             raise ValueError('Empty scan axis: %s' % parameter)
         for value in values:
@@ -180,15 +191,18 @@ def scan_points(physics, dimensions, effnum):
                 raise ValueError('Invalid linked scan parameter: %s' % linked_name)
             if linked_name in names or any(item['name'] == linked_name for item in linked):
                 raise ValueError('Duplicate linked scan parameter: %s' % linked_name)
+            if linked_name not in source or not all(np.isfinite(float(value)) for value in conf[rkey + str(n)]):
+                raise ValueError('Invalid linked scan parameter or values: ' + linked_name)
             linked.append(dict(name=linked_name,
                                values=[json_scalar(value) for value in conf[rkey + str(n)]]))
+            names.append(linked_name)
             n += 1
         axis_manifest.append(dict(name=str(parameter), values=[json_scalar(value) for value in values],
                                   linked=linked))
     combinations = itertools.product(*[list(enumerate(axis[1])) for axis in axes])
     for combination in combinations:
         overrides = {}
-        result_path = []
+        result_path = [reference, num2str_xj(fixed[reference], effnum)] if dimensions == 0 else []
         for (parameter, values, pkey, rkey), (index, value) in zip(axes, combination):
             overrides[parameter] = value
             result_path.extend([str(parameter), num2str_xj(value, effnum)])
@@ -206,7 +220,7 @@ def scan_points(physics, dimensions, effnum):
             if result_key in result_keys:
                 raise ValueError('Scan values collide at effnum=%s; increase effnum or separate the values' % effnum)
             result_keys.add(result_key)
-            metadata = dict(values={str(key): json_scalar(value) for key, value in point.items()},
+            metadata = dict(values=dict(fixed, **{str(key): json_scalar(value) for key, value in point.items()}),
                             result_path=stored_path)
             points.append((point_id, point, metadata))
     if not points:
@@ -239,7 +253,6 @@ if restart_mode not in (0, 1):
 previous_manifest = root.get('RUN_MANIFEST', {})
 if previous_cases and previous_manifest and previous_manifest.get('status', None) not in ('published',):
     raise ValueError('The previous CGYRO run has not been published; collect it before starting another run')
-points, scan_axes = scan_points(physics, scan_dimensions, setup['effnum'])
 if restart_mode and not previous_cases:
     raise ValueError('No saved cases are available for restart')
 run_token = uuid.uuid4().hex
@@ -258,12 +271,11 @@ if not local_submit and 'server' not in server_setup and remote_server.split('@'
 remote_workdir = submit_workdir if local_submit else posixpath.join(remote_base, 'runs', run_token)
 inputs_node = root['INPUTS']
 base_input = inputs_node['input.cgyro'].duplicate()
-base_input['GAMMA_E'] = 0
 base_input['NONLINEAR_FLAG'] = 0
+points, scan_axes = scan_points(physics, scan_dimensions, setup['effnum'], base_input)
 input_names = ['input.cgyro']
 if base_input.get('PROFILE_MODEL', 1) == 2:
     input_names += ['input.profiles', 'input.profiles.geo']
-    base_input['GAMMA_E_SCALE'] = 0.
 for name in input_names[1:]:
     if name not in inputs_node:
         raise ValueError('Required profile input is missing: ' + name)
@@ -330,7 +342,8 @@ if previous_cases:
     archived_manifest = copy.deepcopy(previous_manifest)
     archived_manifest.pop('point_table', None)  # Permanent task rows live once in RUN_DB.
     root['RUN_HISTORY'][history_key]['manifest'] = archived_manifest
-manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': scan_dimensions,
+manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': max(1, scan_dimensions),
+            'scan_dimensions': scan_dimensions,
             'points': dir_list, 'server': remote_server, 'tunnel': remote_tunnel,
             'workDir': remote_workdir, 'local_workDir': submit_workdir,
             'serverPicker': cfg_str(rmt_setup, 'serverPicker'),
@@ -338,7 +351,9 @@ manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': scan_dim
             'rho': physics.get('rho', None), 'mass': physics['mass'], 'case_id': case_id,
             'scan_axes': scan_axes, 'point_table': point_table,
             'input_sha256': input_checksums, 'status': 'prepared'}
-root['RUN_MANIFEST'] = OMFITtree(manifest)
+run_manifest = OMFITtree()
+run_manifest.update(manifest)
+root['RUN_MANIFEST'] = run_manifest
 caseRoot[caseName] = prepared_cases
 with open(os.path.join(submit_workdir, 'manifest.json'), 'w') as handle:
     json.dump(manifest, handle, indent=2)
@@ -514,24 +529,22 @@ if setup['irun']==1:
         submit_out=[]
         submit_err=[]
         submit_log='.cgyro_submit.out'
-        submit_wrapper="/bin/bash -lc 'rm -f " + submit_log + "; " + submit_cmd + " > " + submit_log + " 2>&1; cat " + submit_log + "'"
+        submit_wrapper = shell_quote('rm -f ' + submit_log + '; ' + submit_cmd + ' > ' + submit_log
+                                     + ' 2>&1; status=$?; cat ' + submit_log + '; exit "$status"')
+        submit_wrapper = '/bin/bash -lc ' + submit_wrapper
         ret_code=OMFITx.executable(root, inputs=inputs, outputs=[],  \
                                    server=rmtserver, \
                                    tunnel=rmttunnel, \
                                    workdir=workdir,\
                                    remotedir=rmtworkdir,\
                                    executable=submit_wrapper,clean=False,std_out=submit_out,std_err=submit_err)
-        submit_read_cmd='for i in $(seq 1 120); do if [ -s '+submit_log+' ]; then cat '+submit_log+'; exit 0; fi; sleep 2; done; echo "ERROR: '+submit_log+' was not created"; exit 1'
-        submit_text=OMFITx.remote_execute(
-            rmtserver,
-            submit_read_cmd,
-            rmtworkdir,
-            rmttunnel,
-            quiet=False,
-            ignoreReturnCode=True,
-            use_bang_command=False
-        )
-        submit_combined=output_to_text(submit_out)+'\n'+output_to_text(submit_err)+'\n'+output_to_text(submit_text)
+        submit_combined=output_to_text(submit_out)+'\n'+output_to_text(submit_err)
+        if re.search(submit_rule, submit_combined) is None:
+            # remote_execute returns a status code, not stdout. Capture the log.
+            recovered = []
+            OMFITx.remote_execute(rmtserver, 'cat ' + submit_log, rmtworkdir, rmttunnel,
+                                 std_out=recovered, quiet=True, ignoreReturnCode=False, use_bang_command=False)
+            submit_combined += '\n' + output_to_text(recovered)
         job_id=parse_scheduler_job_id(submit_combined, submit_rule)
         root['RUN_MANIFEST']['job_id'] = job_id
         root['RUN_MANIFEST']['status'] = 'submitted'

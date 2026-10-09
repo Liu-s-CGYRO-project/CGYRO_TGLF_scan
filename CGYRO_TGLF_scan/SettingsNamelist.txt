@@ -138,10 +138,10 @@
     "tglf_file": "",
     "cgyro_source_mode": "generated",
     "cgyro_ion_cases": {
-      "BASE": false,
-      "H": true,
-      "D": true,
-      "T": true
+      "BASE": true,
+      "H": false,
+      "D": false,
+      "T": false
     },
     "cgyro_radii": {},
     "cgyro_result_view": {

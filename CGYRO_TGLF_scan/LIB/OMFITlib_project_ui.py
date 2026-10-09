@@ -1,15 +1,17 @@
 """Native OMFIT workbench with dependency-aware workflow controls."""
-from builtins import any, callable, dict, isinstance, iter, len, list, next, str
+from builtins import any, bool, callable, dict, float, int, isinstance, iter, len, list, next, range, sorted, str
 from collections import OrderedDict
 import json
+import math
 import tkinter as tk
 from tkinter import ttk
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, loaded_file
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
 from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choices, installation_issues
+from OMFITlib_cgyro_results import ResultBrowser
 from OMFITlib_project import (ION_CASES, LABELS, MODULES, PAGES, cgyro_input_issues,
-    cgyro_plan_issues, cgyro_plan_summary, collect_issues, generated_tglf_sources, location, module,
+    cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, generated_tglf_sources, location, module,
     pending_inputs, read, runtime_issues, summary, sync_cgyro_choices, sync_cgyro_ion_cases, text_value,
     tglf_input_issues, transfer_sources)
 
@@ -28,13 +30,16 @@ class ProjectUI:
         self.settings = actions.settings
         self.configure, self.open_templates = configure, open_templates
         self.servers, self.open_servers = servers, open_servers
+        self.panel_only = False
         self.prefix = "root['SETTINGS']['WORKBENCH']"
 
     def label(self, value):
         return self.ui.Label(value, align='left', wraplength=840)
 
     def nav(self, label, page):
-        self.ui.Button(label, lambda: self.actions.open_page(page), updateGUI=True)
+        callback = (lambda: self.settings.__setitem__('cgyro_panel_page', page)) if self.panel_only else (
+            lambda: self.actions.open_page(page))
+        self.ui.Button(label, callback, updateGUI=True)
 
     def guarded(self, label, callback, issues):
         self.ui.Button(label, callback, updateGUI=True, state='disabled' if issues else 'normal',
@@ -55,14 +60,26 @@ class ProjectUI:
         else:
             self.ui.CompoundGUI(task, title='', **kwargs)
 
-    def render(self):
+    def render(self, panel_only=False):
+        self.panel_only = panel_only
+        if panel_only:
+            self.ui.TitleGUI('CGYRO · 线性扫描')
+            intro = self.label('CGYRO 线性扫描')
+            page = self.settings.setdefault('cgyro_panel_page', 'cgyro')
+            if page not in PAGES.values():
+                page = self.settings['cgyro_panel_page'] = 'cgyro'
+            if page != 'cgyro':
+                self.nav('返回 CGYRO 扫描', 'cgyro')
+            getattr(self, 'render_' + page)()
+            finish_gui_layout(intro, self.ui)
+            return
         self.ui.TitleGUI('CGYRO / TGLF · 工程总控')
         intro = self.label('输入准备  →  传递与验证  →  运行与收集  →  绘图对比')
         with self.ui.same_row():
             self.ui.ComboBox(self.prefix + "['page']", PAGES, '工作页面', default='overview', updateGUI=True)
             self.ui.Button('检查前置条件', self.actions.check, updateGUI=True)
             self.ui.Button('刷新', lambda: None, updateGUI=True)
-        if self.settings['message']:
+        if self.settings['message'] and self.settings['page'] != 'cgyro':
             self.label(self.settings['message'])
         if pending_inputs(self.root) and self.settings['page'] != 'review':
             self.nav('有待确认的 TGLF 输入 · 查看差异', 'review')
@@ -108,9 +125,7 @@ class ProjectUI:
                        (' (rho={:g})'.format(row['rho']) if row['rho'] is not None else '') for row in radial]
             self.label('CGYRO：{}。无需逐个选择输入。'.format('，'.join(details)))
             with self.ui.same_row():
-                self.guarded('准备 CGYRO 批量输入', lambda: self.actions.run_cgyro(prepare=True),
-                             cgyro_plan_issues(self.root))
-                self.nav('设置 CGYRO 扫描', 'cgyro')
+                self.nav('设置并运行 CGYRO', 'cgyro')
         else:
             self.label('CGYRO：运行 Transfer_tool 后自动读取全部 nr。')
         sources = {label: value for label, value in transfer_sources(self.root).items()
@@ -150,58 +165,145 @@ class ProjectUI:
             self.label('工程缺少 CGYRO_scan 模块。')
             return
         base = MODULES['cgyro'] + ('SETTINGS',)
-        self.ui.Tab('输入与扫描')
-        self.label('前置状态：' + ('；'.join(cgyro_input_issues(self.root)) or 'CGYRO 半径输入已就绪'))
-        with self.ui.same_row():
-            self.nav('回到 转换工具输入准备', 'transfer')
-        self.ui.FilePicker(self.prefix + "['cgyro_file']", '载入已有 input.cgyro 到 输入转换工具', default='',
-                           postcommand=lambda location=None: self.actions.import_input('cgyro'), updateGUI=True)
-        self.ui.Entry(location(base + ('EXPERIMENT', 'runid')), '结果集名称')
+        self.ui.Tab('线性扫描与运行')
+        self.ui.ComboBox(self.prefix + "['cgyro_source_mode']", OrderedDict([
+            ('Transfer_tool 半径输入', 'generated'), ('导入 input.cgyro', 'imported'),
+            ('CGYRO 当前输入', 'current')]), '输入来源', state='readonly', updateGUI=True)
+        mode = self.settings['cgyro_source_mode']
+        if mode == 'imported':
+            self.ui.FilePicker(self.prefix + "['cgyro_file']", 'input.cgyro 文件', default='',
+                transferRemoteFile=None, postcommand=lambda location=None: self.actions.import_input('cgyro'), updateGUI=True)
+            source = self.settings.get('cgyro_import_source', {})
+            if source.get('path', ''):
+                self.label('已载入：' + str(source['path']))
+        elif mode == 'generated':
+            self.nav('生成 / 更换半径输入', 'transfer')
         rows = sync_cgyro_choices(self.root, self.settings, self.actions.factory)
-        self.ui.Separator('输入案例')
+        self.ui.Separator('半径与主离子')
         if rows:
-            with self.ui.same_row():
-                for row in rows:
-                    label = 'nr={}'.format(row['nr'])
-                    if row['rho'] is not None:
-                        label += ' · rho={:g}'.format(row['rho'])
-                    self.ui.CheckBox(self.prefix + "['cgyro_radii'][{!r}]".format(row['key']), label)
+            if len(rows) > 1:
+                with self.ui.same_row():
+                    self.ui.Button('全部半径', self.actions.select_cgyro_radii, updateGUI=True)
+                    self.ui.Button('清空选择', lambda: self.actions.select_cgyro_radii(False), updateGUI=True)
+            for offset in range(0, len(rows), 4):
+                with self.ui.same_row():
+                    for row in rows[offset:offset + 4]:
+                        caption = 'nr={}'.format(row['nr'])
+                        if row['rho'] is not None:
+                            caption += ' · rho={:g}'.format(row['rho'])
+                        self.cgyro_checkbox(self.prefix + "['cgyro_radii'][{!r}]".format(row['key']),
+                                             self.settings['cgyro_radii'], row['key'], caption)
         else:
-            self.label('尚无 CGYRO 半径输入，请先运行 Transfer_tool。')
-        self.ui.Separator('主离子方案')
+            self.label('尚无输入，请生成半径输入或导入 input.cgyro。')
         sync_cgyro_ion_cases(self.settings, self.actions.factory)
-        with self.ui.same_row():
-            for key, label in ION_CASES.items():
-                self.ui.CheckBox(self.prefix + "['cgyro_ion_cases'][{!r}]".format(key), label)
-        self.label('每个半径与所选方案自动组合；“原始”保持粒子组成，H/D/T 只改 Z=1 主离子质量。')
-        self.ui.Separator('参数扫描')
-        self.ui.ComboBox(location(base + ('SETUP', 'idimrun')),
-                         {'1 个参数': 1, '2 个参数': 2, '3 个参数': 3}, '参数轴数量', updateGUI=True)
-        self.ui.Entry(location(base + ('PHYSICS', 'kyarr')), 'ky 列表', help='例如 [0.1, 0.2, 0.3]')
+        if self.settings.get('cgyro_ion_mode', None) not in ('original', 'hdt', 'custom'):
+            self.settings['cgyro_ion_mode'] = cgyro_ion_mode(self.settings)
+        self.ui.ComboBox(self.prefix + "['cgyro_ion_mode']", OrderedDict([
+            ('保持原始粒子', 'original'), ('H / D / T 对比', 'hdt'), ('自选方案', 'custom')]),
+            '主离子方案', state='readonly', updateGUI=True, postcommand=self.actions.set_cgyro_ions)
+        if self.settings['cgyro_ion_mode'] == 'custom':
+            with self.ui.same_row():
+                for key, caption in ION_CASES.items():
+                    self.cgyro_checkbox(self.prefix + "['cgyro_ion_cases'][{!r}]".format(key),
+                                         self.settings['cgyro_ion_cases'], key, caption)
+        self.ui.Separator('扫描设置')
+        self.ui.Entry(location(base + ('EXPERIMENT', 'runid')), '结果名称', updateGUI=True)
+        self.ui.Entry(location(base + ('PHYSICS', 'kyarr')), 'ky 取值', updateGUI=True,
+                      help='输入列表，例如 [0.1, 0.2, 0.3]。')
+        self.ui.ComboBox(location(base + ('SETUP', 'idimrun')), OrderedDict([
+            ('只扫 ky，保持输入参数', 0), ('ky + 1 个参数', 1),
+            ('ky + 2 个参数', 2), ('ky + 3 个参数', 3)]), '扫描内容', state='readonly', updateGUI=True)
         dim = int(node['SETTINGS']['SETUP']['idimrun'])
-        keys = {
-            1: [('1d', 'Para', '参数 1'), ('1d', 'Range', '参数 1 取值')],
-            2: [('2d', 'Para_x', '参数 1'), ('2d', 'Range_x', '参数 1 取值'),
-                ('2d', 'Para_y', '参数 2'), ('2d', 'Range_y', '参数 2 取值')],
-            3: [('3d', 'Para_x', '参数 1'), ('3d', 'Range_x', '参数 1 取值'),
-                ('3d', 'Para_y', '参数 2'), ('3d', 'Range_y', '参数 2 取值'),
-                ('3d', 'Para_z', '参数 3'), ('3d', 'Range_z', '参数 3 取值')],
+        keys = {1: [('Para', 'Range')],
+                2: [('Para_x', 'Range_x'), ('Para_y', 'Range_y')],
+                3: [('Para_x', 'Range_x'), ('Para_y', 'Range_y'), ('Para_z', 'Range_z')],
         }.get(dim, [])
-        for group, key, label in keys:
-            self.ui.Entry(location(base + ('PHYSICS', group, key)), label)
+        selected = [row for row in rows if self.settings['cgyro_radii'].get(row['key'], False)]
+        source = read(self.root, (selected or rows)[0]['path'], {}) if rows else {}
+        options = OrderedDict()
+        for name in sorted(source.keys(), key=str):
+            if str(name) == 'KY' or not str(name).isupper():
+                continue
+            try:
+                if math.isfinite(float(source[name])):
+                    options[str(name)] = str(name)
+            except (TypeError, ValueError):
+                continue
+        group = str(dim) + 'd'
+        if keys:
+            node['SETTINGS']['PHYSICS'].setdefault(group, {})
+        for index, (pkey, rkey) in enumerate(keys, 1):
+            defaults = ('BETAE_UNIT', 'S', 'RLTS_1')
+            cfg = node['SETTINGS']['PHYSICS'][group]
+            cfg.setdefault(pkey, defaults[index - 1])
+            cfg.setdefault(rkey, [source.get(cfg[pkey], 0.0)])
+            with self.ui.same_row():
+                self.ui.ComboBox(location(base + ('PHYSICS', group, pkey)), options, '参数 ' + str(index),
+                                 state='normal', updateGUI=True)
+                self.ui.Entry(location(base + ('PHYSICS', group, rkey)), '取值', updateGUI=True)
+            linked = 2
+            while pkey + str(linked) in cfg or rkey + str(linked) in cfg:
+                with self.ui.same_row():
+                    self.ui.ComboBox(location(base + ('PHYSICS', group, pkey + str(linked))), options,
+                                     '联动参数', state='normal', default='', updateGUI=True)
+                    self.ui.Entry(location(base + ('PHYSICS', group, rkey + str(linked))),
+                                  '同步取值', default=[], updateGUI=True,
+                                  help='与参数 ' + str(index) + ' 的取值逐项对应。独立组合请使用多个参数轴。')
+                linked += 1
+        self.cgyro_checkbox(self.prefix + "['cgyro_advanced']", self.settings, 'cgyro_advanced', '数值与重启设置')
+        if self.settings['cgyro_advanced']:
+            self.ui.ComboBox(location(base + ('PHYSICS', 'restart_mode')), {'新计算': 0, '匹配结果重启': 1},
+                             '运行方式', state='readonly', updateGUI=True)
+            if rows:
+                choices = OrderedDict((row['key'], row['key']) for row in rows)
+                if self.settings.get('cgyro_edit_source', '') not in choices:
+                    self.settings['cgyro_edit_source'] = rows[0]['key']
+                self.ui.ComboBox(self.prefix + "['cgyro_edit_source']", choices, '要编辑的源输入', state='readonly', updateGUI=True)
+                row = next(item for item in rows if item['key'] == self.settings['cgyro_edit_source'])
+                self.ui.EditASCIIobject(location(row['path']), '编辑源 input.cgyro', updateGUI=True)
+            self.ui.Entry(location(base + ('PHYSICS', 'time_scheme')), 'ky 时间缩放',
+                          help='[0, dt, tmax] 不缩放；[1, dt, tmax] 对 ky>1 使用 dt/ky 与 tmax/ky。', updateGUI=True)
+        self.ui.Separator('运行')
         problems = cgyro_plan_issues(self.root)
         if not problems:
             plan = cgyro_plan_summary(self.root)
-            axis_text = ' × '.join('{}({})'.format(axis['name'], len(axis['values'])) for axis in plan['axes'])
-            self.label('{} × ky({})；输入案例 {} 个；共 {} 个计算点。'.format(
-                axis_text, plan['ky'], plan['cases'], plan['total_points']))
-        else:
-            self.label('扫描计划：' + '；'.join(problems))
-        self.ui.ComboBox(location(base + ('PHYSICS', 'restart_mode')), {'新计算': 0, '从匹配结果重启': 1}, '运行方式')
-        self.ui.Tab('运行与收集')
-        self.run_controls('cgyro')
-        self.label('每个计算点自动编号；只需管理结果集、输入案例和参数轴。')
-        self.nav('进入统一绘图页', 'plots')
+            self.label('{} 个输入组合 × 每组 {} 点 = {} 个任务'.format(
+                plan['cases'], plan['points_per_case'], plan['total_points']))
+        remote = node['SETTINGS'].get('REMOTE_SETUP', {})
+        config = remote.get(str(remote.get('serverPicker', '') or ''), {})
+        self.label('服务器：{}；队列：{}；每任务 {} 节点 × {} MPI'.format(
+            remote.get('serverPicker', '未配置'), config.get('queue', '未配置'),
+            config.get('nodes', '—'), config.get('ntasks_per_node', '—')))
+        issues = problems + runtime_issues(self.root, 'cgyro')
+        with self.ui.same_row():
+            self.guarded('运行所选扫描', self.actions.run_cgyro, issues)
+            self.nav('修改运行环境', 'run')
+        if issues:
+            self.label('需要：' + '；'.join(issues[:2]))
+        if self.settings['message']:
+            self.label(str(self.settings['message']).splitlines()[0][:200])
+        self.ui.Tab('结果与记录')
+        manifest = node.get('RUN_MANIFEST', {})
+        if manifest:
+            self.label('最近运行：{} · {}'.format(manifest.get('case_id', ''),
+                STATUS.get(manifest.get('status', ''), manifest.get('status', ''))))
+            if manifest.get('job_id', None):
+                self.label('作业：' + str(manifest['job_id']))
+            self.guarded('重新收集未归档结果', self.actions.collect, collect_issues(self.root))
+        ResultBrowser(self.root, self.ui).render(title=False)
+        self.nav('对比绘图（可选）', 'plots')
+
+    def cgyro_checkbox(self, path, mapping, key, caption):
+        value = mapping.get(key, False)
+        value = str(value).lower() in ('true', '.true.', '1', '1.0')
+        mapping[key] = value
+        variable = tk.BooleanVar(value=value)
+        control = self.ui.CheckBox(path, caption, default=False, updateGUI=True,
+                                   variable=variable, onvalue=1, offvalue=0)
+        variable.set(value)
+        control.state(['!alternate', 'selected' if value else '!selected'])
+        control._cgyro_boolean = variable
+        return control
 
     def render_tglf(self):
         node = read(self.root, MODULES['tglf'])
@@ -277,12 +379,7 @@ class ProjectUI:
         if name != 'transfer':
             self.nav('统一 GACODE 环境配置', 'run')
         if name == 'cgyro':
-            issues = cgyro_input_issues(self.root) + runtime_issues(self.root, name)
-            self.label('运行条件：' + ('；'.join(issues) or '批量输入与运行配置已就绪'))
-            with self.ui.same_row():
-                self.guarded('刷新批量输入', lambda: self.actions.run_cgyro(prepare=True), cgyro_plan_issues(self.root))
-                self.guarded('运行所选组合', self.actions.run_cgyro, issues)
-                self.guarded('收集当前结果', self.actions.collect, collect_issues(self.root))
+            self.nav('设置并运行 CGYRO', 'cgyro')
         elif name == 'transfer':
             node = module(self.root, 'transfer')
             options = initialize_generation(node, self.actions.factory)

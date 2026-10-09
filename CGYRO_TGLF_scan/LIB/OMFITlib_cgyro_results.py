@@ -203,8 +203,9 @@ class ResultBrowser:
         self.root, self.ui = root, ui
         self.prefix = "root['SETTINGS']['WORKBENCH']['cgyro_result_view']"
 
-    def render(self):
-        self.ui.TitleGUI('CGYRO · 扫描结果浏览')
+    def render(self, title=True):
+        if title:
+            self.ui.TitleGUI('CGYRO · 扫描结果浏览')
         try:
             view, token, entry, options = selected_record(self.root)
         except ValueError as exc:
@@ -230,7 +231,8 @@ class ResultBrowser:
         self.ui.Entry(self.prefix + "['tail_fraction']", '末段平均比例', default=.02,
                       help='0.02 表示对时间序列最后 2% 求平均。')
         if dimensions == 1:
-            description = '{} × ky 数值结果'.format(names[0])
+            description = ('ky 数值结果' if int(entry.get('scan_dimensions', dimensions)) == 0
+                           else '{} × ky 数值结果'.format(names[0]))
         else:
             description = '{} × {} 数值结果'.format(names[0], names[1])
             if dimensions == 3:

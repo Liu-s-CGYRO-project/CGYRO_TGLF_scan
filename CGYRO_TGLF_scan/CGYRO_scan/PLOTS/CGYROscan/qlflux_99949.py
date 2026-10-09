@@ -225,7 +225,8 @@ QLW_Pi = xr.DataArray(
 )
 
 # Cache belongs to this project and contains the input of every source point.
-root['QLW'] = OMFITtree({'Gamma': QLW_Gamma, 'Q': QLW_Q, 'Pi': QLW_Pi,
+root['QLW'] = OMFITtree()
+root['QLW'].update({'Gamma': QLW_Gamma, 'Q': QLW_Q, 'Pi': QLW_Pi,
     'parameter': Para, 'source_inputs': source_inputs,
     'run_token': root.get('RUN_MANIFEST', {}).get('run_token', 'imported'),
     'species_labels': species_labels})
