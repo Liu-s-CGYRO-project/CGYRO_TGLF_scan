@@ -286,7 +286,11 @@ def cgyro_sources(root):
             if nr < 1:
                 nr = fallback
         try:
-            rho_value = value.get('rho', None)
+            rho_value = (read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'local_inputs',
+                                    str(key), 'rho'))
+                         if prefix == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen') else None)
+            if rho_value is None:
+                rho_value = value.get('rho', None)  # Read legacy metadata before sanitizing the run copy.
             if mode == 'current' and str(key) == 'input.cgyro' and rho_value is None:
                 rho_value = stored.get('rho', None)
             rho = float(rho_value)
@@ -697,6 +701,8 @@ class ProjectActions:
                 changed = []
                 if ion_case in ISOTOPE_MASSES:
                     value, changed = _isotope_input(source, ion_case, mains)
+                if 'rho' in value:
+                    del value['rho']  # Metadata stays in plan/RUN_DB, never in input.cgyro.
                 radial[ion_case] = value
                 plan.append(dict(nr=row['nr'], rho=row['rho'], ion_case=ion_case,
                                  ion_label=source_ion_label if ion_case == 'BASE' else ion_case,
@@ -1086,6 +1092,9 @@ class ProjectActions:
         self.settings['message'] = title + '。原 TGLF 输入和对应结果已保存在输入历史中。'
 
     def propose_tglf(self, incoming, title, source_path=None, destination='tglf'):
+        incoming = incoming.duplicate() if hasattr(incoming, 'duplicate') else copy.deepcopy(incoming)
+        if 'rho' in incoming:
+            del incoming['rho']  # Remove the legacy Transfer metadata from the solver copy.
         validate_input(incoming, 'tglf')
         if destination not in ('tglf', 'transfer'):
             raise ValueError('未知 TGLF 输入目标')

@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.15.1",
-  "parent_release": "1.15.0",
+  "version": "1.15.2",
+  "parent_release": "1.15.1",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -216,12 +216,12 @@
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/CGYROScan.py": "00203689215e398577298d054109a12b13dc076e9246c1d9a530fdb790cbcbd6",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/CGYROScan_2d.py": "f25ead6f9c71267a5dd5201622bd7e4259e48455d3e5ea146a0e90408c298f70",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/LM3Scan.py": "e6035465afa360122ea284a8dcb2ffff7cc3e1ae576afe6b8014a1616cd1a859",
-    "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/downsync.py": "d094d116cb2b9dd4126b7b05bb548e234c3401f70b9a79fab7d83fcf09aac297",
+    "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/downsync.py": "e5aeecdcc3e0409721fe5998540c24fb310594ec57d97f0262c977af38506629",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/prepinputnl.py": "ba5447bff89c9f435cf775d5d023d588fa8e6f032f66735a48dc2d3ca8711fef",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/prepinputnl_gyro.py": "f294c101acb1ac6fc0ebaca11b58f4b02a827d87155b14dfa5b4e128a58009be",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/runCGYRO.py": "493aeb8bf2998e69e3d90f7a6e39a8150b19e776195b1d70a22acb22babcadd3",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/set_resolution.py": "3e5783423c1d514f5667e0c23567a1a924878fc92b67b3316b882b865cad76e1",
-    "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin.py": "02752a2852bd4ba68d6d075715af20064fb7028f706d6f8f4422540e9f3944a1",
+    "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin.py": "9d91719e7c5699f24a8421ae36d78eee51f8d53141eb6b94cfb491ea297bbcd0",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_2d.py": "586f58b2fba84799011afb5b60936f046d568a44a47753d9eaac6fff7bd2dbd7",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_2d_gyro.py": "7c92a5ded852b69d63b5bc8a78d4d73ec4590e2f57c95a0f136dac83097b0a88",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_gyro.py": "8999266c5b09ef1738c976485e94a39ddd54d1dd64fdcba1be701967c35c8814",
@@ -260,7 +260,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_gacode_installations.py": "287b0f6fd3408f372190bd3dfef904f92ebfa89f4eb30439f6de6ce9ebb7eaa9",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py": "9d9448f7a1bcd8a461c80efdf75ddf86d77c1f15878a760b04718fb4425b5fc4",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "0423ffb7114200709e216bdfb81c7b88f4fd8435eb500dbf49c213b25e1636bf",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_project.py": "ffb61276a728596b35b91591a1d5079b96ac431750a7669bd5910cf1514fe4be",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_project.py": "15d02caa7251983a8e29c381fb87c9b853231b7e14051e343e106989a9d6e722",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_runtime.py": "8fb0001d80b8f2746bbfb016994f750bbcb5a84e3fcc217837363c7a7dd47c4c",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py": "e552c0b51096c673c1b6e1c2658ebbb02c27de9a29cb84f7227e046f3a32d62d",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_data.py": "c2b7b1505f5c514be00b2603c8d8503c16ad5489add75ee1e8c60e54705b551d",
@@ -460,7 +460,7 @@
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/inputcgyro2gyro.py": "64233c8f541c2b0753d3fc15128689f940715f5f2be0f03e0660859c9b29de08",
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/main.py": "d20e049ad8b5d7afe623e5225283a5585de1c8737556d5690405b6f2b20eb022",
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen.py": "0893cfd5721bb11108ccc4f7227bd44109e645638647132583d4c0c956fce069",
-    "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen4input.py": "4e1759a39113289b4c3bcba90aa748ce186989bce0386e6117f401461e07679a",
+    "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen4input.py": "315426f82b8311ef21e67625b7fc9b2c0011889b5723179c8edb550e5bc67a4b",
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/tgyro_tglf.py": "39d662e2d02fdbec2af0d53882fe13c9cb0994441237ae02f4fb507a9d28ef46",
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/update.py": "359efd51ba3b1d746699872872344191a0806b41cd8d2e0618a4735eb0343da9",
     "CGYRO_TGLF_scan/Transfer_tool/SettingsNamelist.txt": "a5e40e604f842428f31a61f76b71a1ef9494f90e36d6962d448132fe565b45be",
@@ -502,7 +502,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "3bceb8f382243693596f8352bc5b3c1222c166a3b19898bec916ddeda40e9d98"
+    "VALIDATION.md": "1b8f28838b235425251d3795f69d699e771bb7657d3a46b158ed4fb4b7355a5a"
   },
   "workbench_features": [
     "native_omfit_project_gui",

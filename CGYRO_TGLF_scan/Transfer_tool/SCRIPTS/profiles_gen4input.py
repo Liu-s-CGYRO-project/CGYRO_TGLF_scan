@@ -48,11 +48,8 @@ for k, rho in enumerate(rho_arr, 1):
         else:
             result = close_local_input(obj, code, particle_report['main_count'], particle_report['after'])
         result['rho'] = float(rho)
-        # The closure helpers mutate the actual local input and return only a
-        # compact audit record.  Keep rho on both objects: downstream batch
-        # planning reads it from input.cgyro_N, while the report remains useful
-        # for inspecting neutrality corrections.
-        obj['rho'] = float(rho)
+        # rho describes the source radius, not a CGYRO/TGLF input parameter.
+        # Keep it in the audit record; solver files must contain solver keys only.
         neutrality['input.{}_{}'.format(code, k)] = result
         pending['input.{}_{}'.format(code, k)] = obj.duplicate()
 # Replace the completed set atomically so a new, shorter radial grid cannot

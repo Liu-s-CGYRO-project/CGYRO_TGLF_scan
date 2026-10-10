@@ -1,4 +1,4 @@
-from builtins import (Exception, TypeError, ValueError, all, any, dict, enumerate, float,
+from builtins import (Exception, TypeError, ValueError, all, any, bool, dict, enumerate, float,
                       int, isinstance, len, list, max, range, set, sorted, str, tuple, zip)
 import numpy as np
 import os
@@ -231,7 +231,7 @@ def scan_points(physics, dimensions, effnum, source):
 def validate_restart_input(previous, current):
     # Changing the layout or physics invalidates a binary restart. Deliberately
     # permit only run duration and output cadence until other changes are verified.
-    allowed = {'MAX_TIME', 'PRINT_STEP'}
+    allowed = {'MAX_TIME', 'PRINT_STEP', 'rho'}  # Ignore removed legacy radius metadata.
     changed = [key for key in set(previous.keys()) | set(current.keys())
                if key not in allowed and (key not in previous or key not in current
                    or not np.array_equal(previous[key], current[key]))]
@@ -251,7 +251,10 @@ restart_mode = int(physics['restart_mode'])
 if restart_mode not in (0, 1):
     raise ValueError('restart_mode must be 0 or 1')
 previous_manifest = root.get('RUN_MANIFEST', {})
-if previous_cases and previous_manifest and previous_manifest.get('status', None) not in ('published',):
+previous_status = previous_manifest.get('status', None)
+previous_failed = previous_status == 'failed' or (
+    previous_status == 'submitted_or_finished' and bool(previous_manifest.get('failed_points', [])))
+if previous_cases and previous_manifest and previous_status != 'published' and not previous_failed:
     raise ValueError('The previous CGYRO run has not been published; collect it before starting another run')
 if restart_mode and not previous_cases:
     raise ValueError('No saved cases are available for restart')
@@ -271,6 +274,11 @@ if not local_submit and 'server' not in server_setup and remote_server.split('@'
 remote_workdir = submit_workdir if local_submit else posixpath.join(remote_base, 'runs', run_token)
 inputs_node = root['INPUTS']
 base_input = inputs_node['input.cgyro'].duplicate()
+source_rho = physics.get('rho', None)
+if source_rho is None:
+    source_rho = base_input.get('rho', None)
+if 'rho' in base_input:
+    del base_input['rho']  # Old projects may still carry this non-solver metadata.
 base_input['NONLINEAR_FLAG'] = 0
 points, scan_axes = scan_points(physics, scan_dimensions, setup['effnum'], base_input)
 input_names = ['input.cgyro']
@@ -340,7 +348,10 @@ if previous_cases:
     if history_key not in root['RUN_HISTORY']:
         root['RUN_HISTORY'][history_key] = OMFITtree()
     archived_manifest = copy.deepcopy(previous_manifest)
-    archived_manifest.pop('point_table', None)  # Permanent task rows live once in RUN_DB.
+    if previous_status == 'published':
+        archived_manifest.pop('point_table', None)  # Permanent task rows live once in RUN_DB.
+    elif previous_failed:
+        root['RUN_HISTORY'][history_key]['cases'] = copy.deepcopy(previous_cases)
     root['RUN_HISTORY'][history_key]['manifest'] = archived_manifest
 manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': max(1, scan_dimensions),
             'scan_dimensions': scan_dimensions,
@@ -348,7 +359,7 @@ manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': max(1, s
             'workDir': remote_workdir, 'local_workDir': submit_workdir,
             'serverPicker': cfg_str(rmt_setup, 'serverPicker'),
             'runid': root['SETTINGS']['EXPERIMENT']['runid'], 'nr': physics['nr'],
-            'rho': physics.get('rho', None), 'mass': physics['mass'], 'case_id': case_id,
+            'rho': source_rho, 'mass': physics['mass'], 'case_id': case_id,
             'scan_axes': scan_axes, 'point_table': point_table,
             'input_sha256': input_checksums, 'status': 'prepared'}
 run_manifest = OMFITtree()
@@ -364,6 +375,11 @@ if scheduler not in ['local', 'pbs', 'slurm']:
     config_error('Selected scheduler must be local, pbs, or slurm')
 if local_submit != (scheduler == 'local'):
     config_error('localhost and local scheduler must be selected together')
+cpus_per_task = int(cfg_get(server_setup, 'cpus_per_task', cfg_get(setup, 'cpus_per_task', 1)))
+if cpus_per_task < 1:
+    config_error('cpus_per_task must be a positive integer')
+root['RUN_MANIFEST']['scheduler'] = scheduler
+root['RUN_MANIFEST']['cpus_per_task'] = cpus_per_task
 pbs_file=os.path.join(submit_workdir, 'scan.pbs')
 username=os.environ.get('USER', 'localhost') if local_submit else remote_server.split('@')[0]
 ps_name='cgyro'
@@ -391,11 +407,13 @@ else:
         r'#SBATCH -p '+str(required_cfg(server_setup, 'queue')) +'\n' +\
         r'#SBATCH -J '+ps_name +'\n' +\
         r'#SBATCH -t '+str(required_cfg(server_setup, 'w')) +'\n' +\
-        r'#SBATCH -o %j.out'+'\n' +\
-        r'#SBATCH -e %j.err'+'\n' +\
+        r'#SBATCH -o %A_%a.out'+'\n' +\
+        r'#SBATCH -e %A_%a.err'+'\n' +\
         r'#SBATCH --nodes='+str(num_nodes)+'\n' +\
         r'#SBATCH --ntasks-per-node='+str(ntasks_per_node) +'\n' +\
+        r'#SBATCH --cpus-per-task='+str(cpus_per_task) +'\n' +\
         r'#SBATCH --array=0-'+str(dirlist_num-1)+'%'+str(array_parallel)+'\n' +\
+        r'set -e'+'\n' +\
         r'ulimit -n 65535'+'\n' +\
         r'ulimit -s unlimited'+'\n' +\
         environment
@@ -429,6 +447,19 @@ prepare_case_dir() {
   test -s input.cgyro
 }
 """
+bash_helpers += ('\nexport OMP_NUM_THREADS=' + str(cpus_per_task)
+                 + '\nexport OMP_THREAD_LIMIT=' + str(cpus_per_task) + '\n')
+bash_helpers += r"""
+run_case() (
+  set -e
+  prepare_case_dir "$1"
+  trap 'status=$?; printf "%s\n" "$status" > cgyro.exit' EXIT
+""" + executable + r""" > run_log 2>&1
+  for output in out.cgyro.grids out.cgyro.time; do
+    [ -s "$output" ] || { echo "CGYRO did not generate $output; see run_log." >&2; exit 1; }
+  done
+)
+"""
 
 ###########
 #bash_content= \
@@ -455,17 +486,14 @@ if local_submit:
     bash_content= \
     r'dir_list=('+' '.join(dir_list)+')' +'\n'+ \
     r'for current_dir in ${dir_list[@]}; do'+'\n'+\
-    r'  prepare_case_dir "${current_dir}"'+'\n'+\
-    r'  '+executable+' > run_log 2>&1'+'\n'+\
-    r'  cd ..'+'\n'+\
+    r'  run_case "${current_dir}"'+'\n'+\
     r'done'+'\n'
 else:
     if scheduler == 'slurm':
         bash_content= \
         r'dir_list=('+' '.join(dir_list)+')' +'\n'+ \
         r'current_dir=${dir_list[$SLURM_ARRAY_TASK_ID]}' +'\n'+ \
-        r'prepare_case_dir "${current_dir}"'+'\n'+\
-        r''+executable+' > run_log 2>&1' +'\n'
+        r'run_case "${current_dir}"'+'\n'
     else:
         bash_content= \
         r'dir_list=('+' '.join(dir_list)+')' +'\n'+ \
@@ -473,9 +501,7 @@ else:
         r'  while [[ $( ps -u '+username+r' |grep '+ps_name+r' | wc -l ) -gt '+str(required_cfg_int(server_setup, 'n')-1)+' ]]; do'+'\n'+\
         r'    sleep 2s'+'\n'+\
         r'  done'+'\n'+\
-        r'  prepare_case_dir "${current_dir}"'+'\n'+\
-        r'  '+executable+' > run_log 2>&1 &'+'\n'+\
-        r'  cd ..'+'\n'+\
+        r'  run_case "${current_dir}" &'+'\n'+\
         r'done'+'\n'+\
         r'while [[ $( ps -u '+username+r' |grep '+ps_name+r' | wc -l ) -gt 0 ]]; do'+'\n'+\
         r'  sleep 5s'+'\n'+\
@@ -515,7 +541,10 @@ if setup['irun']==1:
                                    tunnel='', \
                                    workdir=submit_workdir,\
                                    remotedir=submit_workdir,\
-                                   executable='/usr/bin/env -u LD_LIBRARY_PATH -u CONDA_PREFIX -u CONDA_DEFAULT_ENV LC_ALL=C LANG=C /bin/bash scan.pbs',clean=False,std_out=submit_out,std_err=submit_err)
+                                   executable='/usr/bin/env -u LD_LIBRARY_PATH -u CONDA_PREFIX -u CONDA_DEFAULT_ENV LC_ALL=C LANG=C /bin/bash scan.pbs',clean=False,std_out=submit_out,std_err=submit_err,ignoreReturnCode=True)
+        if ret_code != 0:
+            root['RUN_MANIFEST']['status'] = 'failed'
+            raise RuntimeError('CGYRO local execution failed: ' + output_to_text(submit_out + submit_err))
     else:
         submit_cmd='sbatch scan.pbs'
         submit_rule=r'(?i)submitted\s+batch\s+job\s+([0-9]+)'
@@ -537,8 +566,11 @@ if setup['irun']==1:
                                    tunnel=rmttunnel, \
                                    workdir=workdir,\
                                    remotedir=rmtworkdir,\
-                                   executable=submit_wrapper,clean=False,std_out=submit_out,std_err=submit_err)
+                                   executable=submit_wrapper,clean=False,std_out=submit_out,std_err=submit_err,ignoreReturnCode=True)
         submit_combined=output_to_text(submit_out)+'\n'+output_to_text(submit_err)
+        if ret_code != 0:
+            root['RUN_MANIFEST']['status'] = 'failed'
+            raise RuntimeError('CGYRO submission failed: ' + submit_combined)
         if re.search(submit_rule, submit_combined) is None:
             # remote_execute returns a status code, not stdout. Capture the log.
             recovered = []
@@ -551,15 +583,25 @@ if setup['irun']==1:
         if scheduler == 'pbs':
             wait_cmd='hb=0; while qstat '+job_id+' >/dev/null 2>&1; do sleep 30; hb=$((hb+30)); if [ \"$hb\" -ge 600 ]; then echo \"[heartbeat] job '+job_id+' still in queue/running at $(date)\"; hb=0; fi; done; echo \"[heartbeat] job '+job_id+' finished at $(date)\"'
         else:
-            wait_cmd='hb=0; while squeue -h -j '+job_id+' | grep -q .; do sleep 30; hb=$((hb+30)); if [ \"$hb\" -ge 600 ]; then echo \"[heartbeat] job '+job_id+' still in queue/running at $(date)\"; hb=0; fi; done; echo \"[heartbeat] job '+job_id+' finished at $(date)\"'
-        OMFITx.remote_execute(
+            wait_cmd=('hb=0; while true; do queued=$(squeue -h -j ' + job_id + ') || exit 1; '
+                      '[ -n "$queued" ] || break; sleep 30; hb=$((hb+30)); '
+                      'if [ "$hb" -ge 600 ]; then echo "[heartbeat] job ' + job_id
+                      + ' still in queue/running at $(date)"; hb=0; fi; done; '
+                      'echo "[heartbeat] job ' + job_id + ' left the queue at $(date)"')
+        wait_errors = []
+        wait_code = OMFITx.remote_execute(
             rmtserver,
             wait_cmd,
             rmtworkdir,
             rmttunnel,
             quiet=False,
             ignoreReturnCode=True,
-            use_bang_command=False
+            use_bang_command=False,
+            std_err=wait_errors
         )
+        if wait_code != 0:
+            root['RUN_MANIFEST']['wait_error'] = output_to_text(wait_errors)
+            raise RuntimeError('Could not query CGYRO job ' + job_id + '; submission remains recorded. '
+                               + output_to_text(wait_errors))
 
     root['RUN_MANIFEST']['status'] = 'submitted_or_finished'

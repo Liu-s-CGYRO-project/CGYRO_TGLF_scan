@@ -8,7 +8,9 @@
 
 管理器 **1.10.3** 独立修复 GitHub 响应读取中途的连接重置：只读请求最多尝试三次，等待可取消；发布与上传不自动重复。支持界面内增量更新、完整安装与管理器离线模板。
 
-当前分发版为 **1.15.1**，仅包含代码、输入模板和默认设置；计算案例、结果、缓存与旧命令记录不入库。原模块的输入示例保留在 `TEMPLATES` 中。执行计算前，需要导入自己的平衡/剖面或案例，并配置计算环境与求解器路径。
+当前分发版为 **1.15.2**，仅包含代码、输入模板和默认设置；计算案例、结果、缓存与旧命令记录不入库。原模块的输入示例保留在 `TEMPLATES` 中。执行计算前，需要导入自己的平衡/剖面或案例，并配置计算环境与求解器路径。
+
+工程 **1.15.2** 修复 CGYRO 启动时的 `Bogus parameter rho`：Transfer_tool 将半径保存在生成记录中，CGYRO 运行副本和 TGLF 传入副本移除旧版误写的 `rho` 字段，半径仍进入运行标识与 RUN_DB。旧 Project 的输入可直接再用，不必重新生成 Transfer_tool。收集前检查作业状态、退出码和真实输出，失败时显示计算节点 run_log，保存失败记录后可重新运行。Slurm 补齐每进程线程资源，OMP 线程与资源设置一致；数组日志按作业和任务编号分开。内置管理器 **1.10.5**。更新当前工程后重新运行失败扫描；未运行回归或求解器测试。
 
 工程 **1.15.1** 修复打开 CGYRO 页面时的 `AttributeError: 'list' object has no attribute '_root'`。原生 `OMFITx.CheckBox` 即使只绑定一个路径，也返回控件列表；现在取出实际复选框再绑定 Tk 布尔变量。半径、主离子方案和高级设置使用同一修复。内置管理器保持 **1.10.4**；按要求仅进行静态检查，未运行测试或计算。
 
@@ -86,7 +88,7 @@
 
 ## 在 OMFIT 打开
 
-推荐从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.15.1.zip`，在 OMFIT 中打开。
+推荐从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.15.2.zip`，在 OMFIT 中打开。
 
 也可直接加载本仓库的工程入口：
 
