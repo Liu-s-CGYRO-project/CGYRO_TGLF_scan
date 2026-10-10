@@ -765,12 +765,12 @@ class ProjectActions:
             item['enabled'] = False
         self.settings['message'] = '固定参数已改为沿用各输入。'
 
-    def reset_cgyro_parameters(self, names, source_key):
+    def reset_cgyro_parameters(self, names, source_key=''):
         rows = sync_cgyro_choices(self.root, self.settings, self.factory)
         row = next((item for item in rows if item['key'] == source_key), None)
-        if row is None:
+        if source_key and row is None:
             raise ValueError('参考输入已变化，请重新选择。')
-        source = read(self.root, row['path'])
+        source = read(self.root, row['path']) if row is not None else {}
         physics = module(self.root, 'cgyro')['SETTINGS']['PHYSICS']
         parameters = initialize_parameters(physics, source, self.factory)
         values = numeric_source(source)

@@ -4,17 +4,21 @@ from collections import OrderedDict
 import math
 import re
 
-GROUPS = OrderedDict([('常用设置', 'common'), ('时间与输出', 'time'),
+GROUPS = OrderedDict([('常用设置', 'common'), ('时间与收敛', 'time'),
                       ('网格与速度空间', 'grid'), ('场与碰撞', 'model'),
-                      ('数值算法', 'algorithm'), ('其他输入参数', 'other'), ('全部参数', 'all')])
+                      ('数值耗散与算法', 'algorithm'), ('平衡与剪切', 'geometry'),
+                      ('输出选项', 'output'), ('其他输入参数', 'other'), ('全部参数', 'all')])
+CORE_FIELDS = ('DELTA_T_METHOD', 'DELTA_T', 'ERROR_TOL', 'MAX_TIME', 'PRINT_STEP', 'FREQ_TOL')
 # Fallbacks are explicit GUI reference values, not forced solver values.
 # Nothing is written until the user edits a value or selects a scan axis.
 FIELDS = OrderedDict([
     ('DELTA_T', ('时间步长', 'time', 0.01, 'float', True)),
     ('DELTA_T_METHOD', ('时间积分方法', 'time', 0, 'int', False)),
+    ('ERROR_TOL', ('积分误差容限', 'time', 6e-5, 'float', True)),
     ('MAX_TIME', ('运行时长', 'time', 100.0, 'float', True)),
     ('PRINT_STEP', ('输出步数间隔', 'time', 100, 'int', True)),
-    ('N_RADIAL', ('径向网格', 'grid', 16, 'int', True)),
+    ('FREQ_TOL', ('频率收敛容限', 'time', 0.001, 'float', False)),
+    ('N_RADIAL', ('径向网格', 'grid', 4, 'int', True)),
     ('N_THETA', ('极向网格', 'grid', 24, 'int', True)),
     ('N_ENERGY', ('能量网格', 'grid', 8, 'int', True)),
     ('N_XI', ('俯仰角网格', 'grid', 16, 'int', True)),
@@ -22,7 +26,41 @@ FIELDS = OrderedDict([
     ('BOX_SIZE', ('径向盒尺寸倍数', 'grid', 1, 'int', True)),
     ('N_FIELD', ('场数量', 'model', 1, 'int', True)),
     ('COLLISION_MODEL', ('碰撞模型', 'model', 4, 'int', True)),
-    ('NU_EE', ('电子碰撞频率', 'model', 0.0, 'float', False)),
+    ('NU_EE', ('电子碰撞频率', 'model', 0.1, 'float', False)),
+    ('NU_EE_SCALE', ('碰撞频率系数', 'model', 1.0, 'float', False)),
+    ('COLLISION_FIELD_MODEL', ('碰撞场更新', 'model', 1, 'int', False)),
+    ('COLLISION_MOM_RESTORE', ('碰撞动量守恒', 'model', 1, 'int', False)),
+    ('COLLISION_ENE_RESTORE', ('碰撞能量守恒', 'model', 1, 'int', False)),
+    ('COLLISION_ENE_DIFFUSION', ('碰撞能量扩散', 'model', 1, 'int', False)),
+    ('COLLISION_KPERP', ('碰撞垂直波数项', 'model', 1, 'int', False)),
+    ('BETAE_UNIT', ('电子 beta', 'model', 0.0, 'float', False)),
+    ('BETAE_UNIT_SCALE', ('电子 beta 系数', 'model', 1.0, 'float', False)),
+    ('BETA_STAR_SCALE', ('压力梯度系数', 'model', 1.0, 'float', False)),
+    ('NUP_RADIAL', ('径向耗散阶数', 'algorithm', 3, 'int', True)),
+    ('NUP_THETA', ('极向耗散阶数', 'algorithm', 3, 'int', True)),
+    ('NUP_ALPHA', ('环向耗散阶数', 'algorithm', 3, 'int', True)),
+    ('UP_RADIAL', ('径向耗散强度', 'algorithm', 1.0, 'float', False)),
+    ('UP_THETA', ('极向耗散强度', 'algorithm', 1.0, 'float', False)),
+    ('UP_ALPHA', ('环向耗散强度', 'algorithm', 0.0, 'float', False)),
+    ('MPI_RANK_ORDER', ('MPI 分配顺序', 'algorithm', 2, 'int', True)),
+    ('VELOCITY_ORDER', ('速度空间顺序', 'algorithm', 1, 'int', True)),
+    ('Q', ('安全因子', 'geometry', 2.0, 'float', False)),
+    ('S', ('磁剪切', 'geometry', 1.0, 'float', False)),
+    ('RMIN', ('归一化小半径', 'geometry', 0.5, 'float', False)),
+    ('RMAJ', ('归一化大半径', 'geometry', 3.0, 'float', True)),
+    ('KAPPA', ('拉长比', 'geometry', 1.0, 'float', True)),
+    ('DELTA', ('三角形变', 'geometry', 0.0, 'float', False)),
+    ('SHIFT', ('磁轴偏移梯度', 'geometry', 0.0, 'float', False)),
+    ('S_KAPPA', ('拉长比剪切', 'geometry', 0.0, 'float', False)),
+    ('S_DELTA', ('三角形变剪切', 'geometry', 0.0, 'float', False)),
+    ('PX0', ('气球模角参数', 'geometry', 0.0, 'float', False)),
+    ('EQUILIBRIUM_MODEL', ('平衡模型', 'geometry', 2, 'int', True)),
+    ('GAMMA_P', ('旋转剪切', 'geometry', 0.0, 'float', False)),
+    ('MACH', ('旋转马赫数', 'geometry', 0.0, 'float', False)),
+    ('FIELD_PRINT_FLAG', ('输出场数据', 'output', 0, 'int', False)),
+    ('MOMENT_PRINT_FLAG', ('输出粒子矩', 'output', 0, 'int', False)),
+    ('H_PRINT_FLAG', ('输出分布函数', 'output', 0, 'int', False)),
+    ('SILENT_FLAG', ('精简终端输出', 'output', 0, 'int', False)),
 ])
 
 

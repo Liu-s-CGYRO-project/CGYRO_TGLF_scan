@@ -10,7 +10,7 @@ from OMFITlib_transfer_workflow import generation_issues, initialize_generation,
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
 from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choices, installation_issues
 from OMFITlib_cgyro_results import ResultBrowser
-from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS,
+from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS, CORE_FIELDS,
     initialize_parameters, numeric_source, parameter_catalog, scan_parameter_names)
 from OMFITlib_project import (ION_CASES, LABELS, MODULES, PAGES, cgyro_input_issues,
     cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, generated_tglf_sources, location, module,
@@ -293,16 +293,17 @@ class ProjectUI:
         selected = [row for row in rows if self.settings['cgyro_radii'].get(row['key'], False)]
         available = selected or rows
         self.label('直接修改数值，回车生效；扫描轴的取值优先。')
-        if not available:
-            self.label('先在“输入与扫描”中载入输入。')
-            return
-        choices = OrderedDict(('nr={} · {}'.format(row['nr'], row['key']), row['key']) for row in available)
-        if self.settings.get('cgyro_parameter_reference', '') not in choices.values():
-            self.settings['cgyro_parameter_reference'] = available[0]['key']
-        self.ui.ComboBox(self.prefix + "['cgyro_parameter_reference']", choices, '参考输入',
-                         state='readonly', updateGUI=True)
-        row = next(item for item in available if item['key'] == self.settings['cgyro_parameter_reference'])
-        source = read(self.root, row['path'])
+        row, source, source_key = None, {}, ''
+        if available:
+            choices = OrderedDict(('nr={} · {}'.format(item['nr'], item['key']), item['key']) for item in available)
+            if self.settings.get('cgyro_parameter_reference', '') not in choices.values():
+                self.settings['cgyro_parameter_reference'] = available[0]['key']
+            self.ui.ComboBox(self.prefix + "['cgyro_parameter_reference']", choices, '参考输入',
+                             state='readonly', updateGUI=True)
+            row = next(item for item in available if item['key'] == self.settings['cgyro_parameter_reference'])
+            source_key, source = row['key'], read(self.root, row['path'])
+        else:
+            self.label('可先设置常用参数；运行前需载入输入。')
         parameters = initialize_parameters(physics, source, self.actions.factory)
         sources = [read(self.root, item['path']) for item in available]
         catalog = parameter_catalog(sources)
@@ -318,23 +319,32 @@ class ProjectUI:
             if name not in catalog and item.get('enabled', False):
                 catalog[name] = dict(label='当前输入不支持', group='other', reference=None,
                                      kind='float', supported=False)
-        self.settings.setdefault('cgyro_parameter_group', 'common')
-        self.settings.setdefault('cgyro_parameter_search', '')
+        # A one-time view migration clears old filters, without changing any
+        # saved calculation values. Core time controls always remain visible.
+        if self.settings.get('cgyro_parameter_catalog_revision', 0) != 1:
+            self.settings['cgyro_parameter_group'] = 'common'
+            self.settings['cgyro_parameter_search'] = ''
+            self.settings['cgyro_parameter_catalog_revision'] = 1
+        scanned = scan_parameter_names(physics, int(node['SETTINGS']['SETUP']['idimrun']))
+        self.ui.Separator('时间与收敛 · 固定显示')
+        for name in CORE_FIELDS:
+            self.cgyro_parameter_row(base, name, catalog[name], parameters[name], source_values, scanned, source_key)
+        self.ui.Separator('更多计算参数')
         self.ui.ComboBox(self.prefix + "['cgyro_parameter_group']", CGYRO_GROUPS, '参数分组',
                          state='readonly', width=24, updateGUI=True)
         self.ui.Entry(self.prefix + "['cgyro_parameter_search']", '搜索参数', width=28, updateGUI=True)
         group = self.settings['cgyro_parameter_group']
         query = str(self.settings['cgyro_parameter_search']).strip().upper()
         names = [name for name, spec in catalog.items()
-                 if (group == 'all' or (group == 'common' and name in CGYRO_FIELDS) or spec['group'] == group)
+                 if name not in CORE_FIELDS
+                 and (group == 'all' or (group == 'common' and name in CGYRO_FIELDS) or spec['group'] == group)
                  and (not query or query in name or query in spec['label'].upper())]
-        scanned = scan_parameter_names(physics, int(node['SETTINGS']['SETUP']['idimrun']))
         with self.ui.same_row():
-            self.ui.Button('本页恢复输入值',
-                           lambda: self.actions.reset_cgyro_parameters(names, row['key']), updateGUI=True)
+            self.ui.Button('恢复当前分组',
+                           lambda: self.actions.reset_cgyro_parameters(names, source_key), updateGUI=True)
             self.ui.Button('全部恢复输入值', self.actions.inherit_cgyro_parameters, updateGUI=True)
         if not names:
-            self.label('没有匹配的参数。')
+            self.label('时间参数在上方。' if group == 'time' and not query else '没有匹配的其他参数。')
         previous_group = None
         labels = {value: label for label, value in CGYRO_GROUPS.items()}
         for name in names:
@@ -342,30 +352,7 @@ class ProjectUI:
             if spec['group'] != previous_group:
                 self.ui.Separator(labels.get(spec['group'], '其他输入参数'))
                 previous_group = spec['group']
-            if name in scanned:
-                self.label(name + ' · 由扫描轴设置')
-                continue
-            item = parameters[name]
-            path = base + ('fixed_parameters', name)
-            source_value = source_values.get(name, '未显式写入')
-            help_text = ('参考输入：{}。修改并回车后，应用到本轮全部所选输入；'
-                         '点击“恢复”则沿用各输入自己的值。'.format(source_value))
-            if name == 'DELTA_T_METHOD':
-                help_text += '\n0：固定 RK4；1：Cash-Karp；2：Bogacki-Shampine；3：Verner。1–3 为自适应步长。'
-            with self.ui.same_row() as line:
-                # Keep each setting on one row, with its numeric field aligned
-                # at the right. Preserve the controls' native OMFIT bindings.
-                frame = getattr(line, 'frm_top', None)
-                if isinstance(frame, tk.Misc):
-                    frame._cgyro_inline = True
-                self.label(name + ' · ' + spec['label'])
-                self.ui.Entry(location(path + ('value',)), '', width=14, updateGUI=True,
-                              state='normal' if spec.get('supported', True) else 'disabled',
-                              postcommand=lambda location=None, name=name: self.actions.edit_cgyro_parameter(name),
-                              help=help_text)
-                self.ui.Button('恢复',
-                               lambda name=name: self.actions.reset_cgyro_parameters([name], row['key']),
-                               updateGUI=True)
+            self.cgyro_parameter_row(base, name, spec, parameters[name], source_values, scanned, source_key)
         self.ui.Separator('时间缩放')
         self.cgyro_checkbox(location(base + ('scale_time_with_ky',)), physics, 'scale_time_with_ky', '按 ky 缩放时间')
         if physics['scale_time_with_ky']:
@@ -374,11 +361,36 @@ class ProjectUI:
         self.ui.ComboBox(location(base + ('restart_mode',)), {'新计算': 0, '匹配结果重启': 1},
                          '运行方式', state='readonly', updateGUI=True)
         self.cgyro_checkbox(self.prefix + "['cgyro_advanced']", self.settings, 'cgyro_advanced', '直接编辑源 input.cgyro')
-        if self.settings['cgyro_advanced']:
+        if self.settings['cgyro_advanced'] and row is not None:
             self.ui.EditASCIIobject(location(row['path']), '编辑参考输入', updateGUI=True)
         problems = cgyro_plan_issues(self.root)
         if problems:
             self.label('需要：' + '；'.join(problems[:2]))
+
+    def cgyro_parameter_row(self, base, name, spec, item, source_values, scanned, source_key):
+        if name in scanned:
+            self.label(name + ' · 由扫描轴设置')
+            return
+        path = base + ('fixed_parameters', name)
+        reference = ('输入值：{}'.format(source_values[name]) if name in source_values else
+                     '文件未写入，显示参考值：{}；修改后才写入运行副本。'.format(spec['reference']))
+        help_text = reference + '\n修改并回车后应用到所选输入；“恢复”沿用各输入自己的值。'
+        with self.ui.same_row() as line:
+            frame = getattr(line, 'frm_top', None)
+            if isinstance(frame, tk.Misc):
+                frame._cgyro_inline = True
+            self.label(name + ' · ' + spec['label'])
+            if name == 'DELTA_T_METHOD':
+                self.ui.ComboBox(location(path + ('value',)), OrderedDict([
+                    ('0 固定 RK4', 0), ('1 自适应 Cash-Karp', 1),
+                    ('2 自适应 Bogacki-Shampine', 2), ('3 自适应 Verner', 3)]), '',
+                    width=24, state='readonly', updateGUI=True, help=help_text,
+                    postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
+            else:
+                self.ui.Entry(location(path + ('value',)), '', width=14, updateGUI=True,
+                              state='normal' if spec.get('supported', True) else 'disabled', help=help_text,
+                              postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
+            self.ui.Button('恢复', lambda: self.actions.reset_cgyro_parameters([name], source_key), updateGUI=True)
 
     def cgyro_checkbox(self, path, mapping, key, caption):
         value = mapping.get(key, False)

@@ -1,3 +1,11 @@
+# 修订记录 · 工程 1.16.4 / 管理器 1.10.5
+
+常用计算参数清单独立于输入文件。时间积分方法、步长、误差容限、运行时长、输出间隔和频率收敛容限作为固定页首区域，不受保存的分组和搜索条件隐藏；DELTA_T_METHOD 用原生 ComboBox 选择 0–3。更多内置字段补齐碰撞守恒与场更新、数值耗散、输出控制、beta 和平衡/剪切。参数页取消“没有输入就退出”的分支，可先配置数值后载入输入；没有参考输入时，恢复操作使用内置参考值。
+
+首次显示新清单清空旧筛选，仅改变视图设置，已有固定数值和计算记录保留。文件已有值优先，缺失字段显示参考值，修改后才写入运行副本。参考清单按官方 cgyro/bin/cgyro_parse.py 静态声明核对（https://github.com/gafusion/gacode/blob/master/cgyro/bin/cgyro_parse.py）；ERROR_TOL 使用其 6e-5 参考值，N_RADIAL 和 NU_EE 缺失时的参考值修正为 4 和 0.1。已显式保存的统一数值保持不变，打开页面不自动覆盖求解器输入。粒子组成和密度/梯度仍由输入与主离子流程管理。
+
+对照原生 OMFITx.ComboBox 的 options/postcommand 接口，以及同一支持库在工程与 CGYRO_scan 两个 LIB 的登记。完成 Python 3.9 静态语法、官方字段声明及参考值、OMFIT 设置/帮助/库引用、发布包源文件与 SHA-256 校验。按要求未运行回归、GUI 或求解器测试，未提交计算任务。
+
 # 修订记录 · 工程 1.16.3 / 管理器 1.10.5
 
 使用用户此前提供的密钥只读检查太原 tyadmin06 已有作业 9545932：ky=0.01、0.02 的 out.cgyro.info 为 Linear converged，分别有 64 和 3 个时间样本；ky=0.03–0.07 的 out.cgyro.info 均为 Integration error exceeded limit，时间文件为空。实际输入 DELTA_T=0.01、DELTA_T_METHOD=0、MAX_TIME=600、PRINT_STEP=100；生成输入中的 ERROR_TOL=6e-5。这次是积分误差超限，节点分配及启动已成功。临时密钥副本在每次只读检查结束后删除，原始附件保留。
