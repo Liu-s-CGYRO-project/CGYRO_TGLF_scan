@@ -1,5 +1,7 @@
 {
   "PHYSICS": {
+    "fixed_parameters": {},
+    "scale_time_with_ky": null,
     "restart_mode": 0,
     "time_scheme": {
       "__ndarray_tolist__": [

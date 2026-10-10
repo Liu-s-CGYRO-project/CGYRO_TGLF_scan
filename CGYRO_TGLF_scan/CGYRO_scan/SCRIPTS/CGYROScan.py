@@ -83,6 +83,9 @@ def publish_loaded_run(root):
                      ion_case=manifest['mass'], dimensions=manifest['dimensions'],
                      scan_dimensions=manifest.get('scan_dimensions', manifest['dimensions']),
                      scan_axes=copy.deepcopy(manifest.get('scan_axes', [])),
+                     fixed_parameters=copy.deepcopy(manifest.get('fixed_parameters', {})),
+                     numeric_parameters=copy.deepcopy(manifest.get('numeric_parameters', {})),
+                     scale_time_with_ky=manifest.get('scale_time_with_ky', False),
                      parameters=list(fresh_output.keys()), points=len(manifest['loaded_points']),
                      workDir=manifest['workDir'], job_id=manifest.get('job_id', None),
                      status='published'))

@@ -4,6 +4,7 @@ import numpy as np
 import os
 import re
 from OMFITlib_cgyro_read import *
+from OMFITlib_cgyro_parameters import FIELDS as CALCULATION_FIELDS, apply_parameters, initialize_parameters, parameter_value
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -279,6 +280,8 @@ if source_rho is None:
     source_rho = base_input.get('rho', None)
 if 'rho' in base_input:
     del base_input['rho']  # Old projects may still carry this non-solver metadata.
+initialize_parameters(physics, base_input, OMFITtree)
+fixed_parameters = apply_parameters(base_input, physics, scan_dimensions)
 base_input['NONLINEAR_FLAG'] = 0
 points, scan_axes = scan_points(physics, scan_dimensions, setup['effnum'], base_input)
 input_names = ['input.cgyro']
@@ -299,11 +302,12 @@ for new_dir, overrides, point_metadata in points:
     os.makedirs(os.path.dirname(stage), exist_ok=True)
     current_input = base_input.duplicate()
     for name, value in overrides.items():
-        current_input[name] = value
-    time_scheme = physics['time_scheme']
-    if time_scheme[0] == 1 and overrides['KY'] > 1:
-        current_input['DELTA_T'] = time_scheme[1] / overrides['KY']
-        current_input['MAX_TIME'] = time_scheme[2] / overrides['KY']
+        current_input[name] = parameter_value(name, value) if name in CALCULATION_FIELDS else value
+    if physics['scale_time_with_ky'] and overrides['KY'] > 1:
+        current_input['DELTA_T'] = current_input['DELTA_T'] / overrides['KY']
+        current_input['MAX_TIME'] = current_input['MAX_TIME'] / overrides['KY']
+    point_metadata['effective_time'] = {
+        name: json_scalar(current_input[name]) for name in ('DELTA_T', 'MAX_TIME', 'PRINT_STEP') if name in current_input}
     packed_names = list(input_names)
     if restart_mode:
         if new_dir not in previous_cases:
@@ -361,6 +365,9 @@ manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': max(1, s
             'runid': root['SETTINGS']['EXPERIMENT']['runid'], 'nr': physics['nr'],
             'rho': source_rho, 'mass': physics['mass'], 'case_id': case_id,
             'scan_axes': scan_axes, 'point_table': point_table,
+            'fixed_parameters': fixed_parameters,
+            'numeric_parameters': {name: json_scalar(base_input[name]) for name in CALCULATION_FIELDS if name in base_input},
+            'scale_time_with_ky': bool(physics['scale_time_with_ky']),
             'input_sha256': input_checksums, 'status': 'prepared'}
 run_manifest = OMFITtree()
 run_manifest.update(manifest)

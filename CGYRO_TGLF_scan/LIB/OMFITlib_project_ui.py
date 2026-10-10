@@ -10,6 +10,8 @@ from OMFITlib_transfer_workflow import generation_issues, initialize_generation,
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
 from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choices, installation_issues
 from OMFITlib_cgyro_results import ResultBrowser
+from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS,
+    initialize_parameters, numeric_source, parameter_catalog, scan_parameter_names)
 from OMFITlib_project import (ION_CASES, LABELS, MODULES, PAGES, cgyro_input_issues,
     cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, generated_tglf_sources, location, module,
     pending_inputs, read, runtime_issues, summary, sync_cgyro_choices, sync_cgyro_ion_cases, text_value,
@@ -165,7 +167,7 @@ class ProjectUI:
             self.label('工程缺少 CGYRO_scan 模块。')
             return
         base = MODULES['cgyro'] + ('SETTINGS',)
-        self.ui.Tab('线性扫描与运行')
+        self.ui.Tab('输入与扫描')
         self.ui.ComboBox(self.prefix + "['cgyro_source_mode']", OrderedDict([
             ('Transfer_tool 半径输入', 'generated'), ('导入 input.cgyro', 'imported'),
             ('CGYRO 当前输入', 'current')]), '输入来源', state='readonly', updateGUI=True)
@@ -220,7 +222,7 @@ class ProjectUI:
         }.get(dim, [])
         selected = [row for row in rows if self.settings['cgyro_radii'].get(row['key'], False)]
         source = read(self.root, (selected or rows)[0]['path'], {}) if rows else {}
-        options = OrderedDict()
+        options = OrderedDict((name, name) for name in CGYRO_FIELDS)
         for name in sorted(source.keys(), key=str):
             if str(name) == 'KY' or not str(name).isupper():
                 continue
@@ -250,19 +252,6 @@ class ProjectUI:
                                   '同步取值', default=[], updateGUI=True,
                                   help='与参数 ' + str(index) + ' 的取值逐项对应。独立组合请使用多个参数轴。')
                 linked += 1
-        self.cgyro_checkbox(self.prefix + "['cgyro_advanced']", self.settings, 'cgyro_advanced', '数值与重启设置')
-        if self.settings['cgyro_advanced']:
-            self.ui.ComboBox(location(base + ('PHYSICS', 'restart_mode')), {'新计算': 0, '匹配结果重启': 1},
-                             '运行方式', state='readonly', updateGUI=True)
-            if rows:
-                choices = OrderedDict((row['key'], row['key']) for row in rows)
-                if self.settings.get('cgyro_edit_source', '') not in choices:
-                    self.settings['cgyro_edit_source'] = rows[0]['key']
-                self.ui.ComboBox(self.prefix + "['cgyro_edit_source']", choices, '要编辑的源输入', state='readonly', updateGUI=True)
-                row = next(item for item in rows if item['key'] == self.settings['cgyro_edit_source'])
-                self.ui.EditASCIIobject(location(row['path']), '编辑源 input.cgyro', updateGUI=True)
-            self.ui.Entry(location(base + ('PHYSICS', 'time_scheme')), 'ky 时间缩放',
-                          help='[0, dt, tmax] 不缩放；[1, dt, tmax] 对 ky>1 使用 dt/ky 与 tmax/ky。', updateGUI=True)
         self.ui.Separator('运行')
         problems = cgyro_plan_issues(self.root)
         if not problems:
@@ -282,6 +271,8 @@ class ProjectUI:
             self.label('需要：' + '；'.join(issues[:2]))
         if self.settings['message']:
             self.label(str(self.settings['message']).splitlines()[0][:200])
+        self.ui.Tab('计算参数')
+        self.render_cgyro_parameters(node, rows)
         self.ui.Tab('结果与记录')
         manifest = node.get('RUN_MANIFEST', {})
         if manifest:
@@ -292,6 +283,86 @@ class ProjectUI:
             self.guarded('重新收集未归档结果', self.actions.collect, collect_issues(self.root))
         ResultBrowser(self.root, self.ui).render(title=False)
         self.nav('对比绘图（可选）', 'plots')
+
+    def render_cgyro_parameters(self, node, rows):
+        physics = node['SETTINGS']['PHYSICS']
+        base = MODULES['cgyro'] + ('SETTINGS', 'PHYSICS')
+        selected = [row for row in rows if self.settings['cgyro_radii'].get(row['key'], False)]
+        available = selected or rows
+        self.label('勾选的项目统一修改；其余沿用各输入。扫描轴的取值优先。')
+        if not available:
+            self.label('先在“输入与扫描”中载入输入。')
+            return
+        choices = OrderedDict(('nr={} · {}'.format(row['nr'], row['key']), row['key']) for row in available)
+        if self.settings.get('cgyro_parameter_reference', '') not in choices.values():
+            self.settings['cgyro_parameter_reference'] = available[0]['key']
+        self.ui.ComboBox(self.prefix + "['cgyro_parameter_reference']", choices, '参考输入',
+                         state='readonly', updateGUI=True)
+        row = next(item for item in available if item['key'] == self.settings['cgyro_parameter_reference'])
+        source = read(self.root, row['path'])
+        parameters = initialize_parameters(physics, source, self.actions.factory)
+        sources = [read(self.root, item['path']) for item in available]
+        catalog = parameter_catalog(sources)
+        source_values = numeric_source(source)
+        for name, spec in catalog.items():
+            item = parameters.setdefault(name, self.actions.factory())
+            item.setdefault('enabled', False)
+            item.setdefault('value', source_values.get(name, spec['reference']))
+            if not item['enabled']:
+                item['value'] = source_values.get(name, spec['reference'])
+        # Keep unavailable saved overrides visible so the user can disable them.
+        for name in parameters:
+            if name not in catalog:
+                catalog[name] = dict(label='当前输入不支持', group='other', reference=None, kind='float')
+        self.settings.setdefault('cgyro_parameter_group', 'common')
+        self.settings.setdefault('cgyro_parameter_search', '')
+        with self.ui.same_row():
+            self.ui.ComboBox(self.prefix + "['cgyro_parameter_group']", CGYRO_GROUPS, '参数分组',
+                             state='readonly', updateGUI=True)
+            self.ui.Entry(self.prefix + "['cgyro_parameter_search']", '搜索参数', updateGUI=True)
+        group = self.settings['cgyro_parameter_group']
+        query = str(self.settings['cgyro_parameter_search']).strip().upper()
+        names = [name for name, spec in catalog.items()
+                 if (group == 'all' or (group == 'common' and name in CGYRO_FIELDS) or spec['group'] == group)
+                 and (not query or query in name or query in spec['label'].upper())]
+        scanned = scan_parameter_names(physics, int(node['SETTINGS']['SETUP']['idimrun']))
+        with self.ui.same_row():
+            self.ui.Button('本页读取参考值',
+                           lambda: self.actions.reset_cgyro_parameters(names, row['key']), updateGUI=True)
+            self.ui.Button('全部沿用输入', self.actions.inherit_cgyro_parameters, updateGUI=True)
+        if not names:
+            self.label('没有匹配的参数。')
+        previous_group = None
+        labels = {value: label for label, value in CGYRO_GROUPS.items()}
+        for name in names:
+            spec = catalog[name]
+            if spec['group'] != previous_group:
+                self.ui.Separator(labels.get(spec['group'], '其他输入参数'))
+                previous_group = spec['group']
+            if name in scanned:
+                self.label(name + ' · 由扫描轴设置')
+                continue
+            item = parameters[name]
+            path = base + ('fixed_parameters', name)
+            source_value = source_values.get(name, '未显式写入')
+            with self.ui.same_row():
+                self.cgyro_checkbox(location(path + ('enabled',)), item, 'enabled', name)
+                self.ui.Entry(location(path + ('value',)), spec['label'], updateGUI=True,
+                              state='normal' if item['enabled'] else 'disabled',
+                              help='参考输入：{}。勾选后，此值应用到本轮全部所选输入。'.format(source_value))
+        self.ui.Separator('时间缩放')
+        self.cgyro_checkbox(location(base + ('scale_time_with_ky',)), physics, 'scale_time_with_ky', '按 ky 缩放时间')
+        if physics['scale_time_with_ky']:
+            self.label('ky > 1 时，步长与运行时长分别除以 ky。')
+        self.ui.Separator('重启与源文件')
+        self.ui.ComboBox(location(base + ('restart_mode',)), {'新计算': 0, '匹配结果重启': 1},
+                         '运行方式', state='readonly', updateGUI=True)
+        self.cgyro_checkbox(self.prefix + "['cgyro_advanced']", self.settings, 'cgyro_advanced', '直接编辑源 input.cgyro')
+        if self.settings['cgyro_advanced']:
+            self.ui.EditASCIIobject(location(row['path']), '编辑参考输入', updateGUI=True)
+        problems = cgyro_plan_issues(self.root)
+        if problems:
+            self.label('需要：' + '；'.join(problems[:2]))
 
     def cgyro_checkbox(self, path, mapping, key, caption):
         value = mapping.get(key, False)

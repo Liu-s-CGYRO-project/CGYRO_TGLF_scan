@@ -233,6 +233,7 @@
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_project'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_project.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_project_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_results'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_results.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_parameters.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cases.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_selection'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_selection.py <-:-:-> {}
@@ -335,6 +336,7 @@
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_startup'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/LIB/OMFITlib_startup.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_read'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/LIB/OMFITlib_cgyro_read.py <-:-:-> {}
+['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_parameters.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SettingsNamelist.txt <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SETTINGS']['SETUP']['workDir'] <-:-:-> OMFITexpression <-:-:-> _"OMFITworkDir(root,'')" <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SETTINGS']['SETUP']['executable'] <-:-:-> OMFITexpression <-:-:-> _"'cgyro -e . -n ' + str(root['SETTINGS']['SETUP']['num_cores'])" <-:-:-> {}

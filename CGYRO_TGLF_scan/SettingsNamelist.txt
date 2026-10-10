@@ -137,6 +137,9 @@
     "cgyro_file": "",
     "tglf_file": "",
     "cgyro_source_mode": "generated",
+    "cgyro_parameter_reference": "",
+    "cgyro_parameter_group": "common",
+    "cgyro_parameter_search": "",
     "cgyro_ion_cases": {
       "BASE": true,
       "H": false,

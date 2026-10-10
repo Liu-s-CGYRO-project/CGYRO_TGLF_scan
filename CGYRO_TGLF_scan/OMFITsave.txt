@@ -232,6 +232,7 @@
 ['LIB']['OMFITlib_project'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project.py <-:-:-> {}
 ['LIB']['OMFITlib_project_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_ui.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_results'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_results.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_parameters.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cases.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro_selection'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro_selection.py <-:-:-> {}
@@ -334,6 +335,7 @@
 ['CGYRO_scan']['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_startup'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/LIB/OMFITlib_startup.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_read'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/LIB/OMFITlib_cgyro_read.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_cgyro_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_parameters.py <-:-:-> {}
 ['CGYRO_scan']['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./CGYRO_scan/SettingsNamelist.txt <-:-:-> {}
 ['CGYRO_scan']['SETTINGS']['SETUP']['workDir'] <-:-:-> OMFITexpression <-:-:-> _"OMFITworkDir(root,'')" <-:-:-> {}
 ['CGYRO_scan']['SETTINGS']['SETUP']['executable'] <-:-:-> OMFITexpression <-:-:-> _"'cgyro -e . -n ' + str(root['SETTINGS']['SETUP']['num_cores'])" <-:-:-> {}

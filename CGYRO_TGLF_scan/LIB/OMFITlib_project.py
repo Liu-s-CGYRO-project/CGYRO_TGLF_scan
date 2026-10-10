@@ -19,6 +19,8 @@ from OMFITlib_gacode_installations import (PROGRAMS, installation_issues, merge_
     parse_probe, probe_script, valid_path)
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, tgyro_batch_settings
 from OMFITlib_transfer_particles import particle_options
+from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters, initialize_parameters,
+    numeric_source, parameter_catalog, parameter_value, scan_parameter_names, validated_overrides)
 
 MODULES = {
     'transfer': ('Transfer_tool',), 'cgyro': ('CGYRO_scan',),
@@ -390,6 +392,11 @@ def cgyro_plan_issues(root):
         return ['至少选择一个主离子方案']
     try:
         dimensions, axes, _ = cgyro_scan_axes(root)
+        selected = [row for row in rows if settings['cgyro_radii'].get(row['key'], False)]
+        sources = [read(root, row['path']) for row in selected]
+        physics = read(root, MODULES['cgyro'] + ('SETTINGS', 'PHYSICS'))
+        initialize_parameters(physics, sources[0])
+        validated_overrides(physics, sources, scan_parameter_names(physics, dimensions))
         chosen, previous = _generated_particle_record(root)
         if rows[0]['path'][:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
             if previous is None or input_digest(chosen) != input_digest(previous):
@@ -398,11 +405,17 @@ def cgyro_plan_issues(root):
             if not settings['cgyro_radii'].get(row['key'], False):
                 continue
             source = read(root, row['path'])
-            validate_input(source, 'cgyro')
+            effective = {key: source[key] for key in source.keys()}
+            apply_parameters(effective, physics, dimensions)
             for axis in axes:
                 for parameter in [axis] + axis.get('linked', []):
-                    if parameter['name'] not in source:
+                    if parameter['name'] not in source and parameter['name'] not in CGYRO_FIELDS:
                         raise ValueError('nr={} 的输入没有参数 {}。'.format(row['nr'], parameter['name']))
+                    if parameter['name'] in CGYRO_FIELDS:
+                        for value in parameter['values']:
+                            parameter_value(parameter['name'], value)
+                    effective[parameter['name']] = parameter['values'][0]
+            validate_input(effective, 'cgyro')
             mains = _cgyro_main_indices(root, source, row['path'])
             if any(bool(ion_cases.get(key, False)) for key in ISOTOPE_MASSES) and not any(
                     abs(float(source.get('Z_' + str(index), 0.0)) - 1.0) <= 1e-8 for index in mains):
@@ -688,6 +701,8 @@ class ProjectActions:
         ion_cases = [key for key in ION_CASES
                      if bool(sync_cgyro_ion_cases(self.settings, self.factory).get(key, False))]
         batch, records, plan = self.factory(), self.factory(), []
+        physics = module(self.root, 'cgyro')['SETTINGS']['PHYSICS']
+        dimensions = int(module(self.root, 'cgyro')['SETTINGS']['SETUP']['idimrun'])
         for row in rows:
             if not bool(self.settings['cgyro_radii'].get(row['key'], False)):
                 continue
@@ -703,6 +718,7 @@ class ProjectActions:
                     value, changed = _isotope_input(source, ion_case, mains)
                 if 'rho' in value:
                     del value['rho']  # Metadata stays in plan/RUN_DB, never in input.cgyro.
+                fixed = apply_parameters(value, physics, dimensions)
                 radial[ion_case] = value
                 plan.append(dict(nr=row['nr'], rho=row['rho'], ion_case=ion_case,
                                  ion_label=source_ion_label if ion_case == 'BASE' else ion_case,
@@ -712,6 +728,7 @@ class ProjectActions:
             record = self.factory()
             record.update(dict(source=list(row['path']), source_digest=input_digest(source),
                                rho=row['rho'], main_species=mains, cases=ion_cases,
+                               fixed_parameters=dict(fixed),
                                original_ion_label=source_ion_label))
             records[nr_key] = record
         if not plan:
@@ -735,6 +752,27 @@ class ProjectActions:
         pipeline['cgyro'] = marker
         self.settings['message'] = 'CGYRO 已准备 {} 个组合。'.format(len(plan))
         return plan
+
+    def inherit_cgyro_parameters(self):
+        physics = module(self.root, 'cgyro')['SETTINGS']['PHYSICS']
+        for item in physics.get('fixed_parameters', {}).values():
+            item['enabled'] = False
+        self.settings['message'] = '固定参数已改为沿用各输入。'
+
+    def reset_cgyro_parameters(self, names, source_key):
+        rows = sync_cgyro_choices(self.root, self.settings, self.factory)
+        row = next((item for item in rows if item['key'] == source_key), None)
+        if row is None:
+            raise ValueError('参考输入已变化，请重新选择。')
+        source = read(self.root, row['path'])
+        physics = module(self.root, 'cgyro')['SETTINGS']['PHYSICS']
+        parameters = initialize_parameters(physics, source, self.factory)
+        values = numeric_source(source)
+        catalog = parameter_catalog([source])
+        for name in names:
+            if name in catalog:
+                parameters[name]['value'] = values.get(name, catalog[name]['reference'])
+        self.settings['message'] = '本页参数已读取参考输入；启用状态保留。'
 
     def sync_endpoint(self, name):
         node = module(self.root, name)
