@@ -295,23 +295,58 @@ class ResultBrowser:
 
 def plot_selected(root, notebook):
     data = result_grid(root)
+    # A single coordinate has no cell width for a center-based color mesh.
+    # Plot the remaining coordinate directly, with markers for single points.
+    populated = np.isfinite(data['omega']) | np.isfinite(data['gamma'])
+    x_indices = np.flatnonzero(np.any(populated, axis=0))
+    y_indices = np.flatnonzero(np.any(populated, axis=1))
+    line_plot = len(x_indices) == 1 or len(y_indices) == 1
+    fixed_values = dict(data['filters'])
+    plot_values = (data['omega'], data['gamma'])
+    if line_plot:
+        if len(x_indices) == 1:
+            fixed_index = x_indices[0]
+            coordinate_name, coordinates = data['y_name'], data['y']
+            fixed_name, fixed_value = data['x_name'], data['x'][fixed_index]
+            plot_values = tuple(values[:, fixed_index] for values in plot_values)
+        else:
+            fixed_index = y_indices[0]
+            coordinate_name, coordinates = data['x_name'], data['x']
+            fixed_name, fixed_value = data['y_name'], data['y'][fixed_index]
+            plot_values = tuple(values[fixed_index, :] for values in plot_values)
+        # A ky-only run stores a compatibility coordinate, not a scan axis.
+        if int(data['entry'].get('scan_dimensions', data['dimensions'])) != 0 or fixed_name == 'KY':
+            fixed_values[fixed_name] = fixed_value
     title = '{} | {}'.format(data['entry'].get('runid', ''), data['entry'].get('case_id', ''))
-    suffix = ', '.join('{}={:.6g}'.format(name, value) for name, value in data['filters'].items())
+    suffix = ', '.join('{}={:.6g}'.format(name, value) for name, value in fixed_values.items())
     if suffix:
         title += ' | ' + suffix
     nb = notebook(0, 'CGYRO result browser')
     fig, axes = nb.subplots(1, 2, figsize=(12, 5.2), label=title)
-    for axis, values, label, cmap in zip(axes, (data['omega'], data['gamma']),
+    for axis, values, label, cmap in zip(axes, plot_values,
                                          (r'$\omega$', r'$\gamma$'), ('coolwarm', 'viridis')):
-        mesh = axis.pcolormesh(data['x'], data['y'], values, shading='auto', cmap=cmap)
-        axis.set_xlabel(data['x_name'])
-        axis.set_ylabel(r'$k_y\rho_s$' if data['y_name'] == 'KY' else data['y_name'])
+        if line_plot:
+            axis.plot(coordinates, values, marker='o', markersize=4, linewidth=1.5)
+            axis.set_xlabel(r'$k_y\rho_s$' if coordinate_name == 'KY' else coordinate_name)
+            axis.set_ylabel(label)
+            axis.grid(True, alpha=.25)
+        else:
+            mesh = axis.pcolormesh(data['x'], data['y'], values, shading='auto', cmap=cmap)
+            axis.set_xlabel(data['x_name'])
+            axis.set_ylabel(r'$k_y\rho_s$' if data['y_name'] == 'KY' else data['y_name'])
+            fig.colorbar(mesh, ax=axis)
         axis.set_title(label)
-        fig.colorbar(mesh, ax=axis)
-    valid = np.argwhere(np.isfinite(data['gamma']))
-    if len(valid):
-        best = valid[np.argmax([data['gamma'][tuple(index)] for index in valid])]
-        axes[1].plot(data['x'][best[1]], data['y'][best[0]], marker='x', color='white', markersize=9, markeredgewidth=2)
+    if line_plot:
+        valid = np.flatnonzero(np.isfinite(plot_values[1]))
+        if len(valid):
+            best = valid[np.argmax(plot_values[1][valid])]
+            axes[1].plot(coordinates[best], plot_values[1][best], marker='x', color='tab:red',
+                         markersize=9, markeredgewidth=2, linestyle='none')
+    else:
+        valid = np.argwhere(np.isfinite(data['gamma']))
+        if len(valid):
+            best = valid[np.argmax([data['gamma'][tuple(index)] for index in valid])]
+            axes[1].plot(data['x'][best[1]], data['y'][best[0]], marker='x', color='white', markersize=9, markeredgewidth=2)
     fig.suptitle(title)
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0, 1, .94))
     return fig

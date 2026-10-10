@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.16.5",
-  "parent_release": "1.16.4",
+  "version": "1.16.6",
+  "parent_release": "1.16.5",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -229,7 +229,7 @@
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_ori.py": "6592c4d05a634ddb80617fbb0231d617a778aff9b8431a1727240f8456fb5f57",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/update.py": "339ffa65e84a6d2d5f7fbb5c667cfcb88c10008bb12001dd3be8737da2028ddf",
     "CGYRO_TGLF_scan/CGYRO_scan/SettingsNamelist.txt": "2dc94560d0e19992a787454d9c5afa6f3901bfd2715753d97a016f27575148e0",
-    "CGYRO_TGLF_scan/CGYRO_scan/help.rst": "335553b3aa75ae09d849879ec74faa93bd7e07740bd2e3e07b107178b08507e8",
+    "CGYRO_TGLF_scan/CGYRO_scan/help.rst": "54afab67bd16ed2bb45b1be28f80dee96b20aaea22cf841eccfaef2f470c3829",
     "CGYRO_TGLF_scan/CGYRO_scan/tmp.py.py": "824f92439e21835df6980513fc12e9f2238968076e8cad79b2d19b6027a2b68f",
     "CGYRO_TGLF_scan/GUIS/CGYRO_results.py": "1c9a6c670a0ce0ecfd4fc2742de574007360177aa94a84a9f790a0bb561f9034",
     "CGYRO_TGLF_scan/GUIS/CGYRO_vs_CGYRO.py": "722f8c782154169fd6e0b31ddfc273e1f4083bf6ef814e6cd020c3f427bdcf5e",
@@ -238,7 +238,7 @@
     "CGYRO_TGLF_scan/GUIS/Template_manager.py": "0f597f04c35fba22fafaf913f0a2b63772fce1b70d41e03eeeef4f0faa85c28f",
     "CGYRO_TGLF_scan/GUIS/main.py": "845360f2ffac62a788a633483f902b82ff3e07147b8ede797ba6ce40e2796045",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_parameters.py": "78a7b977916dc2e08c955ab0279cd684ef919955c2a844bb1bcfa3609870627f",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_results.py": "66f26dd1f0ed51881ae919513235496de114562d43d97407b2048b447b362ff2",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_results.py": "741eea094b23695a284b836212d528c99e404c7703b964a1af6cf8f6ede16105",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cases.py": "59cd3e532b83f0ac276a92629dcf8ad443680eae04657c2440b9b568f3e3a845",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro.py": "31b71b802535e765542429c6db606289233e6cf59c5776b220b1f3320e6e6280",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_data.py": "f7c539dfe18cf722c20519d05417d93b8a2ea71586f1660b8a17666fa0dbc8d8",
@@ -503,7 +503,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "cddf70c1ca0b57dd1514553501173fbb2e43a7029fc5839a4cc330fe7265100c"
+    "VALIDATION.md": "62fa009455eaf4e1429ecbf76d666a7417d2253b2288f13c1fb0f4364f23593a"
   },
   "workbench_features": [
     "native_omfit_project_gui",
@@ -527,7 +527,8 @@
     "cgyro_direct_parameter_editing",
     "cgyro_solver_error_diagnostics",
     "cgyro_builtin_parameter_catalog",
-    "cgyro_grouped_parameter_view"
+    "cgyro_grouped_parameter_view",
+    "cgyro_degenerate_scan_plot"
   ],
   "template_manager_version": "1.10.5",
   "support_archive_sha256": "cb71c03e57997da7bba99b724ca9a757fff6bad5a62f9daf4639bc6f6588618b",
