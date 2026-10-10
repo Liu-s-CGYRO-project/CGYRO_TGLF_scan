@@ -1041,9 +1041,14 @@ class TemplateManager(ManagerUpdateUI):
                     lambda: GitHub(release['repository'], cancel=self.cancel, progress=self._progress, proxy=proxy).pull(release, library),
                     self._use_path)
             else:
-                self._use_path(release['path'])
+                self._run('正在校验模板…', lambda: self._verify_local_template(release['path']), self._use_path)
         except TemplateError as exc:
             self._error(exc)
+
+    def _verify_local_template(self, path):
+        with Template(path) as template:
+            template.verify(self.cancel)
+        return path
 
     def _use_path(self, path):
         with Template(path) as template:
@@ -1055,6 +1060,8 @@ class TemplateManager(ManagerUpdateUI):
                 path = Path(self.current.get())
                 self.output.set(str(path.with_name(path.stem + '__' + release['author'] + '_' + release['version'] + '.zip')))
             self.tabs.select(self.pages[1])
+        self.status.set('模板校验完成 · {} · 可点击“预览变更”'.format(release['version']))
+        self._log('模板校验完成：{} / {} / {}'.format(release['author'], release['id'], release['version']))
 
     def _transfer(self, source, directory):
         def work():
