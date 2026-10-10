@@ -563,8 +563,8 @@ class ProjectUI:
             self.ui.Entry(prefix + "['workDir']", '工作根目录', updateGUI=True)
         self.label('此目录下自动使用 cgyro、tglf、tgyro、transfer 等子目录，避免同名输入互相覆盖。')
         self.ui.Separator('共用 GACODE 环境')
-        self.ui.Entry(prefix + "['environment']", '环境初始化脚本', multiline=True,
-                      help='统一填写编译器、MPI、GACODE_PLATFORM 等基础环境。下方所选安装会覆盖 GACODE_ROOT 并重新载入 gacode_setup。')
+        self.ui.Entry(prefix + "['environment']", '环境初始化脚本', multiline=True, updateGUI=True,
+                      help='各程序选同一安装时，GACODE_ROOT 自动同步到脚本。分别选择版本时，每个程序在加载平台环境前绑定自己的路径；其余初始化命令保留。修改后应用到整个工程。')
         self.gacode_installations(config, prefix, draft is not None)
         self.ui.Separator('CGYRO 扫描资源')
         self.ui.ComboBox(prefix + "['scheduler']", OrderedDict([('本机执行', 'local'), ('Slurm', 'slurm'), ('PBS', 'pbs')]),
@@ -625,7 +625,7 @@ class ProjectUI:
             options = installation_choices(config, detection)
             if self.settings.get('gacode_entry', '') not in installs:
                 self.settings['gacode_entry'] = next(iter(installs))
-            self.ui.ComboBox(self.prefix + "['gacode_entry']", options, '安装列表',
+            self.ui.ComboBox(self.prefix + "['gacode_entry']", options, '路径列表（维护）',
                              state='disabled' if draft is not None else 'readonly', updateGUI=True)
             name = self.settings['gacode_entry']
             self.label(str(installs[name]))
@@ -646,7 +646,7 @@ class ProjectUI:
             self.ui.ComboBox(prefix + "[{!r}]".format(program + '_install'),
                              installation_choices(config, detection, program), caption + ' 版本',
                              state='readonly', updateGUI=True)
-        self.label('TGYRO 与 profiles_gen 可用完整安装；CGYRO 可保留专用版本。应用时再次检查路径。')
+        self.label('同版选择自动同步脚本路径；分别选版时，各程序按所选路径初始化。修改后应用。')
 
     def server_text_entry(self, draft, key, caption):
         """Plain text in an OMFIT row, without Python expression evaluation.

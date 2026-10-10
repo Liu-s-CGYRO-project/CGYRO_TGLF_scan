@@ -5,7 +5,7 @@ import copy
 import re
 from pathlib import PurePosixPath
 from OMFITlib_gacode_installations import (INSTALL_DEFAULTS, initialize_installations,
-    installation_issues, program_environment)
+    installation_issues, program_environment, sync_environment)
 
 
 TARGETS = OrderedDict([
@@ -70,6 +70,7 @@ def initialize_runtime(root, factory=dict):
     initialize_installations(result, factory)
     for key, value in DEFAULTS.items():
         result.setdefault(key, copy.deepcopy(value))
+    sync_environment(result)
     return result
 
 

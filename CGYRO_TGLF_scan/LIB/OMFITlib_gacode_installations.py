@@ -61,6 +61,77 @@ def selected_root(config, program):
     return str(config.get('gacode_installs', {}).get(name, '') or '').strip()
 
 
+def _shell_words(line):
+    """Recognize simple assignments/sources without evaluating shell code."""
+    try:
+        lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        words = list(lexer)
+    except ValueError:
+        return []
+    if words and words[-1] == ';':
+        words.pop()
+    return words
+
+
+def _root_assignment(line):
+    words = _shell_words(line)
+    if words and words[0] == 'export':
+        words = words[1:]
+    return len(words) == 1 and words[0].startswith('GACODE_ROOT=')
+
+
+def _gacode_source(line, previous_root=''):
+    words = _shell_words(line)
+    if len(words) != 2 or words[0] not in ('source', '.'):
+        return ''
+    for prefix in ('$GACODE_ROOT', '${GACODE_ROOT}', previous_root):
+        if prefix and words[1].startswith(prefix + '/'):
+            suffix = words[1][len(prefix):]
+            if suffix == '/shared/bin/gacode_setup' or re.fullmatch(
+                    r'/platform/env/env\.(?:\$(?:GACODE_PLATFORM|\{GACODE_PLATFORM\})|[A-Za-z0-9_.-]+)', suffix):
+                return suffix
+    return ''
+
+
+def bind_environment(script, root, check_setup=False):
+    """Bind the selected installation before platform or setup is sourced."""
+    if not valid_path(root):
+        raise ValueError('GACODE 安装路径无效：' + str(root))
+    script = str(script or '').strip()
+    previous_root = script_root(script)
+    lines = script.splitlines()
+    header = []
+    if lines and lines[0].startswith('#!'):
+        header.append(lines.pop(0))
+    header.append('export GACODE_ROOT=' + shlex.quote(root))
+    if check_setup:
+        header.append('[ -r "$GACODE_ROOT/shared/bin/gacode_setup" ] || { echo "Missing gacode_setup." >&2; exit 1; }')
+    body = []
+    for line in lines:
+        if _root_assignment(line):
+            continue
+        suffix = _gacode_source(line, previous_root)
+        body.append('source "$GACODE_ROOT' + suffix + '"' if suffix else line)
+    while body and not body[0].strip():
+        body.pop(0)
+    return '\n'.join(header + body)
+
+
+def sync_environment(config):
+    """Keep the editable script consistent when every program shares a root."""
+    roots = [selected_root(config, program) for program in PROGRAMS]
+    if not all(roots) or len(set(roots)) != 1 or not valid_path(roots[0]):
+        return False
+    original = str(config.get('environment', '') or '')
+    updated = bind_environment(original, roots[0])
+    if updated == original:
+        return False
+    config.setdefault('environment_before_install_sync', original)
+    config['environment'] = updated
+    return True
+
+
 def installation_issues(config, detection=None):
     issues = []
     installs = config.get('gacode_installs', {})
@@ -197,9 +268,9 @@ def program_environment(config, program):
         return common
     root = selected_root(config, program)
     if root:
-        if not valid_path(root):
-            raise ValueError('GACODE 安装路径无效：' + root)
-        common += ('\nexport GACODE_ROOT=' + shlex.quote(root)
-                   + '\n[ -r "$GACODE_ROOT/shared/bin/gacode_setup" ] || { echo "Missing gacode_setup." >&2; exit 1; }'
-                   + '\nsource "$GACODE_ROOT/shared/bin/gacode_setup"\nhash -r')
+        common = bind_environment(common, root, check_setup=True)
+        if not any(_gacode_source(line) == '/shared/bin/gacode_setup' for line in common.splitlines()):
+            common += '\nsource "$GACODE_ROOT/shared/bin/gacode_setup"'
+        common += ('\n[ "${GACODE_ROOT:-}" = ' + shlex.quote(root)
+                   + ' ] || { echo "Environment changed the selected GACODE_ROOT." >&2; exit 1; }\nhash -r')
     return common + '\n' + program_guard(program).rstrip()
