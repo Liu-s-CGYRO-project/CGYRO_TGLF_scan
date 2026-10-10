@@ -297,7 +297,8 @@ class ProjectUI:
         value = mapping.get(key, False)
         value = str(value).lower() in ('true', '.true.', '1', '1.0')
         mapping[key] = value
-        control = self.ui.CheckBox(path, caption, default=False, updateGUI=True)
+        # Native CheckBox returns one widget per location, including a single path.
+        control = self.ui.CheckBox(path, caption, default=False, updateGUI=True)[0]
         variable = tk.BooleanVar(master=control, value=value)
         control.configure(variable=variable, onvalue=1, offvalue=0)
         variable.set(value)

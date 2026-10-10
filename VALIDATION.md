@@ -1,3 +1,9 @@
+# 修订记录 · 工程 1.15.1 / 管理器 1.10.4
+
+对照原生 `omfit_classes/OMFITx.py` 的 `CheckBox` 实现确认返回值为控件列表，单路径同样返回列表。CGYRO 的共用复选框辅助方法改为取出列表中的实际控件，再作为 BooleanVar 的 master 并设置变量与状态，修复页面构建时的 `_root` 异常。半径、主离子自选和高级设置统一使用该辅助方法。
+
+静态核对项目中接收 CheckBox 返回值的调用：其他入口未将返回列表直接用作 Tk master。完成 Python 3.9 语法、OMFIT 格式/引用、分发包源文件与哈希检查；按用户要求未运行回归测试、GUI 或求解器，未提交计算任务。静态检查不代表实际桌面显示验收。
+
 # 修订记录 · 工程 1.15.0 / 管理器 1.10.4
 
 对照本地原生 omfit_classes/omfit_base.py 中 OMFITtree(filename='', ...) 的构造签名，修复 CGYRO 运行记录和准线性缓存误将字典作为路径的调用，统一使用空树加 update(mapping)。核对原生 ComboBox、Entry、CheckBox 和 CompoundGUI 的回调、额外 Tk 参数和命名空间行为，重做 CGYRO 两页界面并让模块入口复用同一套控件。
