@@ -8,7 +8,7 @@ GROUPS = OrderedDict([('常用设置', 'common'), ('时间与输出', 'time'),
                       ('网格与速度空间', 'grid'), ('场与碰撞', 'model'),
                       ('数值算法', 'algorithm'), ('其他输入参数', 'other'), ('全部参数', 'all')])
 # Fallbacks are explicit GUI reference values, not forced solver values.
-# Nothing is written until the user enables an override or selects a scan axis.
+# Nothing is written until the user edits a value or selects a scan axis.
 FIELDS = OrderedDict([
     ('DELTA_T', ('时间步长', 'time', 0.01, 'float', True)),
     ('MAX_TIME', ('运行时长', 'time', 100.0, 'float', True)),
@@ -114,9 +114,9 @@ def validated_overrides(physics, sources, scan_names=()):
         if not bool(item.get('enabled', False)) or name in scan_names:
             continue
         if name not in catalog or managed_parameter(name):
-            raise ValueError('当前输入不支持固定参数 {}，请取消该项统一设置。'.format(name))
+            raise ValueError('当前输入不支持固定参数 {}，请恢复该参数的输入值。'.format(name))
         if name not in FIELDS and any(name not in numeric_source(source) for source in sources):
-            raise ValueError('部分所选输入没有参数 {}，请取消统一设置或分别编辑源输入。'.format(name))
+            raise ValueError('部分所选输入没有参数 {}，请恢复输入值或分别编辑源输入。'.format(name))
         overrides[name] = parameter_value(name, item.get('value', None))
     if bool(physics.get('scale_time_with_ky', False)):
         if set(scan_names) & {'DELTA_T', 'MAX_TIME'}:

@@ -753,6 +753,12 @@ class ProjectActions:
         self.settings['message'] = 'CGYRO 已准备 {} 个组合。'.format(len(plan))
         return plan
 
+    def edit_cgyro_parameter(self, name):
+        """A committed native Entry edit applies directly, without a checkbox."""
+        physics = module(self.root, 'cgyro')['SETTINGS']['PHYSICS']
+        physics['fixed_parameters'][name]['enabled'] = True
+        self.settings['message'] = name + ' 已更新。'
+
     def inherit_cgyro_parameters(self):
         physics = module(self.root, 'cgyro')['SETTINGS']['PHYSICS']
         for item in physics.get('fixed_parameters', {}).values():
@@ -770,9 +776,12 @@ class ProjectActions:
         values = numeric_source(source)
         catalog = parameter_catalog([source])
         for name in names:
+            if name not in parameters:
+                continue
+            parameters[name]['enabled'] = False
             if name in catalog:
                 parameters[name]['value'] = values.get(name, catalog[name]['reference'])
-        self.settings['message'] = '本页参数已读取参考输入；启用状态保留。'
+        self.settings['message'] = '参数已恢复为沿用各输入的值。'
 
     def sync_endpoint(self, name):
         node = module(self.root, name)

@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.16.1",
-  "parent_release": "1.16.0",
+  "version": "1.16.2",
+  "parent_release": "1.16.1",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -229,7 +229,7 @@
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_ori.py": "6592c4d05a634ddb80617fbb0231d617a778aff9b8431a1727240f8456fb5f57",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/update.py": "339ffa65e84a6d2d5f7fbb5c667cfcb88c10008bb12001dd3be8737da2028ddf",
     "CGYRO_TGLF_scan/CGYRO_scan/SettingsNamelist.txt": "2dc94560d0e19992a787454d9c5afa6f3901bfd2715753d97a016f27575148e0",
-    "CGYRO_TGLF_scan/CGYRO_scan/help.rst": "cb203ce3cf6fd042aab32bf2f24fcccca21e948176c3c3b9c3be62c86a04dc53",
+    "CGYRO_TGLF_scan/CGYRO_scan/help.rst": "507afb533cd570b769573dec6a7bf41a9cf3f65cc47989e49020517209afd641",
     "CGYRO_TGLF_scan/CGYRO_scan/tmp.py.py": "824f92439e21835df6980513fc12e9f2238968076e8cad79b2d19b6027a2b68f",
     "CGYRO_TGLF_scan/GUIS/CGYRO_results.py": "1c9a6c670a0ce0ecfd4fc2742de574007360177aa94a84a9f790a0bb561f9034",
     "CGYRO_TGLF_scan/GUIS/CGYRO_vs_CGYRO.py": "722f8c782154169fd6e0b31ddfc273e1f4083bf6ef814e6cd020c3f427bdcf5e",
@@ -237,7 +237,7 @@
     "CGYRO_TGLF_scan/GUIS/TGLF_multi.py": "555d78e5a7043bf5e1daf5f25565b6fce414a30c74d413c4b1d1775d522752b6",
     "CGYRO_TGLF_scan/GUIS/Template_manager.py": "0f597f04c35fba22fafaf913f0a2b63772fce1b70d41e03eeeef4f0faa85c28f",
     "CGYRO_TGLF_scan/GUIS/main.py": "845360f2ffac62a788a633483f902b82ff3e07147b8ede797ba6ce40e2796045",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_parameters.py": "c25c7b27530fb53ac8f22bd40bfe101a7192ae4c815d5b320dd4df1b10011312",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_parameters.py": "fbf684c8782688468054fb2a2e2e27215d83111ab1f3f1cd13999b07a3e891c6",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_results.py": "66f26dd1f0ed51881ae919513235496de114562d43d97407b2048b447b362ff2",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cases.py": "59cd3e532b83f0ac276a92629dcf8ad443680eae04657c2440b9b568f3e3a845",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro.py": "31b71b802535e765542429c6db606289233e6cf59c5776b220b1f3320e6e6280",
@@ -261,9 +261,9 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_gacode_installations.py": "287b0f6fd3408f372190bd3dfef904f92ebfa89f4eb30439f6de6ce9ebb7eaa9",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py": "9d9448f7a1bcd8a461c80efdf75ddf86d77c1f15878a760b04718fb4425b5fc4",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "ee5971b06c3b7f26bc671e2457a2fdc0580f9ec2488b3baeebd218956fd45c73",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_project.py": "4210a87412682da51f9e93a06d5296a06264a026e7cbfd3fb708629ab26d71ae",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_project.py": "a3216278f5203e61849059391d7a8ad9f1b3fb6fbd449f0944c41565a73f6df5",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_runtime.py": "8fb0001d80b8f2746bbfb016994f750bbcb5a84e3fcc217837363c7a7dd47c4c",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py": "321c89606b0243692404c86db86d56744ad362081c28b2a1d08dd1daf586c0e3",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py": "8efc19799bc03a34a29da86e8c49485873e6c75b39f8e187e3fbe2d324062505",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_data.py": "c2b7b1505f5c514be00b2603c8d8503c16ad5489add75ee1e8c60e54705b551d",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_plot.py": "631e45938afad95d823f06005dfab1d2b1632736434278ab24f07323ba09d8b4",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_run.py": "f6c2768ef02e954bb5fc2ddb373a0f6140b03692ce1d82b805e120c50327967f",
@@ -503,7 +503,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "f5d9f76e17749e1f3d17540e7d40d95c5cbd6fd8c5329ccf33f33ada1c5c4b98"
+    "VALIDATION.md": "6a9ece5966ce1d258c89c88b76ede68f508612ca33203fa89696773fa6a691ee"
   },
   "workbench_features": [
     "native_omfit_project_gui",
@@ -523,7 +523,8 @@
     "cgyro_ky_only_scan",
     "native_tree_manifest_initialization",
     "cgyro_calculation_parameters",
-    "cgyro_vertical_layout"
+    "cgyro_vertical_layout",
+    "cgyro_direct_parameter_editing"
   ],
   "template_manager_version": "1.10.5",
   "support_archive_sha256": "cb71c03e57997da7bba99b724ca9a757fff6bad5a62f9daf4639bc6f6588618b",

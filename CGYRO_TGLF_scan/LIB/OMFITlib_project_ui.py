@@ -292,7 +292,7 @@ class ProjectUI:
         base = MODULES['cgyro'] + ('SETTINGS', 'PHYSICS')
         selected = [row for row in rows if self.settings['cgyro_radii'].get(row['key'], False)]
         available = selected or rows
-        self.label('勾选的项目统一修改；其余沿用各输入。扫描轴的取值优先。')
+        self.label('直接修改数值，回车生效；扫描轴的取值优先。')
         if not available:
             self.label('先在“输入与扫描”中载入输入。')
             return
@@ -313,10 +313,11 @@ class ProjectUI:
             item.setdefault('value', source_values.get(name, spec['reference']))
             if not item['enabled']:
                 item['value'] = source_values.get(name, spec['reference'])
-        # Keep unavailable saved overrides visible so the user can disable them.
-        for name in parameters:
-            if name not in catalog:
-                catalog[name] = dict(label='当前输入不支持', group='other', reference=None, kind='float')
+        # Keep active, unavailable saved values visible until they are restored.
+        for name, item in parameters.items():
+            if name not in catalog and item.get('enabled', False):
+                catalog[name] = dict(label='当前输入不支持', group='other', reference=None,
+                                     kind='float', supported=False)
         self.settings.setdefault('cgyro_parameter_group', 'common')
         self.settings.setdefault('cgyro_parameter_search', '')
         self.ui.ComboBox(self.prefix + "['cgyro_parameter_group']", CGYRO_GROUPS, '参数分组',
@@ -329,9 +330,9 @@ class ProjectUI:
                  and (not query or query in name or query in spec['label'].upper())]
         scanned = scan_parameter_names(physics, int(node['SETTINGS']['SETUP']['idimrun']))
         with self.ui.same_row():
-            self.ui.Button('本页读取参考值',
+            self.ui.Button('本页恢复输入值',
                            lambda: self.actions.reset_cgyro_parameters(names, row['key']), updateGUI=True)
-            self.ui.Button('全部沿用输入', self.actions.inherit_cgyro_parameters, updateGUI=True)
+            self.ui.Button('全部恢复输入值', self.actions.inherit_cgyro_parameters, updateGUI=True)
         if not names:
             self.label('没有匹配的参数。')
         previous_group = None
@@ -353,11 +354,15 @@ class ProjectUI:
                 frame = getattr(line, 'frm_top', None)
                 if isinstance(frame, tk.Misc):
                     frame._cgyro_inline = True
-                self.cgyro_checkbox(location(path + ('enabled',)), item, 'enabled',
-                                     name + ' · ' + spec['label'])
+                self.label(name + ' · ' + spec['label'])
                 self.ui.Entry(location(path + ('value',)), '', width=14, updateGUI=True,
-                              state='normal' if item['enabled'] else 'disabled',
-                              help='参考输入：{}。勾选后，此值应用到本轮全部所选输入。'.format(source_value))
+                              state='normal' if spec.get('supported', True) else 'disabled',
+                              postcommand=lambda location=None, name=name: self.actions.edit_cgyro_parameter(name),
+                              help='参考输入：{}。修改并回车后，应用到本轮全部所选输入；'
+                                   '点击“恢复”则沿用各输入自己的值。'.format(source_value))
+                self.ui.Button('恢复',
+                               lambda name=name: self.actions.reset_cgyro_parameters([name], row['key']),
+                               updateGUI=True)
         self.ui.Separator('时间缩放')
         self.cgyro_checkbox(location(base + ('scale_time_with_ky',)), physics, 'scale_time_with_ky', '按 ky 缩放时间')
         if physics['scale_time_with_ky']:
