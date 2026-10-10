@@ -239,10 +239,10 @@ class ResultBrowser:
                 description += '，{} 由上方切片选择'.format(names[2])
             description += '，ky 由上方切片选择'
         self.anchor = self.ui.Label('{}；{} 个已读取计算点。'.format(description, len(tasks)), align='left')
-        with self.ui.same_row():
-            self.ui.Button('查看当前数值表', self._show_table)
-            self.ui.Button('绘制当前结果（可选）', lambda: self.root['PLOTS']['CGYRO_results'].plot())
-        self.ui.Label('数值表显示参数、ky、平均 ω/γ 与相对波动，并标出当前范围的最大 γ。', align='left')
+        self.ui.Button('查看当前数值表', self._show_table)
+        self.ui.Button('绘制当前结果（可选）', lambda: self.root['PLOTS']['CGYRO_results'].plot())
+        self.ui.Label('数值表显示参数、ky、平均 ω/γ 与相对波动，并标出当前范围的最大 γ。',
+                      align='left', wraplength=600)
 
     def _show_table(self):
         data = result_grid(self.root)
@@ -255,12 +255,14 @@ class ResultBrowser:
                    key=lambda row: row['gamma'], default=None)
         window = tk.Toplevel(self.anchor.winfo_toplevel())
         window.title('CGYRO 数值结果')
-        window.geometry('1200x620')
+        width = min(800, window.winfo_screenwidth() - 64)
+        height = min(880, window.winfo_screenheight() - 100)
+        window.geometry('{}x{}'.format(width, height))
         title = '{} | {}'.format(data['entry'].get('runid', ''), data['entry'].get('case_id', ''))
         if data['filters']:
             title += ' | ' + ', '.join('{}={:.7g}'.format(key, value)
                                       for key, value in data['filters'].items())
-        ttk.Label(window, text=title, anchor='w').pack(fill=tk.X, padx=10, pady=(10, 6))
+        ttk.Label(window, text=title, anchor='w', wraplength=width - 48).pack(fill=tk.X, padx=10, pady=(10, 6))
         frame = ttk.Frame(window)
         frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         columns = ['task'] + names + ['KY', 'omega', 'gamma', 'omega_error', 'gamma_error', 'peak']
@@ -288,7 +290,7 @@ class ResultBrowser:
             table.insert('', 'end', values=values, tags=('peak',) if row is peak else ())
         table.tag_configure('peak', background='#fff2b2')
         ttk.Label(window, text='共 {} 行；相对波动为当前末段时间序列的标准差 / |平均值|。'.format(len(ordered)),
-                  anchor='w').pack(fill=tk.X, padx=10, pady=(0, 10))
+                  anchor='w', wraplength=width - 48).pack(fill=tk.X, padx=10, pady=(0, 10))
 
 
 def plot_selected(root, notebook):

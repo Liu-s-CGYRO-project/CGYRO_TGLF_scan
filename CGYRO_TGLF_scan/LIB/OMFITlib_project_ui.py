@@ -33,10 +33,11 @@ class ProjectUI:
         self.configure, self.open_templates = configure, open_templates
         self.servers, self.open_servers = servers, open_servers
         self.panel_only = False
+        self.compact = False
         self.prefix = "root['SETTINGS']['WORKBENCH']"
 
     def label(self, value):
-        return self.ui.Label(value, align='left', wraplength=840)
+        return self.ui.Label(value, align='left', wraplength=600 if self.compact else 840)
 
     def nav(self, label, page):
         callback = (lambda: self.settings.__setitem__('cgyro_panel_page', page)) if self.panel_only else (
@@ -64,6 +65,7 @@ class ProjectUI:
 
     def render(self, panel_only=False):
         self.panel_only = panel_only
+        self.compact = panel_only or self.settings['page'] == 'cgyro'
         if panel_only:
             self.ui.TitleGUI('CGYRO · 线性扫描')
             intro = self.label('CGYRO 线性扫描')
@@ -73,12 +75,13 @@ class ProjectUI:
             if page != 'cgyro':
                 self.nav('返回 CGYRO 扫描', 'cgyro')
             getattr(self, 'render_' + page)()
-            finish_gui_layout(intro, self.ui)
+            finish_gui_layout(intro, self.ui, compact=self.compact)
             return
         self.ui.TitleGUI('CGYRO / TGLF · 工程总控')
-        intro = self.label('输入准备  →  传递与验证  →  运行与收集  →  绘图对比')
+        intro = self.label('选择输入 → 设置参数 → 运行 → 查看结果' if self.compact else
+                           '输入准备  →  传递与验证  →  运行与收集  →  绘图对比')
+        self.ui.ComboBox(self.prefix + "['page']", PAGES, '工作页面', default='overview', updateGUI=True)
         with self.ui.same_row():
-            self.ui.ComboBox(self.prefix + "['page']", PAGES, '工作页面', default='overview', updateGUI=True)
             self.ui.Button('检查前置条件', self.actions.check, updateGUI=True)
             self.ui.Button('刷新', lambda: None, updateGUI=True)
         if self.settings['message'] and self.settings['page'] != 'cgyro':
@@ -86,7 +89,7 @@ class ProjectUI:
         if pending_inputs(self.root) and self.settings['page'] != 'review':
             self.nav('有待确认的 TGLF 输入 · 查看差异', 'review')
         getattr(self, 'render_' + self.settings['page'])()
-        finish_gui_layout(intro, self.ui)
+        finish_gui_layout(intro, self.ui, compact=self.compact)
 
     def render_overview(self):
         s = summary(self.root)
@@ -181,15 +184,15 @@ class ProjectUI:
         elif mode == 'generated':
             self.nav('生成 / 更换半径输入', 'transfer')
         rows = sync_cgyro_choices(self.root, self.settings, self.actions.factory)
-        self.ui.Separator('半径与主离子')
+        self.ui.Separator('1  选择半径与主离子')
         if rows:
             if len(rows) > 1:
                 with self.ui.same_row():
                     self.ui.Button('全部半径', self.actions.select_cgyro_radii, updateGUI=True)
                     self.ui.Button('清空选择', lambda: self.actions.select_cgyro_radii(False), updateGUI=True)
-            for offset in range(0, len(rows), 4):
+            for offset in range(0, len(rows), 2):
                 with self.ui.same_row():
-                    for row in rows[offset:offset + 4]:
+                    for row in rows[offset:offset + 2]:
                         caption = 'nr={}'.format(row['nr'])
                         if row['rho'] is not None:
                             caption += ' · rho={:g}'.format(row['rho'])
@@ -204,11 +207,13 @@ class ProjectUI:
             ('保持原始粒子', 'original'), ('H / D / T 对比', 'hdt'), ('自选方案', 'custom')]),
             '主离子方案', state='readonly', updateGUI=True, postcommand=self.actions.set_cgyro_ions)
         if self.settings['cgyro_ion_mode'] == 'custom':
-            with self.ui.same_row():
-                for key, caption in ION_CASES.items():
-                    self.cgyro_checkbox(self.prefix + "['cgyro_ion_cases'][{!r}]".format(key),
-                                         self.settings['cgyro_ion_cases'], key, caption)
-        self.ui.Separator('扫描设置')
+            cases = list(ION_CASES.items())
+            for offset in range(0, len(cases), 2):
+                with self.ui.same_row():
+                    for key, caption in cases[offset:offset + 2]:
+                        self.cgyro_checkbox(self.prefix + "['cgyro_ion_cases'][{!r}]".format(key),
+                                             self.settings['cgyro_ion_cases'], key, caption)
+        self.ui.Separator('2  设置扫描')
         self.ui.Entry(location(base + ('EXPERIMENT', 'runid')), '结果名称', updateGUI=True)
         self.ui.Entry(location(base + ('PHYSICS', 'kyarr')), 'ky 取值', updateGUI=True,
                       help='输入列表，例如 [0.1, 0.2, 0.3]。')
@@ -239,20 +244,19 @@ class ProjectUI:
             cfg = node['SETTINGS']['PHYSICS'][group]
             cfg.setdefault(pkey, defaults[index - 1])
             cfg.setdefault(rkey, [source.get(cfg[pkey], 0.0)])
-            with self.ui.same_row():
-                self.ui.ComboBox(location(base + ('PHYSICS', group, pkey)), options, '参数 ' + str(index),
-                                 state='normal', updateGUI=True)
-                self.ui.Entry(location(base + ('PHYSICS', group, rkey)), '取值', updateGUI=True)
+            self.ui.Separator('参数轴 ' + str(index))
+            self.ui.ComboBox(location(base + ('PHYSICS', group, pkey)), options, '参数',
+                             state='normal', width=24, updateGUI=True)
+            self.ui.Entry(location(base + ('PHYSICS', group, rkey)), '取值列表', width=28, updateGUI=True)
             linked = 2
             while pkey + str(linked) in cfg or rkey + str(linked) in cfg:
-                with self.ui.same_row():
-                    self.ui.ComboBox(location(base + ('PHYSICS', group, pkey + str(linked))), options,
-                                     '联动参数', state='normal', default='', updateGUI=True)
-                    self.ui.Entry(location(base + ('PHYSICS', group, rkey + str(linked))),
-                                  '同步取值', default=[], updateGUI=True,
-                                  help='与参数 ' + str(index) + ' 的取值逐项对应。独立组合请使用多个参数轴。')
+                self.ui.ComboBox(location(base + ('PHYSICS', group, pkey + str(linked))), options,
+                                 '联动参数', state='normal', width=24, default='', updateGUI=True)
+                self.ui.Entry(location(base + ('PHYSICS', group, rkey + str(linked))),
+                              '同步取值', width=28, default=[], updateGUI=True,
+                              help='与参数 ' + str(index) + ' 的取值逐项对应。独立组合请使用多个参数轴。')
                 linked += 1
-        self.ui.Separator('运行')
+        self.ui.Separator('3  运行')
         problems = cgyro_plan_issues(self.root)
         if not problems:
             plan = cgyro_plan_summary(self.root)
@@ -260,13 +264,12 @@ class ProjectUI:
                 plan['cases'], plan['points_per_case'], plan['total_points']))
         remote = node['SETTINGS'].get('REMOTE_SETUP', {})
         config = remote.get(str(remote.get('serverPicker', '') or ''), {})
-        self.label('服务器：{}；队列：{}；每任务 {} 节点 × {} MPI'.format(
+        self.label('服务器：{}\n队列：{} · 每任务 {} 节点 × {} MPI'.format(
             remote.get('serverPicker', '未配置'), config.get('queue', '未配置'),
             config.get('nodes', '—'), config.get('ntasks_per_node', '—')))
         issues = problems + runtime_issues(self.root, 'cgyro')
-        with self.ui.same_row():
-            self.guarded('运行所选扫描', self.actions.run_cgyro, issues)
-            self.nav('修改运行环境', 'run')
+        self.guarded('运行所选扫描', self.actions.run_cgyro, issues)
+        self.nav('修改运行环境', 'run')
         if issues:
             self.label('需要：' + '；'.join(issues[:2]))
         if self.settings['message']:
@@ -316,10 +319,9 @@ class ProjectUI:
                 catalog[name] = dict(label='当前输入不支持', group='other', reference=None, kind='float')
         self.settings.setdefault('cgyro_parameter_group', 'common')
         self.settings.setdefault('cgyro_parameter_search', '')
-        with self.ui.same_row():
-            self.ui.ComboBox(self.prefix + "['cgyro_parameter_group']", CGYRO_GROUPS, '参数分组',
-                             state='readonly', updateGUI=True)
-            self.ui.Entry(self.prefix + "['cgyro_parameter_search']", '搜索参数', updateGUI=True)
+        self.ui.ComboBox(self.prefix + "['cgyro_parameter_group']", CGYRO_GROUPS, '参数分组',
+                         state='readonly', width=24, updateGUI=True)
+        self.ui.Entry(self.prefix + "['cgyro_parameter_search']", '搜索参数', width=28, updateGUI=True)
         group = self.settings['cgyro_parameter_group']
         query = str(self.settings['cgyro_parameter_search']).strip().upper()
         names = [name for name, spec in catalog.items()
@@ -345,9 +347,15 @@ class ProjectUI:
             item = parameters[name]
             path = base + ('fixed_parameters', name)
             source_value = source_values.get(name, '未显式写入')
-            with self.ui.same_row():
-                self.cgyro_checkbox(location(path + ('enabled',)), item, 'enabled', name)
-                self.ui.Entry(location(path + ('value',)), spec['label'], updateGUI=True,
+            with self.ui.same_row() as line:
+                # Keep each setting on one row, with its numeric field aligned
+                # at the right. Preserve the controls' native OMFIT bindings.
+                frame = getattr(line, 'frm_top', None)
+                if isinstance(frame, tk.Misc):
+                    frame._cgyro_inline = True
+                self.cgyro_checkbox(location(path + ('enabled',)), item, 'enabled',
+                                     name + ' · ' + spec['label'])
+                self.ui.Entry(location(path + ('value',)), '', width=14, updateGUI=True,
                               state='normal' if item['enabled'] else 'disabled',
                               help='参考输入：{}。勾选后，此值应用到本轮全部所选输入。'.format(source_value))
         self.ui.Separator('时间缩放')

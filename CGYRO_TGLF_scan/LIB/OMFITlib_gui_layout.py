@@ -7,7 +7,7 @@ from tkinter import font as tkfont, ttk
 from OMFITlib_gui_context import bind_actions
 
 
-def finish_gui_layout(label, ui=None):
+def finish_gui_layout(label, ui=None, compact=False):
     """Style the page containing an OMFITx.Label, retaining native bindings.
 
     OMFITx.Label returns a label in a row frame in the GUI's content frame.
@@ -22,7 +22,9 @@ def finish_gui_layout(label, ui=None):
     previous = getattr(content, '_cgyro_gui_layout', None)
     if previous is not None and getattr(previous, 'anchor', None) is label:
         return
-    content._cgyro_gui_layout = NativeLayout(content, label)
+    aux = getattr(ui, '_aux', {})
+    resize_window = not aux.get('is_compoundGUI', False)
+    content._cgyro_gui_layout = NativeLayout(content, label, compact, resize_window)
 
 
 def _style_console(console):
@@ -79,9 +81,10 @@ def fix_console_layout(anchor=None):
 
 
 class NativeLayout:
-    def __init__(self, content, label):
+    def __init__(self, content, label, compact=False, resize_window=True):
         self.content = content
         self.anchor = label
+        self.compact = compact
         self.style = ttk.Style(content)
         base = label.cget('font') or self.style.lookup(label.cget('style') or 'TLabel', 'font') or 'TkDefaultFont'
         original = tkfont.Font(root=content, font=base).actual()
@@ -90,10 +93,27 @@ class NativeLayout:
         self.normal = tkfont.Font(root=content, family=family, size=original['size'])
         self.bold = tkfont.Font(root=content, family=family, size=original['size'], weight='bold')
         self.gap = max(4, self.normal.metrics('linespace') // 5)
+        self.width = min(760, max(640, self.normal.measure('0') * 72), content.winfo_screenwidth() - 64)
         self.tag = hashlib.sha256(repr(self.normal.actual()).encode('utf-8')).hexdigest()[:12]
         self.rows = []
         self._walk(content)
         self.reflow()
+        if compact and resize_window:
+            self._portrait_window()
+
+    def _portrait_window(self):
+        """Set an initial narrow, tall viewport; let OMFIT scroll the content.
+
+        Apply once per owning window, including an already-open wide Project
+        window. Subsequent field updates retain the user's manual window size.
+        Compound pages must not resize another module's owning window.
+        """
+        top = self.content.winfo_toplevel()
+        if getattr(top, '_cgyro_portrait_layout', False):
+            return
+        height = min(900, top.winfo_screenheight() - 100)
+        top.geometry('{}x{}'.format(self.width, height))
+        top._cgyro_portrait_layout = True
 
     def _style_name(self, widget, font, **options):
         old = str(widget.cget('style')) or widget.winfo_class()
@@ -116,8 +136,14 @@ class NativeLayout:
                 bold = tkfont.Font(root=child, font=current).actual('weight') == 'bold'
                 child.configure(font=self.bold if bold else self.normal, width=0,
                                 padding=(0, self.gap if bold else self.gap // 2))
+                if self.compact:
+                    child.configure(wraplength=self.width - 80)
             elif kind in ('TEntry', 'TCombobox'):
                 child.configure(font=self.normal)
+                if self.compact:
+                    # Long file paths and lists scroll inside the native field.
+                    # Their text must not become the window's requested width.
+                    child.configure(width=min(28, max(1, int(child.cget('width')))))
                 self._style_name(child, self.normal, padding=(4, self.gap))
                 if kind == 'TCombobox':
                     child.option_add('*' + str(child).lstrip('.') + '*Listbox.font', self.normal)
@@ -134,19 +160,31 @@ class NativeLayout:
                 child.configure(font=self.normal, spacing1=self.gap, spacing2=self.gap, spacing3=self.gap)
             self._walk(child)
         if row:
-            self.rows.append((parent, children))
             for child in children:
                 child.pack_forget()
-            parent.bind('<Configure>', lambda event, frame=parent, items=children: self._row(frame, items), add='+')
+            if getattr(parent, '_cgyro_inline', False):
+                # A single parameter row: caption uses spare space; the short
+                # numeric field keeps its natural width and aligns at the right.
+                parent.columnconfigure(0, weight=1)
+                parent.columnconfigure(1, weight=0)
+                for index, child in enumerate(children):
+                    child.grid(row=0, column=index, sticky='ew', padx=5, pady=self.gap // 2)
+            else:
+                self.rows.append((parent, children))
+                parent.bind('<Configure>', lambda event, frame=parent, items=children: self._row(frame, items), add='+')
 
     def _row(self, frame, items):
         if not frame.winfo_exists():
             return
         width = frame.winfo_width()
         if width <= 1:
-            width = max(1, self.content.winfo_toplevel().winfo_width() - 40)
+            width = self.width - 40 if self.compact else max(1, self.content.winfo_toplevel().winfo_width() - 40)
+        if self.compact:
+            width = min(width, self.width - 40)
         required = max(item.winfo_reqwidth() + 10 for item in items)
         columns = max(1, min(len(items), width // max(1, required)))
+        if self.compact:
+            columns = min(2, columns)
         if getattr(frame, '_cgyro_columns', None) == columns:
             return
         frame._cgyro_columns = columns
