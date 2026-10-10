@@ -462,6 +462,10 @@ run_case() (
   prepare_case_dir "$1"
   trap 'status=$?; printf "%s\n" "$status" > cgyro.exit' EXIT
 """ + executable + r""" > run_log 2>&1
+  if [ -s out.cgyro.info ] && grep -q -E '^[[:space:]]*ERROR:' out.cgyro.info; then
+    grep -E '^[[:space:]]*ERROR:' out.cgyro.info >&2
+    exit 1
+  fi
   for output in out.cgyro.grids out.cgyro.time; do
     [ -s "$output" ] || { echo "CGYRO did not generate $output; see run_log." >&2; exit 1; }
   done

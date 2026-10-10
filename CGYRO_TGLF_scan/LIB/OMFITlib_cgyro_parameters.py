@@ -11,6 +11,7 @@ GROUPS = OrderedDict([('常用设置', 'common'), ('时间与输出', 'time'),
 # Nothing is written until the user edits a value or selects a scan axis.
 FIELDS = OrderedDict([
     ('DELTA_T', ('时间步长', 'time', 0.01, 'float', True)),
+    ('DELTA_T_METHOD', ('时间积分方法', 'time', 0, 'int', False)),
     ('MAX_TIME', ('运行时长', 'time', 100.0, 'float', True)),
     ('PRINT_STEP', ('输出步数间隔', 'time', 100, 'int', True)),
     ('N_RADIAL', ('径向网格', 'grid', 16, 'int', True)),
@@ -138,6 +139,8 @@ def parameter_value(name, raw):
         raise ValueError('{} 必须为有限数值。'.format(name))
     if spec['kind'] == 'int' and not value.is_integer():
         raise ValueError('{} 必须为整数。'.format(name))
+    if name == 'DELTA_T_METHOD' and value not in (0, 1, 2, 3):
+        raise ValueError('DELTA_T_METHOD 请选择 0（固定 RK4）或 1–3（自适应积分）。')
     if spec['positive'] and value <= 0:
         raise ValueError('{} 必须大于 0。'.format(name))
     return int(value) if value.is_integer() else value

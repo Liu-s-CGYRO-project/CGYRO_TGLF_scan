@@ -1,3 +1,13 @@
+# 修订记录 · 工程 1.16.3 / 管理器 1.10.5
+
+使用用户此前提供的密钥只读检查太原 tyadmin06 已有作业 9545932：ky=0.01、0.02 的 out.cgyro.info 为 Linear converged，分别有 64 和 3 个时间样本；ky=0.03–0.07 的 out.cgyro.info 均为 Integration error exceeded limit，时间文件为空。实际输入 DELTA_T=0.01、DELTA_T_METHOD=0、MAX_TIME=600、PRINT_STEP=100；生成输入中的 ERROR_TOL=6e-5。这次是积分误差超限，节点分配及启动已成功。临时密钥副本在每次只读检查结束后删除，原始附件保留。
+
+失败诊断此前先加入调度器失败点，又重复加入输出缺失点；日志截取只读前三个任务的 run_log，且预算被成功点占据。改为按原任务顺序去重，显示对应 ky，检查并保存各点 out.cgyro.info 的 ERROR，失败点摘要优先，再附前两失败点的详细日志及对应数组 stderr/stdout。补充日志读取异常时保留先前已读到的求解器错误。任务脚本异常文本使用 ASCII，避免旧 OMFIT 任务保存链路把中文错误提示替换为问号。提交脚本也检查 out.cgyro.info 的 ERROR，防止启动器 0 返回码或部分输出掩盖失败。
+
+常用计算参数补充 DELTA_T_METHOD，允许 0–3 并保留源输入默认值；0 固定 RK4，1 Cash-Karp，2 Bogacki-Shampine，3 Verner。名称和含义对照 GACODE 官方文档 https://gafusion.github.io/doc/cgyro/cgyro_list.html#delta-t-method 。不自动调整用户的步长、误差容限或积分方法，不以放宽误差阈值掩盖求解失败。
+
+完成 Python 3.9 静态语法、OMFIT 设置/帮助/库引用、分发包源文件和 SHA-256 校验。按要求未运行回归、GUI 或求解器测试，未重新提交作业；未验证调整数值后失败点的收敛情况。
+
 # 修订记录 · 工程 1.16.2 / 管理器 1.10.5
 
 固定数值参数不再依赖可见复选框。普通参数行始终可直接编辑，原生 Entry 提交数值后通过 postcommand 自动记为本轮统一数值；旧 fixed_parameters/enabled 数据继续兼容，先前已经生效的设置不丢失。未修改的项目继续沿用各半径自己的输入，不在打开界面时把参考输入复制到所有半径。

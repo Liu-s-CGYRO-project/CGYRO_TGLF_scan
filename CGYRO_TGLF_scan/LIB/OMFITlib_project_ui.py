@@ -348,6 +348,10 @@ class ProjectUI:
             item = parameters[name]
             path = base + ('fixed_parameters', name)
             source_value = source_values.get(name, '未显式写入')
+            help_text = ('参考输入：{}。修改并回车后，应用到本轮全部所选输入；'
+                         '点击“恢复”则沿用各输入自己的值。'.format(source_value))
+            if name == 'DELTA_T_METHOD':
+                help_text += '\n0：固定 RK4；1：Cash-Karp；2：Bogacki-Shampine；3：Verner。1–3 为自适应步长。'
             with self.ui.same_row() as line:
                 # Keep each setting on one row, with its numeric field aligned
                 # at the right. Preserve the controls' native OMFIT bindings.
@@ -358,8 +362,7 @@ class ProjectUI:
                 self.ui.Entry(location(path + ('value',)), '', width=14, updateGUI=True,
                               state='normal' if spec.get('supported', True) else 'disabled',
                               postcommand=lambda location=None, name=name: self.actions.edit_cgyro_parameter(name),
-                              help='参考输入：{}。修改并回车后，应用到本轮全部所选输入；'
-                                   '点击“恢复”则沿用各输入自己的值。'.format(source_value))
+                              help=help_text)
                 self.ui.Button('恢复',
                                lambda name=name: self.actions.reset_cgyro_parameters([name], row['key']),
                                updateGUI=True)
