@@ -10,7 +10,7 @@ from OMFITlib_transfer_workflow import generation_issues, initialize_generation,
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
 from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choices, installation_issues
 from OMFITlib_cgyro_results import ResultBrowser
-from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS, CORE_FIELDS,
+from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS,
     initialize_parameters, numeric_source, parameter_catalog, scan_parameter_names)
 from OMFITlib_project import (ION_CASES, LABELS, MODULES, PAGES, cgyro_input_issues,
     cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, generated_tglf_sources, location, module,
@@ -320,31 +320,26 @@ class ProjectUI:
                 catalog[name] = dict(label='当前输入不支持', group='other', reference=None,
                                      kind='float', supported=False)
         # A one-time view migration clears old filters, without changing any
-        # saved calculation values. Core time controls always remain visible.
+        # saved calculation values.
         if self.settings.get('cgyro_parameter_catalog_revision', 0) != 1:
             self.settings['cgyro_parameter_group'] = 'common'
             self.settings['cgyro_parameter_search'] = ''
             self.settings['cgyro_parameter_catalog_revision'] = 1
         scanned = scan_parameter_names(physics, int(node['SETTINGS']['SETUP']['idimrun']))
-        self.ui.Separator('时间与收敛 · 固定显示')
-        for name in CORE_FIELDS:
-            self.cgyro_parameter_row(base, name, catalog[name], parameters[name], source_values, scanned, source_key)
-        self.ui.Separator('更多计算参数')
         self.ui.ComboBox(self.prefix + "['cgyro_parameter_group']", CGYRO_GROUPS, '参数分组',
                          state='readonly', width=24, updateGUI=True)
         self.ui.Entry(self.prefix + "['cgyro_parameter_search']", '搜索参数', width=28, updateGUI=True)
         group = self.settings['cgyro_parameter_group']
         query = str(self.settings['cgyro_parameter_search']).strip().upper()
         names = [name for name, spec in catalog.items()
-                 if name not in CORE_FIELDS
-                 and (group == 'all' or (group == 'common' and name in CGYRO_FIELDS) or spec['group'] == group)
+                 if (group == 'all' or (group == 'common' and name in CGYRO_FIELDS) or spec['group'] == group)
                  and (not query or query in name or query in spec['label'].upper())]
         with self.ui.same_row():
             self.ui.Button('恢复当前分组',
                            lambda: self.actions.reset_cgyro_parameters(names, source_key), updateGUI=True)
             self.ui.Button('全部恢复输入值', self.actions.inherit_cgyro_parameters, updateGUI=True)
         if not names:
-            self.label('时间参数在上方。' if group == 'time' and not query else '没有匹配的其他参数。')
+            self.label('没有匹配的参数。')
         previous_group = None
         labels = {value: label for label, value in CGYRO_GROUPS.items()}
         for name in names:

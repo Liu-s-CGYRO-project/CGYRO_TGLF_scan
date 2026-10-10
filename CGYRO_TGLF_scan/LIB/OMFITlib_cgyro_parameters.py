@@ -8,7 +8,6 @@ GROUPS = OrderedDict([('常用设置', 'common'), ('时间与收敛', 'time'),
                       ('网格与速度空间', 'grid'), ('场与碰撞', 'model'),
                       ('数值耗散与算法', 'algorithm'), ('平衡与剪切', 'geometry'),
                       ('输出选项', 'output'), ('其他输入参数', 'other'), ('全部参数', 'all')])
-CORE_FIELDS = ('DELTA_T_METHOD', 'DELTA_T', 'ERROR_TOL', 'MAX_TIME', 'PRINT_STEP', 'FREQ_TOL')
 # Fallbacks are explicit GUI reference values, not forced solver values.
 # Nothing is written until the user edits a value or selects a scan axis.
 FIELDS = OrderedDict([
