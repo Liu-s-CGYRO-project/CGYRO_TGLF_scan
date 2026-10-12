@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.16.9",
-  "parent_release": "1.16.8",
+  "version": "1.16.10",
+  "parent_release": "1.16.9",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -260,7 +260,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_widgets.py": "567e74605b22c2d105f52321ec3ed08b8240a78991869f6d5d2c5020cf0c2498",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gacode_installations.py": "6d3df780d1aa1e1140ec71d0a3749bf3c5a35cb4bd9f550e4240f1fbeaca7bc8",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py": "9d9448f7a1bcd8a461c80efdf75ddf86d77c1f15878a760b04718fb4425b5fc4",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "d6eacaefed29783146736d6560106d8f6f7be8fbd23ef5ec22b8133d54b68a27",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "ccec0599f0d68f3d733bbd4aa24e2ea7ad321794b135417f6dd900cc86e96276",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project.py": "043d7ea5d540615cd3cc640ad3d4bf6873f16058149fa4779e61494e1fef9cd4",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_runtime.py": "d9d777622e8dc60c5664e55d39b6b2e3c5f5be820ecfc62c27f30965d22776a0",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py": "2d1cbad2a3681f83e22abaa5b621a223acadcae7c813a6f4355bbe70edfed232",
@@ -503,7 +503,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "72557f18b8626cb937665a4e714b5499443de6583e7848013d94b234effc5273"
+    "VALIDATION.md": "4a1db0751a80cf0ccb88acab676c49e1fef141ca70dda457552a1d7e2d8efe4a"
   },
   "workbench_features": [
     "native_omfit_project_gui",
@@ -531,7 +531,8 @@
     "cgyro_degenerate_scan_plot",
     "gacode_installation_environment_sync",
     "direct_template_manager_entry",
-    "compact_runtime_settings_tabs"
+    "compact_runtime_settings_tabs",
+    "top_aligned_runtime_tabs"
   ],
   "template_manager_version": "1.10.6",
   "support_archive_sha256": "cb71c03e57997da7bba99b724ca9a757fff6bad5a62f9daf4639bc6f6588618b",

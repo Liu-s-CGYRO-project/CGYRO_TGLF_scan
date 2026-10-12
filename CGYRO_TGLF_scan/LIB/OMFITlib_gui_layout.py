@@ -102,6 +102,7 @@ class NativeLayout:
         self.heading_color = '#274b63' if light else '#a5cfe8'
         self.muted_color = '#52616b' if light else '#becbd4'
         self.rows = []
+        self.scroll_pending = None
         self._walk(content)
         self.reflow()
         if compact and resize_window:
@@ -170,6 +171,11 @@ class NativeLayout:
                 self.style.configure(name + '.Tab', font=(self.normal.actual('family'), self.normal.actual('size')),
                                      padding=(10, self.gap + 2))
                 child.configure(style=name)
+                if self.fit_tabs and child.winfo_manager() == 'pack':
+                    # OMFIT packs notebooks with expand=YES but fill=X. Tk
+                    # centers that widget in its enlarged vertical parcel,
+                    # leaving a gap above short tabs in a taller canvas frame.
+                    child.pack_configure(expand=False, anchor='n')
             elif kind == 'Text':
                 child.configure(font=self.normal, spacing1=self.gap, spacing2=self.gap, spacing3=self.gap)
             self._walk(child)
@@ -226,6 +232,27 @@ class NativeLayout:
                 height = max(1, notebook.nametowidget(selected).winfo_reqheight())
                 if int(notebook.cget('height')) != height:
                     notebook.configure(height=height)
+                    if self.scroll_pending is None:
+                        self.scroll_pending = self.content.after_idle(self._sync_scroll)
+        except tk.TclError:
+            return
+
+    def _sync_scroll(self):
+        """Refresh only the canvas window belonging to this native page."""
+        self.scroll_pending = None
+        canvas = self.content.master
+        if not isinstance(canvas, tk.Canvas):
+            return
+        try:
+            for item in canvas.find_all():
+                if canvas.type(item) != 'window' or canvas.itemcget(item, 'window') != str(self.content):
+                    continue
+                height = max(1, self.content.winfo_reqheight())
+                canvas.itemconfigure(item, height=height)
+                bounds = canvas.tk.splitlist(canvas.cget('scrollregion'))
+                width = bounds[2] if len(bounds) == 4 else canvas.winfo_width()
+                canvas.configure(scrollregion=(0, 0, width, height))
+                break
         except tk.TclError:
             return
 
