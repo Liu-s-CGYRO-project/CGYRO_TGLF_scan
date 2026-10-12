@@ -65,7 +65,7 @@ class ProjectUI:
 
     def render(self, panel_only=False):
         self.panel_only = panel_only
-        self.compact = panel_only or self.settings['page'] == 'cgyro'
+        self.compact = panel_only or self.settings['page'] in ('cgyro', 'run')
         if panel_only:
             self.ui.TitleGUI('CGYRO · 线性扫描')
             intro = self.label('CGYRO 线性扫描')
@@ -75,11 +75,12 @@ class ProjectUI:
             if page != 'cgyro':
                 self.nav('返回 CGYRO 扫描', 'cgyro')
             getattr(self, 'render_' + page)()
-            finish_gui_layout(intro, self.ui, compact=self.compact)
+            finish_gui_layout(intro, self.ui, compact=self.compact, fit_tabs=page == 'run')
             return
         self.ui.TitleGUI('CGYRO / TGLF · 工程总控')
-        intro = self.label('选择输入 → 设置参数 → 运行 → 查看结果' if self.compact else
-                           '输入准备  →  传递与验证  →  运行与收集  →  绘图对比')
+        intro = self.label('服务器 → 程序版本 → 计算资源' if self.settings['page'] == 'run' else
+                           ('选择输入 → 设置参数 → 运行 → 查看结果' if self.compact else
+                            '输入准备  →  传递与验证  →  运行与收集  →  绘图对比'))
         self.ui.ComboBox(self.prefix + "['page']", PAGES, '工作页面', default='overview', updateGUI=True)
         with self.ui.same_row():
             self.ui.Button('检查前置条件', self.actions.check, updateGUI=True)
@@ -89,7 +90,7 @@ class ProjectUI:
         if pending_inputs(self.root) and self.settings['page'] != 'review':
             self.nav('有待确认的 TGLF 输入 · 查看差异', 'review')
         getattr(self, 'render_' + self.settings['page'])()
-        finish_gui_layout(intro, self.ui, compact=self.compact)
+        finish_gui_layout(intro, self.ui, compact=self.compact, fit_tabs=self.settings['page'] == 'run')
 
     def render_overview(self):
         s = summary(self.root)
@@ -490,8 +491,15 @@ class ProjectUI:
         self.settings['page'] = 'run'
 
     def render_run(self):
-        self.ui.Tab('环境设置')
-        self.environment()
+        config = initialize_runtime(self.root, self.actions.factory)
+        prefix = "root['SETTINGS']['GACODE_RUNTIME']"
+        self.runtime_apply(config)
+        self.ui.Tab('常用配置')
+        self.environment(config, prefix)
+        self.ui.Tab('安装路径')
+        self.gacode_installations(config)
+        self.ui.Tab('脚本与命令')
+        self.runtime_commands(prefix)
         self.ui.Tab('运行记录')
         manifest = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST'), {})
         self.ui.Separator('CGYRO 当前运行')
@@ -507,7 +515,7 @@ class ProjectUI:
             self.label('{}：{}'.format(case.get('label', '未命名案例'), STATUS.get(run.get('status', None), run.get('status', '尚未运行'))))
         self.nav('选择记录 / 重试 / 查看错误', 'multi')
         self.label('这里显示 工程保存的状态。不会在打开页面时轮询或提交任务。')
-        self.ui.Tab('操作与输入历史')
+        self.ui.Tab('操作历史')
         records = read(self.root, ('PROJECT_STATE', 'activity'), {})
         if not records:
             self.label('尚无通过总控页执行的操作。')
@@ -519,11 +527,27 @@ class ProjectUI:
                 self.label('保留的旧输入：' + '；'.join(record['previous_inputs'].keys()))
         self.label('完整历史在 工程 → PROJECT_STATE 中；输入历史和旧结果随工程保存。')
 
-    def environment(self):
-        config = initialize_runtime(self.root, self.actions.factory)
-        prefix = "root['SETTINGS']['GACODE_RUNTIME']"
-        self.label('各程序共用服务器和基础环境，GACODE 版本可分别选择。')
-        self.ui.Separator('服务器与工作目录')
+    def runtime_section(self, caption):
+        label = self.label(caption)
+        label._cgyro_role = 'heading'
+
+    def runtime_note(self, caption):
+        label = self.label(caption)
+        label._cgyro_role = 'muted'
+
+    def runtime_field(self, control, caption, wide=False, short=False):
+        """Mark native controls for aligned layout, retaining their callbacks."""
+        control.master._cgyro_form = (control, caption, wide, short)
+        return control
+
+    def runtime_entry(self, path, caption, wide=False, short=False, **kwargs):
+        return self.runtime_field(self.ui.Entry(path, caption, **kwargs), caption, wide, short)
+
+    def runtime_choice(self, path, options, caption, **kwargs):
+        return self.runtime_field(self.ui.ComboBox(path, options, caption, **kwargs), caption)
+
+    def environment(self, config, prefix):
+        self.runtime_section('01  服务器与目录')
         servers = self.servers() if callable(self.servers) else self.servers
         choices = OrderedDict([('localhost（本机）', 'localhost')])
         for name in servers:
@@ -535,60 +559,69 @@ class ProjectUI:
         draft = self.settings.get('server_draft', None)
         if picker and picker not in choices.values():
             choices[picker + '（工程保存的配置名）'] = picker
-        self.ui.ComboBox(prefix + "['serverPicker']", choices,
-                         '服务器配置名', state='disabled' if draft is not None else 'readonly', updateGUI=True,
-                         postcommand=lambda location=None: self.actions.sync_runtime_endpoint(replace_directory=True))
+        self.runtime_choice(prefix + "['serverPicker']", choices,
+                            '服务器配置', state='disabled' if draft is not None else 'readonly', updateGUI=True,
+                            postcommand=lambda location=None: self.actions.sync_runtime_endpoint(replace_directory=True))
         server_issues = self.actions.runtime_server_issues()
         with self.ui.same_row():
             self.guarded('新增服务器', self.actions.begin_runtime_server,
                          ['请先保存或取消当前新增'] if draft is not None else
                          ([] if self.actions.register_server is not None else ['当前宿主未提供服务器登记入口']))
-            self.guarded('从 OMFIT 读取连接信息', self.actions.sync_runtime_endpoint,
+            self.guarded('读取连接信息', self.actions.sync_runtime_endpoint,
                          server_issues + (['请先保存或取消当前新增'] if draft is not None else []))
-            if self.open_servers is not None:
-                self.ui.Button('OMFIT 个人服务器设置', self.open_servers, updateGUI=True)
         if server_issues and draft is None:
             self.label('；'.join(server_issues))
         if draft is not None:
-            self.ui.Separator('新增服务器')
-            for key, label in [('serverPicker', '新配置名'), ('server', '服务器地址（用户名@主机[:端口]）'),
-                               ('tunnel', '连接隧道（可留空）'), ('workDir', '工作根目录')]:
-                self.server_text_entry(draft, key, label)
+            self.runtime_note('新配置 · 地址格式：用户名@主机[:端口]')
+            for key, label in [('serverPicker', '新配置名'), ('server', '服务器地址'),
+                               ('tunnel', '隧道（可选）'), ('workDir', '工作根目录')]:
+                self.runtime_field(self.server_text_entry(draft, key, label), label, wide=key == 'workDir')
             with self.ui.same_row():
                 self.ui.Button('保存并选用', self.actions.register_runtime_endpoint, updateGUI=True)
                 self.ui.Button('取消新增', self.actions.cancel_runtime_server, updateGUI=True)
         else:
-            self.ui.Entry(prefix + "['server']", '服务器地址', updateGUI=True)
-            self.ui.Entry(prefix + "['tunnel']", '连接隧道（可留空）', updateGUI=True)
-            self.ui.Entry(prefix + "['workDir']", '工作根目录', updateGUI=True)
-        self.label('此目录下自动使用 cgyro、tglf、tgyro、transfer 等子目录，避免同名输入互相覆盖。')
-        self.ui.Separator('共用 GACODE 环境')
-        self.ui.Entry(prefix + "['environment']", '环境初始化脚本', multiline=True, updateGUI=True,
-                      help='各程序选同一安装时，GACODE_ROOT 自动同步到脚本。分别选择版本时，每个程序在加载平台环境前绑定自己的路径；其余初始化命令保留。修改后应用到整个工程。')
-        self.gacode_installations(config, prefix, draft is not None)
-        self.ui.Separator('CGYRO 扫描资源')
-        self.ui.ComboBox(prefix + "['scheduler']", OrderedDict([('本机执行', 'local'), ('Slurm', 'slurm'), ('PBS', 'pbs')]),
-                         '作业调度', updateGUI=True)
+            self.runtime_entry(prefix + "['server']", '服务器地址', updateGUI=True)
+            self.runtime_entry(prefix + "['tunnel']", '隧道（可选）', updateGUI=True)
+            self.runtime_entry(prefix + "['workDir']", '工作根目录', wide=True, updateGUI=True,
+                               help='各程序在此目录下使用独立子目录。')
+        self.runtime_section('02  程序版本')
+        detection = self.root.get('PROJECT_STATE', {}).get('gacode_detection', {})
+        for program, (caption, _) in PROGRAMS.items():
+            self.runtime_choice(prefix + "[{!r}]".format(program + '_install'),
+                                installation_choices(config, detection, program), caption,
+                                state='readonly', updateGUI=True)
+        self.runtime_note('新增版本在“安装路径”维护；同版选择自动同步环境脚本。')
+        self.runtime_section('03  CGYRO 扫描资源')
+        self.runtime_choice(prefix + "['scheduler']", OrderedDict([('本机执行', 'local'), ('Slurm', 'slurm'), ('PBS', 'pbs')]),
+                            '作业调度', updateGUI=True)
         if config['scheduler'] != 'local':
-            with self.ui.same_row():
-                self.ui.Entry(prefix + "['queue']", '队列 / 分区')
-                self.ui.Entry(prefix + "['wall_time']", '运行时限')
-        with self.ui.same_row():
-            self.ui.Entry(prefix + "['nodes']", '节点数', width=8)
-            self.ui.Entry(prefix + "['cores']", '每节点 MPI 数', width=8)
-        with self.ui.same_row():
-            self.ui.Entry(prefix + "['cpus_per_task']", '每进程线程数', width=8)
-            self.ui.Entry(prefix + "['array_parallel']", '同时运行的扫描点', width=8)
-        self.ui.CheckBox(self.prefix + "['runtime_advanced']", '显示程序命令与并行细节', default=False, updateGUI=True)
-        if self.settings.get('runtime_advanced', False):
-            for key, label in [('cgyro_command', 'CGYRO 扫描命令'), ('tglf_command', 'TGLF 计算命令'),
-                               ('tgyro_command', 'TGYRO 计算命令'), ('prepare_command', '多剖面输入生成命令')]:
-                self.ui.Entry(prefix + "[{!r}]".format(key), label, multiline=True)
-            self.label('{mpi} 自动使用节点数 × 每节点 MPI 数；{n_radii} 按 TGYRO 实际径向任务所需进程数替换。')
-            self.label('剖面转换与单次 TGLF 延续原来的同步执行方式；批作业命令可在此设置。')
-            transfer = read(self.root, MODULES['transfer'])
-            if transfer is not None:
-                self.ui.Entry(location(MODULES['transfer'] + ('SETTINGS', 'SETUP', 'p_tgyro')), '转换用 TGYRO 半径数')
+            self.runtime_entry(prefix + "['queue']", '队列 / 分区', updateGUI=True)
+            self.runtime_entry(prefix + "['wall_time']", '运行时限', short=True, updateGUI=True)
+        for key, caption in [('nodes', '节点数'), ('cores', '每节点 MPI 数'),
+                             ('cpus_per_task', '每进程线程数'), ('array_parallel', '并发扫描点数')]:
+            self.runtime_entry(prefix + "[{!r}]".format(key), caption, short=True, width=12, updateGUI=True)
+
+    def runtime_commands(self, prefix):
+        self.runtime_section('共用环境脚本')
+        self.runtime_note('点击“…”展开编辑，修改后应用到整个工程。')
+        self.runtime_entry(prefix + "['environment']", '环境初始化', wide=True, multiline=True, updateGUI=True,
+                           help='各程序选同一安装时，GACODE_ROOT 自动同步。分别选版时，各程序在加载平台环境前绑定所选路径，其余命令保留。')
+        self.runtime_section('程序命令')
+        for key, caption in [('cgyro_command', 'CGYRO'), ('tglf_command', 'TGLF'),
+                             ('tgyro_command', 'TGYRO'), ('prepare_command', '多剖面输入生成')]:
+            self.runtime_entry(prefix + "[{!r}]".format(key), caption, wide=True, multiline=True, updateGUI=True)
+        self.runtime_note('{mpi}：总 MPI 数；{n_radii}：TGYRO 实际径向任务数。')
+        transfer = read(self.root, MODULES['transfer'])
+        if transfer is not None:
+            self.runtime_entry(location(MODULES['transfer'] + ('SETTINGS', 'SETUP', 'p_tgyro')),
+                               '转换半径数', short=True, updateGUI=True)
+        if self.open_servers is not None:
+            self.runtime_section('OMFIT 设置')
+            self.ui.Button('个人服务器设置', self.open_servers, updateGUI=True)
+
+    def runtime_apply(self, config):
+        """One apply action outside the tabs, shared by every settings page."""
+        draft = self.settings.get('server_draft', None)
         detection = self.root.get('PROJECT_STATE', {}).get('gacode_detection', {})
         issues = (validate_runtime(config) + installation_issues(config, detection)
                   + self.actions.runtime_server_issues(match_connection=True))
@@ -597,38 +630,50 @@ class ProjectUI:
         if self.settings.get('gacode_draft', None) is not None:
             issues = ['请先保存或取消 GACODE 安装编辑']
         if draft is not None:
-            status = '新增配置尚未保存。'
+            status = '服务器草稿未保存'
+        elif self.settings.get('gacode_draft', None) is not None:
+            status = '安装路径草稿未保存'
         elif applied_runtime(self.root) is None:
-            status = '已从现有 CGYRO 配置预填；点击应用后，各模块开始共用此配置。'
+            status = '配置待应用'
         elif shared_issues(self.root):
-            status = '配置有未应用的修改，请应用后再运行。'
+            status = '有修改待应用'
         else:
-            status = '统一配置已应用。环境只需在本页维护。'
-        self.label(status)
+            status = '配置已应用'
+        self.runtime_note(status)
+        button = self.ui.Button('应用到整个工程', self.actions.apply_runtime, updateGUI=True,
+                                state='disabled' if issues else 'normal', help='；'.join(issues))
+        button._cgyro_role = 'primary'
         if issues and draft is None:
             self.label('待填写：' + '；'.join(issues))
-        self.guarded('应用到整个工程', self.actions.apply_runtime, issues)
 
-    def gacode_installations(self, config, prefix, server_draft=False):
-        self.ui.Separator('GACODE 安装与自动检测')
-        self.server_text_entry(config, 'gacode_scan_dir', '搜索目录')
+    def gacode_installations(self, config):
+        self.runtime_section('检测安装')
+        self.runtime_field(self.server_text_entry(config, 'gacode_scan_dir', '搜索目录'), '搜索目录', wide=True)
         detection = self.root.get('PROJECT_STATE', {}).get('gacode_detection', {})
         installs = config['gacode_installs']
         draft = self.settings.get('gacode_draft', None)
+        server_draft = self.settings.get('server_draft', None) is not None
         with self.ui.same_row():
             self.guarded('自动检测', self.actions.detect_gacode,
                          ['请先保存或取消编辑'] if draft is not None or server_draft else [])
             self.guarded('新增路径', self.actions.begin_gacode_install,
                          ['请先保存或取消编辑'] if draft is not None else [])
-        self.label('扫描搜索目录下的 Gacode* 文件夹；检查实际程序，不运行计算。')
+        self.runtime_note('检测 Gacode* 文件夹中的程序；不启动计算。')
+        self.runtime_section('路径维护')
         if installs:
-            options = installation_choices(config, detection)
+            options = OrderedDict((str(name), name) for name in installs)
             if self.settings.get('gacode_entry', '') not in installs:
                 self.settings['gacode_entry'] = next(iter(installs))
-            self.ui.ComboBox(self.prefix + "['gacode_entry']", options, '路径列表（维护）',
-                             state='disabled' if draft is not None else 'readonly', updateGUI=True)
+            self.runtime_choice(self.prefix + "['gacode_entry']", options, '安装名称',
+                                state='disabled' if draft is not None else 'readonly', updateGUI=True)
             name = self.settings['gacode_entry']
-            self.label(str(installs[name]))
+            self.runtime_note(str(installs[name]))
+            captions = installation_choices(config, detection)
+            detail = next((caption for caption, value in captions.items() if value == name), '')
+            if detail.startswith(str(name)):
+                detail = detail[len(str(name)):].strip()
+            if detail:
+                self.runtime_note(detail)
             with self.ui.same_row():
                 self.guarded('编辑路径', lambda: self.actions.begin_gacode_install(edit=True),
                              ['请先保存或取消编辑'] if draft is not None else [])
@@ -637,16 +682,15 @@ class ProjectUI:
                              ['请先更换使用此安装的程序'] if used else
                              (['请先保存或取消编辑'] if draft is not None else []))
         if draft is not None:
-            self.server_text_entry(draft, 'name', '安装名称')
-            self.server_text_entry(draft, 'path', '安装根目录')
+            self.runtime_section('编辑安装' if draft.get('original', '') else '新增安装')
+            self.runtime_field(self.server_text_entry(draft, 'name', '安装名称'), '安装名称')
+            self.runtime_field(self.server_text_entry(draft, 'path', '安装根目录'), '安装根目录', wide=True)
             with self.ui.same_row():
                 self.ui.Button('保存路径', self.actions.save_gacode_install, updateGUI=True)
                 self.ui.Button('取消编辑', self.actions.cancel_gacode_install, updateGUI=True)
-        for program, (caption, _) in PROGRAMS.items():
-            self.ui.ComboBox(prefix + "[{!r}]".format(program + '_install'),
-                             installation_choices(config, detection, program), caption + ' 版本',
-                             state='readonly', updateGUI=True)
-        self.label('同版选择自动同步脚本路径；分别选版时，各程序按所选路径初始化。修改后应用。')
+        elif not installs:
+            self.runtime_note('暂无安装路径，先自动检测或手动新增。')
+        self.runtime_note('在“常用配置”选择各程序版本。移除路径仅从列表删除。')
 
     def server_text_entry(self, draft, key, caption):
         """Plain text in an OMFIT row, without Python expression evaluation.

@@ -893,7 +893,7 @@ class ProjectActions:
             config['scheduler'] = 'local'
         elif config['scheduler'] == 'local':
             config['scheduler'] = 'slurm'
-        self.settings['message'] = '已读取 OMFIT 连接信息。检查下方共用配置后点击“应用到整个工程”。'
+        self.settings['message'] = '已读取连接信息；确认配置后点击“应用到整个工程”。'
 
     def begin_gacode_install(self, edit=False):
         config = initialize_runtime(self.root, self.factory)
@@ -935,7 +935,7 @@ class ProjectActions:
         config = initialize_runtime(self.root, self.factory)
         name = str(self.settings.get('gacode_entry', '') or '')
         if any(config[program + '_install'] == name for program in PROGRAMS):
-            raise ValueError('此安装仍被使用，请先更换下方程序选择')
+            raise ValueError('此安装仍被使用，请先在“常用配置”更换程序版本')
         config['gacode_installs'].pop(name, None)
         self.settings['gacode_entry'] = ''
         self.settings['message'] = '已从安装列表移除；服务器文件保留。'

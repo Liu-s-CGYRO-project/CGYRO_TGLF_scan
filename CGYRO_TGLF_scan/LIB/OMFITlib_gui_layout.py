@@ -7,7 +7,7 @@ from tkinter import font as tkfont, ttk
 from OMFITlib_gui_context import bind_actions
 
 
-def finish_gui_layout(label, ui=None, compact=False):
+def finish_gui_layout(label, ui=None, compact=False, fit_tabs=False):
     """Style the page containing an OMFITx.Label, retaining native bindings.
 
     OMFITx.Label returns a label in a row frame in the GUI's content frame.
@@ -24,7 +24,7 @@ def finish_gui_layout(label, ui=None, compact=False):
         return
     aux = getattr(ui, '_aux', {})
     resize_window = not aux.get('is_compoundGUI', False)
-    content._cgyro_gui_layout = NativeLayout(content, label, compact, resize_window)
+    content._cgyro_gui_layout = NativeLayout(content, label, compact, resize_window, fit_tabs)
 
 
 def _style_console(console):
@@ -81,10 +81,11 @@ def fix_console_layout(anchor=None):
 
 
 class NativeLayout:
-    def __init__(self, content, label, compact=False, resize_window=True):
+    def __init__(self, content, label, compact=False, resize_window=True, fit_tabs=False):
         self.content = content
         self.anchor = label
         self.compact = compact
+        self.fit_tabs = fit_tabs
         self.style = ttk.Style(content)
         base = label.cget('font') or self.style.lookup(label.cget('style') or 'TLabel', 'font') or 'TkDefaultFont'
         original = tkfont.Font(root=content, font=base).actual()
@@ -95,6 +96,11 @@ class NativeLayout:
         self.gap = max(4, self.normal.metrics('linespace') // 5)
         self.width = min(760, max(640, self.normal.measure('0') * 72), content.winfo_screenwidth() - 64)
         self.tag = hashlib.sha256(repr(self.normal.actual()).encode('utf-8')).hexdigest()[:12]
+        background = self.style.lookup('TFrame', 'background') or '#d9d9d9'
+        red, green, blue = content.winfo_rgb(background)
+        light = (red + green + blue) > 3 * 32768
+        self.heading_color = '#274b63' if light else '#a5cfe8'
+        self.muted_color = '#52616b' if light else '#becbd4'
         self.rows = []
         self._walk(content)
         self.reflow()
@@ -132,10 +138,15 @@ class NativeLayout:
             if kind == 'Toplevel':
                 continue
             if kind == 'TLabel':
+                role = getattr(child, '_cgyro_role', '')
                 current = child.cget('font') or self.style.lookup(child.cget('style') or 'TLabel', 'font') or 'TkDefaultFont'
-                bold = tkfont.Font(root=child, font=current).actual('weight') == 'bold'
+                bold = role == 'heading' or tkfont.Font(root=child, font=current).actual('weight') == 'bold'
                 child.configure(font=self.bold if bold else self.normal, width=0,
                                 padding=(0, self.gap if bold else self.gap // 2))
+                if role == 'heading':
+                    child.configure(foreground=self.heading_color, padding=(0, self.gap * 2, 0, self.gap))
+                elif role == 'muted':
+                    child.configure(foreground=self.muted_color)
                 if self.compact:
                     child.configure(wraplength=self.width - 80)
             elif kind in ('TEntry', 'TCombobox'):
@@ -148,7 +159,10 @@ class NativeLayout:
                 if kind == 'TCombobox':
                     child.option_add('*' + str(child).lstrip('.') + '*Listbox.font', self.normal)
             elif kind in ('TButton', 'TCheckbutton', 'TRadiobutton'):
-                self._style_name(child, self.normal, padding=(6, self.gap))
+                primary = getattr(child, '_cgyro_role', '') == 'primary'
+                if primary:
+                    child.configure(style='ProjectPrimary.TButton')
+                self._style_name(child, self.bold if primary else self.normal, padding=(6, self.gap))
                 child.configure(width=0)
             elif kind == 'TNotebook':
                 old = str(child.cget('style')) or 'TNotebook'
@@ -159,6 +173,13 @@ class NativeLayout:
             elif kind == 'Text':
                 child.configure(font=self.normal, spacing1=self.gap, spacing2=self.gap, spacing3=self.gap)
             self._walk(child)
+            if kind == 'TNotebook' and self.fit_tabs:
+                child.bind('<<NotebookTabChanged>>', lambda event, book=child: self._fit_tab(book), add='+')
+                child.bind('<Configure>', lambda event, book=child: self._fit_tab(book), add='+')
+                child.after_idle(lambda book=child: self._fit_tab(book))
+        form = getattr(parent, '_cgyro_form', None)
+        if form is not None:
+            self._form(parent, children, *form)
         if row:
             for child in children:
                 child.pack_forget()
@@ -172,6 +193,41 @@ class NativeLayout:
             else:
                 self.rows.append((parent, children))
                 parent.bind('<Configure>', lambda event, frame=parent, items=children: self._row(frame, items), add='+')
+
+    def _form(self, frame, children, field, caption, wide, short):
+        """Align native field labels; paths and scripts get a full-width row."""
+        if not children or field not in children:
+            return
+        label = children[0]
+        label.configure(text=caption, anchor='w', wraplength=0)
+        for child in children:
+            child.pack_forget()
+        if wide:
+            frame.columnconfigure(0, weight=1)
+            label.grid(row=0, column=0, columnspan=len(children) - 1, sticky='w', pady=(self.gap, 0))
+            for index, child in enumerate(children[1:]):
+                child.grid(row=1, column=index, sticky='ew' if child is field else 'w',
+                           padx=(0, 4), pady=(0, self.gap // 2))
+        else:
+            frame.columnconfigure(0, minsize=max(self.normal.measure('每进程线程数'),
+                                               self.normal.measure('profiles_gen')) + 18)
+            frame.columnconfigure(1, weight=1)
+            for index, child in enumerate(children):
+                child.grid(row=0, column=index, sticky='ew' if child is field and not short else 'w',
+                           padx=(0, 4), pady=self.gap // 2)
+        if short:
+            field.configure(width=12)
+
+    def _fit_tab(self, notebook):
+        """Hidden history pages must not determine the active form's height."""
+        try:
+            selected = notebook.select()
+            if selected:
+                height = max(1, notebook.nametowidget(selected).winfo_reqheight())
+                if int(notebook.cget('height')) != height:
+                    notebook.configure(height=height)
+        except tk.TclError:
+            return
 
     def _row(self, frame, items):
         if not frame.winfo_exists():
