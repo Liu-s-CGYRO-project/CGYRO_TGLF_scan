@@ -623,6 +623,7 @@ class ProjectUI:
     def runtime_apply(self, config):
         """One apply action outside the tabs, shared by every settings page."""
         draft = self.settings.get('server_draft', None)
+        pending = applied_runtime(self.root) is None or bool(shared_issues(self.root))
         detection = self.root.get('PROJECT_STATE', {}).get('gacode_detection', {})
         issues = (validate_runtime(config) + installation_issues(config, detection)
                   + self.actions.runtime_server_issues(match_connection=True))
@@ -634,16 +635,15 @@ class ProjectUI:
             status = '服务器草稿未保存'
         elif self.settings.get('gacode_draft', None) is not None:
             status = '安装路径草稿未保存'
-        elif applied_runtime(self.root) is None:
-            status = '配置待应用'
-        elif shared_issues(self.root):
-            status = '有修改待应用'
+        elif pending:
+            status = '修改未应用 · 请先完成配置' if issues else '修改未应用 · 点击蓝色按钮同步'
         else:
-            status = '配置已应用'
-        self.runtime_note(status)
-        button = self.ui.Button('应用到整个工程', self.actions.apply_runtime, updateGUI=True,
-                                state='disabled' if issues else 'normal', help='；'.join(issues))
-        button._cgyro_role = 'primary'
+            status = '配置已同步'
+        label = self.label(status)
+        label._cgyro_role = 'pending' if pending else 'muted'
+        button = self.ui.Button('应用到整个工程' if pending else '配置已同步', self.actions.apply_runtime, updateGUI=True,
+                                state='disabled' if issues or not pending else 'normal', help='；'.join(issues))
+        button._cgyro_role = 'pending' if pending else 'primary'
         if issues and draft is None:
             self.label('待填写：' + '；'.join(issues))
 

@@ -97,6 +97,7 @@ class NativeLayout:
         self.width = min(760, max(640, self.normal.measure('0') * 72), content.winfo_screenwidth() - 64)
         self.tag = hashlib.sha256(repr(self.normal.actual()).encode('utf-8')).hexdigest()[:12]
         background = self.style.lookup('TFrame', 'background') or '#d9d9d9'
+        self.background = background
         red, green, blue = content.winfo_rgb(background)
         light = (red + green + blue) > 3 * 32768
         self.heading_color = '#274b63' if light else '#a5cfe8'
@@ -141,13 +142,15 @@ class NativeLayout:
             if kind == 'TLabel':
                 role = getattr(child, '_cgyro_role', '')
                 current = child.cget('font') or self.style.lookup(child.cget('style') or 'TLabel', 'font') or 'TkDefaultFont'
-                bold = role == 'heading' or tkfont.Font(root=child, font=current).actual('weight') == 'bold'
+                bold = role in ('heading', 'pending') or tkfont.Font(root=child, font=current).actual('weight') == 'bold'
                 child.configure(font=self.bold if bold else self.normal, width=0,
                                 padding=(0, self.gap if bold else self.gap // 2))
                 if role == 'heading':
                     child.configure(foreground=self.heading_color, padding=(0, self.gap * 2, 0, self.gap))
                 elif role == 'muted':
                     child.configure(foreground=self.muted_color)
+                elif role == 'pending':
+                    child.configure(foreground='#185a9d' if self.heading_color == '#274b63' else '#8bc7fa')
                 if self.compact:
                     child.configure(wraplength=self.width - 80)
             elif kind in ('TEntry', 'TCombobox'):
@@ -160,10 +163,17 @@ class NativeLayout:
                 if kind == 'TCombobox':
                     child.option_add('*' + str(child).lstrip('.') + '*Listbox.font', self.normal)
             elif kind in ('TButton', 'TCheckbutton', 'TRadiobutton'):
-                primary = getattr(child, '_cgyro_role', '') == 'primary'
+                pending = getattr(child, '_cgyro_role', '') == 'pending'
+                primary = pending or getattr(child, '_cgyro_role', '') == 'primary'
                 if primary:
-                    child.configure(style='ProjectPrimary.TButton')
+                    child.configure(style='ProjectPending.TButton' if pending else 'ProjectPrimary.TButton')
                 self._style_name(child, self.bold if primary else self.normal, padding=(6, self.gap))
+                if pending:
+                    name = str(child.cget('style'))
+                    self.style.configure(name, background='#2568a0', foreground='#ffffff')
+                    self.style.map(name,
+                        background=[('disabled', self.background), ('pressed', '#17466e'), ('active', '#337cb6')],
+                        foreground=[('disabled', self.muted_color), ('!disabled', '#ffffff')])
                 child.configure(width=0)
             elif kind == 'TNotebook':
                 old = str(child.cget('style')) or 'TNotebook'
