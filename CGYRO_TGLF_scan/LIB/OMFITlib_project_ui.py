@@ -39,6 +39,34 @@ class ProjectUI:
     def label(self, value):
         return self.ui.Label(value, align='left', wraplength=600 if self.compact else 840)
 
+    def show_message(self, first_line=False):
+        value = self.settings['message']
+        if not value:
+            return
+        label = self.label(str(value).splitlines()[0][:200] if first_line else value)
+        if value != '配置检查通过':
+            return
+        # Consume successful feedback immediately, so redraws and saved projects
+        # cannot bring it back. Only its own visible row lasts three seconds.
+        self.settings['message'] = ''
+        if not isinstance(label, tk.Misc):
+            return
+        row, top = label.master, label.winfo_toplevel()
+        timer = [None]
+        def dismiss():
+            timer[0] = None
+            if row.winfo_exists():
+                row.destroy()
+        def cancel(event):
+            if event.widget is label and timer[0] is not None:
+                try:
+                    top.after_cancel(timer[0])
+                except tk.TclError:
+                    pass
+                timer[0] = None
+        timer[0] = top.after(3000, dismiss)
+        label.bind('<Destroy>', cancel, add='+')
+
     def nav(self, label, page):
         callback = (lambda: self.settings.__setitem__('cgyro_panel_page', page)) if self.panel_only else (
             lambda: self.actions.open_page(page))
@@ -86,8 +114,8 @@ class ProjectUI:
             self.ui.Button('检查配置', self.actions.check, updateGUI=True,
                            help='检查运行配置和 CGYRO 输入；不连接服务器、不提交计算。')
             self.ui.Button('刷新', lambda: None, updateGUI=True)
-        if self.settings['message'] and self.settings['page'] != 'cgyro':
-            self.label(self.settings['message'])
+        if self.settings['page'] != 'cgyro':
+            self.show_message()
         if pending_inputs(self.root) and self.settings['page'] != 'review':
             self.nav('有待确认的 TGLF 输入 · 查看差异', 'review')
         getattr(self, 'render_' + self.settings['page'])()
@@ -274,8 +302,7 @@ class ProjectUI:
         self.nav('修改运行环境', 'run')
         if issues:
             self.label('需要：' + '；'.join(issues[:2]))
-        if self.settings['message']:
-            self.label(str(self.settings['message']).splitlines()[0][:200])
+        self.show_message(first_line=True)
         self.ui.Tab('计算参数')
         self.render_cgyro_parameters(node, rows)
         self.ui.Tab('结果与记录')
