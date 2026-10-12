@@ -592,21 +592,21 @@ class ProjectUI:
                                 installation_choices(config, detection, program), caption,
                                 state='readonly', updateGUI=True)
         self.runtime_note('共用安装统一设置版本与脚本；各程序也可分别选择。')
-        self.runtime_section('03  CGYRO 扫描资源')
+        self.runtime_section('03  共用作业调度')
         self.runtime_choice(prefix + "['scheduler']", OrderedDict([('本机执行', 'local'), ('Slurm', 'slurm'), ('PBS', 'pbs')]),
                             '作业调度', wide=True, updateGUI=True)
-        pairs = []
         if config['scheduler'] != 'local':
-            pairs.append((('queue', '队列 / 分区'), ('wall_time', '运行时限')))
-        pairs.extend([(('nodes', '节点数'), ('cores', '每节点 MPI 数')),
-                      (('cpus_per_task', '每进程线程数'), ('array_parallel', '并发扫描点数'))])
-        for pair in pairs:
-            with self.ui.same_row():
-                for key, caption in pair:
-                    # NativeLayout gives each field half the row, with its
-                    # label above it, and stacks the pair in a narrow window.
-                    self.runtime_entry(prefix + "[{!r}]".format(key), caption,
-                                       wide=True, width=12, updateGUI=True)
+            self.runtime_pair(prefix, (('queue', '队列 / 分区'), ('wall_time', '运行时限')))
+        self.runtime_section('04  默认并行资源')
+        self.runtime_pair(prefix, (('nodes', '节点数'), ('cores', '每节点 MPI 数')))
+        self.runtime_pair(prefix, (('cpus_per_task', '每进程线程数'), ('array_parallel', 'CGYRO 并发点数')))
+
+    def runtime_pair(self, prefix, fields):
+        """Keep related native fields side by side, stacking in narrow windows."""
+        with self.ui.same_row():
+            for key, caption in fields:
+                self.runtime_entry(prefix + "[{!r}]".format(key), caption,
+                                   wide=True, width=12, updateGUI=True)
 
     def runtime_commands(self, prefix):
         self.runtime_section('共用环境脚本')
