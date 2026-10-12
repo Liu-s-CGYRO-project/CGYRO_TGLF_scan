@@ -83,7 +83,8 @@ class ProjectUI:
                             '输入准备  →  传递与验证  →  运行与收集  →  绘图对比'))
         self.ui.ComboBox(self.prefix + "['page']", PAGES, '工作页面', default='overview', updateGUI=True)
         with self.ui.same_row():
-            self.ui.Button('检查前置条件', self.actions.check, updateGUI=True)
+            self.ui.Button('检查配置', self.actions.check, updateGUI=True,
+                           help='检查运行配置和 CGYRO 输入；不连接服务器、不提交计算。')
             self.ui.Button('刷新', lambda: None, updateGUI=True)
         if self.settings['message'] and self.settings['page'] != 'cgyro':
             self.label(self.settings['message'])
@@ -415,7 +416,7 @@ class ProjectUI:
             self.task('编辑 TGLF 模型与数值参数', MODULES['tglf'] + ('GUIS', 'TGLF_GUI'),
                       issues=tglf_input_issues(self.root), showButtons=False)
             self.guarded('运行当前 input.tglf', lambda: self.actions.run('tglf', 'runTGLF', (('FILES', 'input.tglf'),)), issues)
-        self.label('运行条件：' + ('；'.join(issues) or '基础字段已填写，运行前将再次检查'))
+        self.label('配置检查：' + ('；'.join(issues) or '通过'))
         self.ui.Tab('参数与径向扫描')
         self.label('从剖面准备局部输入，再选择径向、1D、2D 或 UQ 扫描。')
         generated = generated_tglf_sources(self.root)
@@ -485,7 +486,7 @@ class ProjectUI:
             if issues:
                 self.label('需要补充：' + '；'.join(issues))
         else:
-            self.label('配置检查：' + ('；'.join(runtime_issues(self.root, name)) or '基础字段已填写；目标程序与资源尚未验证'))
+            self.label('配置检查：' + ('；'.join(runtime_issues(self.root, name)) or '通过'))
 
     def select_runtime(self, name):
         self.settings['page'] = 'run'

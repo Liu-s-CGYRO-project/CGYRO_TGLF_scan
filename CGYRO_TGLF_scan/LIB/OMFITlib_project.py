@@ -455,6 +455,11 @@ def initialize(root, factory=dict):
     settings = root.setdefault('SETTINGS', factory()).setdefault('WORKBENCH', factory())
     for key, value in DEFAULTS.items():
         settings.setdefault(key, value)
+    # Discard only the saved report from the former prerequisite checker.
+    # Opening the page must not rerun checks or claim that old results are current.
+    message = str(settings.get('message', '') or '')
+    if message.startswith('输入转换：') and '\nCGYRO 前置流程：' in message:
+        settings['message'] = ''
     sync_cgyro_ion_cases(settings, factory)
     settings.setdefault('cgyro_radii', factory())
     if settings['page'] not in PAGES.values():
@@ -497,21 +502,23 @@ def runtime_issues(root, name):
         elif (picker == 'localhost') != (scheduler == 'local'):
             problems.append('localhost 与 local 调度器必须配套')
         if scheduler in ('slurm', 'pbs'):
-            for key in ('queue', 'w'):
+            for key, label in [('queue', '队列 / 分区'), ('w', '运行时限')]:
                 if not text_value(cfg, key):
-                    problems.append(key + '未填写')
-            resource_keys = ('nodes', 'ntasks_per_node', 'array_parallel') if scheduler == 'slurm' else ('nodes', 'ppn')
-            for key in resource_keys:
+                    problems.append(label + '未填写')
+            resource_keys = [('nodes', '节点数'), ('ntasks_per_node', '每节点 MPI 数'),
+                             ('array_parallel', 'CGYRO 并发点数')] if scheduler == 'slurm' else [
+                             ('nodes', '节点数'), ('ppn', '每节点 MPI 数')]
+            for key, label in resource_keys:
                 try:
                     value = int(cfg.get(key, 0))
                     if value < 1 or str(value) != str(cfg.get(key, None)).strip():
                         raise ValueError()
                 except (TypeError, ValueError):
-                    problems.append(key + '必须为正整数')
+                    problems.append(label + '必须为正整数')
         if picker != 'localhost':
-            for key in ('server', 'workDir'):
+            for key, label in [('server', '服务器地址'), ('workDir', '工作目录')]:
                 if not text_value(cfg, key) and not text_value(remote, key):
-                    problems.append('远程 ' + key + '未填写')
+                    problems.append(label + '未填写')
     else:
         if name == 'transfer':
             try:
@@ -1112,11 +1119,19 @@ class ProjectActions:
         self.settings['message'] = 'Transfer_tool 已完成：已生成 {} 个 CGYRO 半径输入。'.format(len(rows))
 
     def check(self):
-        self.settings['message'] = '\n'.join(
-            LABELS[name] + '：' + ('；'.join(runtime_issues(self.root, name)) or '基础字段已填写；尚未验证目标程序和资源')
-            for name in MODULES)
-        prerequisites = cgyro_input_issues(self.root)
-        self.settings['message'] += '\nCGYRO 前置流程：' + ('；'.join(prerequisites) or 'Transfer 输入已验证并传递')
+        problems = []
+        shared = shared_issues(self.root)
+        if shared:
+            problems.append('共用配置：' + '；'.join(shared))
+        else:
+            for name in MODULES:
+                issues = runtime_issues(self.root, name)
+                if issues:
+                    problems.append(LABELS[name] + '：' + '；'.join(issues))
+        issues = cgyro_input_issues(self.root)
+        if issues:
+            problems.append('CGYRO 输入与扫描：' + '；'.join(issues))
+        self.settings['message'] = '需要修改：\n' + '\n'.join(problems) if problems else '配置检查通过'
 
     def collect(self):
         issues = collect_issues(self.root)
