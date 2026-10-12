@@ -16,7 +16,7 @@ import uuid
 from collections import OrderedDict
 from OMFITlib_project_runtime import initialize_runtime, apply_runtime, shared_issues
 from OMFITlib_gacode_installations import (PROGRAMS, installation_issues, merge_probe,
-    parse_probe, probe_script, valid_path)
+    parse_probe, probe_script, sync_environment, valid_path)
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, tgyro_batch_settings
 from OMFITlib_transfer_particles import particle_options
 from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters, initialize_parameters,
@@ -894,6 +894,24 @@ class ProjectActions:
         elif config['scheduler'] == 'local':
             config['scheduler'] = 'slurm'
         self.settings['message'] = '已读取连接信息；确认配置后点击“应用到整个工程”。'
+
+    def select_gacode_install(self, location=None):
+        """Select one shared installation for all programs and the script."""
+        if self.settings.get('gacode_draft', None) is not None or self.settings.get('server_draft', None) is not None:
+            raise ValueError('请先保存或取消正在编辑的配置')
+        name = str(self.settings.get('gacode_selected', '') or '')
+        if not name:
+            self.settings['message'] = '请在“常用配置”分别选择程序版本。'
+            return
+        config = initialize_runtime(self.root, self.factory)
+        path = str(config['gacode_installs'].get(name, '') or '')
+        if not valid_path(path):
+            raise ValueError('请先保存有效的安装路径：' + name)
+        for program in PROGRAMS:
+            config[program + '_install'] = name
+        sync_environment(config)
+        self.settings['gacode_entry'] = name
+        self.settings['message'] = '已选用 ' + name + '，环境脚本已同步；点击“应用到整个工程”。'
 
     def begin_gacode_install(self, edit=False):
         config = initialize_runtime(self.root, self.factory)

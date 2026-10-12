@@ -1,5 +1,5 @@
 """Native OMFIT workbench with dependency-aware workflow controls."""
-from builtins import any, bool, callable, dict, float, int, isinstance, iter, len, list, next, range, sorted, str
+from builtins import all, any, bool, callable, dict, float, int, isinstance, iter, len, list, next, range, sorted, str
 from collections import OrderedDict
 import json
 import math
@@ -585,12 +585,13 @@ class ProjectUI:
             self.runtime_entry(prefix + "['workDir']", '工作根目录', wide=True, updateGUI=True,
                                help='各程序在此目录下使用独立子目录。')
         self.runtime_section('02  程序版本')
+        self.shared_gacode_install(config)
         detection = self.root.get('PROJECT_STATE', {}).get('gacode_detection', {})
         for program, (caption, _) in PROGRAMS.items():
             self.runtime_choice(prefix + "[{!r}]".format(program + '_install'),
                                 installation_choices(config, detection, program), caption,
                                 state='readonly', updateGUI=True)
-        self.runtime_note('新增版本在“安装路径”维护；同版选择自动同步环境脚本。')
+        self.runtime_note('共用安装统一设置版本与脚本；各程序也可分别选择。')
         self.runtime_section('03  CGYRO 扫描资源')
         self.runtime_choice(prefix + "['scheduler']", OrderedDict([('本机执行', 'local'), ('Slurm', 'slurm'), ('PBS', 'pbs')]),
                             '作业调度', updateGUI=True)
@@ -646,6 +647,20 @@ class ProjectUI:
         if issues and draft is None:
             self.label('待填写：' + '；'.join(issues))
 
+    def shared_gacode_install(self, config):
+        installs = config['gacode_installs']
+        selected = [str(config.get(program + '_install', '') or '') for program in PROGRAMS]
+        name = selected[0] if selected and all(value == selected[0] for value in selected) else ''
+        self.settings['gacode_selected'] = name if name in installs else ''
+        options = OrderedDict([('各程序分别选择', '')])
+        options.update(OrderedDict((str(key), key) for key in installs))
+        editing = (self.settings.get('gacode_draft', None) is not None
+                   or self.settings.get('server_draft', None) is not None)
+        self.runtime_choice(self.prefix + "['gacode_selected']", options, '共用安装',
+                            state='disabled' if editing else 'readonly', updateGUI=True,
+                            postcommand=self.actions.select_gacode_install,
+                            help='选择安装后，四个程序版本与环境脚本的 GACODE_ROOT 同步。分别选版时显示“各程序分别选择”。')
+
     def gacode_installations(self, config):
         self.runtime_section('检测安装')
         self.runtime_field(self.server_text_entry(config, 'gacode_scan_dir', '搜索目录'), '搜索目录', wide=True)
@@ -659,12 +674,15 @@ class ProjectUI:
             self.guarded('新增路径', self.actions.begin_gacode_install,
                          ['请先保存或取消编辑'] if draft is not None else [])
         self.runtime_note('检测 Gacode* 文件夹中的程序；不启动计算。')
+        self.runtime_section('选用安装')
+        self.shared_gacode_install(config)
+        self.runtime_note('选择后立即同步环境脚本，运行前点击“应用到整个工程”。')
         self.runtime_section('路径维护')
         if installs:
             options = OrderedDict((str(name), name) for name in installs)
             if self.settings.get('gacode_entry', '') not in installs:
                 self.settings['gacode_entry'] = next(iter(installs))
-            self.runtime_choice(self.prefix + "['gacode_entry']", options, '安装名称',
+            self.runtime_choice(self.prefix + "['gacode_entry']", options, '编辑对象',
                                 state='disabled' if draft is not None else 'readonly', updateGUI=True)
             name = self.settings['gacode_entry']
             self.runtime_note(str(installs[name]))
@@ -690,7 +708,7 @@ class ProjectUI:
                 self.ui.Button('取消编辑', self.actions.cancel_gacode_install, updateGUI=True)
         elif not installs:
             self.runtime_note('暂无安装路径，先自动检测或手动新增。')
-        self.runtime_note('在“常用配置”选择各程序版本。移除路径仅从列表删除。')
+        self.runtime_note('编辑对象用于维护路径；选用版本请用上方“共用安装”。')
 
     def server_text_entry(self, draft, key, caption):
         """Plain text in an OMFIT row, without Python expression evaluation.
