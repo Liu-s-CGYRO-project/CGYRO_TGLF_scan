@@ -4,6 +4,7 @@ import os
 from OMFITlib_transfer_particles import EQUIVALENT_RULE, MAIN_ION_RULE, close_local_input
 from OMFITlib_transfer_equivalent import equivalent_local_input, locpargen_rhostar
 from OMFITlib_gacode_installations import program_guard
+from OMFITlib_transfer_workflow import profiles_python_environment
 
 # OMFITx.execute() reads SHELL directly.  Desktop/VNC sessions may omit it.
 if not os.environ.get('SHELL'):
@@ -28,6 +29,7 @@ neutrality = {}
 for k, rho in enumerate(rho_arr, 1):
     environment = setup.get('profiles_environment', None) or setup.get('executable', '')
     executable = ('#!/bin/bash\nset -e\n' + environment + '\n' + program_guard('profiles')
+                  + profiles_python_environment()
                   + 'profiles_gen -i input.gacode -loc_rho ' + str(float(rho)))
     ret_code = OMFITx.executable(root, inputs=inputs, outputs=outputs, workdir=workdir,
                                 executable=executable, clean=True, ignoreReturnCode=False)

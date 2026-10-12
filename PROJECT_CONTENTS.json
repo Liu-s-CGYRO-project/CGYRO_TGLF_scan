@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.16.16",
-  "parent_release": "1.16.15",
+  "version": "1.16.17",
+  "parent_release": "1.16.16",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -445,7 +445,7 @@
     "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_startup.py": "c60a1ebbe5e67fbcfa9339977d794b02a8abb0ac47353a4a0fd7d9e8a382f00a",
     "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_equivalent.py": "4b88ec87a2fa33d6c964524372e3dc2ae9bf2dcc0e154330e60f9ac24aa474b9",
     "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_particles.py": "537671188dca7e3e9dd15ae84aa504f3d5495620d48766a7ba9534ea1b938a17",
-    "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_workflow.py": "a2e98a4f36fe43f57bc7c6e9fc5543c1f07febf66fd475096180bb89aca17fbc",
+    "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_workflow.py": "b55c91911f7d46ffb967bb5555c52e7518081e14c85671f3bea73277aca14ada",
     "CGYRO_TGLF_scan/Transfer_tool/LIB/file_2025-10-13__15_04_17__968914": "4985ae41c2217091856950b16122f1fc7900f0bf6c089af3cff9c48ffeb67d94",
     "CGYRO_TGLF_scan/Transfer_tool/PLOTS/fastion.py": "34f44037bacd15747d505909e97aeb77d24e566e1418ed69fcdc3204f8f6d996",
     "CGYRO_TGLF_scan/Transfer_tool/PLOTS/kbmbae.py": "989f0c3970f814682bac73773ee33e58ca150827291984fb21e9adc6d7fa6521",
@@ -460,14 +460,14 @@
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/convert_file.py": "2030aaafc480d6fb355c24bc0baf882fcb2093431b5b071818047b5ebd843e29",
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/inputcgyro2gyro.py": "64233c8f541c2b0753d3fc15128689f940715f5f2be0f03e0660859c9b29de08",
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/main.py": "d20e049ad8b5d7afe623e5225283a5585de1c8737556d5690405b6f2b20eb022",
-    "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen.py": "0893cfd5721bb11108ccc4f7227bd44109e645638647132583d4c0c956fce069",
-    "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen4input.py": "315426f82b8311ef21e67625b7fc9b2c0011889b5723179c8edb550e5bc67a4b",
+    "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen.py": "150ba8ee5cad863e675157bcc762a1661e3d59b987097508b1412276f87970f1",
+    "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen4input.py": "19c0e7788b03fb97295f263ebb18de0262af69bab11c04dc6c1c485bfbffedbe",
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/tgyro_tglf.py": "39d662e2d02fdbec2af0d53882fe13c9cb0994441237ae02f4fb507a9d28ef46",
     "CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/update.py": "359efd51ba3b1d746699872872344191a0806b41cd8d2e0618a4735eb0343da9",
     "CGYRO_TGLF_scan/Transfer_tool/SettingsNamelist.txt": "a5e40e604f842428f31a61f76b71a1ef9494f90e36d6962d448132fe565b45be",
     "CGYRO_TGLF_scan/Transfer_tool/TEMPLATES/input.tglf": "525b1f49e6da0ba79e0380c554a97dc73cf549dfa5e98d271289bf500e3f21bd",
     "CGYRO_TGLF_scan/Transfer_tool/TEMPLATES/input.tgyro": "e5aae229e83ed353846cbdb27cf713067803604c3912408a3141b0a37cde3b8b",
-    "CGYRO_TGLF_scan/Transfer_tool/help.rst": "ce0b0ade692e2cd06a63e1a4415943ff6de3e906c3167d5c8aa6ffe2976741fa",
+    "CGYRO_TGLF_scan/Transfer_tool/help.rst": "efc6a6b9d43e41729692bf38d81db40a84528551be5d2cfed62ede0f3ebaa79b",
     "CGYRO_TGLF_scan/help.rst": "94b06d033ccd5cfd0eac2200b7a40fa2a79117292ca8a619455a83f6228a6c35",
     "MainSettingsNamelist.txt": "18c52429df491c0886df36a7de01700f5ceaab2c6495a65c36aba72ab6e0dd4f",
     "OMFIT_COMPATIBILITY.md": "2b06f06986133a2f25c4a199f279505c32207751b9c122f58fbd3ef6c5b323c6",
@@ -503,7 +503,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "c331b056cd94c18b2cdedb398564c64d3f50e215e69a40d29d73aeb1a2fb86e3"
+    "VALIDATION.md": "fee89ac5f130072d2ea96bbbfe3202118d6f2921d00508a5de7dc5b8075a7519"
   },
   "workbench_features": [
     "native_omfit_project_gui",
@@ -539,7 +539,8 @@
     "compact_resource_form",
     "shared_scheduler_section",
     "concise_config_check",
-    "transient_config_success"
+    "transient_config_success",
+    "profiles_python_and_diagnostics"
   ],
   "template_manager_version": "1.10.6",
   "support_archive_sha256": "cb71c03e57997da7bba99b724ca9a757fff6bad5a62f9daf4639bc6f6588618b",

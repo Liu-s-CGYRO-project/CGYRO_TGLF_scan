@@ -1,3 +1,13 @@
+# 修订记录 · 工程 1.16.17 / 管理器 1.10.6
+
+只读查看太原 tyadmin06 上本次 p0/OMFIT_run_command.sh，命令为 profiles_gen -i pfile -g gfile，所选安装为 Gacode-260821。当前默认远端 python 为 /usr/bin/python；OMFIT Python 3.9 环境的静态元数据显示 pygacode 1.0.1、numpy 1.26.4、scipy 1.13.1、matplotlib 3.5.3、scikit-image 0.24.0。实际启动器通过裸 python 调用平衡映射模块，gacode_setup 又在 PYTHONPATH 前插入安装源码目录。原始失败 stdout 未保存在运行目录中，尚未据此确认本次异常的唯一原因；没有重跑转换或执行导入测试。
+
+新增纯脚本构造函数 profiles_python_environment：环境初始化后，执行节点可访问当前 OMFIT 解释器及同目录 python 时，将该目录和 purelib 安装目录放在 PATH/PYTHONPATH 前部；否则保留所选执行环境。下一次用户运行时检查 Python >= 3.9 和 pygacode 恰为 1.0.1，日志记录实际解释器与包路径。带外部 g-file 时额外导入几何映射实际使用的 numpy/scipy/skimage/matplotlib 与 pygacode 模块，MPLBACKEND=Agg；未执行几何映射时不额外要求这些模块。局部参数生成复用解释器绑定，不更改输入或物理数值。
+
+转换脚本在环境初始化之前开启日志及 EXIT trap，同时下载 input.gacode、profiles_gen.log、profiles_gen.exit。OMFITx.executable 的自动缺失输出异常由显式的执行返回码、脚本退出码、非空文件及解析检查替代；ignoreReturnCode=True 只用于先收集失败日志，不把失败视为成功。诊断保存到独立 OUTPUTS/Profiles_gen_diagnostics，完整日志使用原生文件对象副本，避免下一步清理工作目录时丢失。main.py 的既有失败恢复仍保留原 Profiles_gen、TGYRO 和粒子结果。
+
+完成 Python 3.9 静态语法、OMFIT 设置/帮助/库引用、发布包源文件和 SHA-256 校验。按要求未运行回归、GUI、shell 初始化或求解器测试，未提交计算任务，也未安装或改动服务器 Python 包。SSH 诊断只读已有文件、进程元数据和脚本，使用的临时密钥副本已清理。
+
 # 修订记录 · 工程 1.16.16 / 管理器 1.10.6
 
 统一工程总控与 CGYRO 页的消息展示入口。精确匹配“配置检查通过”时，渲染后立即清空保存的消息，再由所属 Tk 窗口在 3000 毫秒后仅移除该原生 Label 的行框架；其他消息按原方式显示，不设置自动消失。页面刷新和工程保存不会重新带出成功提示，旧版已保存的成功提示也在首次显示后清除。

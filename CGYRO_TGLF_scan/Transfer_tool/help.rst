@@ -16,6 +16,14 @@ Long Description
 旧工程若未保存原始地址且无法恢复，重新选择文件一次即可；
 粒子规则、处理说明及上次结果可点“处理方案”旁的“?”查看。
 
+从 p-file 或 statefile 转换时，profiles_gen 会调用 Python。
+若执行节点能访问 OMFIT 的解释器目录，转换优先使用该 Python 及其安装包；
+否则检查所选环境中的 Python。要求 Python 3.9 或更新版本及 pygacode 1.0.1，
+不再沿用 pygacode 0.71。平衡映射前检查 numpy、scipy、scikit-image、matplotlib
+和 pygacode 几何模块；绘图使用 Agg 后端，无需显示窗口。
+转换失败时显示原始错误及退出码，完整日志保存在
+OUTPUTS/Profiles_gen_diagnostics/log。失败时保留已有生成结果。
+
 运行资源
 ~~~~~~~~
 

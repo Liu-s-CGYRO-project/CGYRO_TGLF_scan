@@ -2,11 +2,59 @@
 from builtins import any, dict, enumerate, float, int, list, range, str
 import hashlib
 import math
+import os
 import re
+import shlex
+import sys
+import sysconfig
 from OMFITlib_transfer_particles import PARTICLE_DEFAULTS, particle_options
 
 PROFILE_KEYS = {'input.gacode': ('input.gacode',), 'statefile': ('statefile', 'statefile.nc'),
                 'pfile': ('pfile',), 'input.profiles': ('input.profiles',)}
+
+
+def profiles_python_environment(geometry=False):
+    """Bind launcher Python calls to OMFIT's interpreter when it is available.
+
+    This constructs the user's next run script without importing a numerical
+    package, initializing a shell, or executing a converter here.
+    """
+    bindir = os.path.dirname(sys.executable)
+    site = sysconfig.get_path('purelib') or ''
+    lines = [
+        'if [ -x ' + shlex.quote(sys.executable) + ' ] && [ -x ' + shlex.quote(os.path.join(bindir, 'python')) + ' ]; then',
+        '    export PATH=' + shlex.quote(bindir) + ':"$PATH"',
+        '    if [ -d ' + shlex.quote(site) + ' ]; then',
+        '        export PYTHONPATH=' + shlex.quote(site) + ':"${PYTHONPATH:-}"',
+        '    fi',
+        'fi',
+        'hash -r',
+        'export MPLBACKEND=Agg',
+        "python - <<'OMFIT_PROFILES_PYTHON'",
+        'import sys',
+        "print('profiles_gen Python: ' + sys.executable)",
+        'sys.stdout.flush()',
+        'if sys.version_info < (3, 9):',
+        "    raise RuntimeError('profiles_gen needs Python >= 3.9; use the OMFIT Python environment.')",
+        'from importlib import metadata',
+        "version = metadata.version('pygacode')",
+        "if version != '1.0.1':",
+        "    raise RuntimeError('profiles_gen requires pygacode 1.0.1; found ' + version)",
+        'import pygacode',
+        "print('profiles_gen pygacode: ' + version + ' (' + str(pygacode.__file__) + ')')",
+        'sys.stdout.flush()',
+    ]
+    if geometry:
+        lines.extend([
+            'from importlib import import_module',
+            "for name in ('numpy', 'scipy', 'skimage', 'matplotlib',",
+            "             'pygacode.profiles_gen.prgen_geqdsk',",
+            "             'pygacode.profiles_gen.prgen_contour',",
+            "             'pygacode.profiles_gen.prgen_shape'):",
+            '    import_module(name)',
+        ])
+    lines.append('OMFIT_PROFILES_PYTHON')
+    return '\n'.join(lines) + '\n'
 
 
 def selected_profile(node, selected=None):
