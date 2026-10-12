@@ -14,8 +14,8 @@ import re
 import shlex
 import uuid
 from collections import OrderedDict
-from OMFITlib_project_runtime import initialize_runtime, apply_runtime, shared_issues
-from OMFITlib_gacode_installations import (PROGRAMS, installation_issues, merge_probe,
+from OMFITlib_project_runtime import initialize_runtime, apply_runtime, runtime_values, shared_issues
+from OMFITlib_gacode_installations import (PROGRAMS, detection_is_current, installation_issues, merge_probe,
     parse_probe, probe_script, sync_environment, valid_path)
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, tgyro_batch_settings
 from OMFITlib_transfer_particles import particle_options
@@ -993,7 +993,7 @@ class ProjectActions:
             len(detection['entries']), added)
         return detection
 
-    def apply_runtime(self):
+    def apply_runtime(self, progress=None):
         if self.settings.get('server_draft', None) is not None:
             self.settings['message'] = '请先保存或取消新增服务器。'
             return
@@ -1005,11 +1005,20 @@ class ProjectActions:
             self.settings['message'] = '；'.join(issues)
             return
         config = initialize_runtime(self.root, self.factory)
+        original = runtime_values(config)
         if config['gacode_installs']:
-            _, detection = self._probe_gacode(scan=False)
+            detection = self.root.get('PROJECT_STATE', {}).get('gacode_detection', {})
+            if not detection_is_current(config, detection):
+                if progress is not None:
+                    progress('正在校验服务器上的 GACODE 安装…')
+                _, detection = self._probe_gacode(scan=False)
+            if runtime_values(config) != original:
+                raise ValueError('校验期间配置已改变，请重新应用')
             issues = installation_issues(config, detection)
             if issues:
                 raise ValueError('；'.join(issues))
+        if progress is not None:
+            progress('正在同步各模块的运行配置…')
         targets = apply_runtime(self.root, self.factory)
         self.settings['message'] = '统一 GACODE 环境已应用到 {} 个模块；案例和结果保留。'.format(len(targets))
         self._record('应用统一 GACODE 环境', status='complete', modules=targets)

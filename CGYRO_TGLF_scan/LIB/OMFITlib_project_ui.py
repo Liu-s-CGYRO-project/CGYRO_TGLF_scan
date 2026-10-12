@@ -641,11 +641,39 @@ class ProjectUI:
             status = '配置已同步'
         label = self.label(status)
         label._cgyro_role = 'pending' if pending else 'muted'
-        button = self.ui.Button('应用到整个工程' if pending else '配置已同步', self.actions.apply_runtime, updateGUI=True,
+        button = self.ui.Button('应用到整个工程' if pending else '配置已同步',
+                                lambda: self.apply_runtime_button(label, button), updateGUI=False,
                                 state='disabled' if issues or not pending else 'normal', help='；'.join(issues))
         button._cgyro_role = 'pending' if pending else 'primary'
         if issues and draft is None:
             self.label('待填写：' + '；'.join(issues))
+
+    def apply_runtime_button(self, label, button):
+        """Paint progress before waiting; redraw only the owning GUI afterward."""
+        if not isinstance(button, tk.Misc):
+            return self.actions.apply_runtime()
+        top = button.winfo_toplevel()
+        registry = self.ui._GUIs
+        gui = registry.get(str(top), None)
+        def progress(message):
+            if label.winfo_exists():
+                label.configure(text=message)
+                label.update_idletasks()
+        button.configure(text='正在应用…')
+        progress('正在准备运行配置…')
+        try:
+            return self.actions.apply_runtime(progress=progress)
+        except Exception as exc:
+            self.settings['message'] = '应用配置失败：' + str(exc)
+            raise
+        finally:
+            if top.winfo_exists() and gui is not None:
+                def refresh():
+                    if registry.get(str(top), None) is gui and top.winfo_exists():
+                        self.ui.UpdateGUI(top=top)
+                # Let the native button/error callbacks return before clearing
+                # controls. Do not emit OMFIT's global <<update_GUI>> event.
+                top.after_idle(refresh)
 
     def shared_gacode_install(self, config):
         installs = config['gacode_installs']

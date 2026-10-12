@@ -1,5 +1,5 @@
 """Maintain installation roots and inspect files without running GACODE."""
-from builtins import all, any, dict, len, list, ord, set, str, zip
+from builtins import all, any, dict, isinstance, len, list, ord, set, str, zip
 from collections import OrderedDict
 import copy
 from datetime import datetime, timezone
@@ -154,6 +154,30 @@ def installation_issues(config, detection=None):
             missing = record.get('missing', {}).get(program, [])
             issues.append(label + ' 在 ' + name + ' 中不可用：' + '、'.join(missing))
     return issues
+
+
+def detection_is_current(config, detection, max_age=300):
+    """Reuse only recent complete checks for these exact roots and endpoint."""
+    try:
+        checked = datetime.fromisoformat(str(detection.get('checked', '')))
+        if checked.tzinfo is None:
+            return False
+        age = (datetime.now(timezone.utc) - checked).total_seconds()
+        if not 0 <= age <= max_age:
+            return False
+        endpoint = {key: str(config.get(key, '') or '') for key in ('server', 'tunnel')}
+        if detection.get('endpoint', {}) != endpoint:
+            return False
+        entries = detection.get('entries', {})
+        for root in config.get('gacode_installs', {}).values():
+            record = entries.get(str(root), {})
+            if not isinstance(record, dict) or not all(key in record for key in ('exists', 'setup', 'missing')):
+                return False
+            if not all(program in record for program in PROGRAMS):
+                return False
+        return True
+    except (TypeError, ValueError, AttributeError, OverflowError):
+        return False
 
 
 def probe_script(config, scan=True):
