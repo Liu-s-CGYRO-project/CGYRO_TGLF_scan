@@ -2,7 +2,13 @@
 from OMFITlib_template_ui import open_manager
 from OMFITlib_template_session import OMFITSession
 
-OMFITx.TitleGUI('OMFIT 模板管理')
-OMFITx.Label('连接 GitHub，选择模板版本；更新时可保留当前案例与结果。', align='left')
-OMFITx.Button('打开 GitHub 模板管理', lambda: open_manager(session=OMFITSession(OMFIT, gui_api=OMFITx)))
-open_manager(session=OMFITSession(OMFIT, gui_api=OMFITx))
+manager = open_manager(session=OMFITSession(OMFIT, gui_api=OMFITx))
+
+# Native OMFIT closes a newly created GUI when it has no controls. A legacy
+# entry already on screen needs the same cleanup after its redraw completes.
+entry_gui = OMFITx._GUIs.get(str(OMFITx._aux.get('topGUI', '')))
+if entry_gui is not None:
+    def close_empty_entry(gui=entry_gui, gui_api=OMFITx):
+        if gui.top.winfo_exists() and not gui.parentGUI.winfo_children():
+            gui_api._clearClosedGUI(gui.top)
+    manager.window.after(0, close_empty_entry)
