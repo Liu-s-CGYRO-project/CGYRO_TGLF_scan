@@ -17,7 +17,7 @@ def register_server(config):
     return True
 
 
-actions = ProjectActions(root, OMFITtree, readers={'cgyro': OMFITgacode, 'tglf': OMFITgacode, 'tgyro': OMFITgacode},
+actions = ProjectActions(root, OMFITtree, readers={'cgyro': OMFITgacode, 'tglf': OMFITgacode, 'tgyro': OMFITgacode, 'gacode': OMFITgacode},
                          resolve_server=lambda node: SERVER[node], workdir=OMFITworkDir, register_server=register_server,
                          remote_execute=OMFITx.remote_execute)
 if workbench_page is not None:

@@ -399,6 +399,10 @@
 ['LIB']['OMFITlib_tglf_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_workbench.py <-:-:-> {}
 ['LIB']['OMFITlib_tglf_workbench_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_workbench_ui.py <-:-:-> {}
 ['TGLF_scan']['LIB']['OMFITlib_tglf_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_workbench.py <-:-:-> {}
+['TGLF_scan']['LIB']['OMFITlib_tglf_multi_data'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_multi_data.py <-:-:-> {}
+['TGLF_scan']['LIB']['OMFITlib_project_runtime'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_runtime.py <-:-:-> {}
+['TGLF_scan']['LIB']['OMFITlib_gacode_installations'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gacode_installations.py <-:-:-> {}
 ['TGLF_scan']['SCRIPTS']['run_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./TGLF_scan/SCRIPTS/run_workbench.py <-:-:-> {}
+['TGLF_scan']['SCRIPTS']['generate_tglf_inputs'] <-:-:-> OMFITpythonTask <-:-:-> ./TGLF_scan/SCRIPTS/generate_tglf_inputs.py <-:-:-> {}
 ['TGLF_scan']['RUN_DB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['TGLF_scan']['PLOTS']['workbench_result'] <-:-:-> OMFITpythonTask <-:-:-> ./TGLF_scan/PLOTS/workbench_result.py <-:-:-> {}

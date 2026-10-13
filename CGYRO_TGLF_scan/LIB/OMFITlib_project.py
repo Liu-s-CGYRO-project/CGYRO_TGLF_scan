@@ -15,11 +15,13 @@ import re
 import shlex
 import uuid
 from collections import OrderedDict
-from OMFITlib_project_runtime import initialize_runtime, apply_runtime, runtime_values, shared_issues
+from OMFITlib_project_runtime import initialize_runtime, apply_runtime, applied_runtime, runtime_values, shared_issues
 from OMFITlib_gacode_installations import (PROGRAMS, detection_is_current, installation_issues, merge_probe,
     parse_probe, probe_script, sync_environment, valid_path)
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, tgyro_batch_settings, tglf_input_format
-from OMFITlib_tglf_workbench import initialize as initialize_tglf, input_rows as tglf_rows, plan as tglf_plan
+from OMFITlib_tglf_workbench import (PROFILE_PATH, RADII, initialize as initialize_tglf,
+    input_rows as tglf_rows, plan as tglf_plan)
+from OMFITlib_tglf_multi_data import profile_digest, profile_info, tgyro_input
 from OMFITlib_transfer_particles import particle_options
 from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters, initialize_parameters,
     numeric_source, parameter_catalog, parameter_value, scan_parameter_names, validated_overrides)
@@ -1367,6 +1369,81 @@ class ProjectActions:
         finally:
             settings['page'] = 'results'
         self.settings['message'] = ''
+
+    def set_tglf_profile(self, profile, source):
+        profile_info(profile)
+        settings, _ = initialize_tglf(self.root, self.factory)
+        previous = read(self.root, PROFILE_PATH)
+        changed = previous is None or profile_digest(previous) != profile_digest(profile)
+        paths = [(MODULES['profiles'] + (group, name), profile)
+                 for group in ('INPUTS', 'OUTPUTS') for name in ('input.gacode', 'input.gacode_base')]
+        self.replace('载入 TGLF 扫描剖面', paths)
+        pg = module(self.root, 'profiles')['SETTINGS']
+        pg['PHYSICS']['start_from'] = 'input.gacode'
+        pg['DEPENDENCIES']['profpowbal'] = "root['INPUTS']['input.gacode']"
+        settings.update(dict(source='radial', page='scan', profile_source=dict(source),
+                             profile_changed=changed or settings.get('profile_changed', False)))
+        # Keep the last generated inputs/results until the new complete set is ready.
+        self.settings['message'] = ''
+
+    def import_tglf_profile(self):
+        settings, _ = initialize_tglf(self.root, self.factory)
+        filename = settings['profile_file']
+        if not filename:
+            return
+        if isinstance(filename, (list, tuple)):
+            path, server, tunnel = filename
+            server, tunnel = server or 'localhost', tunnel or ''
+        else:
+            path, server, tunnel = str(filename), 'localhost', ''
+        profile = self.readers['gacode'](str(path), GACODEtype='gacode', server=server, tunnel=tunnel)
+        self.set_tglf_profile(profile, dict(path=str(path), server=str(server), tunnel=str(tunnel)))
+
+    def use_transfer_tglf_profile(self):
+        path = ('Transfer_tool', 'INPUTS', 'input.gacode')
+        profile = read(self.root, path)
+        if profile is None:
+            raise ValueError('Transfer_tool 尚无 input.gacode')
+        self.set_tglf_profile(profile, dict(path='Transfer_tool / INPUTS / input.gacode', tree_path=list(path)))
+        initialize_tglf(self.root, self.factory)[0]['profile_file'] = ''
+
+    def generate_tglf_inputs(self):
+        settings, _ = initialize_tglf(self.root, self.factory)
+        issues = runtime_issues(self.root, 'tgyro')
+        if issues:
+            raise ValueError('；'.join(issues))
+        profile = read(self.root, PROFILE_PATH)
+        if profile is None:
+            raise ValueError('请先载入 input.gacode')
+        info = profile_info(profile)
+        coordinate = settings['profile_coordinate']
+        if coordinate not in ('rho', 'r/a') or settings['include_ions'] not in ('thermal', 'all'):
+            raise ValueError('请选择径向坐标和离子选项')
+        bounds = (info['rho_min'], info['rho_max']) if coordinate == 'rho' else (info['ra_min'], 1.0)
+        if bounds[0] > RADII[0] or bounds[1] < RADII[-1]:
+            raise ValueError('input.gacode 的 {} 范围不足以生成 0.01–0.99 的输入'.format(coordinate))
+        input_text, radii = tgyro_input(profile, dict(radii=RADII, coordinate=coordinate,
+                                     bounds=bounds, include_ions=settings['include_ions']))
+        tgyro = module(self.root, 'tgyro')
+        seed = tgyro['INPUTS'].get('input.tglf', None)
+        if seed is None:
+            seed = read(self.root, ('Transfer_tool', 'TEMPLATES', 'input.tglf'))
+        if seed is None:
+            raise ValueError('缺少 TGLF 种子输入，请恢复模板中的 input.tglf')
+        remote = tgyro['SETTINGS']['REMOTE_SETUP']
+        selected = remote.get(str(remote.get('serverPicker', '')), {})
+        environment = str(selected.get('environment', '') or remote.get('environment', '') or '')
+        if not environment.strip():
+            raise ValueError('请在环境配置页应用 TGYRO 环境和队列')
+        applied = applied_runtime(self.root) or {}
+        command = str(applied.get('prepare_command', 'tgyro -t . -n {n_radii}')).replace('{n_radii}', str(len(radii)))
+        self.call('生成 99 个 TGLF 半径输入', ('TGLF_scan', 'SCRIPTS', 'generate_tglf_inputs'),
+            profile=profile, seed=seed, input_text=input_text, radii=list(radii),
+            coordinate=coordinate, include_ions=settings['include_ions'],
+            profile_digest=profile_digest(profile), source=dict(settings.get('profile_source', {})),
+            environment=environment, command=command)
+        settings.update(dict(source='radial', page='scan', profile_changed=False))
+        self.settings['message'] = '已生成 99 个 input.tglf，可选择计算半径和扫描参数。'
 
     def resolve_input(self, record_id, use_incoming):
         record = pending_inputs(self.root).get(record_id, None)

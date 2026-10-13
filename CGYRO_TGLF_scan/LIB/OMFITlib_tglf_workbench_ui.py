@@ -4,7 +4,8 @@ from collections import OrderedDict
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_project import MODULES, location, read, runtime_issues
-from OMFITlib_tglf_workbench import COMMON, INTEGERS, MODES, initialize, numeric_parameters, parameter_value, plan
+from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, initialize,
+    numeric_parameters, parameter_value, plan, radial_input_issues, selected_rows)
 
 
 class TGLFWorkbench:
@@ -13,7 +14,10 @@ class TGLFWorkbench:
         self.settings, self.rows = initialize(self.root, self.actions.factory)
         self.prefix = view.prefix + "['tglf']"
         self.available = [row for row in self.rows if row['group'] == self.settings['source']]
-        self.selected = [row for row in self.available if self.settings['selected'].get(row['key'], False)]
+        try:
+            self.selected = selected_rows(self.root, self.settings)
+        except (TypeError, ValueError, KeyError):
+            self.selected = []
         self.reference = (self.selected or self.available or [None])[0]
         self.source = read(self.root, self.reference['path'], {}) if self.reference else {}
 
@@ -36,13 +40,16 @@ class TGLFWorkbench:
 
     def scan(self):
         self.ui.Separator('01  输入')
-        groups = OrderedDict([('当前 / 导入文件', 'current')])
-        for caption, name in [('Transfer_tool 生成的半径输入', 'transfer'), ('TGYRO 生成的半径输入', 'radial'),
-                              ('局部互转文件', 'local')]:
-            if any(row['group'] == name for row in self.rows) or self.settings['source'] == name:
+        groups = OrderedDict()
+        for caption, name in [('input.gacode → 99 个半径输入', 'radial'),
+                              ('Transfer_tool 生成的半径输入', 'transfer'),
+                              ('当前 / 导入 TGLF 文件', 'current'), ('局部互转文件', 'local')]:
+            if name in ('radial', 'current') or any(row['group'] == name for row in self.rows) or self.settings['source'] == name:
                 groups[caption] = name
         self.ui.ComboBox(self.prefix + "['source']", groups, '输入来源', state='readonly', updateGUI=True)
-        if self.settings['source'] == 'current':
+        if self.settings['source'] == 'radial':
+            self.profile()
+        elif self.settings['source'] == 'current':
             self.ui.FilePicker(self.view.prefix + "['tglf_file']", 'TGLF 文件', default='', transferRemoteFile=None,
                 postcommand=lambda location=None: self.actions.import_input('tglf'), updateGUI=True,
                 help='支持 input.tglf 和 out.tglf.localdump，按内容自动识别。更换后自动保存原输入和结果。')
@@ -59,7 +66,8 @@ class TGLFWorkbench:
                         self.view.cgyro_checkbox(self.prefix + "['selected'][{!r}]".format(row['key']),
                             self.settings['selected'], row['key'], row['label'])
         if not self.available:
-            self.label('尚无输入。导入 TGLF 文件，或先在输入准备页生成半径输入。')
+            self.label('请先选择 input.gacode 并生成半径输入。' if self.settings['source'] == 'radial'
+                       else '尚无输入。请导入文件，或选择已有的半径输入。')
         else:
             anchor = self.label('已选 {} 个输入；运行时为每个输入创建副本。'.format(len(self.selected)))
             choices = OrderedDict((row['label'], row['key']) for row in self.available)
@@ -68,7 +76,6 @@ class TGLFWorkbench:
             self.ui.ComboBox(self.prefix + "['preview']", choices, '查看源文件', state='readonly', updateGUI=True)
             row = next(row for row in self.available if row['key'] == self.settings['preview'])
             self.ui.Button('查看 / 编辑输入', lambda: self.view.show_transfer_input(anchor, row['path'], row['label']))
-        self.ui.Button('准备剖面 / 转换输入', lambda: self.actions.open_page('transfer'), updateGUI=True)
         self.ui.Separator('02  扫描设置')
         self.ui.ComboBox(self.prefix + "['mode']", MODES, '计算方式', state='readonly', updateGUI=True)
         mode = self.settings['mode']
@@ -123,6 +130,42 @@ class TGLFWorkbench:
         if problems:
             self.label('需要补充：' + '；'.join(problems[:2]))
         self.view.show_message(first_line=True)
+
+    def profile(self):
+        self.label('input.gacode → 99 个 input.tglf → 选择半径和扫描参数')
+        self.ui.FilePicker(self.prefix + "['profile_file']", 'input.gacode', default='', transferRemoteFile=None,
+            postcommand=lambda location=None: self.actions.import_tglf_profile(), updateGUI=True,
+            help='直接载入完整剖面。生成范围为 0.01–0.99，间隔 0.01；之后可只计算其中部分半径。')
+        profile = read(self.root, PROFILE_PATH)
+        if profile is not None:
+            source = self.settings.get('profile_source', {})
+            self.label('已载入：' + (source.get('path', '') or '工程中的 input.gacode'))
+        transfer = read(self.root, ('Transfer_tool', 'INPUTS', 'input.gacode'))
+        if transfer is not None:
+            self.ui.Button('使用 Transfer_tool 当前 input.gacode', self.actions.use_transfer_tglf_profile, updateGUI=True)
+        with self.ui.same_row():
+            self.ui.ComboBox(self.prefix + "['profile_coordinate']", ['rho', 'r/a'], '径向坐标',
+                             state='readonly', width=12, updateGUI=True)
+            self.ui.ComboBox(self.prefix + "['include_ions']", {'热离子': 'thermal', '全部离子': 'all'},
+                             '参与计算的离子', state='readonly', width=12, updateGUI=True)
+        self.label('生成 0.01–0.99 共 99 个输入；使用环境页中的 TGYRO 版本和共用队列。')
+        issues = runtime_issues(self.root, 'tgyro')
+        if profile is None:
+            issues.append('请载入 input.gacode')
+        self.view.guarded('生成 99 个半径输入', self.actions.generate_tglf_inputs, issues)
+        if self.available:
+            stale = radial_input_issues(self.root, self.settings)
+            self.label('；'.join(stale) if stale else '已有 {} 个半径输入，可查看 / 编辑后运行扫描。'.format(len(self.available)))
+            self.ui.ComboBox(self.prefix + "['radius_mode']", {'全部半径': 'all', '按范围选择': 'range', '指定半径列表': 'list'},
+                             '计算半径', state='readonly', updateGUI=True)
+            if self.settings['radius_mode'] == 'range':
+                with self.ui.same_row():
+                    self.ui.Entry(self.prefix + "['radius_start']", '起始', width=8, updateGUI=True)
+                    self.ui.Entry(self.prefix + "['radius_end']", '结束', width=8, updateGUI=True)
+                    self.ui.Entry(self.prefix + "['radius_step']", '间隔', width=8, updateGUI=True)
+            elif self.settings['radius_mode'] == 'list':
+                self.ui.Entry(self.prefix + "['radius_values']", '半径列表', width=28, updateGUI=True,
+                              help='例如 [0.3, 0.5, 0.7]。半径需在已生成的输入中。')
 
     def select(self, selected):
         self.settings['selected'].update({row['key']: selected for row in self.available})

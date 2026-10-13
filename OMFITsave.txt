@@ -437,6 +437,10 @@
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_workbench.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_workbench_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_workbench_ui.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['TGLF_scan']['LIB']['OMFITlib_tglf_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_workbench.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['LIB']['OMFITlib_tglf_multi_data'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_data.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['LIB']['OMFITlib_project_runtime'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_project_runtime.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['LIB']['OMFITlib_gacode_installations'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gacode_installations.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['run_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/run_workbench.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['SCRIPTS']['generate_tglf_inputs'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/generate_tglf_inputs.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['TGLF_scan']['RUN_DB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['TGLF_scan']['PLOTS']['workbench_result'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/TGLF_scan/PLOTS/workbench_result.py <-:-:-> {}
