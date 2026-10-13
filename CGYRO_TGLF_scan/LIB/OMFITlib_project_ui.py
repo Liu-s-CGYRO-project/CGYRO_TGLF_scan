@@ -14,8 +14,8 @@ from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_G
     initialize_parameters, numeric_source, parameter_catalog, scan_parameter_names)
 from OMFITlib_project import (ERROR_NOTICE_SUFFIX, ION_CASES, LABELS, MODULES, PAGES, cgyro_input_issues,
     cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, generated_tglf_sources, location, module,
-    pending_inputs, read, runtime_issues, summary, sync_cgyro_choices, sync_cgyro_ion_cases, text_value,
-    tglf_input_issues, transfer_generated_rows, transfer_sources)
+    input_digest, pending_inputs, read, runtime_issues, summary, sync_cgyro_choices, sync_cgyro_ion_cases, text_value,
+    tglf_input_issues, transfer_generated_rows, transfer_parameter_value, transfer_sources)
 
 STATUS = {'prepared': '输入已准备', 'submitted': '已提交', 'loaded': '结果已读取',
           'submitted_or_finished': '已提交或执行返回',
@@ -193,18 +193,18 @@ class ProjectUI:
             for code in ('cgyro', 'tglf'):
                 path = row['paths'].get(code, None)
                 caption = row['label'] + ' / input.' + code
-                self.ui.Button('查看 input.' + code,
+                self.ui.Button('查看 / 编辑 input.' + code,
                     lambda path=path, caption=caption: self.show_transfer_input(anchor, path, caption),
                     state='normal' if path is not None else 'disabled')
-        self.label('这里仅查看输入参数，计算半径在 CGYRO 扫描页选择。')
+        self.label('双击数值可编辑；计算半径在 CGYRO 扫描页选择。')
 
     def show_transfer_input(self, anchor, path, caption):
         value = read(self.root, path)
         if value is None:
             raise ValueError('生成文件已变化，请刷新页面。')
-        # Read the live parameter mapping; cached file bytes may predate the
-        # final particle corrections. Inspection never saves or edits the object.
-        parameters = [(str(key), str(item)) for key, item in value.items() if not str(key).startswith('__')]
+        # Edit a draft of the live mapping. Only an explicit save replaces it.
+        state = dict(parameters={}, edits={}, digest='', selected='', loading=False)
+        code = 'cgyro' if str(path[-1]).startswith('input.cgyro') else 'tglf'
         window = tk.Toplevel(anchor.winfo_toplevel())
         window.title('生成输入 · ' + caption)
         width = min(720, window.winfo_screenwidth() - 64)
@@ -231,10 +231,119 @@ class ProjectUI:
         table.grid(row=0, column=0, sticky='nsew')
         y_scroll.grid(row=0, column=1, sticky='ns')
         x_scroll.grid(row=1, column=0, sticky='ew')
-        for parameter, item in parameters:
-            table.insert('', 'end', values=(parameter, item))
+        table.tag_configure('changed', background='#e7f2ff')
+        editor = ttk.Frame(window)
+        editor.pack(fill=tk.X, padx=10, pady=(8, 0))
+        parameter_name = tk.StringVar(master=window)
+        parameter_text = tk.StringVar(master=window)
+        status = tk.StringVar(master=window, value='双击数值编辑，回车确认；保存修改后生效。')
+        ttk.Label(editor, textvariable=parameter_name, width=22, anchor='w').pack(side=tk.LEFT)
+        entry = ttk.Entry(editor, textvariable=parameter_text)
+        entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        feedback = ttk.Label(window, textvariable=status, anchor='w', wraplength=width - 32)
+        feedback.pack(fill=tk.X, padx=10, pady=(6, 0))
+        if code == 'cgyro':
+            ttk.Label(window, text='此处修改源输入，运行时仍按扫描页设置。', anchor='w',
+                      wraplength=width - 32).pack(fill=tk.X, padx=10, pady=(4, 0))
+        else:
+            ttk.Label(window, text='TGLF 页需重新比较并选用此输入。', anchor='w',
+                      wraplength=width - 32).pack(fill=tk.X, padx=10, pady=(4, 0))
         ttk.Label(window, text=location(path), anchor='w', wraplength=width - 32).pack(fill=tk.X, padx=10, pady=6)
-        ttk.Button(window, text='关闭', command=window.destroy).pack(pady=(0, 10))
+        buttons = ttk.Frame(window)
+        buttons.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        def select(event=None):
+            selection = table.selection()
+            if not selection:
+                return
+            name = str(table.item(selection[0], 'values')[0])
+            state['selected'], state['loading'] = name, True
+            parameter_name.set(name)
+            parameter_text.set(state['edits'].get(name, str(state['parameters'][name])))
+            state['loading'] = False
+
+        def changed(*args):
+            name = state['selected']
+            if state['loading'] or not name:
+                return
+            text = parameter_text.get()
+            if text == str(state['parameters'][name]):
+                state['edits'].pop(name, None)
+            else:
+                state['edits'][name] = text
+            for item in table.get_children():
+                if table.item(item, 'values')[0] == name:
+                    table.set(item, 'value', text)
+                    table.item(item, tags=('changed',) if name in state['edits'] else ())
+                    break
+            save_button.configure(state='normal' if state['edits'] else 'disabled')
+            status.set('待保存 {} 项。'.format(len(state['edits'])) if state['edits'] else '双击数值编辑，保存后生效。')
+
+        def confirm(event=None):
+            name = state['selected']
+            if name:
+                try:
+                    parsed = transfer_parameter_value(code, name, parameter_text.get(), state['parameters'][name])
+                    parameter_text.set(str(parsed))
+                except (ValueError, TypeError, SyntaxError, OverflowError) as exc:
+                    status.set(str(exc))
+                    entry.focus_set()
+            return 'break'
+
+        def edit(event):
+            if table.identify_column(event.x) == '#2':
+                item = table.identify_row(event.y)
+                if item:
+                    table.selection_set(item)
+                    select()
+                    entry.focus_set()
+                    entry.selection_range(0, tk.END)
+
+        def load(message='已重载，未保存的修改已撤销。'):
+            current = read(self.root, path)
+            if current is None:
+                raise ValueError('生成文件已变化，请关闭后重新打开。')
+            state['digest'] = input_digest(current)
+            state['parameters'] = {str(key): item for key, item in current.items() if not str(key).startswith('__')}
+            state['edits'].clear()
+            state['selected'], state['loading'] = '', True
+            children = table.get_children()
+            if children:
+                table.delete(*children)
+            for name, item in state['parameters'].items():
+                table.insert('', 'end', values=(name, str(item)))
+            state['loading'] = False
+            children = table.get_children()
+            if children:
+                table.selection_set(children[0])
+                select()
+            save_button.configure(state='disabled')
+            status.set(message)
+
+        def save():
+            try:
+                saved = self.actions.save_transfer_input(path, state['edits'], state['digest'])
+                count = sum(input_digest(saved[name]) != input_digest(state['parameters'][name]) for name in state['edits'])
+                load('已保存 {} 项修改。'.format(count))
+            except Exception as exc:
+                status.set('保存失败：' + str(exc))
+
+        def reload():
+            try:
+                load()
+            except Exception as exc:
+                status.set(str(exc))
+
+        save_button = ttk.Button(buttons, text='保存修改', command=save, state='disabled')
+        save_button.pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(buttons, text='重载 / 撤销', command=reload).pack(side=tk.LEFT)
+        ttk.Button(buttons, text='关闭', command=window.destroy).pack(side=tk.RIGHT)
+        parameter_text.trace_add('write', changed)
+        table.bind('<<TreeviewSelect>>', select)
+        table.bind('<Double-1>', edit)
+        table.bind('<Return>', lambda event: entry.focus_set())
+        entry.bind('<Return>', confirm)
+        load('双击数值编辑，回车确认；保存修改后生效。')
 
     def render_cgyro(self):
         node = read(self.root, MODULES['cgyro'])

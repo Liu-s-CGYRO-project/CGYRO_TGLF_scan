@@ -4,6 +4,7 @@ Reading the dashboard never submits jobs, inspects large result arrays, or
 replaces inputs. All mutations below are explicit button actions.
 """
 from builtins import abs, all, any, bool, dict, enumerate, float, int, isinstance, iter, len, list, next, ord, range, set, sorted, str, sum, tuple
+import ast
 import copy
 from datetime import datetime, timezone
 import hashlib
@@ -193,6 +194,39 @@ def input_digest(value):
         return item
     payload = json.dumps(plain(value), sort_keys=True, ensure_ascii=True, allow_nan=False)
     return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def transfer_parameter_value(code, name, raw, original):
+    """Parse a scalar input value without evaluating expressions."""
+    text = str(raw).strip()
+    if hasattr(original, 'tolist'):
+        original = original.tolist()
+    if isinstance(original, bool):
+        booleans = {'true': True, '.true.': True, '.t.': True, '1': True,
+                    'false': False, '.false.': False, '.f.': False, '0': False}
+        if text.lower() not in booleans:
+            raise ValueError(name + ' 请填写 true / false 或 1 / 0。')
+        return booleans[text.lower()]
+    if isinstance(original, str):
+        value = ast.literal_eval(text) if text.startswith(('\"', "'")) else text
+        if not isinstance(value, str) or any(char in value for char in '\n\r'):
+            raise ValueError(name + ' 请填写单行文本。')
+        return value
+    if not isinstance(original, (int, float)):
+        raise ValueError(name + ' 不是可直接编辑的标量参数。')
+    text = text.replace('D', 'e').replace('d', 'e')
+    if code == 'cgyro':
+        return parameter_value(name, text)
+    try:
+        number = float(text)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError(name + ' 请填写有效数值。')
+    if not math.isfinite(number):
+        raise ValueError(name + ' 必须为有限数值。')
+    if (name in ('NS', 'NKY', 'NMODES', 'NBASIS_MIN', 'NBASIS_MAX', 'SAT_RULE')
+            or name.endswith(('_FLAG', '_MODEL', '_METHOD'))) and not number.is_integer():
+        raise ValueError(name + ' 必须为整数。')
+    return int(number) if number.is_integer() else number
 
 
 def pending_inputs(root, destination=None):
@@ -694,6 +728,32 @@ class ProjectActions:
             parent[key] = value
         record['destinations'] = [location(path) for path, _ in replacements]
         self.settings['message'] = title + '。原输入已保存在 Project 的输入历史中。'
+
+    def save_transfer_input(self, path, edits, expected_digest):
+        path = tuple(path)
+        available = [source for row in transfer_generated_rows(self.root) for source in row['paths'].values()]
+        current = read(self.root, path)
+        if path not in available or current is None or input_digest(current) != expected_digest:
+            raise ValueError('输入已更新，请点击“重载 / 撤销”后重新编辑。')
+        code = 'cgyro' if str(path[-1]).startswith('input.cgyro') else 'tglf'
+        changes = {}
+        for name, text in edits.items():
+            if name not in current or str(name).startswith('__'):
+                raise ValueError('参数已变化：' + str(name))
+            parsed = transfer_parameter_value(code, name, text, current[name])
+            if input_digest(parsed) != input_digest(current[name]):
+                changes[name] = parsed
+        if not changes:
+            return current
+        candidate = current.duplicate() if hasattr(current, 'duplicate') else copy.deepcopy(current)
+        candidate.update(changes)
+        validate_input(candidate, code)
+        if hasattr(candidate, 'save'):
+            candidate.save()
+        if input_digest(read(self.root, path)) != expected_digest:
+            raise ValueError('保存期间输入已更新，请重载后再编辑。')
+        self.replace('编辑 {}（{} 项）'.format(path[-1], len(changes)), [(path, candidate)])
+        return read(self.root, path)
 
     def import_input(self, kind, location=None):
         filename = self.settings[kind + '_file']
