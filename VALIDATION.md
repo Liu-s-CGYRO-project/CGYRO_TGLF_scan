@@ -1,3 +1,13 @@
+# 修订记录 · 工程 1.17.2 / 管理器 1.10.6
+
+TGLF 99 半径输入生成将调度器申请资源和实际 MPI 进程数分开。申请环境页已同步到 TGYRO 的节点数及每节点进程数，每个生成进程固定 1 线程；Slurm 指令的 ntasks 是申请 CPU 总数，ntasks-per-node 是配置值，不再硬编码 99。PBS 使用相同节点 / CPU 配置。作业脚本存入生成 RUN_DB，调用 OMFITx.executable 的 queued=True 保留原生队列监控、标准输出 / 错误和下行同步；提交失败仍抛出异常，不以 ignoreReturnCode 隐藏。
+
+所选 GACODE 环境仅在作业内初始化。生成用 Open MPI 显式 --oversubscribe --map-by slot --bind-to none，限制 OMP / BLAS 为单线程。所选安装的 TGYRO 启动器复制到任务目录，仅替换 platform exec 调用，继续沿用安装自身的输入解析和 -t 预处理分支，避免太原平台强制 ppr 和绑核覆盖 MPI 环境变量。MPI 钩子检查 99 进程、gyrotest_flag=1 及所选 tgyro_main，独立保存真实 MPI 退出码；不匹配的启动器或非 Open MPI 明确停止。共享安装、全局环境和正式求解器路径未修改。只有退出码及全部 99 个 localdump 验证成功后才替换旧输入。
+
+Transfer_tool 当前 input.gacode 的选择将完整 OMFIT 树地址写入文件框。旧版空白字段按保存的来源节点补全；回车重新载入时只解析本工程内的字面量索引，拒绝任意表达式，不把树地址传给文件读取器。直接选择磁盘文件继续保存原始地址。
+
+静态对照本地 OMFIT FilePicker / executable / relativeLocations，以及官方 GACODE tgyro/bin/tgyro 和 Open MPI 4.1 mpirun 文档。完成 Python 3.9 AST（含下发 Python 启动器）、OMFIT 库 / 设置 / 帮助、ZIP CRC / 源文件一致性和 SHA-256 校验。按要求未运行回归、GUI、shell 环境初始化、转换或求解器测试，未连接计算服务器或提交任务；实际集群生成仍待用户运行验收。
+
 # 修订记录 · 工程 1.17.1 / 管理器 1.10.6
 
 TGLF 工作台补回 input.gacode → 99 个局部 input.tglf → 半径及参数扫描。新工程默认从完整剖面开始，原工程保留已选来源；Transfer_tool 半径输入排在直接导入 TGLF 文件之前。剖面选择使用 OMFITgacode 的 gacode 解析器，保存原始选择地址，可复用 Transfer_tool 当前剖面。校验剖面网格与物种后，使用已有多剖面模块的 tgyro_input 构造 0.01–0.99、间隔 0.01 的 DIR 网格，沿用明确选择的 rho / r/a 和热离子 / 全部离子选项。99 个半径用全部、范围或列表选择；旧有半径勾选状态迁移为相应列表，不铺开 99 行控件。

@@ -435,6 +435,8 @@
 ['CGYRO_TGLF_scan']['Transfer_tool']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['Transfer_tool']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_workbench.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_preparation'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_preparation.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['LIB']['OMFITlib_tglf_preparation'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_preparation.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_workbench_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_workbench_ui.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['TGLF_scan']['LIB']['OMFITlib_tglf_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_workbench.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['TGLF_scan']['LIB']['OMFITlib_tglf_multi_data'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_data.py <-:-:-> {}

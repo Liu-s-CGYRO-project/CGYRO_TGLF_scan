@@ -7,6 +7,8 @@ import math
 import os
 import uuid
 from OMFITlib_tglf_workbench import clone
+from OMFITlib_tglf_preparation import (PREPARE_LAUNCHER, PREPARE_MPI,
+    preparation_batch, preparation_command, preparation_resources)
 
 defaultVars(profile=None, seed=None, input_text='', radii=None, coordinate='rho',
             include_ions='thermal', profile_digest='', source=None, environment='', command='')
@@ -30,6 +32,8 @@ if scheduler == 'local' and (remote.get('serverPicker', '') != 'localhost'
     raise ValueError('Remote TGLF preparation requires Slurm or PBS')
 if scheduler != 'local' and (not server or not partition or not wall_time):
     raise ValueError('TGLF preparation requires a server, queue and wall time')
+resources = preparation_resources(remote)
+launch_command = preparation_command(command)
 
 run_id = 'inputs_' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '_' + uuid.uuid4().hex[:8]
 base = OMFITworkDir(root)
@@ -51,21 +55,25 @@ tgyro_input = OMFITascii('input.tgyro', fromString=input_text)
 record = OMFITtree()
 record.update(dict(id=run_id, status='preparing', created=datetime.now(timezone.utc).isoformat(),
     coordinate=coordinate, radii=list(radii), include_ions=include_ions, profile_digest=profile_digest,
-    source=dict(source or {}), runtime=copy.deepcopy(remote), command=command,
+    source=dict(source or {}), runtime=copy.deepcopy(remote), command=command, resources=resources,
     workdir=workdir, remotedir=remotedir, diagnostics=OMFITtree()))
 record['input.gacode'] = clone(profile)
 record['input.tgyro'] = tgyro_input
 record['seed.tglf'] = clone(seed)
 module.setdefault('RUN_DB', OMFITtree())[run_id] = record
 inputs = [(record['input.gacode'], 'input.gacode'), (tgyro_input, 'input.tgyro'), (seed, 'input.tglf')]
+for name, text in (('prepare_tgyro_launcher.py', PREPARE_LAUNCHER), ('prepare_mpi.sh', PREPARE_MPI)):
+    record[name] = OMFITascii(name, fromString=text)
+    inputs.append((record[name], name))
 body = '#!/bin/bash\nset -e\nexec > input_generation.log 2>&1\n'
 body += "trap 'status=$?; printf \"%s\\n\" \"$status\" > input_generation.exit' EXIT\n"
 if scheduler != 'local':
     allocation = 'SLURM_JOB_ID' if scheduler == 'slurm' else 'PBS_JOBID'
     body += ('[ -n "${' + allocation + ':-}" ] || { echo "No scheduler allocation"; exit 1; }\n')
 body += environment + '\nexport OMP_NUM_THREADS=1\nexport OMP_THREAD_LIMIT=1\n'
+body += 'chmod +x prepare_mpi.sh\n'
 body += 'for i in $(seq 1 99); do mkdir -p "TGLF$i"; cp input.tglf "TGLF$i/input.tglf"; done\n'
-body += command + '\n'
+body += launch_command + '\n'
 body += ('for i in $(seq 1 99); do\n'
          '  [ -s "TGLF$i/out.tglf.localdump" ] || { echo "Missing TGLF$i/out.tglf.localdump"; exit 1; }\n'
          'done\n')
@@ -74,27 +82,34 @@ inputs.append((record['job_script'], 'generate_inputs.sh'))
 
 
 def save_diagnostics():
-    for name in ('input_generation.log', 'input_generation.exit', 'input_generation.out', 'input_generation.err'):
+    for name in ('input_generation.log', 'input_generation.exit', 'input_generation.mpi_exit',
+                 'input_generation.out', 'input_generation.err', 'prepare_tgyro.sh'):
         path = os.path.join(workdir, name)
         if os.path.isfile(path):
             record['diagnostics'][name] = OMFITascii(path).duplicate()
 
 
 try:
-    print('TGLF: generating 99 local inputs on {} using {}; one MPI rank per radius.'.format(server, scheduler))
+    print('TGLF: generating 99 local inputs on {} using {}; 99 MPI ranks, one thread per rank, oversubscription enabled.'.format(server, scheduler))
     if scheduler == 'local':
         code = OMFITx.executable(module, inputs=inputs, outputs=['./'], executable='/bin/bash generate_inputs.sh',
             queued=False, server=server, tunnel=tunnel, workdir=workdir, remotedir=remotedir, ignoreReturnCode=False)
         if code != 0:
             raise RuntimeError('TGYRO preparation returned ' + str(code))
     else:
-        options = ('#SBATCH --nodes=1\n#SBATCH --ntasks-per-node=99\n'
-                   '#SBATCH --output=input_generation.out\n#SBATCH --error=input_generation.err'
-                   if scheduler == 'slurm' else '#PBS -o input_generation.out\n#PBS -e input_generation.err')
-        OMFITx.submit_job(module, batch_command='/bin/bash generate_inputs.sh', inputs=inputs, outputs=['./'],
-            environment='', partition=partition, job_time=wall_time, batch_type=scheduler.upper(),
-            ntasks=99, nproc_per_task=1, batch_option=options, out_name='TGLFInputs',
-            server=server, tunnel=tunnel, workdir=workdir, remotedir=remotedir, ignoreReturnCode=False)
+        print('TGLF allocation: {nodes} node(s), {ntasks_per_node} CPU(s)/node, {allocated_cpus} CPU(s) total.'.format(**resources))
+        # Native submit_job hardcodes PBS nodes=1. Write the exact allocation for
+        # both schedulers, retaining OMFIT's normal queue monitor and downsync.
+        batch = preparation_batch(resources, scheduler, partition, wall_time)
+        record['batch.sh'] = OMFITascii('batch.sh', fromString=batch)
+        inputs.append((record['batch.sh'], 'batch.sh'))
+        for name in list(os.environ.keys()):
+            if 'SLURM_CPU_BIND' in name:
+                del os.environ[name]  # Same submit-host cleanup as native submit_job.
+        submit = 'sbatch batch.sh' if scheduler == 'slurm' else 'qsub batch.sh'
+        OMFITx.executable(module, executable=submit, inputs=inputs, outputs=['./'], queued=True,
+            std_out='input_generation.out', std_err='input_generation.err', server=server,
+            tunnel=tunnel, workdir=workdir, remotedir=remotedir, ignoreReturnCode=False)
     save_diagnostics()
     with open(os.path.join(workdir, 'input_generation.exit')) as stream:
         status = stream.read().strip()

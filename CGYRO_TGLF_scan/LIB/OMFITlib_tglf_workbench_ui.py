@@ -4,6 +4,7 @@ from collections import OrderedDict
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_project import MODULES, location, read, runtime_issues
+from OMFITlib_tglf_preparation import preparation_resources
 from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, initialize,
     numeric_parameters, parameter_value, plan, radial_input_issues, selected_rows)
 
@@ -66,7 +67,7 @@ class TGLFWorkbench:
                         self.view.cgyro_checkbox(self.prefix + "['selected'][{!r}]".format(row['key']),
                             self.settings['selected'], row['key'], row['label'])
         if not self.available:
-            self.label('请先选择 input.gacode 并生成半径输入。' if self.settings['source'] == 'radial'
+            self.label('尚未生成半径输入。请点击上方“生成 99 个半径输入”。' if self.settings['source'] == 'radial'
                        else '尚无输入。请导入文件，或选择已有的半径输入。')
         else:
             anchor = self.label('已选 {} 个输入；运行时为每个输入创建副本。'.format(len(self.selected)))
@@ -133,12 +134,16 @@ class TGLFWorkbench:
 
     def profile(self):
         self.label('input.gacode → 99 个 input.tglf → 选择半径和扫描参数')
+        profile = read(self.root, PROFILE_PATH)
+        source = self.settings.get('profile_source', {})
+        if profile is not None and source.get('tree_path', None) and not self.settings['profile_file']:
+            address = self.actions.root_name + location(source['tree_path'])[4:]
+            self.settings['profile_file'] = address  # Fill the empty field saved by 1.17.1.
+            source['path'] = address
         self.ui.FilePicker(self.prefix + "['profile_file']", 'input.gacode', default='', transferRemoteFile=None,
             postcommand=lambda location=None: self.actions.import_tglf_profile(), updateGUI=True,
             help='直接载入完整剖面。生成范围为 0.01–0.99，间隔 0.01；之后可只计算其中部分半径。')
-        profile = read(self.root, PROFILE_PATH)
         if profile is not None:
-            source = self.settings.get('profile_source', {})
             self.label('已载入：' + (source.get('path', '') or '工程中的 input.gacode'))
         transfer = read(self.root, ('Transfer_tool', 'INPUTS', 'input.gacode'))
         if transfer is not None:
@@ -150,6 +155,15 @@ class TGLFWorkbench:
                              '参与计算的离子', state='readonly', width=12, updateGUI=True)
         self.label('生成 0.01–0.99 共 99 个输入；使用环境页中的 TGYRO 版本和共用队列。')
         issues = runtime_issues(self.root, 'tgyro')
+        try:
+            remote = read(self.root, MODULES['tgyro'] + ('SETTINGS', 'REMOTE_SETUP'), {})
+            resources = preparation_resources(remote)
+            if remote.get('scheduler', '') != 'local':
+                self.label('申请资源：{nodes} 节点 × {ntasks_per_node} CPU；生成使用 99 个 MPI 进程，允许超额运行。'.format(**resources))
+            else:
+                self.label('本机生成：99 个 MPI 进程，允许超额运行。')
+        except ValueError as exc:
+            issues.append(str(exc))
         if profile is None:
             issues.append('请载入 input.gacode')
         self.view.guarded('生成 99 个半径输入', self.actions.generate_tglf_inputs, issues)

@@ -397,6 +397,8 @@
 ['Transfer_tool']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
 ['Transfer_tool']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
 ['LIB']['OMFITlib_tglf_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_workbench.py <-:-:-> {}
+['LIB']['OMFITlib_tglf_preparation'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_preparation.py <-:-:-> {}
+['TGLF_scan']['LIB']['OMFITlib_tglf_preparation'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_preparation.py <-:-:-> {}
 ['LIB']['OMFITlib_tglf_workbench_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_workbench_ui.py <-:-:-> {}
 ['TGLF_scan']['LIB']['OMFITlib_tglf_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_workbench.py <-:-:-> {}
 ['TGLF_scan']['LIB']['OMFITlib_tglf_multi_data'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_multi_data.py <-:-:-> {}

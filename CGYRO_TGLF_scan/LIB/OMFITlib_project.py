@@ -656,13 +656,14 @@ def summary(root):
 
 class ProjectActions:
     def __init__(self, root, factory=dict, readers=None, resolve_server=None, workdir=None, register_server=None,
-                 remote_execute=None):
+                 remote_execute=None, root_name='root'):
         self.root, self.factory = root, factory
         self.settings = initialize(root, factory)
         self.readers = readers or {}
         self.resolve_server, self.workdir = resolve_server, workdir
         self.register_server = register_server
         self.remote_execute = remote_execute
+        self.root_name = str(root_name)
         self._migrate_error_message()
         # Keep old unresolved candidates in history without blocking the workbench.
         for record in pending_inputs(root).values():
@@ -1396,6 +1397,29 @@ class ProjectActions:
             server, tunnel = server or 'localhost', tunnel or ''
         else:
             path, server, tunnel = str(filename), 'localhost', ''
+        # Resolve only literal subscript paths inside this project; never eval a
+        # file-picker string or send an OMFIT expression to the file reader.
+        prefix = next((item for item in (self.root_name, 'root') if str(path).startswith(item + '[')), None)
+        if prefix is not None:
+            node = ast.parse('root' + str(path)[len(prefix):], mode='eval').body
+            keys = []
+            while isinstance(node, ast.Subscript):
+                key = ast.literal_eval(node.slice)
+                if not isinstance(key, (str, int)) or isinstance(key, bool):
+                    raise ValueError('数据树地址只允许字符串或整数节点名')
+                keys.insert(0, key)
+                node = node.value
+            if not isinstance(node, ast.Name) or node.id != 'root':
+                raise ValueError('请选择本工程中的 input.gacode 数据树地址')
+            profile = read(self.root, keys)
+            if profile is None:
+                raise ValueError('数据树中不存在该 input.gacode：' + str(path))
+            address = self.root_name + location(keys)[4:]
+            self.set_tglf_profile(profile, dict(path=address, tree_path=keys))
+            settings['profile_file'] = address
+            return
+        if str(path).startswith('OMFIT['):
+            raise ValueError('请选择本工程中的 input.gacode 数据树地址，或使用文件按钮导入')
         profile = self.readers['gacode'](str(path), GACODEtype='gacode', server=server, tunnel=tunnel)
         self.set_tglf_profile(profile, dict(path=str(path), server=str(server), tunnel=str(tunnel)))
 
@@ -1404,8 +1428,9 @@ class ProjectActions:
         profile = read(self.root, path)
         if profile is None:
             raise ValueError('Transfer_tool 尚无 input.gacode')
-        self.set_tglf_profile(profile, dict(path='Transfer_tool / INPUTS / input.gacode', tree_path=list(path)))
-        initialize_tglf(self.root, self.factory)[0]['profile_file'] = ''
+        address = self.root_name + location(path)[4:]
+        self.set_tglf_profile(profile, dict(path=address, tree_path=list(path)))
+        initialize_tglf(self.root, self.factory)[0]['profile_file'] = address
 
     def generate_tglf_inputs(self):
         settings, _ = initialize_tglf(self.root, self.factory)

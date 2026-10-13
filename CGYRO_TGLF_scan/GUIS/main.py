@@ -19,7 +19,7 @@ def register_server(config):
 
 actions = ProjectActions(root, OMFITtree, readers={'cgyro': OMFITgacode, 'tglf': OMFITgacode, 'tgyro': OMFITgacode, 'gacode': OMFITgacode},
                          resolve_server=lambda node: SERVER[node], workdir=OMFITworkDir, register_server=register_server,
-                         remote_execute=OMFITx.remote_execute)
+                         remote_execute=OMFITx.remote_execute, root_name=rootName)
 if workbench_page is not None:
     actions.open_page(workbench_page)
 configure = lambda node: OMFIT['scratch']['__moduleSetupGUI__'].run(base_override=relativeLocations(node))
