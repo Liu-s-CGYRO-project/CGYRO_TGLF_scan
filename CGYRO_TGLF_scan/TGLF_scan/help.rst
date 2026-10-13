@@ -8,15 +8,16 @@ Experimental fluxes, Reduced model, Gyrokinetic fluxes
 
 Long Description
 ----------------
-工程总控的“TGLF 计算与扫描”默认从 input.gacode 开始。选择剖面，点击“生成 99 个半径输入”，
+工程总控的“TGLF 计算与扫描”默认从 input.gacode 开始。选择剖面，点击“生成输入文件”，
 在 0.01–0.99、间隔 0.01 的网格上生成 input.tglf。径向坐标可选 rho 或 r/a。
 生成使用 TGYRO 预处理命令、环境页选择的程序版本及共用队列。
 申请环境页设置的节点数和每节点 CPU 数，每个生成进程固定 1 线程；99 个 MPI 进程允许超额运行。
 例如 1 节点、每节点 16 时，申请 16 个 CPU，在作业内启动 99 个生成进程，不再要求单节点有 99 核。
 超额运行仅用于输入生成，使用 Open MPI；正式 CGYRO / TGLF 计算的资源和绑核保持原配置。
-界面显示申请资源与生成进程数。选择 Transfer_tool 当前剖面后，文件框显示完整的 OMFIT 数据树地址。
+页面只显示输入选择与生成操作，半径范围在文件框的“?”帮助中查看。
+选择 Transfer_tool 当前剖面后，文件框显示完整的 OMFIT 数据树地址。
 生成用 TGYRO_PED_MODEL=1（固定边界），与该版本的 TGYRO 参数要求一致。
-完整生成后，按全部、范围或列表选择计算半径，再设置不扫参数、1D、2D 或 UQ。
+生成后展开扫描设置，按全部、范围或列表选择计算半径，再设置不扫参数、1D、2D 或 UQ。
 准备剖面与运行 TGLF 是两个明确的按钮；载入文件或打开页面不自动提交任务。
 也可直接复用 Transfer_tool 已生成的半径输入，或导入 input.tglf / out.tglf.localdump。
 Transfer_tool 输入排在直接导入 TGLF 文件之前。已有工程保留当前来源选择。

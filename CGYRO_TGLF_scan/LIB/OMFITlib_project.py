@@ -1462,13 +1462,13 @@ class ProjectActions:
             raise ValueError('请在环境配置页应用 TGYRO 环境和队列')
         applied = applied_runtime(self.root) or {}
         command = str(applied.get('prepare_command', 'tgyro -t . -n {n_radii}')).replace('{n_radii}', str(len(radii)))
-        self.call('生成 99 个 TGLF 半径输入', ('TGLF_scan', 'SCRIPTS', 'generate_tglf_inputs'),
+        self.call('生成 TGLF 输入文件', ('TGLF_scan', 'SCRIPTS', 'generate_tglf_inputs'),
             profile=profile, seed=seed, input_text=input_text, radii=list(radii),
             coordinate=coordinate, include_ions=settings['include_ions'],
             profile_digest=profile_digest(profile), source=dict(settings.get('profile_source', {})),
             environment=environment, command=command)
         settings.update(dict(source='radial', page='scan', profile_changed=False))
-        self.settings['message'] = '已生成 99 个 input.tglf，可选择计算半径和扫描参数。'
+        self.settings['message'] = '输入文件已生成。'
 
     def resolve_input(self, record_id, use_incoming):
         record = pending_inputs(self.root).get(record_id, None)
