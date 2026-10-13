@@ -70,4 +70,4 @@ except BaseException:
 if previous:
     history = outputs.setdefault('History', OMFITtree())
     history[datetime.now().strftime('%Y%m%d_%H%M%S_%f')] = previous
-print('Transfer_tool 完成。请在“生成结果与传递”选择要使用的半径输入。')
+print('Transfer_tool 完成。已生成各半径输入，可直接进入 CGYRO 扫描；“生成文件”可查看参数。')

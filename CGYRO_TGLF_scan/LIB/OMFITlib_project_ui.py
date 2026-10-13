@@ -1,10 +1,10 @@
 """Native OMFIT workbench with dependency-aware workflow controls."""
-from builtins import all, any, bool, callable, dict, float, int, isinstance, iter, len, list, next, range, sorted, str
+from builtins import all, any, bool, callable, dict, float, int, isinstance, iter, len, list, min, next, range, sorted, str, sum
 from collections import OrderedDict
 import json
 import math
 import tkinter as tk
-from tkinter import ttk
+from tkinter import font as tkfont, ttk
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, loaded_file
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
@@ -15,7 +15,7 @@ from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_G
 from OMFITlib_project import (ERROR_NOTICE_SUFFIX, ION_CASES, LABELS, MODULES, PAGES, cgyro_input_issues,
     cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, generated_tglf_sources, location, module,
     pending_inputs, read, runtime_issues, summary, sync_cgyro_choices, sync_cgyro_ion_cases, text_value,
-    tglf_input_issues, transfer_sources)
+    tglf_input_issues, transfer_generated_rows, transfer_sources)
 
 STATUS = {'prepared': '输入已准备', 'submitted': '已提交', 'loaded': '结果已读取',
           'submitted_or_finished': '已提交或执行返回',
@@ -154,30 +154,13 @@ class ProjectUI:
         self.ui.Tab('Transfer_tool 运行')
         self.compound(('Transfer_tool', 'GUIS', 'transfer'), show_run_button=False)
         self.run_controls('transfer')
-        self.ui.Tab('生成结果与传递')
-        radial = sync_cgyro_choices(self.root, self.settings, self.actions.factory)
-        if radial:
-            details = ['nr={}'.format(row['nr']) +
-                       (' (rho={:g})'.format(row['rho']) if row['rho'] is not None else '') for row in radial]
-            self.label('CGYRO：{}。无需逐个选择输入。'.format('，'.join(details)))
-            with self.ui.same_row():
-                self.nav('设置并运行 CGYRO', 'cgyro')
-        else:
-            self.label('CGYRO：运行 Transfer_tool 后自动读取全部 nr。')
-        sources = {label: value for label, value in transfer_sources(self.root).items()
-                   if not json.loads(value)[-1].split('_')[0] == 'input.cgyro'}
-        if sources:
-            if self.settings['transfer_source'] not in sources.values():
-                self.settings['transfer_source'] = next(iter(sources.values()))
-            self.ui.ComboBox(self.prefix + "['transfer_source']", sources, 'TGLF / 剖面输入', updateGUI=True)
-            kind = json.loads(self.settings['transfer_source'])[-1].split('_')[0]
-            if kind == 'input.tglf':
-                self.ui.Button('验证并送入 TGLF 单文件', lambda: self.actions.handoff('tglf'), updateGUI=True)
-            elif kind == 'input.gacode':
-                self.ui.Button('送入 TGLF 剖面流程', lambda: self.actions.handoff('profiles'), updateGUI=True)
-                self.ui.Button('设为 转换工具当前剖面', lambda: self.actions.handoff('transfer'), updateGUI=True)
-        else:
-            self.label('先载入输入，或运行 profiles_gen 生成文件。缺少输入时无法传递到计算模块。')
+        files = transfer_generated_rows(self.root)
+        ready = next((row for row in files if 'cgyro' in row['paths']), None)
+        if ready is not None:
+            self.ui.Button('设置 CGYRO 扫描',
+                lambda: self.settings.update(dict(page='cgyro', cgyro_source_mode=ready['mode'])), updateGUI=True)
+        self.ui.Tab('生成文件')
+        self.transfer_files(files)
         self.ui.Tab('局部输入互转')
         self.compound(('Transfer_tool', 'GUIS', 'convert'))
         self.ui.Tab('高级设置')
@@ -194,6 +177,64 @@ class ProjectUI:
                 postcommand=lambda location=None, kind=kind: self.actions.import_transfer_seed(kind), updateGUI=True)
         self.label('起止半径、坐标和点数以“Transfer_tool 运行”页为准；离子数量、质量和电荷每次运行时从当前剖面同步。')
         self.nav('统一 GACODE 环境配置', 'run')
+
+    def transfer_files(self, rows):
+        if not rows:
+            self.label('尚无生成文件。运行 Transfer_tool 或完成局部输入互转后在这里查看。')
+            return
+        count = sum(1 for row in rows if row['mode'] == 'generated')
+        anchor = self.label('已生成 {} 组半径输入。'.format(count) if count else '已有局部互转文件。')
+        options = OrderedDict((row['label'], row['key']) for row in rows)
+        if self.settings.get('transfer_preview', None) not in options.values():
+            self.settings['transfer_preview'] = rows[0]['key']
+        self.ui.ComboBox(self.prefix + "['transfer_preview']", options, '查看文件', state='readonly', updateGUI=True)
+        row = next(row for row in rows if row['key'] == self.settings['transfer_preview'])
+        with self.ui.same_row():
+            for code in ('cgyro', 'tglf'):
+                path = row['paths'].get(code, None)
+                caption = row['label'] + ' / input.' + code
+                self.ui.Button('查看 input.' + code,
+                    lambda path=path, caption=caption: self.show_transfer_input(anchor, path, caption),
+                    state='normal' if path is not None else 'disabled')
+        self.label('这里仅查看输入参数，计算半径在 CGYRO 扫描页选择。')
+
+    def show_transfer_input(self, anchor, path, caption):
+        value = read(self.root, path)
+        if value is None:
+            raise ValueError('生成文件已变化，请刷新页面。')
+        # Read the live parameter mapping; cached file bytes may predate the
+        # final particle corrections. Inspection never saves or edits the object.
+        parameters = [(str(key), str(item)) for key, item in value.items() if not str(key).startswith('__')]
+        window = tk.Toplevel(anchor.winfo_toplevel())
+        window.title('生成输入 · ' + caption)
+        width = min(720, window.winfo_screenwidth() - 64)
+        height = min(840, window.winfo_screenheight() - 100)
+        window.geometry('{}x{}'.format(width, height))
+        ttk.Label(window, text=caption, anchor='w').pack(fill=tk.X, padx=10, pady=(10, 6))
+        frame = ttk.Frame(window)
+        frame.pack(fill=tk.BOTH, expand=True, padx=10)
+        style = ttk.Style(window)
+        preview_font = tkfont.Font(root=window, font=style.lookup('Treeview', 'font') or 'TkDefaultFont')
+        style_name = 'TransferPreview' + str(window).replace('.', '_') + '.Treeview'
+        style.configure(style_name, font=preview_font, rowheight=preview_font.metrics('linespace') + 8)
+        table = ttk.Treeview(frame, columns=('parameter', 'value'), show='headings', style=style_name)
+        table._transfer_font = preview_font
+        table.heading('parameter', text='参数')
+        table.heading('value', text='数值')
+        table.column('parameter', width=260, anchor='w')
+        table.column('value', width=360, anchor='w')
+        y_scroll = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=table.yview)
+        x_scroll = ttk.Scrollbar(frame, orient=tk.HORIZONTAL, command=table.xview)
+        table.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+        table.grid(row=0, column=0, sticky='nsew')
+        y_scroll.grid(row=0, column=1, sticky='ns')
+        x_scroll.grid(row=1, column=0, sticky='ew')
+        for parameter, item in parameters:
+            table.insert('', 'end', values=(parameter, item))
+        ttk.Label(window, text=location(path), anchor='w', wraplength=width - 32).pack(fill=tk.X, padx=10, pady=6)
+        ttk.Button(window, text='关闭', command=window.destroy).pack(pady=(0, 10))
 
     def render_cgyro(self):
         node = read(self.root, MODULES['cgyro'])
@@ -438,6 +479,12 @@ class ProjectUI:
         self.ui.Tab('单个 input.tglf')
         self.ui.FilePicker(self.prefix + "['tglf_file']", '导入 input.tglf', default='',
                            postcommand=lambda location=None: self.actions.import_input('tglf'), updateGUI=True)
+        generated = generated_tglf_sources(self.root)
+        if generated:
+            if self.settings.get('generated_tglf_source', None) not in generated.values():
+                self.settings['generated_tglf_source'] = next(iter(generated.values()))
+            self.ui.ComboBox(self.prefix + "['generated_tglf_source']", generated, '已有局部输入', state='readonly', updateGUI=True)
+            self.ui.Button('比较并使用所选 input.tglf', self.actions.use_generated_tglf, updateGUI=True)
         self.label('当前输入：' + ('已载入' if 'input.tglf' in node.get('FILES', {}) else '未载入'))
         issues = runtime_issues(self.root, 'tglf') + tglf_input_issues(self.root)
         with self.ui.same_row():
@@ -447,12 +494,15 @@ class ProjectUI:
         self.label('配置检查：' + ('；'.join(issues) or '通过'))
         self.ui.Tab('参数与径向扫描')
         self.label('从剖面准备局部输入，再选择径向、1D、2D 或 UQ 扫描。')
-        generated = generated_tglf_sources(self.root)
-        if generated:
-            if self.settings.get('generated_tglf_source', None) not in generated.values():
-                self.settings['generated_tglf_source'] = next(iter(generated.values()))
-            self.ui.ComboBox(self.prefix + "['generated_tglf_source']", generated, '已生成输入的半径', updateGUI=True)
-            self.ui.Button('比较并传入当前 TGLF 单文件', self.actions.use_generated_tglf, updateGUI=True)
+        profiles = {label: value for label, value in transfer_sources(self.root).items()
+                    if json.loads(value)[-1].split('_')[0] == 'input.gacode'}
+        if profiles:
+            if self.settings.get('transfer_profile_source', None) not in profiles.values():
+                previous = self.settings.get('transfer_source', None)
+                self.settings['transfer_profile_source'] = previous if previous in profiles.values() else next(iter(profiles.values()))
+            self.ui.ComboBox(self.prefix + "['transfer_profile_source']", profiles, 'Transfer_tool 剖面', state='readonly', updateGUI=True)
+            self.ui.Button('使用所选剖面准备 TGLF 输入',
+                lambda: self.actions.handoff('profiles', source=self.settings['transfer_profile_source']), updateGUI=True)
         self.label('按半径生成的输入独立保存。切换半径或运行扫描会使用对应副本；传入当前单文件输入时先确认覆盖。')
         with self.ui.same_row():
             self.task('剖面准备 / PROFILES_GEN', MODULES['profiles'] + ('GUIS', 'standaloneGUI'))
@@ -474,8 +524,8 @@ class ProjectUI:
     def render_review(self):
         pending = pending_inputs(self.root)
         if not pending:
-            self.label('没有待确认的输入。可在 输入转换工具 选择转换结果并传入 TGLF。')
-            self.nav('返回 输入转换工具', 'transfer')
+            self.label('没有待确认的输入。可在 TGLF 页导入或选择已有局部输入。')
+            self.nav('进入 TGLF 输入页面', 'tglf')
         for key, record in pending.items():
             self.ui.Separator(record['title'])
             target = '输入转换工具 的 TGLF 种子输入' if record.get('destination', None) == 'transfer' else 'TGLF 当前单文件输入'

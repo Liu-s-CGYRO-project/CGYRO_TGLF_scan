@@ -164,13 +164,14 @@ TGYRO 接口保留 DEN_METHOD1=-1，以平均占比最高的主离子作为其�
 CALC_FLAG / THERM_FLAG 按当前粒子组成同步。
 参数定义参见 https://gafusion.github.io/doc/tgyro/tgyro_list.html 。
 
-生成结果与传递
-~~~~~~~~~~~~~~
+生成文件
+~~~~~~~~
 
 原始 INPUTS/input.gacode 保留以便切换方案；处理后的剖面保存在
-OUTPUTS/Profiles_gen/input.gacode 和 Transfer_file/input.gacode。
-等效方案下，这两个 input.gacode 保留生成所用的完整粒子组成；实际合并结果在各半径的
-input.cgyro / input.tglf 中，而不在这两个剖面文件中。
+Transfer_file/input.gacode。局部输入生成完成后，OUTPUTS/Profiles_gen 保存各半径的
+input.cgyro_<nr> / input.tglf_<nr>。
+等效方案下，input.gacode 保留生成所用的完整粒子组成；实际合并结果在各半径的
+input.cgyro / input.tglf 中。
 OUTPUTS/Particle_processing 记录识别规则、半径区间、全部主离子及平均 ni/ne、
 前后粒子组成、合并与独立热化的处理记录、密度及梯度残差、
 Zeff 变化、压力最大相对变化及每个局部输入的校正残差。
@@ -178,7 +179,12 @@ Zeff 变化、压力最大相对变化及每个局部输入的校正残差。
 该半径 Z / N / MASS 等实际参数，以及合并前后的电荷、Zeff 分子、质量、压力和梯度残差。
 热化与粒子简化一般改变压力、碰撞性或热输运模型；几何和径向网格不做更换。
 
-“生成结果与传递”选择本次半径输入送入 CGYRO / TGLF；TGLF 覆盖由用户选择。
+“生成文件”按 nr 顺序列出已保存的半径输入，点击“查看 input.cgyro / input.tglf”
+打开只读参数表；局部互转的文件也可查看。预览选择只用于查看，不改变计算半径。
+CGYRO 自动读取完整半径集合，在“Transfer_tool 运行”点“设置 CGYRO 扫描”进入计算设置；
+无需再逐个传递。TGLF 页的“单个 input.tglf”可选择 Transfer_tool 或 TGYRO 生成的局部输入，
+先比较再使用；“参数与径向扫描”中可选用 Transfer_tool 的处理后或原始剖面。
+覆盖已有 TGLF 输入仍由用户选择；更换剖面沿用原历史归档与缓存失效规则。
 切换粒子方案或主离子识别半径后必须重新生成，旧版单主离子或选择代表杂质的结果也须重新生成后才能传递。
 流程异常时恢复旧输出及本次改变的输入，成功时将上一轮输出归档。
 

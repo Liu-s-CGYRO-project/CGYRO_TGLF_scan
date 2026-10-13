@@ -543,4 +543,6 @@ target = OMFITgacode(target_name, fromString='')
 target.update(pending)
 # Do not require or clear a destination file before conversion has succeeded.
 files[target_name] = target
-print('已生成 ' + target_name + '。请到“生成结果与传递”选择使用。')
+print('已生成 ' + target_name + '；“生成文件”可查看参数。')
+print('在 CGYRO 页选择“导入 input.cgyro”。' if target_name == 'input.cgyro' else
+      '在 TGLF 页选择此局部输入并比较后使用。')

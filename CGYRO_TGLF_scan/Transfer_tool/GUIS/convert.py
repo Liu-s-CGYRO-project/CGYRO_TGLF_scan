@@ -34,7 +34,7 @@ def convert_inputs(location=None):
     root['SCRIPTS']['convert_file'].run()
 
 
-OMFITx.Label('转换已有局部输入。目标文件自动生成，完成后到“生成结果与传递”选择使用。', align='left', wraplength=840)
+OMFITx.Label('转换已有局部输入。完成后在“生成文件”查看，在 CGYRO / TGLF 页使用。', align='left', wraplength=840)
 OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['conversion_mode']",
     OrderedDict([('TGLF → CGYRO', 'tglf_to_cgyro'), ('CGYRO → TGLF', 'cgyro_to_tglf'),
                  ('out.tglf.localdump → CGYRO', 'dump_to_cgyro')]), '转换方向', updateGUI=True)

@@ -555,9 +555,44 @@ def transfer_sources(root):
     return result
 
 
+def transfer_generated_rows(root):
+    """Inspect saved file names and radius metadata, not solver contents."""
+    prefix = ('Transfer_tool', 'OUTPUTS', 'Profiles_gen')
+    files = read(root, prefix, {})
+    grouped = {}
+    for key in files.keys():
+        match = re.fullmatch(r'input\.(cgyro|tglf)_(\d+)', str(key))
+        if match and int(match.group(2)) > 0:
+            grouped.setdefault(int(match.group(2)), {})[match.group(1)] = prefix + (key,)
+    metadata = read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'local_inputs'), {})
+    rows = []
+    for nr, paths in sorted(grouped.items()):
+        rho = None
+        for path in paths.values():
+            try:
+                value = float(metadata.get(str(path[-1]), {}).get('rho', None))
+                if math.isfinite(value):
+                    rho = value
+                    break
+            except (TypeError, ValueError, OverflowError):
+                pass
+        label = 'nr={}'.format(nr) + (' · rho={:g}'.format(rho) if rho is not None else '')
+        rows.append(dict(key=str(nr), label=label, mode='generated', paths=paths))
+    prefix = ('Transfer_tool', 'Transfer_file')
+    files = read(root, prefix, {})
+    paths = {code: prefix + ('input.' + code,) for code in ('cgyro', 'tglf') if 'input.' + code in files}
+    if paths:
+        rows.append(dict(key='local', label='局部互转文件', mode='imported', paths=paths))
+    return rows
+
+
 def generated_tglf_sources(root):
-    return {str(radius): json.dumps(['TGLF_scan', 'input.tglf', radius])
-            for radius in read(root, ('TGLF_scan', 'input.tglf'), {}).keys()}
+    sources = {str(radius): json.dumps(['TGLF_scan', 'input.tglf', radius])
+               for radius in read(root, ('TGLF_scan', 'input.tglf'), {}).keys()}
+    for row in transfer_generated_rows(root):
+        if 'tglf' in row['paths']:
+            sources['Transfer_tool / ' + row['label']] = json.dumps(row['paths']['tglf'])
+    return sources
 
 
 def summary(root):
@@ -683,10 +718,10 @@ class ProjectActions:
         self.propose_tglf(obj, '导入 input.tglf：' + str(filename))
         self.settings[kind + '_file'] = ''
 
-    def handoff(self, target):
+    def handoff(self, target, source=None):
         if target == 'cgyro':
             return self.prepare_cgyro_batch()
-        selected = self.settings['transfer_source']
+        selected = self.settings['transfer_source'] if source is None else source
         if selected not in transfer_sources(self.root).values():
             raise ValueError('请先选择 Transfer tool 中的输入或生成结果。')
         source_path = tuple(json.loads(selected))
@@ -1192,8 +1227,10 @@ class ProjectActions:
     def use_generated_tglf(self):
         selected = self.settings.get('generated_tglf_source', None)
         if selected not in generated_tglf_sources(self.root).values():
-            raise ValueError('请先选择 TGYRO 生成的局部 TGLF 输入。')
+            raise ValueError('请先选择已生成的局部 TGLF 输入。')
         source = tuple(json.loads(selected))
+        if source[0] == 'Transfer_tool':
+            return self.handoff('tglf', source=selected)
         self.propose_tglf(read(self.root, source), 'TGYRO 局部输入 → TGLF 单文件', source)
 
     def install_tglf(self, incoming, title, destination='tglf'):
