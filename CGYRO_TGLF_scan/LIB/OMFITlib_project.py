@@ -20,7 +20,7 @@ from OMFITlib_gacode_installations import (PROGRAMS, detection_is_current, insta
     parse_probe, probe_script, sync_environment, valid_path)
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, tgyro_batch_settings, tglf_input_format
 from OMFITlib_tglf_workbench import (PROFILE_PATH, RADII, initialize as initialize_tglf,
-    input_rows as tglf_rows, plan as tglf_plan)
+    generation_overrides, input_rows as tglf_rows, plan as tglf_plan)
 from OMFITlib_tglf_multi_data import profile_digest, profile_info, tgyro_input
 from OMFITlib_transfer_particles import particle_options
 from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters, initialize_parameters,
@@ -1455,6 +1455,7 @@ class ProjectActions:
             seed = read(self.root, ('Transfer_tool', 'TEMPLATES', 'input.tglf'))
         if seed is None:
             raise ValueError('缺少 TGLF 种子输入，请恢复模板中的 input.tglf')
+        parameters = generation_overrides(self.root, settings)
         remote = tgyro['SETTINGS']['REMOTE_SETUP']
         selected = remote.get(str(remote.get('serverPicker', '')), {})
         environment = str(selected.get('environment', '') or remote.get('environment', '') or '')
@@ -1466,7 +1467,7 @@ class ProjectActions:
             profile=profile, seed=seed, input_text=input_text, radii=list(radii),
             coordinate=coordinate, include_ions=settings['include_ions'],
             profile_digest=profile_digest(profile), source=dict(settings.get('profile_source', {})),
-            environment=environment, command=command)
+            environment=environment, command=command, parameters=parameters)
         settings.update(dict(source='radial', page='scan', profile_changed=False))
         self.settings['message'] = '输入文件已生成。'
 

@@ -5,8 +5,9 @@ import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_project import MODULES, location, read, runtime_issues
 from OMFITlib_tglf_preparation import preparation_resources
-from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, initialize,
-    numeric_parameters, parameter_value, plan, radial_input_issues, selected_rows)
+from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, SCENARIOS, SCENARIO_FIELDS,
+    generation_overrides, generation_seed, initialize, numeric_parameters, parameter_value,
+    plan, radial_input_issues, selected_rows)
 
 
 class TGLFWorkbench:
@@ -20,14 +21,15 @@ class TGLFWorkbench:
         except (TypeError, ValueError, KeyError):
             self.selected = []
         self.reference = (self.selected or self.available or [None])[0]
-        self.source = read(self.root, self.reference['path'], {}) if self.reference else {}
+        seed = generation_seed(self.root) if self.settings['source'] == 'radial' else None
+        self.source = read(self.root, self.reference['path'], {}) if self.reference else (seed if seed is not None else {})
 
     def label(self, text):
         return self.view.label(text)
 
     def render(self):
         self.ui.ComboBox(self.prefix + "['page']", OrderedDict([
-            ('输入与扫描', 'scan'), ('计算参数', 'parameters'), ('结果与记录', 'results'),
+            ('输入与扫描', 'scan'), ('TGLF 参数', 'parameters'), ('结果与记录', 'results'),
             ('多个剖面对比', 'multi')]), 'TGLF', state='readonly', updateGUI=True)
         page = self.settings['page']
         if page == 'multi':
@@ -57,29 +59,22 @@ class TGLFWorkbench:
             source = self.view.settings.get('tglf_import_source', {})
             if source.get('path', None):
                 self.label('已载入：' + source['path'])
-        elif self.available:
-            with self.ui.same_row():
-                self.ui.Button('全选', lambda: self.select(True), updateGUI=True)
-                self.ui.Button('清空', lambda: self.select(False), updateGUI=True)
-            for start in range(0, len(self.available), 2):
-                with self.ui.same_row():
-                    for row in self.available[start:start + 2]:
-                        self.view.cgyro_checkbox(self.prefix + "['selected'][{!r}]".format(row['key']),
-                            self.settings['selected'], row['key'], row['label'])
         if self.settings['source'] == 'radial' and not self.available:
             self.view.show_message(first_line=True)
             return
         if not self.available:
             self.label('请先载入输入文件。')
-        else:
-            anchor = self.label('已选 {} 个输入'.format(len(self.selected)))
-            choices = OrderedDict((row['label'], row['key']) for row in self.available)
-            if self.settings.get('preview', None) not in choices.values():
-                self.settings['preview'] = self.available[0]['key']
-            self.ui.ComboBox(self.prefix + "['preview']", choices, '查看源文件', state='readonly', updateGUI=True)
-            row = next(row for row in self.available if row['key'] == self.settings['preview'])
-            self.ui.Button('查看 / 编辑输入', lambda: self.view.show_transfer_input(anchor, row['path'], row['label']))
         self.ui.Separator('02  扫描设置')
+        self.radius_selection()
+        if self.available:
+            anchor = self.label('已选 {} 个输入'.format(len(self.selected)))
+            preview_rows = self.selected or self.available
+            choices = OrderedDict((row['label'], row['key']) for row in preview_rows)
+            if self.settings.get('preview', None) not in choices.values():
+                self.settings['preview'] = preview_rows[0]['key']
+            self.ui.ComboBox(self.prefix + "['preview']", choices, '查看输入', state='readonly', updateGUI=True)
+            row = next(row for row in preview_rows if row['key'] == self.settings['preview'])
+            self.ui.Button('查看 / 编辑输入', lambda: self.view.show_transfer_input(anchor, row['path'], row['label']))
         self.ui.ComboBox(self.prefix + "['mode']", MODES, '计算方式', state='readonly', updateGUI=True)
         mode = self.settings['mode']
         values = numeric_parameters(self.source)
@@ -90,9 +85,18 @@ class TGLFWorkbench:
             for index in range(1, 3 if mode == '2d' else 2):
                 self.ui.ComboBox(self.prefix + "['parameter{}']".format(index), choices,
                                  '扫描参数 {}'.format(index), state='readonly', updateGUI=True)
-                self.ui.Entry(self.prefix + "['values{}']".format(index), '取值列表', width=30,
-                              updateGUI=True, help='填写实际数值，如 [0.5, 1, 1.5]；仅计算所列值。')
-            self.label('填写实际取值列表；不会额外插入原始值。两个参数取所有组合。')
+                self.ui.ComboBox(self.prefix + "['value_mode{}']".format(index),
+                    {'原值倍数': 'factor', '实际值范围': 'range', '指定数值列表': 'list'},
+                    '取值方式', state='readonly', updateGUI=True,
+                    help='原值倍数与 OMFIT 原生扫描一致；多半径时分别乘以每个输入的原值。')
+                if self.settings['value_mode' + str(index)] == 'list':
+                    self.ui.Entry(self.prefix + "['values{}']".format(index), '取值列表', width=30,
+                                  updateGUI=True, help='例如 [0.5, 1, 1.5]；仅计算所列值。')
+                else:
+                    with self.ui.same_row():
+                        self.ui.Entry(self.prefix + "['scan_start{}']".format(index), '起点', width=8, updateGUI=True)
+                        self.ui.Entry(self.prefix + "['scan_end{}']".format(index), '终点', width=8, updateGUI=True)
+                        self.ui.Entry(self.prefix + "['scan_count{}']".format(index), '点数', width=8, updateGUI=True)
         elif mode == 'uq':
             self.ui.ComboBox(self.prefix + "['uq_count']", list(range(1, 6)), '参数数', state='readonly', updateGUI=True)
             continuous = [name for name in choices if not isinstance(values[name], bool) and name not in INTEGERS]
@@ -115,14 +119,14 @@ class TGLFWorkbench:
             self.ui.ComboBox(self.prefix + "['sampling']", {'Latin Hypercube': 'L', 'Hammersley': 'M'},
                              '采样方法', state='readonly', updateGUI=True)
             self.label('各参数按独立正态分布采样；均值和标准差是实际数值。')
-        self.view.cgyro_checkbox(self.prefix + "['single_Ti']", self.settings, 'single_Ti', '温度扫描同步到输入中同温的热离子')
+        if mode != 'single':
+            self.view.cgyro_checkbox(self.prefix + "['single_Ti']", self.settings, 'single_Ti', '温度扫描同步到输入中同温的热离子')
         self.ui.Separator('03  运行')
         self.ui.Entry(self.prefix + "['parallel']", '并发任务数', width=12, updateGUI=True)
         problems = runtime_issues(self.root, 'tglf')
         try:
             prepared = plan(self.root, self.settings)
-            self.label('{} 个输入 × {} 个计算点 = {} 个任务'.format(
-                len(prepared['sources']), prepared['points_per_input'], prepared['total']))
+            self.label('本次运行：{} 个输入，{} 个任务'.format(len(prepared['sources']), prepared['total']))
         except (TypeError, ValueError, KeyError) as exc:
             problems.append(str(exc))
         remote = read(self.root, MODULES['tglf'] + ('SETTINGS', 'REMOTE_SETUP'), {})
@@ -154,10 +158,12 @@ class TGLFWorkbench:
                              state='readonly', width=12, updateGUI=True)
             self.ui.ComboBox(self.prefix + "['include_ions']", {'热离子': 'thermal', '全部离子': 'all'},
                              '离子范围', state='readonly', width=12, updateGUI=True)
+        self.generation_parameters()
         issues = runtime_issues(self.root, 'tgyro')
         try:
             remote = read(self.root, MODULES['tgyro'] + ('SETTINGS', 'REMOTE_SETUP'), {})
             preparation_resources(remote)
+            generation_overrides(self.root, self.settings)
         except ValueError as exc:
             issues.append(str(exc))
         if profile is None:
@@ -167,8 +173,15 @@ class TGLFWorkbench:
             stale = radial_input_issues(self.root, self.settings)
             if stale:
                 self.label('；'.join(stale))
-            self.ui.ComboBox(self.prefix + "['radius_mode']", {'全部半径': 'all', '按范围选择': 'range', '指定半径列表': 'list'},
-                             '计算半径', state='readonly', updateGUI=True)
+
+    def radius_selection(self):
+        if self.settings['source'] == 'radial' and self.available:
+            self.ui.ComboBox(self.prefix + "['radius_mode']", OrderedDict([
+                ('单个半径', 'single'), ('半径范围', 'range'), ('半径列表', 'list'), ('全部半径', 'all')]),
+                '计算半径', state='readonly', updateGUI=True)
+            if self.settings['radius_mode'] == 'single':
+                choices = OrderedDict((row['label'], row['rho']) for row in self.available)
+                self.ui.ComboBox(self.prefix + "['radius']", choices, '半径', state='readonly', updateGUI=True)
             if self.settings['radius_mode'] == 'range':
                 with self.ui.same_row():
                     self.ui.Entry(self.prefix + "['radius_start']", '起始', width=8, updateGUI=True)
@@ -177,13 +190,82 @@ class TGLFWorkbench:
             elif self.settings['radius_mode'] == 'list':
                 self.ui.Entry(self.prefix + "['radius_values']", '半径列表', width=28, updateGUI=True,
                               help='例如 [0.3, 0.5, 0.7]。半径需在已生成的输入中。')
+        elif self.settings['source'] == 'transfer' and self.available:
+            with self.ui.same_row():
+                self.ui.Button('全选', lambda: self.select(True), updateGUI=True)
+                self.ui.Button('清空', lambda: self.select(False), updateGUI=True)
+            for start in range(0, len(self.available), 2):
+                with self.ui.same_row():
+                    for row in self.available[start:start + 2]:
+                        self.view.cgyro_checkbox(self.prefix + "['selected'][{!r}]".format(row['key']),
+                            self.settings['selected'], row['key'], row['label'])
+
+    def generation_parameters(self):
+        seed = generation_seed(self.root)
+        if seed is None:
+            return
+        values = numeric_parameters(seed)
+        self.ui.Separator('TGLF 参数')
+        self.ui.ComboBox(self.prefix + "['scenario']", OrderedDict(
+            (item[0], key) for key, item in SCENARIOS.items()), 'TGLF 方案', state='readonly',
+            updateGUI=True, postcommand=lambda location=None: self.apply_scenario(),
+            help='预设采用 OMFIT 原生 TGLF 场景；选择后可继续修改数值。')
+        for fields in ((('SAT_RULE', '饱和规则'), ('NKY', 'ky 点数')),
+                       (('KYGRID_MODEL', 'ky 网格'), ('NMODES', '模态数')),
+                       (('USE_BPER', 'A∥ 扰动'), ('USE_BPAR', 'B∥ 扰动'))):
+            with self.ui.same_row():
+                for name, label in fields:
+                    self.parameter_field(name, values, label)
+        with self.ui.same_row():
+            self.ui.ComboBox(self.prefix + "['units_override']", {'沿用输入': '', 'GYRO': 'GYRO', 'CGYRO': 'CGYRO'},
+                             '归一化', width=12, state='readonly', updateGUI=True,
+                             postcommand=lambda location=None: self.settings.__setitem__('scenario', 'custom'))
+            self.ui.Button('更多 TGLF 参数', lambda: self.settings.__setitem__('page', 'parameters'), updateGUI=True)
+
+    def parameter_field(self, name, values, label):
+        reference = values.get(name, COMMON[name][0])
+        item = self.settings['parameters'].setdefault(name, self.actions.factory())
+        item.setdefault('enabled', False)
+        if not item['enabled']:
+            item['value'] = reference
+        prefix = self.prefix + "['parameters'][{!r}]['value']".format(name)
+        callback = lambda location=None: self.edit_parameter(name, reference)
+        help_text = name + '：' + COMMON[name][1]
+        if name in ('SAT_RULE', 'KYGRID_MODEL'):
+            choices = [0, 1, 2] if name == 'SAT_RULE' else [0, 1, 4, 5]
+            if item['value'] not in choices:
+                choices.append(item['value'])
+            self.ui.ComboBox(prefix, choices, label, width=8, state='readonly',
+                             updateGUI=True, postcommand=callback, help=help_text)
+        elif isinstance(reference, bool):
+            self.ui.ComboBox(prefix, {'开启': True, '关闭': False}, label, width=8, state='readonly',
+                             updateGUI=True, postcommand=callback, help=help_text)
+        else:
+            self.ui.Entry(prefix, label, width=8, updateGUI=True, postcommand=callback, help=help_text)
+
+    def apply_scenario(self):
+        chosen = self.settings['scenario']
+        values = SCENARIOS[chosen][1]
+        if chosen == 'input':
+            for name in SCENARIO_FIELDS:
+                item = self.settings['parameters'].get(name, None)
+                if item is not None:
+                    item['enabled'] = False
+            self.settings['units_override'] = ''
+        elif values is not None:
+            for name, value in zip(SCENARIO_FIELDS, values):
+                if name == 'UNITS':
+                    self.settings['units_override'] = value
+                else:
+                    item = self.settings['parameters'].setdefault(name, self.actions.factory())
+                    item.update(dict(enabled=True, value=value))
 
     def select(self, selected):
         self.settings['selected'].update({row['key']: selected for row in self.available})
 
     def parameters(self):
-        self.label('修改后回车，应用到本次所选输入；扫描取值优先。恢复后沿用各文件原值。')
-        self.label('此流程计算通量和谱，自动开启 USE_TRANSPORT_MODEL。')
+        self.ui.Button('返回输入与扫描', lambda: self.settings.__setitem__('page', 'scan'), updateGUI=True)
+        self.label('修改后回车，扫描取值优先。')
         if self.reference:
             self.label('参考：' + self.reference['label'])
         values = numeric_parameters(self.source)
@@ -203,7 +285,7 @@ class TGLFWorkbench:
             if not item['enabled']:
                 item['value'] = values.get(name, reference)
             prefix = self.prefix + "['parameters'][{!r}]".format(name)
-            hint = '仅修改后写入计算副本。' if name not in values else '输入值：' + str(values[name])
+            hint = '修改后用于生成输入和本次计算。' if name not in values else '输入值：' + str(values[name])
             with self.ui.same_row() as line:
                 frame = getattr(line, 'frm_top', None)
                 if isinstance(frame, tk.Misc):
@@ -215,16 +297,23 @@ class TGLFWorkbench:
                                      updateGUI=True, state='readonly', postcommand=callback, help=hint)
                 else:
                     self.ui.Entry(prefix + "['value']", '', width=12, updateGUI=True, postcommand=callback, help=hint)
-                self.ui.Button('恢复', lambda name=name: self.settings['parameters'][name].__setitem__('enabled', False), updateGUI=True)
+                self.ui.Button('恢复', lambda name=name: self.reset_parameter(name), updateGUI=True)
 
     def edit_parameter(self, name, reference):
         item = self.settings['parameters'][name]
         item['value'] = parameter_value(name, item['value'], reference)
         item['enabled'] = True
+        self.settings['scenario'] = 'custom'
 
     def reset_parameters(self):
         for item in self.settings['parameters'].values():
             item['enabled'] = False
+        self.settings['units_override'] = ''
+        self.settings['scenario'] = 'input'
+
+    def reset_parameter(self, name):
+        self.settings['parameters'][name]['enabled'] = False
+        self.settings['scenario'] = 'custom'
 
     def results(self):
         runs = read(self.root, ('TGLF_scan', 'RUN_DB'), {})

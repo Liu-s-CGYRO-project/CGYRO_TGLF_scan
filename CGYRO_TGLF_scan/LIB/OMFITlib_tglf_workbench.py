@@ -1,14 +1,15 @@
 """TGLF input selection and explicit scan plans, without running a solver."""
-from builtins import abs, all, any, bool, dict, enumerate, float, int, isinstance, len, list, max, next, range, set, sorted, str, tuple
+from builtins import abs, all, any, bool, dict, enumerate, float, int, isinstance, len, list, max, min, next, range, set, sorted, str, tuple
 from collections import OrderedDict
 import copy
 import math
 
 PROFILE_PATH = ('TGLF_scan', 'TGYRO', 'PROFILES_GEN', 'OUTPUTS', 'input.gacode')
+SEED_PATH = ('TGLF_scan', 'TGYRO', 'INPUTS', 'input.tglf')
 RADII = [index / 100.0 for index in range(1, 100)]
 
-MODES = OrderedDict([('不扫参数（单点 / 多半径）', 'single'), ('扫描一个参数', '1d'),
-                     ('扫描两个参数', '2d'), ('不确定度采样（UQ）', 'uq')])
+MODES = OrderedDict([('原始参数', 'single'), ('一维参数扫描', '1d'),
+                     ('二维参数扫描', '2d'), ('不确定度扫描（UQ）', 'uq')])
 # References are displayed only. A value is applied only after the user edits it.
 COMMON = OrderedDict([
     ('SAT_RULE', (2, '饱和规则')), ('KYGRID_MODEL', (4, 'ky 网格模型')),
@@ -18,13 +19,31 @@ COMMON = OrderedDict([
     ('WIDTH_MIN', (0.3, '最小宽度')), ('NWIDTH', (21, '宽度搜索点数')),
     ('FIND_WIDTH', (True, '搜索模态宽度')), ('USE_BPER', (False, '包含 A 平行扰动')),
     ('USE_BPAR', (False, '包含 B 平行扰动')), ('XNU_MODEL', (3, '碰撞模型')),
+    ('USE_MHD_RULE', (True, 'MHD 规则')), ('ADIABATIC_ELEC', (False, '绝热电子')),
+    ('USE_BISECTION', (True, '二分宽度搜索')), ('IBRANCH', (-1, '模态排序')),
     ('VPAR_MODEL', (0, '平行流模型')), ('VPAR_SHEAR_MODEL', (1, '平行流剪切模型')),
     ('ALPHA_E', (1.0, 'ExB 剪切系数')), ('ALPHA_P', (1.0, '平行流剪切系数')),
     ('ALPHA_QUENCH', (0.0, '剪切抑制系数')), ('ETG_FACTOR', (1.25, 'ETG 系数')),
+    ('ALPHA_ZF', (1.0, '带状流系数')), ('WDIA_TRAPPED', (1.0, '俘获粒子漂移系数')),
+    ('USE_AVE_ION_GRID', (True, '平均离子网格')),
+])
+# These scenarios are the bundled OMFIT TGYRO/TGLFinputGUI definitions.
+SCENARIO_FIELDS = ('ALPHA_QUENCH', 'SAT_RULE', 'ALPHA_ZF', 'NKY', 'KYGRID_MODEL',
+                   'NBASIS_MAX', 'NMODES', 'UNITS', 'XNU_MODEL', 'WDIA_TRAPPED', 'USE_AVE_ION_GRID')
+SCENARIOS = OrderedDict([
+    ('input', ('沿用当前设置', None)),
+    ('custom', ('自定义', None)),
+    ('quench', ('Quench · SAT0', (1.0, 0, 0.0, 12, 1, 4, 4, 'GYRO', 2, 0.0, False))),
+    ('sat0', ('常规 · SAT0', (0.0, 0, 0.0, 12, 1, 4, 4, 'GYRO', 2, 0.0, False))),
+    ('sat1', ('常规 · SAT1', (0.0, 1, 1.0, 12, 1, 4, 4, 'GYRO', 2, 0.0, False))),
+    ('sat2', ('常规 · SAT2', (0.0, 2, 1.0, 12, 4, 6, 4, 'CGYRO', 3, 1.0, True))),
+    ('jet', ('JET · SAT2', (0.0, 2, 1.0, 17, 4, 6, 5, 'CGYRO', 3, 1.0, True))),
+    ('st', ('ST', (0.0, 1, 1.0, 12, 4, 4, 4, 'GYRO', 2, 0.0, False))),
+    ('iter', ('ITER', (0.0, 1, 1.0, 20, 4, 4, 4, 'GYRO', 2, 0.0, False))),
 ])
 INTEGERS = {'NS', 'SAT_RULE', 'KYGRID_MODEL', 'NKY', 'NMODES', 'NBASIS_MIN',
             'NBASIS_MAX', 'NXGRID', 'NWIDTH', 'IBRANCH', 'XNU_MODEL', 'GEOMETRY_FLAG',
-            'VPAR_MODEL', 'VPAR_SHEAR_MODEL', 'WRITE_WAVEFUNCTION_FLAG', '并发任务数', 'UQ 参数数', '样本数'}
+            'VPAR_MODEL', 'VPAR_SHEAR_MODEL', 'WRITE_WAVEFUNCTION_FLAG', '并发任务数', 'UQ 参数数', '样本数', '扫描点数'}
 POSITIVE = {'NS', 'NKY', 'NMODES', 'NBASIS_MIN', 'NBASIS_MAX', 'NXGRID', 'NWIDTH', 'WIDTH', 'WIDTH_MIN'}
 
 
@@ -39,6 +58,13 @@ def get(root, path, default=None):
 
 def clone(value):
     return value.duplicate() if hasattr(value, 'duplicate') else copy.deepcopy(value)
+
+
+def generation_seed(root):
+    seed = get(root, SEED_PATH)
+    if seed is None:
+        seed = get(root, ('Transfer_tool', 'TEMPLATES', 'input.tglf'))
+    return seed
 
 
 def scalar(value):
@@ -82,6 +108,37 @@ def numeric_parameters(source):
     return result
 
 
+def parameter_overrides(settings, source):
+    values = numeric_parameters(source)
+    result = {}
+    for name, item in settings['parameters'].items():
+        if not item.get('enabled', False):
+            continue
+        if name == 'NS' or (name not in values and name not in COMMON):
+            raise ValueError('当前输入不支持参数 ' + name)
+        reference = values.get(name, COMMON.get(name, (0.0,))[0])
+        result[name] = parameter_value(name, item['value'], reference)
+    units = str(settings.get('units_override', '') or '')
+    if units:
+        if units not in ('GYRO', 'CGYRO'):
+            raise ValueError('UNITS 请选择 GYRO 或 CGYRO')
+        result['UNITS'] = units
+    return result
+
+
+def generation_overrides(root, settings):
+    seed = generation_seed(root)
+    if seed is None:
+        raise ValueError('缺少 TGLF 种子输入')
+    reference = dict(seed)
+    # Existing local inputs supply the type of profile-derived parameters the
+    # user may have edited on the full parameter page.
+    rows = [row for row in input_rows(root) if row['group'] == 'radial']
+    if rows:
+        reference.update(get(root, rows[0]['path']))
+    return parameter_overrides(settings, reference)
+
+
 def input_rows(root):
     rows = []
     path = ('TGLF_scan', 'TGLF', 'FILES', 'input.tglf')
@@ -116,8 +173,28 @@ def initialize(root, factory=dict):
                     parallel=physics.get('parallelScan', 3), single_Ti=physics.get('single_Ti', False),
                     uq_count=1, samples=15, sampling='L', parameter_group='common', search='', page='scan')
     coordinate = 'rho' if get(root, ('TGLF_scan', 'TGYRO', 'INPUTS', 'input.tgyro', 'TGYRO_USE_RHO'), 1) else 'r/a'
+    try:
+        native_radius = float(get(root, ('TGLF_scan', 'SETTINGS', 'PHYSICS', 'rho'), 0.5))
+        if not math.isfinite(native_radius) or not 0 < native_radius < 1:
+            native_radius = 0.5
+    except (TypeError, ValueError):
+        native_radius = 0.5
     defaults.update(dict(profile_file='', profile_coordinate=coordinate, radius_start=0.2,
-                         radius_end=0.8, radius_step=0.05, radius_values=[0.3, 0.5, 0.7]))
+                         radius_end=0.8, radius_step=0.05, radius_values=[0.3, 0.5, 0.7],
+                         radius=native_radius,
+                         scenario='input', units_override=''))
+    for index in (1, 2):
+        key = 'scanParameter' if index == 1 else 'scanParameter2D'
+        try:
+            has_values = len(settings.get('values' + str(index), [])) > 0
+        except TypeError:
+            has_values = False
+        defaults.update({
+            'value_mode' + str(index): 'list' if has_values else 'factor',
+            'scan_start' + str(index): physics.get(key + 'Min', 0.5),
+            'scan_end' + str(index): physics.get(key + 'Max', 1.5),
+            'scan_count' + str(index): physics.get(key + 'Steps', 5),
+        })
     defaults['include_ions'] = get(root, ('TGLF_scan', 'TGYRO', 'SETTINGS', 'PHYSICS', 'INCLUDE_IONS'), 'thermal')
     for key, value in defaults.items():
         settings.setdefault(key, value)
@@ -126,14 +203,22 @@ def initialize(root, factory=dict):
     rows = input_rows(root)
     settings.setdefault('source', 'radial')
     # An unavailable saved choice stays visible as a missing input, never switches silently.
+    transfer = [row for row in rows if row['group'] == 'transfer']
     for row in rows:
-        settings['selected'].setdefault(row['key'], True)
-    if 'radius_mode' not in settings:
+        default_selected = row['group'] != 'transfer' or row['key'] == transfer[0]['key']
+        settings['selected'].setdefault(row['key'], default_selected)
+    if settings.get('radius_choice_version', 0) < 2:
         radial = [row for row in rows if row['group'] == 'radial']
         chosen = [row['rho'] for row in radial if settings['selected'].get(row['key'], False)]
-        settings['radius_mode'] = 'list' if len(chosen) != len(radial) else 'all'
-        if settings['radius_mode'] == 'list':
-            settings['radius_values'] = chosen
+        # Preserve explicit subsets, but replace the old automatic "all" default
+        # with one visible radius. Selecting all is now a deliberate choice.
+        if settings.get('radius_mode', None) not in ('range', 'list', 'single'):
+            settings['radius_mode'] = 'list' if radial and len(chosen) != len(radial) else 'single'
+            if settings['radius_mode'] == 'list':
+                settings['radius_values'] = chosen
+        if radial and settings['radius_mode'] == 'single':
+            settings['radius'] = min(radial, key=lambda row: abs(float(row['rho']) - float(settings['radius'])))['rho']
+        settings['radius_choice_version'] = 2
     return settings, rows
 
 
@@ -147,7 +232,9 @@ def selected_rows(root, settings):
 def select_radii(rows, settings):
     if not rows or settings['radius_mode'] == 'all':
         return rows
-    if settings['radius_mode'] == 'range':
+    if settings['radius_mode'] == 'single':
+        wanted = [parameter_value('半径', settings['radius'], 0.0)]
+    elif settings['radius_mode'] == 'range':
         start, end, step = [parameter_value('半径', settings[key], 0.0)
                             for key in ('radius_start', 'radius_end', 'radius_step')]
         if not 0 < start <= end < 1 or step <= 0:
@@ -173,7 +260,7 @@ def select_radii(rows, settings):
 
 def radial_input_issues(root, settings):
     if settings.get('profile_changed', False):
-        return ['剖面已更换，请生成新的 99 个半径输入']
+        return ['剖面已更换，请重新生成输入文件']
     metadata = get(root, ('TGLF_scan', '_local_input_generation'), {})
     if metadata and (metadata.get('coordinate', None) != settings['profile_coordinate']
                      or metadata.get('include_ions', None) != settings['include_ions']):
@@ -201,6 +288,28 @@ def scan_values(name, values, original):
     return parsed
 
 
+def axis_values(settings, index, name, original):
+    suffix = str(index)
+    mode = settings.get('value_mode' + suffix, 'list')
+    if mode == 'list':
+        return scan_values(name, settings['values' + suffix], original)
+    if mode not in ('range', 'factor'):
+        raise ValueError('请选择扫描取值方式')
+    if isinstance(scalar(original), bool):
+        raise ValueError(name + ' 是逻辑参数，请使用取值列表')
+    start = parameter_value('扫描起点', settings['scan_start' + suffix], 0.0)
+    end = parameter_value('扫描终点', settings['scan_end' + suffix], 0.0)
+    count = parameter_value('扫描点数', settings['scan_count' + suffix], 1)
+    if not 1 <= count <= 10000:
+        raise ValueError('扫描点数需在 1–10000 之间')
+    if mode == 'factor':
+        if float(original) == 0:
+            raise ValueError(name + ' 原值为 0，请使用实际值范围或取值列表')
+        start, end = start * float(original), end * float(original)
+    values = [start] if count == 1 else [start + (end - start) * i / (count - 1) for i in range(count)]
+    return scan_values(name, values, original)
+
+
 def plan(root, settings):
     if settings['source'] == 'radial':
         issues = radial_input_issues(root, settings)
@@ -222,12 +331,7 @@ def plan(root, settings):
         for key in ('NS', 'KY'):
             if key not in values:
                 raise ValueError(row['label'] + ' 缺少 ' + key)
-        parameters = {}
-        for name, item in settings['parameters'].items():
-            if item.get('enabled', False):
-                if name not in values and name not in COMMON:
-                    raise ValueError(row['label'] + ' 不支持参数 ' + name)
-                parameters[name] = parameter_value(name, item['value'], values.get(name, COMMON.get(name, (0.0,))[0]))
+        parameters = parameter_overrides(settings, source)
         values.update(parameters)
         names = [settings['parameter1']] if mode == '1d' else ([settings['parameter1'], settings['parameter2']] if mode == '2d' else [])
         if len(names) != len(set(names)):
@@ -236,7 +340,7 @@ def plan(root, settings):
         for index, name in enumerate(names, 1):
             if name not in values or name == 'NS':
                 raise ValueError(row['label'] + ' 缺少扫描参数 ' + name + '，或该参数不可扫描')
-            axes.append(dict(name=name, values=scan_values(name, settings['values' + str(index)], values[name])))
+            axes.append(dict(name=name, values=axis_values(settings, index, name, values[name])))
         if mode == 'uq':
             count = parameter_value('UQ 参数数', settings['uq_count'], 1)
             if not 1 <= count <= 5:
@@ -254,7 +358,7 @@ def plan(root, settings):
                 uq.append(dict(name=name, mean=mean, std=std))
             if len({item['name'] for item in uq}) != len(uq):
                 raise ValueError('UQ 参数不能重复')
-        sources.append(dict(row, parameters=parameters))
+        sources.append(dict(row, parameters=parameters, axes=copy.deepcopy(axes)))
     samples = parameter_value('样本数', settings['samples'], 1) if mode == 'uq' else 0
     if mode == 'uq' and samples < 1:
         raise ValueError('样本数必须大于 0')

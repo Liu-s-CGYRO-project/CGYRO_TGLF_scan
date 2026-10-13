@@ -12,13 +12,12 @@ defaultVars(plan=None, project_root=None)
 if not plan or not plan.get('sources', None):
     raise ValueError('TGLF scan plan is empty')
 
-combinations = [dict(zip([axis['name'] for axis in plan['axes']], values))
-                for values in itertools.product(*(axis['values'] for axis in plan['axes']))]
+uq_combinations = None
 if plan['mode'] == 'uq':
     import chaospy as cp
     distribution = cp.J(*(cp.Normal(item['mean'], item['std']) for item in plan['uq']))
     samples = np.asarray(distribution.sample(plan['samples'], plan['sampling'])).reshape(len(plan['uq']), -1)
-    combinations = [dict(zip([item['name'] for item in plan['uq']], values)) for values in samples.T]
+    uq_combinations = [dict(zip([item['name'] for item in plan['uq']], values)) for values in samples.T]
 
 # Resolve and validate every private input before any job can be submitted.
 project = project_root
@@ -29,6 +28,12 @@ for source in plan['sources']:
     original = get(project, source['path'])
     if original is None:
         raise ValueError('Input no longer exists: ' + source['label'])
+    # Relative scans use each selected radius's own baseline, as in the native
+    # OMFIT scan GUI. Absolute lists/ranges remain identical across inputs.
+    axes = source.get('axes', plan['axes'])
+    combinations = uq_combinations if plan['mode'] == 'uq' else [
+        dict(zip([axis['name'] for axis in axes], values))
+        for values in itertools.product(*(axis['values'] for axis in axes))]
     for scan_values in combinations:
         candidate = clone(original)
         candidate.pop('rho', None)

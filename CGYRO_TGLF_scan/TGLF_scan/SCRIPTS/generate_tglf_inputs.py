@@ -11,7 +11,7 @@ from OMFITlib_tglf_preparation import (PREPARE_LAUNCHER, PREPARE_MPI,
     preparation_batch, preparation_command, preparation_resources)
 
 defaultVars(profile=None, seed=None, input_text='', radii=None, coordinate='rho',
-            include_ions='thermal', profile_digest='', source=None, environment='', command='')
+            include_ions='thermal', profile_digest='', source=None, environment='', command='', parameters=None)
 if profile is None or seed is None or len(radii or []) != 99 or not command.strip():
     raise ValueError('TGLF preparation needs input.gacode, a TGLF seed and 99 radii')
 if not os.environ.get('SHELL', None):
@@ -50,12 +50,16 @@ else:
     remotedir = str(PurePosixPath(shared) / 'tglf_inputs' / run_id)
 
 seed = clone(seed)
+parameters = dict(parameters or {})
+if 'NS' in parameters or 'USE_TRANSPORT_MODEL' in parameters:
+    raise ValueError('Species count and transport mode are managed by TGLF preparation')
+seed.update(parameters)
 seed['USE_TRANSPORT_MODEL'] = True
 tgyro_input = OMFITascii('input.tgyro', fromString=input_text)
 record = OMFITtree()
 record.update(dict(id=run_id, status='preparing', created=datetime.now(timezone.utc).isoformat(),
     coordinate=coordinate, radii=list(radii), include_ions=include_ions, profile_digest=profile_digest,
-    source=dict(source or {}), runtime=copy.deepcopy(remote), command=command, resources=resources,
+    source=dict(source or {}), parameters=copy.deepcopy(parameters), runtime=copy.deepcopy(remote), command=command, resources=resources,
     workdir=workdir, remotedir=remotedir, diagnostics=OMFITtree()))
 record['input.gacode'] = clone(profile)
 record['input.tgyro'] = tgyro_input
@@ -160,6 +164,9 @@ try:
     generated = OMFITtree()
     for index, radius in enumerate(radii, 1):
         value = OMFITgacode(os.path.join(workdir, 'TGLF' + str(index), 'out.tglf.localdump'))
+        # TGYRO fills profile-derived quantities. Explicit user overrides must
+        # also be present in the final local inputs, not just the seed file.
+        value.update(parameters)
         for name in ('NS', 'KY', 'RMIN_LOC', 'RMAJ_LOC', 'Q_LOC', 'RLTS_1', 'RLNS_1'):
             if name not in value:
                 raise ValueError('TGLF{} local input is missing {}'.format(index, name))
@@ -182,7 +189,8 @@ try:
     replacements = clone(generated)
     tgyro_output = clone(record['tgyro_output']) if 'tgyro_output' in record else None
     metadata = dict(run_id=run_id, profile_digest=profile_digest,
-                    coordinate=coordinate, include_ions=include_ions, source=dict(source or {}))
+                    coordinate=coordinate, include_ions=include_ions, parameters=copy.deepcopy(parameters),
+                    source=dict(source or {}))
     old = OMFITtree()
     cache_keys = ('input.tglf', 'tgyro_output', 'scanResults', 'scanResults_spectra',
         'scanResults2D', 'scanResults2D_spectra', 'UQResults', 'UQResults_spectra',
@@ -192,6 +200,10 @@ try:
         if key in root:
             old[key] = clone(root[key])
     record['previous_scan'] = old
+    previous_seed = module['INPUTS'].get('input.tglf', None)
+    if previous_seed is not None:
+        record['previous_seed'] = clone(previous_seed)
+    replacement_seed = clone(seed)
     new_state = dict({'input.tglf': replacements}, _local_input_generation=metadata)
     if tgyro_output is not None:
         new_state['tgyro_output'] = tgyro_output
@@ -199,10 +211,15 @@ try:
         for key in cache_keys:
             root.pop(key, None)
         root.update(new_state)
+        module['INPUTS']['input.tglf'] = replacement_seed
     except BaseException:
         for key in cache_keys:
             root.pop(key, None)
         root.update(old)
+        if previous_seed is None:
+            module['INPUTS'].pop('input.tglf', None)
+        else:
+            module['INPUTS']['input.tglf'] = previous_seed
         raise
     record.update(dict(status='complete', finished=datetime.now(timezone.utc).isoformat()))
     print('TGLF: all 99 local inputs are ready in TGLF_scan/input.tglf')
