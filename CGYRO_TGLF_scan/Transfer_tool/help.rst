@@ -21,6 +21,10 @@ Long Description
 否则检查所选环境中的 Python。要求 Python 3.9 或更新版本及 pygacode 1.0.1，
 不再沿用 pygacode 0.71。平衡映射前检查 numpy、scipy、scikit-image、matplotlib
 和 pygacode 几何模块；绘图使用 Agg 后端，无需显示窗口。
+旧 GACODE 启动器使用七参数平衡映射接口，而 pygacode 1.0.1 增加了
+nfourier。转换时会在本次工作目录复制启动器并补 nfourier=0，
+保持原来的映射模式；已提供该参数的启动器沿用其值。
+不修改共享安装。映射失败立即停止，避免继续报 out.dim 缺失。
 转换失败时显示原始错误及退出码，完整日志保存在
 OUTPUTS/Profiles_gen_diagnostics/log。失败时保留已有生成结果。
 

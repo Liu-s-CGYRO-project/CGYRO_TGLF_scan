@@ -37,12 +37,14 @@ workdir = setup['workDir']
 environment = setup.get('profiles_environment', None) or setup.get('executable', '')
 status_file = 'profiles_gen.exit'
 log_file = 'profiles_gen.log'
+geometry = ' -g ' in command
+execution_command = 'bash .omfit_profiles_gen.sh' + command[len('profiles_gen'):] if geometry else command
 executable = ('#!/bin/bash\nset -e\n'
               + 'trap \'status=$?; printf "%s\\n" "$status" > ' + status_file + "' EXIT\n"
               + 'exec > ' + log_file + ' 2>&1\n'
               + environment + '\n' + program_guard('profiles')
-              + profiles_python_environment(geometry=' -g ' in command)
-              + command + '\n'
+              + profiles_python_environment(geometry=geometry)
+              + execution_command + '\n'
               + '[ -s input.gacode ] || { echo "profiles_gen did not generate input.gacode; see preceding errors." >&2; exit 1; }\n')
 # Download diagnostics even when conversion fails, then validate both process
 # status and the real output ourselves. Native missing-output checks otherwise
@@ -61,16 +63,16 @@ if os.path.isfile(log_path):
         stream.seek(max(0, os.path.getsize(log_path) - 8000))
         log_tail = stream.read().decode('utf-8', 'replace').strip()
 diagnostics = OMFITtree()
-diagnostics.update(dict(command=command, return_code=ret_code, exit_code=status,
+diagnostics.update(dict(command=execution_command, requested_command=command, return_code=ret_code, exit_code=status,
                         log_path=log_path, log_tail=log_tail))
 if os.path.isfile(log_path):
     diagnostics['log'] = OMFITascii(log_path).duplicate()
 root['OUTPUTS']['Profiles_gen_diagnostics'] = diagnostics
 output_path = os.path.join(workdir, 'input.gacode')
 if ret_code != 0 or status != '0' or not os.path.isfile(output_path) or os.path.getsize(output_path) == 0:
-    raise RuntimeError('profiles_gen 转换失败，执行返回码：{}，脚本退出码：{}。\n日志：{}'.format(
-        ret_code, status if status is not None else '未返回', log_path)
-        + ('\n' + log_tail if log_tail else '\n转换日志未返回，请检查服务器连接和环境初始化。'))
+    raise RuntimeError('profiles_gen failed: process exit={}, script exit={}.\nLog: {}'.format(
+        ret_code, status if status is not None else 'missing', log_path)
+        + ('\n' + log_tail if log_tail else '\nNo conversion log returned; check the server connection and environment setup.'))
 generated = OMFITinputgacode(output_path)
 generated.keys()
 root['OUTPUTS'].setdefault('Profiles_gen', OMFITtree())['input.gacode'] = generated

@@ -12,6 +12,68 @@ from OMFITlib_transfer_particles import PARTICLE_DEFAULTS, particle_options
 PROFILE_KEYS = {'input.gacode': ('input.gacode',), 'statefile': ('statefile', 'statefile.nc'),
                 'pfile': ('pfile',), 'input.profiles': ('input.profiles',)}
 
+PROFILES_MAPPER_COMPAT = r'''
+import ast
+import os
+import re
+import shlex
+import sys
+from importlib import util
+from pathlib import Path
+
+# Read the installed mapper's argument declarations without executing it.
+spec = util.find_spec('pygacode.profiles_gen.prgen_shapeprofile')
+if spec is None or not spec.origin:
+    raise RuntimeError('Cannot locate the pygacode geometry mapper.')
+layout = {}
+for node in ast.parse(Path(spec.origin).read_text(encoding='utf-8')).body:
+    if not isinstance(node, ast.Assign):
+        continue
+    for value in ast.walk(node.value):
+        if (isinstance(value, ast.Subscript) and isinstance(value.value, ast.Attribute)
+                and isinstance(value.value.value, ast.Name) and value.value.value.id == 'sys'
+                and value.value.attr == 'argv' and isinstance(value.slice, ast.Constant)):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    layout[target.id] = value.slice.value
+expected = dict(gfile=1, mag=2, narc=3, npsi=4, nharm=5, nfourier=6, plotpng=7, psinorm=8)
+if any(layout.get(name) != index for name, index in expected.items()):
+    raise RuntimeError('Unsupported pygacode 1.0.1 mapper argument layout: ' + repr(layout))
+
+launcher = Path(os.environ['GACODE_ROOT']) / 'profiles_gen/bin/profiles_gen'
+patched = launcher.read_text(encoding='utf-8').splitlines(keepends=True)
+legacy = ['$GFILE', '$MAG', '$NARC', '$NPSI', '$NHARM', '$PLOTPNG', '$PSINORM']
+matched = 0
+for index, line in enumerate(patched):
+    if not re.match(r'^\s*python(?:3)?\s+\$(?:MAPPER|\{MAPPER\})(?:\s|$)', line):
+        continue
+    fields = [re.sub(r'^\$\{([^}]+)\}$', r'$\1', word) for word in shlex.split(line, comments=True)]
+    guarded = fields[-3:] == ['||', 'exit', '$?']
+    args = fields[2:-3] if guarded else fields[2:]
+    if args == legacy:
+        line, count = re.subn(r'(\s+)("?\$(?:NHARM|\{NHARM\})"?)(?=\s)', r'\1\2 0', line)
+        if count != 1:
+            raise RuntimeError('Cannot adapt the legacy profiles_gen mapper call.')
+        print('profiles_gen mapper compatibility: inserted nfourier=0 for pygacode 1.0.1')
+    elif len(args) == 8 and args[:5] == legacy[:5] and args[-2:] == legacy[-2:]:
+        print('profiles_gen mapper compatibility: launcher already supplies nfourier')
+    else:
+        raise RuntimeError('Unsupported profiles_gen mapper call: ' + line.strip())
+    body, separator, comment = line.rstrip('\r\n').partition('#')
+    body = body.rstrip()
+    if not guarded:
+        body += ' || exit $?'
+    patched[index] = body + (' #' + comment if separator else '') + '\n'
+    matched += 1
+if matched != 1:
+    raise RuntimeError('Expected one profiles_gen mapper call; found ' + str(matched))
+# Only this run uses the adapted launcher; the installation is never edited.
+copy = Path('.omfit_profiles_gen.sh')
+copy.write_text(''.join(patched), encoding='utf-8')
+copy.chmod(0o700)
+sys.stdout.flush()
+'''
+
 
 def profiles_python_environment(geometry=False):
     """Bind launcher Python calls to OMFIT's interpreter when it is available.
@@ -53,6 +115,7 @@ def profiles_python_environment(geometry=False):
             "             'pygacode.profiles_gen.prgen_shape'):",
             '    import_module(name)',
         ])
+        lines.extend(PROFILES_MAPPER_COMPAT.splitlines())
     lines.append('OMFIT_PROFILES_PYTHON')
     return '\n'.join(lines) + '\n'
 

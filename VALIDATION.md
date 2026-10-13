@@ -1,3 +1,13 @@
+# 修订记录 · 工程 1.16.18 / 管理器 1.10.6
+
+只读核对太原 tyadmin06 上最近一次 profiles_gen.log、Gacode-260821 的启动器，以及 OMFIT 环境中安装的 pygacode 1.0.1 mapper 源文件。日志已确认实际使用 OMFIT Python 和 pygacode 1.0.1，p-file 各剖面读取成功。旧启动器传 GFILE、MAG、NARC、NPSI、NHARM、PLOTPNG、PSINORM 七个位置参数；安装包在 NHARM 后增加 nfourier，PLOTPNG 和 PSINORM 索引变为 7、8。因此 0.999 被 int(sys.argv[7]) 误读为绘图开关；后续 out.dim 缺失是映射失败的结果。
+
+带外部 g-file 的下一次转换在依赖检查后，通过 AST 只读识别实际 mapper 的参数声明，再读取所选 GACODE_ROOT 的启动器。旧七参数调用在 NHARM 后补 0（nfourier=0），保持原标准映射模式；已提供八参数的调用保留其 Fourier 参数。只替换本次工作目录中的 .omfit_profiles_gen.sh，不改共享安装或 Python 包。mapper 调用增加失败退出，阻止 Python 映射失败后继续调用 Fortran；未知接口或非唯一调用明确停止，不猜测参数。无外部 g-file 的转换继续使用原启动器。
+
+原始命令和实际适配命令均记入 OUTPUTS/Profiles_gen_diagnostics。失败摘要使用 ASCII 英文，避免 OMFIT 异常框出现问号乱码；完整日志和先前生成结果继续保留。pygacode 版本保持 1.0.1，不回退到 0.71，也不改变计算输入、半径或资源配置。
+
+完成 Python 3.9 静态语法（含生成的依赖检查与适配片段）、OMFIT 设置/帮助/库引用、发布包源文件及 SHA-256 校验。按要求未执行回归、GUI、shell 初始化或求解器测试，未重跑转换或提交计算任务。服务器检查仅读取已有日志、脚本和包源文件，临时密钥副本已清理；实际转换成功仍需在用户环境运行后确认。
+
 # 修订记录 · 工程 1.16.17 / 管理器 1.10.6
 
 只读查看太原 tyadmin06 上本次 p0/OMFIT_run_command.sh，命令为 profiles_gen -i pfile -g gfile，所选安装为 Gacode-260821。当前默认远端 python 为 /usr/bin/python；OMFIT Python 3.9 环境的静态元数据显示 pygacode 1.0.1、numpy 1.26.4、scipy 1.13.1、matplotlib 3.5.3、scikit-image 0.24.0。实际启动器通过裸 python 调用平衡映射模块，gacode_setup 又在 PYTHONPATH 前插入安装源码目录。原始失败 stdout 未保存在运行目录中，尚未据此确认本次异常的唯一原因；没有重跑转换或执行导入测试。
