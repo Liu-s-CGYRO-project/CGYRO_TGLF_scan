@@ -3,6 +3,7 @@
 
 import numpy as np
 import scipy.linalg
+from OMFITlib_transfer_workflow import tglf_input_format
 
 def _build_convert_tglf_to_cgyro(CGYRO,TGLF,inputgacode):
     CGYRO.clear()
@@ -520,7 +521,6 @@ def cub_spline1(x,y,n,xi):
 
 convert_to_tglf = root['SETTINGS']['PHYSICS']['Transfer to tglf']
 convert_to_cgyro = root['SETTINGS']['PHYSICS']['Transfer to cgyro']
-tglf_is_out_tglf_localdump = root['SETTINGS']['PHYSICS']['tglf_is_out_tglf_localdump']
 
 
 if bool(convert_to_tglf) == bool(convert_to_cgyro):
@@ -536,13 +536,25 @@ if convert_to_tglf:
     convert_cgyro_to_tglf(files['input.cgyro'], pending)
     target_name = 'input.tglf'
 else:
-    converter = convert_outtglf_to_cgyro if tglf_is_out_tglf_localdump else convert_tglf_to_cgyro
+    detected = tglf_input_format(files['input.tglf'], for_conversion=True)
+    root['SETTINGS']['PHYSICS']['tglf_is_out_tglf_localdump'] = detected == 'localdump'
+    print('TGLF format: ' + ('out.tglf.localdump (extended geometry)' if detected == 'localdump' else 'input.tglf'))
+    converter = convert_outtglf_to_cgyro if detected == 'localdump' else convert_tglf_to_cgyro
     converter(pending, files['input.tglf'], files['input.gacode'])
     target_name = 'input.cgyro'
 target = OMFITgacode(target_name, fromString='')
 target.update(pending)
 # Do not require or clear a destination file before conversion has succeeded.
+if target_name in files:
+    from datetime import datetime
+    import uuid
+    history = root['OUTPUTS'].setdefault('Conversion_history', OMFITtree())
+    import copy
+    previous = files[target_name]
+    history[datetime.now().strftime('%Y%m%dT%H%M%S') + '_' + uuid.uuid4().hex[:8]] = (
+        previous.duplicate() if hasattr(previous, 'duplicate') else copy.deepcopy(previous))
 files[target_name] = target
+root['SETTINGS']['PHYSICS'].setdefault('conversion_sources', OMFITtree()).pop(target_name, None)
 print('已生成 ' + target_name + '；“生成文件”可查看参数。')
 print('在 CGYRO 页选择“导入 input.cgyro”。' if target_name == 'input.cgyro' else
-      '在 TGLF 页选择此局部输入并比较后使用。')
+      '在 TGLF 页选择“局部互转文件”即可运行。')

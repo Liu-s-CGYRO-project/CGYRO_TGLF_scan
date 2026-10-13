@@ -18,7 +18,8 @@ from collections import OrderedDict
 from OMFITlib_project_runtime import initialize_runtime, apply_runtime, runtime_values, shared_issues
 from OMFITlib_gacode_installations import (PROGRAMS, detection_is_current, installation_issues, merge_probe,
     parse_probe, probe_script, sync_environment, valid_path)
-from OMFITlib_transfer_workflow import generation_issues, initialize_generation, tgyro_batch_settings
+from OMFITlib_transfer_workflow import generation_issues, initialize_generation, tgyro_batch_settings, tglf_input_format
+from OMFITlib_tglf_workbench import initialize as initialize_tglf, input_rows as tglf_rows, plan as tglf_plan
 from OMFITlib_transfer_particles import particle_options
 from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters, initialize_parameters,
     numeric_source, parameter_catalog, parameter_value, scan_parameter_names, validated_overrides)
@@ -32,9 +33,8 @@ LABELS = {'transfer': '输入转换', 'cgyro': 'CGYRO', 'tglf': 'TGLF',
           'tgyro': 'TGYRO', 'profiles': 'PROFILES_GEN'}
 PAGES = OrderedDict([
     ('1 项目概览', 'overview'), ('2 环境配置与记录', 'run'),
-    ('3 输入准备与转换', 'transfer'), ('4 输入确认与覆盖', 'review'),
-    ('5 CGYRO 扫描', 'cgyro'), ('6 TGLF 单文件与扫描', 'tglf'),
-    ('7 TGLF 多剖面计算', 'multi'), ('8 绘图与对比', 'plots'), ('9 模板与 GitHub', 'templates'),
+    ('3 输入准备与转换', 'transfer'), ('4 CGYRO 扫描', 'cgyro'),
+    ('5 TGLF 计算与扫描', 'tglf'), ('6 绘图与对比', 'plots'), ('7 模板与 GitHub', 'templates'),
 ])
 DEFAULTS = {'page': 'overview', 'runtime_module': 'cgyro', 'transfer_source': '',
             'cgyro_file': '', 'tglf_file': '', 'cgyro_source_mode': 'generated',
@@ -502,6 +502,12 @@ def initialize(root, factory=dict):
         settings['message'] = ''
     sync_cgyro_ion_cases(settings, factory)
     settings.setdefault('cgyro_radii', factory())
+    if settings['page'] in ('review', 'multi'):
+        if settings['page'] == 'multi':
+            settings.setdefault('tglf', factory())['page'] = 'multi'
+        settings['page'] = 'tglf'
+    if '：脚本已返回。' in str(settings.get('message', '')):
+        settings['message'] = ''
     if settings['page'] not in PAGES.values():
         settings['page'] = 'overview'
     if settings['runtime_module'] not in MODULES:
@@ -656,6 +662,11 @@ class ProjectActions:
         self.register_server = register_server
         self.remote_execute = remote_execute
         self._migrate_error_message()
+        # Keep old unresolved candidates in history without blocking the workbench.
+        for record in pending_inputs(root).values():
+            record['status'] = 'kept_current'
+        if '请查看参数差异后选择保留或覆盖' in str(self.settings.get('message', '')):
+            self.settings['message'] = ''
 
     def _migrate_error_message(self):
         """Replace legacy pinned exceptions without discarding their history."""
@@ -696,6 +707,9 @@ class ProjectActions:
         return record
 
     def open_page(self, page):
+        if page in ('review', 'multi'):
+            initialize_tglf(self.root, self.factory)[0]['page'] = 'multi' if page == 'multi' else 'scan'
+            page = 'tglf'
         self.settings['page'] = page
 
     def call(self, title, path, **kwargs):
@@ -709,7 +723,7 @@ class ProjectActions:
             self.report_error(title, exc, record)
             raise
         record['status'] = 'returned'
-        self.settings['message'] = title + '：脚本已返回。计算状态请查看对应运行记录。'
+        self.settings['message'] = '' if 'GUIS' in path else title + '：脚本已返回。计算状态请查看对应运行记录。'
         return result
 
     def replace(self, title, replacements):
@@ -732,6 +746,7 @@ class ProjectActions:
     def save_transfer_input(self, path, edits, expected_digest):
         path = tuple(path)
         available = [source for row in transfer_generated_rows(self.root) for source in row['paths'].values()]
+        available.extend(row['path'] for row in tglf_rows(self.root))
         current = read(self.root, path)
         if path not in available or current is None or input_digest(current) != expected_digest:
             raise ValueError('输入已更新，请点击“重载 / 撤销”后重新编辑。')
@@ -752,14 +767,17 @@ class ProjectActions:
             candidate.save()
         if input_digest(read(self.root, path)) != expected_digest:
             raise ValueError('保存期间输入已更新，请重载后再编辑。')
-        self.replace('编辑 {}（{} 项）'.format(path[-1], len(changes)), [(path, candidate)])
+        if path == MODULES['tglf'] + ('FILES', 'input.tglf'):
+            self.install_tglf(candidate, '编辑 TGLF 当前输入（{} 项）'.format(len(changes)))
+        else:
+            self.replace('编辑 {}（{} 项）'.format(path[-1], len(changes)), [(path, candidate)])
         return read(self.root, path)
 
     def import_input(self, kind, location=None):
         filename = self.settings[kind + '_file']
         if not filename:
             return
-        if kind == 'cgyro' and isinstance(filename, (list, tuple)):
+        if isinstance(filename, (list, tuple)):
             path, server, tunnel = filename
             server, tunnel = server or 'localhost', tunnel or ''
             obj = self.readers[kind](str(path), server=server, tunnel=tunnel)
@@ -775,8 +793,11 @@ class ProjectActions:
             sync_cgyro_choices(self.root, self.settings, self.factory)
             self.settings['message'] = 'input.cgyro 已载入，可直接设置 CGYRO 扫描。'
             return
-        self.propose_tglf(obj, '导入 input.tglf：' + str(filename))
-        self.settings[kind + '_file'] = ''
+        detected = tglf_input_format(obj)
+        self.propose_tglf(obj, '导入 TGLF 文件：' + str(path))
+        self.settings['tglf_import_source'] = dict(path=str(path), server=str(server), tunnel=str(tunnel), format=detected)
+        initialize_tglf(self.root, self.factory)[0].update(dict(source='current', page='scan'))
+        self.settings[kind + '_file'] = str(path)
 
     def handoff(self, target, source=None):
         if target == 'cgyro':
@@ -1321,20 +1342,31 @@ class ProjectActions:
             raise ValueError('未知 TGLF 输入目标')
         branch = 'FILES' if destination == 'tglf' else 'INPUTS'
         current = read(self.root, MODULES[destination] + (branch, 'input.tglf'))
-        if current is None:
-            self.install_tglf(incoming, title, destination)
-            return
-        # No destination is changed until the user resolves the displayed diff.
-        candidate = incoming.duplicate() if hasattr(incoming, 'duplicate') else copy.deepcopy(incoming)
-        baseline = current.duplicate() if hasattr(current, 'duplicate') else copy.deepcopy(current)
-        differences = input_difference(baseline, candidate)
         for record in pending_inputs(self.root, destination).values():
             record['status'] = 'superseded'
-        self._record(title, status='awaiting_choice', current=baseline, incoming=candidate,
-                     destination=destination,
-                     current_digest=input_digest(current), incoming_digest=input_digest(incoming),
-                     source=list(source_path) if source_path else [], differences=differences)
-        self.settings.update(dict(page='review', message='目标已有 TGLF 输入。请查看参数差异后选择保留或覆盖。'))
+        if current is not None and not input_difference(current, incoming):
+            self.settings['message'] = '已选用此 TGLF 输入，参数内容未变化。'
+            return
+        self.install_tglf(incoming, title, destination)
+
+    def run_tglf_plan(self):
+        settings, _ = initialize_tglf(self.root, self.factory)
+        prepared = tglf_plan(self.root, settings)
+        issues = runtime_issues(self.root, 'tglf')
+        if issues:
+            raise ValueError('；'.join(issues))
+        if any(source['group'] == 'transfer' for source in prepared['sources']):
+            physics = self.root['Transfer_tool']['SETTINGS']['PHYSICS']
+            chosen = particle_options(physics.get('generation', {}))
+            previous = read(self.root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'options'))
+            if previous is None or input_digest(chosen) != input_digest(previous):
+                raise ValueError('粒子方案或半径已变化，请重新运行 Transfer_tool 生成输入。')
+        try:
+            self.call('运行 TGLF 扫描', ('TGLF_scan', 'SCRIPTS', 'run_workbench'),
+                      plan=prepared, project_root=self.root)
+        finally:
+            settings['page'] = 'results'
+        self.settings['message'] = ''
 
     def resolve_input(self, record_id, use_incoming):
         record = pending_inputs(self.root).get(record_id, None)

@@ -1,5 +1,5 @@
 """Input preparation shared by the Transfer GUI and command box 1."""
-from builtins import any, dict, enumerate, float, int, list, range, str
+from builtins import any, dict, enumerate, float, int, list, range, set, sorted, str
 import hashlib
 import math
 import os
@@ -11,6 +11,24 @@ from OMFITlib_transfer_particles import PARTICLE_DEFAULTS, particle_options
 
 PROFILE_KEYS = {'input.gacode': ('input.gacode',), 'statefile': ('statefile', 'statefile.nc'),
                 'pfile': ('pfile',), 'input.profiles': ('input.profiles',)}
+
+
+def tglf_input_format(value, for_conversion=False):
+    """Choose the converter from actual fields, including renamed local dumps."""
+    keys = set(value.keys())
+    if not {'NS', 'KY'}.issubset(keys):
+        raise ValueError('无法识别为 TGLF 局部输入：需要 NS、KY。')
+    shapes = {'SHAT_SA'}
+    for index in range(7):
+        shapes.update(('SHAPE_COS' + str(index), 'SHAPE_S_COS' + str(index)))
+        if index >= 3:
+            shapes.update(('SHAPE_SIN' + str(index), 'SHAPE_S_SIN' + str(index)))
+    if shapes.issubset(keys):
+        return 'localdump'
+    # Incomplete extended geometry must not quietly fall back to another model.
+    if for_conversion and any(str(key).startswith('SHAPE_') for key in keys):
+        raise ValueError('TGLF 展开几何字段不完整，缺少：' + ', '.join(sorted(shapes - keys)))
+    return 'input'
 
 PROFILES_MAPPER_COMPAT = r'''
 import ast

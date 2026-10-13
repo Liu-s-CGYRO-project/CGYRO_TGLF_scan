@@ -6,6 +6,7 @@ import math
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_gui_layout import finish_gui_layout
+from OMFITlib_tglf_workbench_ui import TGLFWorkbench
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, loaded_file
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
 from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choices, installation_issues
@@ -94,7 +95,7 @@ class ProjectUI:
 
     def render(self, panel_only=False):
         self.panel_only = panel_only
-        self.compact = panel_only or self.settings['page'] in ('cgyro', 'run')
+        self.compact = panel_only or self.settings['page'] in ('cgyro', 'tglf', 'run')
         if panel_only:
             self.ui.TitleGUI('CGYRO · 线性扫描')
             intro = self.label('CGYRO 线性扫描')
@@ -115,10 +116,8 @@ class ProjectUI:
             self.ui.Button('检查配置', self.actions.check, updateGUI=True,
                            help='检查运行配置和 CGYRO 输入；不连接服务器、不提交计算。')
             self.ui.Button('刷新', lambda: None, updateGUI=True)
-        if self.settings['page'] != 'cgyro':
+        if self.settings['page'] not in ('cgyro', 'tglf'):
             self.show_message()
-        if pending_inputs(self.root) and self.settings['page'] != 'review':
-            self.nav('有待确认的 TGLF 输入 · 查看差异', 'review')
         getattr(self, 'render_' + self.settings['page'])()
         finish_gui_layout(intro, self.ui, compact=self.compact, fit_tabs=self.settings['page'] == 'run')
 
@@ -136,8 +135,7 @@ class ProjectUI:
             '已载入' if s['tglf_input'] else '未载入', s['multi_cases'], s['multi_selected']))
         with self.ui.same_row():
             self.nav('CGYRO 扫描', 'cgyro')
-            self.nav('TGLF 单文件 / 扫描', 'tglf')
-            self.nav('TGLF 多剖面计算', 'multi')
+            self.nav('TGLF 计算与扫描', 'tglf')
         self.ui.Separator('3  运行与结果')
         self.label('CGYRO 当前状态：{}；归档运行：{}；TGLF 谱结果半径：{}。'.format(
             STATUS.get(s['cgyro_status'], s['cgyro_status']), s['cgyro_runs'], s['tglf_radii']))
@@ -246,7 +244,7 @@ class ProjectUI:
             ttk.Label(window, text='此处修改源输入，运行时仍按扫描页设置。', anchor='w',
                       wraplength=width - 32).pack(fill=tk.X, padx=10, pady=(4, 0))
         else:
-            ttk.Label(window, text='TGLF 页需重新比较并选用此输入。', anchor='w',
+            ttk.Label(window, text='TGLF 扫描直接读取所选源文件；计算参数页的修改优先。', anchor='w',
                       wraplength=width - 32).pack(fill=tk.X, padx=10, pady=(4, 0))
         ttk.Label(window, text=location(path), anchor='w', wraplength=width - 32).pack(fill=tk.X, padx=10, pady=6)
         buttons = ttk.Frame(window)
@@ -581,75 +579,10 @@ class ProjectUI:
         return control
 
     def render_tglf(self):
-        node = read(self.root, MODULES['tglf'])
-        if node is None:
-            self.label('工程缺少 TGLF 模块。')
-            return
-        self.ui.Tab('单个 input.tglf')
-        self.ui.FilePicker(self.prefix + "['tglf_file']", '导入 input.tglf', default='',
-                           postcommand=lambda location=None: self.actions.import_input('tglf'), updateGUI=True)
-        generated = generated_tglf_sources(self.root)
-        if generated:
-            if self.settings.get('generated_tglf_source', None) not in generated.values():
-                self.settings['generated_tglf_source'] = next(iter(generated.values()))
-            self.ui.ComboBox(self.prefix + "['generated_tglf_source']", generated, '已有局部输入', state='readonly', updateGUI=True)
-            self.ui.Button('比较并使用所选 input.tglf', self.actions.use_generated_tglf, updateGUI=True)
-        self.label('当前输入：' + ('已载入' if 'input.tglf' in node.get('FILES', {}) else '未载入'))
-        issues = runtime_issues(self.root, 'tglf') + tglf_input_issues(self.root)
-        with self.ui.same_row():
-            self.task('编辑 TGLF 模型与数值参数', MODULES['tglf'] + ('GUIS', 'TGLF_GUI'),
-                      issues=tglf_input_issues(self.root), showButtons=False)
-            self.guarded('运行当前 input.tglf', lambda: self.actions.run('tglf', 'runTGLF', (('FILES', 'input.tglf'),)), issues)
-        self.label('配置检查：' + ('；'.join(issues) or '通过'))
-        self.ui.Tab('参数与径向扫描')
-        self.label('从剖面准备局部输入，再选择径向、1D、2D 或 UQ 扫描。')
-        profiles = {label: value for label, value in transfer_sources(self.root).items()
-                    if json.loads(value)[-1].split('_')[0] == 'input.gacode'}
-        if profiles:
-            if self.settings.get('transfer_profile_source', None) not in profiles.values():
-                previous = self.settings.get('transfer_source', None)
-                self.settings['transfer_profile_source'] = previous if previous in profiles.values() else next(iter(profiles.values()))
-            self.ui.ComboBox(self.prefix + "['transfer_profile_source']", profiles, 'Transfer_tool 剖面', state='readonly', updateGUI=True)
-            self.ui.Button('使用所选剖面准备 TGLF 输入',
-                lambda: self.actions.handoff('profiles', source=self.settings['transfer_profile_source']), updateGUI=True)
-        self.label('按半径生成的输入独立保存。切换半径或运行扫描会使用对应副本；传入当前单文件输入时先确认覆盖。')
-        with self.ui.same_row():
-            self.task('剖面准备 / PROFILES_GEN', MODULES['profiles'] + ('GUIS', 'standaloneGUI'))
-            self.task('径向 / 1D / 2D / UQ 工作流', ('TGLF_scan', 'GUIS', 'tglf_scan_gui'),
-                      issues=['请先处理 TGLF 输入覆盖选择'] if pending_inputs(self.root) else [])
-        with self.ui.same_row():
-            self.task('单文件 1D 扫描设置', MODULES['tglf'] + ('GUIS', 'scanGUI'), issues=tglf_input_issues(self.root))
-            self.task('单文件 2D 扫描设置', MODULES['tglf'] + ('GUIS', 'scan2DGUI'), issues=tglf_input_issues(self.root))
-            self.task('单文件 UQ 设置', MODULES['tglf'] + ('GUIS', 'uqGUI'), issues=tglf_input_issues(self.root))
-        self.label('普通批量扫描沿用原提交器，其并行数和队列时限的统一配置仍待后续修复。')
-        self.ui.Tab('多个剖面对比')
-        self.nav('进入多 input.gacode 计算页面', 'multi')
-        self.ui.Tab('执行配置')
-        self.run_controls('tglf')
+        TGLFWorkbench(self).render()
 
     def render_multi(self):
         self.compound(('GUIS', 'TGLF_multi'))
-
-    def render_review(self):
-        pending = pending_inputs(self.root)
-        if not pending:
-            self.label('没有待确认的输入。可在 TGLF 页导入或选择已有局部输入。')
-            self.nav('进入 TGLF 输入页面', 'tglf')
-        for key, record in pending.items():
-            self.ui.Separator(record['title'])
-            target = '输入转换工具 的 TGLF 种子输入' if record.get('destination', None) == 'transfer' else 'TGLF 当前单文件输入'
-            self.label('目标：' + target + '。当前文件可能由 TGYRO 生成或由你导入。\n'
-                       '下面逐项比较参数；选择整体保留或整体替换，不自动混合两套输入。')
-            with self.ui.same_row():
-                self.ui.Button('保留当前 TGLF 输入', lambda key=key: self.actions.resolve_input(key, False), updateGUI=True)
-                self.ui.Button('使用待传入输入，并保存原版本', lambda key=key: self.actions.resolve_input(key, True), updateGUI=True)
-            if not record['differences']:
-                self.label('两份输入的参数内容一致；仍由你决定采用哪个来源。')
-            else:
-                self.label('差异共 {} 项。格式：参数 · 类型 ｜ 当前值 → 待传入值'.format(len(record['differences'])))
-                for name, change, before, after in record['differences']:
-                    self.label('{} · {}\n当前：{}\n待传入：{}'.format(name, change, before, after))
-            self.label('选择覆盖后，原输入及其对应结果均保存在 工程 → PROJECT_STATE → activity。')
 
     def required_issues(self, name, paths):
         node = module(self.root, name)

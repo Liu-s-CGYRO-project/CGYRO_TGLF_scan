@@ -17,8 +17,22 @@ Long Description
 输入转换页的“生成文件”用于查看、编辑各半径的 input.cgyro / input.tglf 参数。
 双击数值编辑，点击“保存修改”后生效；旧输入保存在操作历史，保存只影响当前文件。
 预览选择不影响计算范围，CGYRO 在扫描页自动读取完整半径集合。
-TGLF 局部输入的比较和选用集中在“单个 input.tglf”，
-选用 Transfer_tool 剖面的入口在“参数与径向扫描”。
+TGLF 统一在“5 TGLF 计算与扫描”使用：输入与扫描、计算参数、结果与记录、多个剖面对比。
+选择当前文件、Transfer_tool 半径集、已有 TGYRO 半径集或局部互转文件，再填写扫描参数的实际取值列表。
+不扫参数时，每个所选输入运行一次；一维、二维参数扫描与半径选择可组合。
+UQ 使用各参数的独立正态分布、指定样本数及 Latin Hypercube / Hammersley 采样。
+计算参数可直接修改，扫描值优先，未改的参数沿用每个源文件；运行副本开启通量模型。
+更换当前 TGLF 文件会自动保留旧输入和结果，不再跳转到独立的覆盖确认页面。
+旧版尚未确认的候选留在操作历史，继续保留当前输入。
+
+新 TGLF 运行保存到 TGLF_scan/RUN_DB/运行编号/points，使用平面的 p000001 等编号。
+每点保存来源、实际输入、扫描值、状态、结果或错误日志；部分失败时已完成结果仍保留。
+“结果与记录”可查看数值表、各物种通量、通量趋势和单点频率 / 增长率谱。
+新记录与旧径向缓存分开保存；已有结果仍从原来的绘图与对比页面读取。
+
+局部输入转换只选择 TGLF → CGYRO 或 CGYRO → TGLF。
+TGLF 文件按 NS、KY 及完整展开几何字段自动识别 input.tglf / out.tglf.localdump；
+不依赖文件名，不完整的展开几何会明确报出缺失字段。
 
 环境配置使用窄长布局：“常用配置”集中设置服务器、程序版本、共用调度和默认资源；
 “安装路径”维护安装列表；“脚本与命令”编辑共用初始化脚本和各程序命令。
@@ -85,20 +99,16 @@ numeric table of all parameters, ky, mean omega/gamma and relative fluctuations;
 two-axis scans select ky, and three-axis scans also select the third-axis slice.
 Plotting remains optional, and existing comparison GUIs use the same result tree.
 
-When a TGLF destination already has an input, the workbench displays parameter
-differences and waits for an explicit keep/replace choice. It does not merge model
-parameters automatically. Replacement archives the old input and its associated
-results together. A stale preview cannot overwrite newer inputs. These records
-are stored under ``PROJECT_STATE`` and kept with the user's project, not the code
-template. Opening the workbench never submits computations or polls a server.
+TGLF inputs are selected directly. Importing a new current file archives the old
+input and its associated results together under PROJECT_STATE/activity. The
+standalone keep/replace page has been removed. Radial sources are copied only for
+execution, so each saved input and older result remains independent.
 
-TGYRO-generated local inputs remain stored by radius. The TGLF page lets the user
-compare and adopt one as the current single-file input. Radial scans use private
-inputs and keep the existing single-file input and results, including on failure.
-
-Execution checks validate configured fields and prerequisites. The explicit GACODE
-inventory checks installation files; it does not choose hardware resources or run
-solvers. Legacy TGLF batch scheduling still uses the existing backend.
+TGLF batch jobs use the applied scheduler, queue, wall time, program environment
+and threads. Submission is bounded by the TGLF concurrency setting. Each job
+writes an exit marker and log, and its flux output is validated before loading.
+Slurm/PBS runs allocate compute resources; explicit local mode runs locally.
+The existing scientific conversion formulas are unchanged.
 
 Compare saved CGYRO linear scans and TGLF spectra or integrated flux scans in
 the workbench's plotting page or ``GUIS/CGYRO_vs_TGLF``. The legacy
