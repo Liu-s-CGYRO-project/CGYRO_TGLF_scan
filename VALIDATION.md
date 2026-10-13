@@ -1,3 +1,9 @@
+# 修订记录 · 工程 1.18.1 / 管理器 1.10.6
+
+用户回调堆栈定位到 radial_input_issues 内的临时 OMFITlib_tglf_multi_data 导入。核对本地原生 omfit_python.py：自定义导入器只在 OMFIT 脚本执行期间存在，finally 删除 OMFITlib 模块缓存并撤销导入器；GUI 按钮回调在脚本返回后执行，故库已登记仍会报 ModuleNotFoundError。将 profile_digest 导入移到工作台库顶层，使回调保留同一函数引用。摘要算法、剖面变化判断、输入元数据及任务构造均不修改，无需因本次更新重新生成输入。
+
+静态核对 workbench → multi_data → project_runtime → gacode_installations 的依赖无环，主工程与 TGLF_scan 子模块均登记完整依赖。排查项目 LIB 内其余延迟 OMFITlib 导入；本次移除后不存在函数内 OMFITlib 导入。完成 Python 3.9 AST、OMFIT 库 / 设置 / 帮助、ZIP CRC / 源文件与 SHA-256 校验。按要求未运行回归、GUI、环境初始化或计算；按钮交互及集群执行未实际验收。
+
 # 修订记录 · 工程 1.18.0 / 管理器 1.10.6
 
 对照本地原生 modules/TGLF_scan/GUIS/tglf_scan_gui.py（生成前调用 TGLF 输入设置、生成后选择 rho）、tglf_radial_gui.py（rho_scan 列表）、TGLF_GACODE/GUIS/scanGUI.py（基准值 × 起止因子、点数）和 TGYRO_GACODE/GUIS/TGLFinputGUI.py（场景字段及数值）。场景字段和值逐项静态核对原生定义，常规 SAT0 / SAT1 / SAT2、Quench、JET、ST、ITER 不额外改变公式。生成前展示基础数值与扰动控制，更多参数复用原有编辑器；未编辑项沿用输入，显式设置校验后写入种子与每个局部输入。

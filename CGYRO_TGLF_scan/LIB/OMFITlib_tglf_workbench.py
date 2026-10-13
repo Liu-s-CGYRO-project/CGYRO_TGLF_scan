@@ -4,6 +4,10 @@ from collections import OrderedDict
 import copy
 import math
 
+# OMFIT removes its library importer when GUI scripts return. Resolve this
+# dependency while loading the module so button callbacks keep the function.
+from OMFITlib_tglf_multi_data import profile_digest
+
 PROFILE_PATH = ('TGLF_scan', 'TGYRO', 'PROFILES_GEN', 'OUTPUTS', 'input.gacode')
 SEED_PATH = ('TGLF_scan', 'TGYRO', 'INPUTS', 'input.tglf')
 RADII = [index / 100.0 for index in range(1, 100)]
@@ -266,7 +270,6 @@ def radial_input_issues(root, settings):
                      or metadata.get('include_ions', None) != settings['include_ions']):
         return ['坐标或离子选项已变化，请重新生成半径输入']
     if metadata.get('profile_digest', None):
-        from OMFITlib_tglf_multi_data import profile_digest
         profile = get(root, PROFILE_PATH)
         if profile is None or profile_digest(profile) != metadata['profile_digest']:
             return ['input.gacode 已变化，请重新生成半径输入']
