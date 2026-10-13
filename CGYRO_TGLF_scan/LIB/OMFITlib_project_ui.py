@@ -12,7 +12,7 @@ from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choi
 from OMFITlib_cgyro_results import ResultBrowser
 from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS,
     initialize_parameters, numeric_source, parameter_catalog, scan_parameter_names)
-from OMFITlib_project import (ION_CASES, LABELS, MODULES, PAGES, cgyro_input_issues,
+from OMFITlib_project import (ERROR_NOTICE_SUFFIX, ION_CASES, LABELS, MODULES, PAGES, cgyro_input_issues,
     cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, generated_tglf_sources, location, module,
     pending_inputs, read, runtime_issues, summary, sync_cgyro_choices, sync_cgyro_ion_cases, text_value,
     tglf_input_issues, transfer_sources)
@@ -40,14 +40,15 @@ class ProjectUI:
         return self.ui.Label(value, align='left', wraplength=600 if self.compact else 840)
 
     def show_message(self, first_line=False):
-        value = self.settings['message']
+        value = str(self.settings['message'] or '')
         if not value:
             return
-        label = self.label(str(value).splitlines()[0][:200] if first_line else value)
-        if value != '配置检查通过':
+        error = value.endswith(ERROR_NOTICE_SUFFIX)
+        label = self.label(value.splitlines()[0][:200] if first_line or error else value)
+        if value != '配置检查通过' and not error:
             return
-        # Consume successful feedback immediately, so redraws and saved projects
-        # cannot bring it back. Only its own visible row lasts three seconds.
+        # Consume transient feedback so redraws and saved projects cannot pin it.
+        # Full errors are retained in activity records and native OMFIT reports.
         self.settings['message'] = ''
         if not isinstance(label, tk.Misc):
             return
@@ -64,7 +65,7 @@ class ProjectUI:
                 except tk.TclError:
                     pass
                 timer[0] = None
-        timer[0] = top.after(3000, dismiss)
+        timer[0] = top.after(5000 if error else 3000, dismiss)
         label.bind('<Destroy>', cancel, add='+')
 
     def nav(self, label, page):
@@ -698,7 +699,7 @@ class ProjectUI:
         try:
             return self.actions.apply_runtime(progress=progress)
         except Exception as exc:
-            self.settings['message'] = '应用配置失败：' + str(exc)
+            self.actions.report_error('应用配置', exc)
             raise
         finally:
             if top.winfo_exists() and gui is not None:

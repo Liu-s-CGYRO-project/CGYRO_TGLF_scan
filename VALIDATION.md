@@ -1,3 +1,11 @@
+# 修订记录 · 工程 1.16.19 / 管理器 1.10.6
+
+ProjectActions.report_error 将完整异常及失败 / 中止状态保存到既有 PROJECT_STATE/activity，仅把简短提示写入 WORKBENCH/message。脚本调用继续重新抛出原异常，OMFIT 原生报告与模块日志保留；应用配置失败也使用同一记录入口。旧工程初始化时，精确匹配历史记录中的标题与异常全文，将已保存的顶部异常替换为短提示；旧的“应用配置失败”全文或已无对应记录的完整 traceback 先补入操作历史，再转为短提示。不删除历史或生成结果。
+
+ProjectUI.show_message 识别统一错误提示后，显示首行并立即清空保存的消息，避免刷新或保存工程后重新出现。沿用配置检查成功提示的原生 Label 行计时器，错误提示 5000 毫秒后仅移除自身行，提前销毁时取消计时器，不触发全局 GUI 重绘；配置成功仍保持 3000 毫秒，需要修改的配置项目继续显示。静态对照本地 OMFITx.Label，确认其返回 ttk.Label 且 master 是独立行框架。
+
+完成 Python 3.9 静态语法、OMFIT 设置/帮助/库引用、发布包源文件及 SHA-256 校验。按要求未执行回归、GUI、shell 初始化或求解器测试，未连接计算服务器、重跑转换或提交计算任务。实际 Tk 界面计时与布局尚未运行验收。
+
 # 修订记录 · 工程 1.16.18 / 管理器 1.10.6
 
 只读核对太原 tyadmin06 上最近一次 profiles_gen.log、Gacode-260821 的启动器，以及 OMFIT 环境中安装的 pygacode 1.0.1 mapper 源文件。日志已确认实际使用 OMFIT Python 和 pygacode 1.0.1，p-file 各剖面读取成功。旧启动器传 GFILE、MAG、NARC、NPSI、NHARM、PLOTPNG、PSINORM 七个位置参数；安装包在 NHARM 后增加 nfourier，PLOTPNG 和 PSINORM 索引变为 7、8。因此 0.999 被 int(sys.argv[7]) 误读为绘图开关；后续 out.dim 缺失是映射失败的结果。

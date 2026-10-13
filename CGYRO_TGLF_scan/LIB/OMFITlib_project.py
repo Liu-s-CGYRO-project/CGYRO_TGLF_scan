@@ -40,6 +40,12 @@ DEFAULTS = {'page': 'overview', 'runtime_module': 'cgyro', 'transfer_source': ''
             'message': ''}
 ISOTOPE_MASSES = OrderedDict([('H', 0.5), ('D', 1.0), ('T', 1.5)])
 ION_CASES = OrderedDict([('BASE', '原始'), ('H', 'H'), ('D', 'D'), ('T', 'T')])
+ERROR_NOTICE_SUFFIX = '，详情见“操作历史”。'
+
+
+def error_notice(title, cancelled=False):
+    title = (str(title).splitlines() or ['操作'])[0][:80]
+    return title + ('：已中止' if cancelled else '：失败') + ERROR_NOTICE_SUFFIX
 
 
 def sync_cgyro_ion_cases(settings, factory=dict):
@@ -580,6 +586,28 @@ class ProjectActions:
         self.resolve_server, self.workdir = resolve_server, workdir
         self.register_server = register_server
         self.remote_execute = remote_execute
+        self._migrate_error_message()
+
+    def _migrate_error_message(self):
+        """Replace legacy pinned exceptions without discarding their history."""
+        message = str(self.settings.get('message', '') or '')
+        if not message or message.endswith(ERROR_NOTICE_SUFFIX):
+            return
+        if message.startswith('应用配置失败：'):
+            self.report_error('应用配置', message.split('：', 1)[1])
+            return
+        records = read(self.root, ('PROJECT_STATE', 'activity'), {})
+        for record in list(records.values())[::-1]:
+            if record.get('status', None) not in ('failed', 'cancelled'):
+                continue
+            title, error = str(record.get('title', '')), str(record.get('error', ''))
+            if error and message == title + '：' + error:
+                self.settings['message'] = error_notice(title, record['status'] == 'cancelled')
+                return
+        if 'Traceback (most recent call last):' in message:
+            title, separator, error = message.partition('：')
+            if separator:
+                self.report_error(title, error)
 
     def _record(self, title, **values):
         state = self.root.setdefault('PROJECT_STATE', self.factory())
@@ -588,6 +616,14 @@ class ProjectActions:
         record = self.factory()
         record.update(dict(id=key, title=title, created=datetime.now(timezone.utc).isoformat(), **values))
         records[key] = record
+        return record
+
+    def report_error(self, title, exc, record=None):
+        if record is None:
+            record = self._record(title)
+        cancelled = isinstance(exc, KeyboardInterrupt) or record.get('status', None) == 'cancelled'
+        record.update(dict(status='cancelled' if cancelled else 'failed', error=str(exc)))
+        self.settings['message'] = error_notice(title, cancelled)
         return record
 
     def open_page(self, page):
@@ -601,8 +637,7 @@ class ProjectActions:
         try:
             result = task.run(**kwargs)
         except BaseException as exc:
-            record.update(dict(status='cancelled' if isinstance(exc, KeyboardInterrupt) else 'failed', error=str(exc)))
-            self.settings['message'] = title + '：' + str(exc)
+            self.report_error(title, exc, record)
             raise
         record['status'] = 'returned'
         self.settings['message'] = title + '：脚本已返回。计算状态请查看对应运行记录。'
