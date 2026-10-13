@@ -199,7 +199,8 @@ def tgyro_input(profile, plan):
     settings = {
         'TGYRO_MODE': 1, 'TGYRO_RELAX_ITERATIONS': 0, 'TGYRO_ITERATION_METHOD': 1,
         'LOC_RESTART_FLAG': 0, 'LOC_LOCK_PROFILE_FLAG': 1, 'TGYRO_NEO_METHOD': 0,
-        'TGYRO_PED_MODEL': 0, 'TGYRO_TGLF_DUMP_FLAG': 1, 'TGYRO_TGLF_REVISION': 0,
+        # TGYRO accepts 1 (fixed pivot) or 2 (dynamic EPED); 0 is invalid.
+        'TGYRO_PED_MODEL': 1, 'TGYRO_TGLF_DUMP_FLAG': 1, 'TGYRO_TGLF_REVISION': 0,
         'TGYRO_USE_RHO': int(plan['coordinate'] == 'rho'), 'TGYRO_RMIN': min(grid),
         'TGYRO_RMAX': max(grid), 'LOC_N_ION': len(profile['IONS']),
         'LOC_TE_FEEDBACK_FLAG': 1, 'LOC_TI_FEEDBACK_FLAG': 1, 'LOC_ER_FEEDBACK_FLAG': 0,

@@ -1,3 +1,13 @@
+# 修订记录 · 工程 1.17.3 / 管理器 1.10.6
+
+用户日志显示 99 个实例已完成 MPI 初始化，在参数报告结束处出现 Error: TGYRO_PED_MODEL。共用 tgyro_input 构造器此前硬编码 0；核对官方 tgyro_write_input.f90 的 select case，只有 1（固定边界）与 2（动态 EPED1_NN）是有效值，默认分支与用户报错完全一致。生成器改为 1，官方 tgyro_parse.py 默认也为 1。99 半径与多剖面转换共用此构造器，新生成记录使用修正后的输入；保存的旧运行记录保留。
+
+生成脚本记录 allocation、environment_setup、seed_inputs、tgyro_preparation、localdump_validation 阶段，退出时保存阶段与真实退出码。异常报告优先取 out.tgyro.run 中的 Error 行，再取解析或启动日志中的错误；附本地日志路径、共享远端目录、RUN_DB 地址和有界日志尾部。保存 input.tgyro.log、out.tgyro.run、退出状态与阶段文件到 diagnostics；旧有顶部短暂通知继续使用操作历史中的完整异常。
+
+源码核对：[TGYRO 参数检查](https://github.com/gafusion/gacode/blob/master/tgyro/src/tgyro_write_input.f90#L427)（读取时 blob 2b5426bf8cc27ac05ef4c9b600367f7b7cedf9c0）和 [解析器默认值](https://github.com/gafusion/gacode/blob/master/tgyro/bin/tgyro_parse.py#L94)（blob ec5e0854311aa30744dac4105b803ce7e3478d95）。尝试只读获取用户失败作业日志，原诊断连接的凭据文件已经不存在，未连接成功；定位依据为用户贴出的实际日志与上述源码。未读取或重建凭据。
+
+完成 Python 3.9 AST、Shell 仅语法解析、OMFIT 库 / 设置 / 帮助、ZIP CRC / 源文件和 SHA-256 校验。按要求未运行回归、GUI、环境初始化、转换或求解器测试，未提交集群任务；实际重新生成未验收。
+
 # 修订记录 · 工程 1.17.2 / 管理器 1.10.6
 
 TGLF 99 半径输入生成将调度器申请资源和实际 MPI 进程数分开。申请环境页已同步到 TGYRO 的节点数及每节点进程数，每个生成进程固定 1 线程；Slurm 指令的 ntasks 是申请 CPU 总数，ntasks-per-node 是配置值，不再硬编码 99。PBS 使用相同节点 / CPU 配置。作业脚本存入生成 RUN_DB，调用 OMFITx.executable 的 queued=True 保留原生队列监控、标准输出 / 错误和下行同步；提交失败仍抛出异常，不以 ignoreReturnCode 隐藏。

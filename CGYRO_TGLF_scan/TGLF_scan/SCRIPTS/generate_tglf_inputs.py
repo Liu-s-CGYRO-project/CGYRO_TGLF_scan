@@ -1,5 +1,5 @@
 """Prepare the full 99-radius TGLF input set before replacing any existing data."""
-from builtins import dict, enumerate, float, int, isinstance, len, list, str
+from builtins import dict, enumerate, float, int, isinstance, len, list, max, str
 from datetime import datetime, timezone
 from pathlib import PurePosixPath
 import copy
@@ -65,15 +65,20 @@ inputs = [(record['input.gacode'], 'input.gacode'), (tgyro_input, 'input.tgyro')
 for name, text in (('prepare_tgyro_launcher.py', PREPARE_LAUNCHER), ('prepare_mpi.sh', PREPARE_MPI)):
     record[name] = OMFITascii(name, fromString=text)
     inputs.append((record[name], name))
-body = '#!/bin/bash\nset -e\nexec > input_generation.log 2>&1\n'
-body += "trap 'status=$?; printf \"%s\\n\" \"$status\" > input_generation.exit' EXIT\n"
+body = '#!/bin/bash\nset -e\nexec > input_generation.log 2>&1\nstage=allocation\n'
+body += ("trap 'status=$?; printf \"%s\\n\" \"$status\" > input_generation.exit; "
+         'printf "%s\\n" "$stage" > input_generation.stage; '
+         'if [ "$status" -ne 0 ]; then printf "Preparation failed during %s (exit %s)\\n" "$stage" "$status"; '
+         "fi' EXIT\n")
 if scheduler != 'local':
     allocation = 'SLURM_JOB_ID' if scheduler == 'slurm' else 'PBS_JOBID'
     body += ('[ -n "${' + allocation + ':-}" ] || { echo "No scheduler allocation"; exit 1; }\n')
-body += environment + '\nexport OMP_NUM_THREADS=1\nexport OMP_THREAD_LIMIT=1\n'
+body += 'stage=environment_setup\n' + environment + '\nexport OMP_NUM_THREADS=1\nexport OMP_THREAD_LIMIT=1\n'
 body += 'chmod +x prepare_mpi.sh\n'
+body += 'stage=seed_inputs\n'
 body += 'for i in $(seq 1 99); do mkdir -p "TGLF$i"; cp input.tglf "TGLF$i/input.tglf"; done\n'
-body += launch_command + '\n'
+body += 'stage=tgyro_preparation\n' + launch_command + '\n'
+body += 'stage=localdump_validation\n'
 body += ('for i in $(seq 1 99); do\n'
          '  [ -s "TGLF$i/out.tglf.localdump" ] || { echo "Missing TGLF$i/out.tglf.localdump"; exit 1; }\n'
          'done\n')
@@ -83,10 +88,44 @@ inputs.append((record['job_script'], 'generate_inputs.sh'))
 
 def save_diagnostics():
     for name in ('input_generation.log', 'input_generation.exit', 'input_generation.mpi_exit',
-                 'input_generation.out', 'input_generation.err', 'prepare_tgyro.sh'):
+                 'input_generation.stage', 'input_generation.out', 'input_generation.err',
+                 'input.tgyro.log', 'out.tgyro.run', 'prepare_tgyro.sh'):
         path = os.path.join(workdir, name)
         if os.path.isfile(path):
             record['diagnostics'][name] = OMFITascii(path).duplicate()
+
+
+def log_tail(name, lines=35):
+    path = os.path.join(workdir, name)
+    if not os.path.isfile(path):
+        return ''
+    with open(path, 'rb') as stream:
+        stream.seek(max(0, os.path.getsize(path) - 8000))
+        text = stream.read().decode('utf-8', 'replace')
+    return '\n'.join(text.strip().splitlines()[-lines:])
+
+
+def generation_failure(reason):
+    # TGYRO may write its actual validation error only in out.tgyro.run, while
+    # the launcher reports a generic child-process failure in the main log.
+    tails = {name: log_tail(name) for name in
+             ('out.tgyro.run', 'input.tgyro.log', 'input_generation.log', 'input_generation.err')}
+    record['log_tails'] = tails
+    stage = log_tail('input_generation.stage', lines=1)
+    record['failed_stage'] = stage or 'unknown'
+    errors = [line.strip() for text in tails.values() for line in text.splitlines()
+              if line.strip().lower().startswith(('error:', 'error: (', 'runtimeerror:', 'valueerror:'))]
+    message = 'TGLF input generation failed: ' + (errors[0] if errors else reason)
+    message += '\nExit status: ' + reason
+    if stage:
+        message += '\nStage: ' + stage
+    message += '\nRecord: TGLF_scan/TGYRO/RUN_DB/' + run_id
+    message += '\nLog: ' + os.path.join(workdir, 'input_generation.log')
+    message += '\nRemote directory: ' + remotedir
+    for name in ('out.tgyro.run', 'input_generation.log', 'input_generation.err'):
+        if tails[name]:
+            message += '\n\n' + name + ':\n' + tails[name]
+    return message
 
 
 try:
@@ -95,7 +134,7 @@ try:
         code = OMFITx.executable(module, inputs=inputs, outputs=['./'], executable='/bin/bash generate_inputs.sh',
             queued=False, server=server, tunnel=tunnel, workdir=workdir, remotedir=remotedir, ignoreReturnCode=False)
         if code != 0:
-            raise RuntimeError('TGYRO preparation returned ' + str(code))
+            raise RuntimeError(generation_failure('TGYRO preparation returned ' + str(code)))
     else:
         print('TGLF allocation: {nodes} node(s), {ntasks_per_node} CPU(s)/node, {allocated_cpus} CPU(s) total.'.format(**resources))
         # Native submit_job hardcodes PBS nodes=1. Write the exact allocation for
@@ -111,10 +150,13 @@ try:
             std_out='input_generation.out', std_err='input_generation.err', server=server,
             tunnel=tunnel, workdir=workdir, remotedir=remotedir, ignoreReturnCode=False)
     save_diagnostics()
+    if not os.path.isfile(os.path.join(workdir, 'input_generation.exit')):
+        raise RuntimeError(generation_failure('missing input_generation.exit'))
     with open(os.path.join(workdir, 'input_generation.exit')) as stream:
         status = stream.read().strip()
+    record['exit_status'] = status
     if status != '0':
-        raise RuntimeError('TGYRO preparation exit status: ' + status)
+        raise RuntimeError(generation_failure(status))
     generated = OMFITtree()
     for index, radius in enumerate(radii, 1):
         value = OMFITgacode(os.path.join(workdir, 'TGLF' + str(index), 'out.tglf.localdump'))

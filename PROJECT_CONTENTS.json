@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.17.2",
-  "parent_release": "1.17.1",
+  "version": "1.17.3",
+  "parent_release": "1.17.2",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -264,7 +264,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_project.py": "154e635e5cb1e0ab02a1d59fc3779ce562465e01c6ad9611fcbd386389355abb",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_runtime.py": "d9d777622e8dc60c5664e55d39b6b2e3c5f5be820ecfc62c27f30965d22776a0",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py": "4f224ba31231f22470917974b797217c7d2e720acccc4b0ff6614ee4f982a780",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_data.py": "c2b7b1505f5c514be00b2603c8d8503c16ad5489add75ee1e8c60e54705b551d",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_data.py": "ae925daf67339e3b5e6ea5fc09b91d3990bad74462af032f494d1caa9e305517",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_plot.py": "631e45938afad95d823f06005dfab1d2b1632736434278ab24f07323ba09d8b4",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_run.py": "f6c2768ef02e954bb5fc2ddb373a0f6140b03692ce1d82b805e120c50327967f",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_ui.py": "e1eadb49b7a781f86f6716acb6da4ff0720a22cf1bdc7742aa5a8ebd61014717",
@@ -308,7 +308,7 @@
     "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/DVscan.py": "00eb3cf29c3b1035b1ca8d52555897a3d4409b5b4cbb9afd7b9bf2d02162cc74",
     "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/Radial_scan.py": "f1f04a3f4c7146c6e3cfd560ff55e5535e9dba3afa9592df5a6bc0e4ada7cfbc",
     "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/Radial_scan_in_time.py": "3e60519944784b86b51cc6ede46e9ef3abbba6474e17d3475208a9e2a4aeda0b",
-    "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/generate_tglf_inputs.py": "719f79e505ee816eb3ca5033a8c75960c412eb3f7211d61f9421cac270601927",
+    "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/generate_tglf_inputs.py": "4ae9f39834561d0a4ebd957a45d3fc01a923375b5d601651fce23acf3d925471",
     "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/particleDandVprofile.py": "d59155569dee67a2936be083ff304f009153d05c7c3edb70b4dc3bb2b4b3097d",
     "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/particleDandVscan.py": "40137392b7b736cc47a48e8198505062f7f33ed18b13bb8d1162915b10f37283",
     "CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/print_scan_results.py": "7234685be8d91bbcfacdb5bc004cf897513b066a3af76f6c0071c09198701daf",
@@ -444,7 +444,7 @@
     "CGYRO_TGLF_scan/TGLF_scan/TGYRO/SettingsNamelist.txt_2_dd6fdf5b36/SettingsNamelist.txt": "912a194e6369feb3e47c6b9cf872ff5bdd65e7f1635e62099f8fc3f8f13326f8",
     "CGYRO_TGLF_scan/TGLF_scan/TGYRO/USER_AGREEMENT": "da4bb956b806e151fa7c4ea474b8d03eded1f2bc450eff6490c9fbdbe9e96373",
     "CGYRO_TGLF_scan/TGLF_scan/TGYRO/help.rst": "ad0a6393bbac94b1974b4cee39c6bdb473de55400515c9eef94f1a5f39e19b00",
-    "CGYRO_TGLF_scan/TGLF_scan/help.rst": "0d91adec278df889e198036744ed20b7d57d877f119eebf9034ad07a67acf2de",
+    "CGYRO_TGLF_scan/TGLF_scan/help.rst": "6b165b18d0e84e47305f89ef73f2af97ffe8e73fa41c6d98c27761816848fb9a",
     "CGYRO_TGLF_scan/Transfer_tool/GUIS/convert.py": "46797042b8e52190e07e77bf551597c6e848935e1e7992a6bd32969220a78742",
     "CGYRO_TGLF_scan/Transfer_tool/GUIS/transfer.py": "01a69f9580dc32cfd4fd2d782d36456df4f39511b1f65eb46f834e5664ae9d13",
     "CGYRO_TGLF_scan/Transfer_tool/GUIS/vgenGUI.py": "79663a598bc9ccbd46cb8ea175fb41e5e8d7ebcf8bd5b661687ee8ed4b083d9f",
@@ -509,7 +509,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "de70730ac8e75ffd0b443355c655391533fe1241fa46ee582181f716d4e2c963"
+    "VALIDATION.md": "b86312a511f736a4d19194733620a7737357264d80a5367c1b734c648bfb75fd"
   },
   "workbench_features": [
     "native_omfit_project_gui",
@@ -553,7 +553,8 @@
     "generated_input_editing",
     "unified_tglf_workbench",
     "tglf_profile_input_generation",
-    "tglf_preparation_oversubscription"
+    "tglf_preparation_oversubscription",
+    "tglf_preparation_failure_diagnostics"
   ],
   "template_manager_version": "1.10.6",
   "support_archive_sha256": "cb71c03e57997da7bba99b724ca9a757fff6bad5a62f9daf4639bc6f6588618b",
