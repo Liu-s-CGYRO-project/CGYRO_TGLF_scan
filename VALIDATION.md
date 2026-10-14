@@ -1,3 +1,11 @@
+# 修订记录 · 工程 1.18.4 / 管理器 1.10.6
+
+TGLF 生成参数区的细线 Separator 替换为 ttk.LabelFrame。边框 groove、宽度 2 通过专用 CGYROSection.TLabelframe 样式设置，内部 padding=(10,8)、外部 padx=6 / pady=(14,10)。静态核对本地 tkinter.ttk 和 [Tk 8.6 Labelframe 手册](https://www.tcl-lang.org/man/tcl8.6/TkCmd/ttk_labelframe.htm)，borderwidth / relief 属于样式选项，不作为 Labelframe 的构造参数。标题使用合法的子控件 labelwidget 并标记现有 heading 角色，沿用 NativeLayout 的中文字体、加粗标题及明暗主题强调色。参数字段保持原双列布局和窄窗换行，生成按钮位于参数框外。
+
+section_group 仅在构造当前区块时暂存并改变原生 _aux.parentGUI；finally 恢复原父控件，不修改 Notebook、compoundGUIid、root 或设置。静态对照原生 same_row 的保存 / 恢复规则，确认每个双列行结束后返回分组框，分组结束后生成按钮回到原输入页。非 Tk 宿主沿用 Separator，字段仍渲染。原生成参数 AST 中的控件、路径、默认值及回调整体移入 with 区块，其他工作台和布局方法保留。
+
+完成 Python 3.9 AST、原生控件上下文与参数绑定静态核对、OMFIT 库 / 设置 / 帮助、ZIP CRC / 源文件及 SHA-256 校验。按要求未运行回归、GUI、环境初始化或计算；实际桌面外观未运行验收。
+
 # 修订记录 · 工程 1.18.3 / 管理器 1.10.6
 
 将 TGLF 输入页中原 01 输入、02 扫描设置、03 运行三个纵向块拆为 input / scan_settings / run 渲染方法，原输入控件、半径和参数选择、任务预览、运行条件及回调保留。上层四个原生页签保持原样；其“输入与扫描”通过新增的 TGLF_controls GUI 使用原生 CompoundGUI 创建独立上下文，再以 OMFITx.Tab 创建“输入准备”“扫描设置”“运行”三个子页签。未借用上层的 Notebook 或手工覆盖原生上下文。

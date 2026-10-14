@@ -1,10 +1,36 @@
 """Local font and geometry adjustments for this project's native OMFIT pages."""
-from builtins import all, int, isinstance, len, list, max, min, range, str, tuple
+from builtins import all, dict, int, isinstance, len, list, max, min, range, str, tuple
+from contextlib import contextmanager
 import hashlib
 import threading
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_gui_context import bind_actions
+
+
+@contextmanager
+def section_group(ui, title):
+    """Enclose native controls without changing their bindings or tab context."""
+    aux = getattr(ui, '_aux', None)
+    parent = aux.get('parentGUI') if isinstance(aux, dict) else None
+    if not isinstance(parent, tk.Misc):
+        ui.Separator(title)
+        yield
+        return
+    style_name = 'CGYROSection.TLabelframe'
+    ttk.Style(parent).configure(style_name, relief='groove', borderwidth=2)
+    group = ttk.LabelFrame(parent, style=style_name, padding=(10, 8))
+    heading = ttk.Label(group, text=title)
+    heading._cgyro_role = 'heading'
+    group.configure(labelwidget=heading, labelanchor='nw')
+    group.pack(side=tk.TOP, expand=False, fill=tk.X, padx=6, pady=(14, 10))
+    # same_row restores this group after each row. Always restore its parent
+    # before subsequent controls are placed, including when rendering fails.
+    aux['parentGUI'] = group
+    try:
+        yield
+    finally:
+        aux['parentGUI'] = parent
 
 
 def finish_gui_layout(label, ui=None, compact=False, fit_tabs=False):

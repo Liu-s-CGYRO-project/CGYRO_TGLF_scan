@@ -3,6 +3,7 @@ from builtins import abs, any, bool, dict, enumerate, float, getattr, int, isins
 from collections import OrderedDict
 import tkinter as tk
 from tkinter import font as tkfont, ttk
+from OMFITlib_gui_layout import section_group
 from OMFITlib_project import MODULES, location, read, runtime_issues
 from OMFITlib_tglf_preparation import preparation_resources
 from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, SCENARIOS, SCENARIO_FIELDS,
@@ -270,22 +271,22 @@ class TGLFWorkbench:
         if seed is None:
             return
         values = numeric_parameters(seed)
-        self.ui.Separator('TGLF 参数')
-        self.ui.ComboBox(self.prefix + "['scenario']", OrderedDict(
-            (item[0], key) for key, item in SCENARIOS.items()), 'TGLF 方案', state='readonly',
-            updateGUI=True, postcommand=lambda location=None: self.apply_scenario(),
-            help='预设采用 OMFIT 原生 TGLF 场景；选择后可继续修改数值。')
-        for fields in ((('SAT_RULE', '饱和规则'), ('NKY', 'ky 点数')),
-                       (('KYGRID_MODEL', 'ky 网格'), ('NMODES', '模态数')),
-                       (('USE_BPER', 'A∥ 扰动'), ('USE_BPAR', 'B∥ 扰动'))):
+        with section_group(self.ui, 'TGLF 参数'):
+            self.ui.ComboBox(self.prefix + "['scenario']", OrderedDict(
+                (item[0], key) for key, item in SCENARIOS.items()), 'TGLF 方案', state='readonly',
+                updateGUI=True, postcommand=lambda location=None: self.apply_scenario(),
+                help='预设采用 OMFIT 原生 TGLF 场景；选择后可继续修改数值。')
+            for fields in ((('SAT_RULE', '饱和规则'), ('NKY', 'ky 点数')),
+                           (('KYGRID_MODEL', 'ky 网格'), ('NMODES', '模态数')),
+                           (('USE_BPER', 'A∥ 扰动'), ('USE_BPAR', 'B∥ 扰动'))):
+                with self.ui.same_row():
+                    for name, label in fields:
+                        self.parameter_field(name, values, label)
             with self.ui.same_row():
-                for name, label in fields:
-                    self.parameter_field(name, values, label)
-        with self.ui.same_row():
-            self.ui.ComboBox(self.prefix + "['units_override']", {'沿用输入': '', 'GYRO': 'GYRO', 'CGYRO': 'CGYRO'},
-                             '归一化', width=12, state='readonly', updateGUI=True,
-                             postcommand=lambda location=None: self.settings.__setitem__('scenario', 'custom'))
-            self.ui.Button('更多 TGLF 参数', lambda: self.select_page('parameters'))
+                self.ui.ComboBox(self.prefix + "['units_override']", {'沿用输入': '', 'GYRO': 'GYRO', 'CGYRO': 'CGYRO'},
+                                 '归一化', width=12, state='readonly', updateGUI=True,
+                                 postcommand=lambda location=None: self.settings.__setitem__('scenario', 'custom'))
+                self.ui.Button('更多 TGLF 参数', lambda: self.select_page('parameters'))
 
     def parameter_field(self, name, values, label):
         reference = values.get(name, COMMON[name][0])
