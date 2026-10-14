@@ -2,7 +2,7 @@
 
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
-
+from OMFITlib_plot_sources import context_results
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     Exception,
@@ -111,7 +111,7 @@ def collect_tglf_series(root, ctx, rho, para, value, mode_idx=1):
     if dimension is None:
         dimension = '2D' if isinstance(value, (list, tuple, ndarray)) else '1D'
     key = 'scanResults2D_spectra' if dimension == '2D' else 'scanResults_spectra'
-    node = root.get('TGLF_scan', {}).get(key, {})
+    node = context_results(root, ctx, 'Spectra', dimension)
     try:
         for token in (rho, para):
             found = resolve_key(node, token)
@@ -209,10 +209,12 @@ def read_settings(root, ctx, compare_mode):
             for rho_key, is_on in flags.items():
                 if not is_on:
                     continue
-                try:
-                    rho_vals.append(float(rho_key))
-                except Exception:
-                    continue
+                # Imported inputs can have labels rather than a numeric rho.
+                # Resolve against this run so neither labels nor typed keys are lost.
+                available = context_results(root, ctx, 'Spectra')
+                resolved = resolve_key(available, rho_key)
+                if resolved is not None:
+                    rho_vals.append(resolved)
             rho_dict[nr] = rho_vals
 
     elif compare_mode == 'TGLF_vs_CGYRO':

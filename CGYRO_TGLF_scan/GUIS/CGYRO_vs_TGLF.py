@@ -1,4 +1,6 @@
 """Comparison entry with the project-level template manager."""
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 from OMFITlib_compare_ui import ComparisonUI
 
 # Run the sibling module's GUI: OMFIT library imports are scoped to the current root.

@@ -8,6 +8,8 @@ defaultVars parameters
 ----------------------
 :param kw1: kw1 can be passed to this script as <path to script>.run(kw1='hello')
 """
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 OMFITx.TitleGUI('TGLF')
 
 defaultVars(

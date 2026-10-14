@@ -1,5 +1,6 @@
 """Case and scan-value selection for the four comparison workflows."""
-
+from builtins import next, iter
+from OMFITlib_plot_sources import run_choices, source_dimension, tglf_results
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     dict,
@@ -38,19 +39,23 @@ class CaseSelection(ComparisonWidgets):
         return runs.get(runid, {}), radii
 
     def _choose_tglf(self, state, path, target='Spectra', select_radii=True):
-        state.setdefault('spectra_mode', '1D')
         self.ui.Separator('TGLF 数据来源')
-        self.ui.ComboBox(path('spectra_mode'), ['1D', '2D'], '扫描维度', default='1D', updateGUI=True,
-                         width=18, kwlabel={'width': 16, 'anchor': 'w'})
-        dimension = state['spectra_mode']
-        key = 'scanResults2D' if dimension == '2D' else 'scanResults'
-        if target == 'Spectra':
-            key += '_spectra'
-        activate_source(state, key)
-        results = self.root.get('TGLF_scan', {}).get(key, {})
+        choices = run_choices(self.root)
+        if not choices:
+            self.ui.Label('尚无已完成的 TGLF 计算。', align='left')
+            return {}, []
+        if state.get('result_source') not in choices.values():
+            state['result_source'] = next(iter(choices.values()))
+        self.ui.ComboBox(path('result_source'), choices, '运行记录', updateGUI=True,
+                         state='readonly', width=36, kwlabel={'width': 12, 'anchor': 'w'})
+        dimension = source_dimension(self.root, state['result_source'])
+        state['spectra_mode'] = dimension
+        activate_source(state, state['result_source'] + ':' + target)
+        results = tglf_results(self.root, state, target)
         radii = stable_keys(results)
         if not radii:
-            self.ui.Label('没有已保存的 TGLF {} {}数据。'.format(dimension, '谱' if target == 'Spectra' else '通量'), align='left')
+            self.ui.Label('这次运行没有可用的{}；请选择其他运行记录。'.format(
+                '频率 / 增长率谱' if target == 'Spectra' else '通量'), align='left')
         if select_radii:
             sync_flags(state, 'rho_flag', radii, 'rho_selected')
             self.ui.Label('选择 TGLF 半径', align='left')
@@ -82,7 +87,7 @@ class CaseSelection(ComparisonWidgets):
         cg, tg = state.setdefault('CGYRO', {}), state.setdefault('TGLF', {})
         run, _ = self._choose_cgyro(cg, lambda *k: path('CGYRO', *k))
         results, rhos = self._choose_tglf(tg, lambda *k: path('TGLF', *k), select_radii=False)
-        pairing_source = '{}|{}'.format(cg.get('runid', ''), tg.get('spectra_mode', '1D'))
+        pairing_source = '{}|{}'.format(cg.get('runid', ''), tg.get('result_source', ''))
         if tg.get('_pairing_run', None) not in (None, pairing_source):
             tg['rho_pair_flags'] = {}
         tg['_pairing_run'] = pairing_source

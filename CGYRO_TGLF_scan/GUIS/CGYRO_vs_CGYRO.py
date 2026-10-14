@@ -1,4 +1,6 @@
 """Compatibility shortcut to the single maintained comparison panel."""
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 from OMFITlib_gui_layout import finish_gui_layout
 
 anchor = OMFITx.Label('', align='left')

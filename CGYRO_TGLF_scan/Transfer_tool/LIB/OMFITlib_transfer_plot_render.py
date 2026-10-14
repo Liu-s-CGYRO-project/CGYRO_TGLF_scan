@@ -3,6 +3,7 @@
 No solver is started and no input parameter is written by these functions.
 The estimate plots retain the legacy models; they are not stability calculations.
 """
+from OMFITlib_plot_style import plot_context
 from builtins import all, any, dict, enumerate, float, int, len, list, max, next, range, set, sorted, str, sum, tuple, zip
 import re
 import numpy as np
@@ -511,7 +512,7 @@ def draw(root, name):
                      view12=plot_equilibrium, source=plot_sources, powerbalance=plot_power_balance)
     previous = set(plt.get_fignums())
     try:
-        with plt.rc_context({'font.size': 11}), np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+        with plot_context(root), np.errstate(divide='ignore', invalid='ignore', over='ignore'):
             functions[name](root)
     except BaseException:
         for number in set(plt.get_fignums()) - previous:

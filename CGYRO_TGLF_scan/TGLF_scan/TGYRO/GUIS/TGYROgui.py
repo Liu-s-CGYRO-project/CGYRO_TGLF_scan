@@ -1,3 +1,5 @@
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 # -*-Python-*-
 # Created by meneghini at 2013/05/06 11:49
 OMFITx.TitleGUI('TGYRO 总控')

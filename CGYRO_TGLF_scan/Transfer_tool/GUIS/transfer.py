@@ -1,5 +1,7 @@
 # -*-Python-*-
 """Profile and radius controls for Transfer_tool's command-box workflow."""
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 from collections import OrderedDict
 from builtins import dict, getattr, isinstance, len, list, next, str, tuple
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, PROFILE_KEYS

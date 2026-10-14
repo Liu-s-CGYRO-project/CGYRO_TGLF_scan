@@ -1,4 +1,6 @@
 """Use the same CGYRO workbench from the original module entry."""
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 from builtins import getattr
 from OMFITlib_gui_layout import finish_gui_layout
 

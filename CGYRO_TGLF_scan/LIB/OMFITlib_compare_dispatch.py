@@ -93,6 +93,9 @@ def export_comparison(root, ctx, pages):
         return value.tolist() if hasattr(value, 'tolist') else str(value)
     metadata = {
         'format': 1, 'compare_mode': ctx['compare_mode'],
+        'tglf_source': ctx.get('tglf_state', {}).get('result_source', ''),
+        'cgyro_run': ctx.get('cgyro_state', {}).get('runid', ''),
+        'global_plot_style': ctx.get('style', {}),
         'normalization': 'main-ion' if ctx.get('normalize_main_ion', None) else 'native saved units',
         'values': 'omega/gamma before display /ky or /ky² scaling; negative gamma is preserved',
         'std': 'CGYRO population standard deviation / absolute mean; blank for TGLF',

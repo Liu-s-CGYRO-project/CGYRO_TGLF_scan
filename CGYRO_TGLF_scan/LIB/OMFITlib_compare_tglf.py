@@ -2,7 +2,7 @@
 
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
-
+from OMFITlib_plot_sources import context_results
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     Exception,
@@ -72,7 +72,7 @@ def plot_tglf_flux_1d(fn, root, ctx):
     selected_paras = tglf_state.get('selected_paras', {})
     flux_species = ctx.get('tglf_flux_species', 'Both')
     merge_ions = bool(ctx.get('tglf_flux_merge_ions', True))
-    scan1d = root['TGLF_scan'].get('scanResults', {})
+    scan1d = context_results(root, ctx, 'Flux')
 
     for rho in rho_selected:
         rho_key = resolve_key(scan1d, rho)
@@ -148,7 +148,7 @@ def plot_tglf_flux_2d(fn, root, ctx):
     flux_species = ctx.get('tglf_flux_species', 'Both')
     merge_ions = bool(ctx.get('tglf_flux_merge_ions', True))
     x_axis = ctx.get('tglf2d_x_axis', 'para1')
-    scan2d = root['TGLF_scan'].get('scanResults2D', {})
+    scan2d = context_results(root, ctx, 'Flux')
 
     for rho in rho_selected:
         rho_key = resolve_key(scan2d, rho)
@@ -376,7 +376,7 @@ def plot_tglf_vs_tglf(root, ctx):
         return
 
     # 2D spectra plotting
-    scan2d = root['TGLF_scan'].get('scanResults2D_spectra', {})
+    scan2d = context_results(root, ctx, 'Spectra')
     rho_selected = tglf_state.get('rho_selected', [])
     selected_paras_2d = tglf_state.get('selected_paras_2d', {})
     plot_mode_2d = ctx.get('tglf2d_plot_mode', '2D')

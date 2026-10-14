@@ -2,7 +2,7 @@
 
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
-
+from OMFITlib_plot_sources import context_results
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     Exception,
@@ -264,7 +264,7 @@ def collect_tglf_flux_spectrum_curves(rho, tglf_selected_paras, root, quantity_n
       }
     """
     out = {'species_labels': [], 'field_labels': [], 'curves': {}}
-    spectra = root['TGLF_scan'].get('scanResults_spectra', {})
+    spectra = context_results(root, ctx if ctx is not None else {}, 'Spectra')
     rho_key = resolve_key(spectra, rho)
     if rho_key is None:
         return out
@@ -448,7 +448,12 @@ def extract_flux_components(node, flux_species='Both', merge_ions=True):
     Return species-resolved dictionaries for Gamma and Q flux channels.
     Output: (gam_dict, q_dict)
     """
-    container = find_flux_container(node)
+    # Native results already identify the integral flux table. Read it before
+    # traversing unrelated lazy spectra or files in the same result object.
+    gbflux = node.get('gbflux') if hasattr(node, 'get') else None
+    container = find_flux_container(gbflux) if gbflux is not None else None
+    if container is None:
+        container = find_flux_container(node)
     if container is None:
         return {}, {}
 

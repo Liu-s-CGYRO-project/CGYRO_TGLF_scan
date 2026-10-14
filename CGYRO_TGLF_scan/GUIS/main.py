@@ -1,4 +1,6 @@
 """Default workbench for Linux OMFIT desktops."""
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 from OMFITlib_project import ProjectActions
 from OMFITlib_project_ui import ProjectUI
 from OMFITlib_project_runtime import register_runtime_server

@@ -2,7 +2,7 @@
 
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
-
+from OMFITlib_plot_style import validated as global_plot_style
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     Exception,
@@ -153,16 +153,16 @@ def build_context(root):
 
     ctx['comparison_layout'] = plot_state.get('comparison_layout', 'Overlay')
     ctx['show_flux_spectra'] = plot_state.get('show_flux_spectra', True)
-    ctx['style'] = dict(STYLE_DEFAULTS, **mode_state.get('style', {}))
+    ctx['style'] = global_plot_style(root)
     ctx['_diagnostics'] = []
 
     # Plot style defaults
-    ctx['ms'] = 8
+    ctx['ms'] = float(ctx['style']['marker_size'])
     ctx['lw'] = float(ctx['style']['line_width'])
     ctx['fs1'] = float(ctx['style']['font_size'])
     ctx['fs2'] = float(ctx['style']['legend_font_size'])
     ctx['fs3'] = float(ctx['style']['font_size'])
-    ctx['bwith'] = 1.5
+    ctx['bwith'] = float(ctx['style']['axes_width'])
 
     return ctx
 

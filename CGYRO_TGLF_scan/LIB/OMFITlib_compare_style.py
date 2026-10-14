@@ -2,7 +2,7 @@
 
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
-
+from matplotlib import rcParams
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     Exception,
@@ -223,7 +223,7 @@ def _sort_label_handle_pairs(labels, handles, ctx):
 
 def _default_color_cycle():
     """Return the line-color palette used by the cgyro_comparison GUI."""
-    return list(CGYRO_COMPARISON_LINE_COLOR_PALETTE)
+    return list(rcParams['axes.prop_cycle'].by_key()['color'])
 
 
 def apply_color_order_to_axes(axes_obj, ctx):

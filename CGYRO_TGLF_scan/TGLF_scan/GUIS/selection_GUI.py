@@ -8,6 +8,8 @@ from 'dictionary_to_read' should be written.
 
 Inspired by the TGLF constraints_GUI.py by smithsp.
 """
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 from OMFITlib_gui_layout import finish_gui_layout
 
 layout_anchor = OMFITx.Label('', align='left')

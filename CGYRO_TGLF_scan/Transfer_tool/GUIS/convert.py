@@ -1,5 +1,7 @@
 # -*-Python-*-
 """Two conversion directions; infer TGLF input format from its fields."""
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 from collections import OrderedDict
 from OMFITlib_transfer_workflow import tglf_input_format
 from OMFITlib_gui_layout import finish_gui_layout

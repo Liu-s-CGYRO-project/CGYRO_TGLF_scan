@@ -1,5 +1,5 @@
 """Selection identity, legacy setting migration and checks without plotting or I/O."""
-
+from OMFITlib_plot_style import validated as global_plot_style
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     TypeError,
@@ -141,6 +141,10 @@ def initialize_settings(root):
         physics['compare_mode'] = 'CGYRO_vs_TGLF'
     for mode in MODES:
         state = physics.setdefault(mode, {})
+        if state.get('view_tab') == 'style':
+            state['view_tab'] = 'plot'
+            if mode == physics['compare_mode']:
+                physics['compare_view'] = 'style'
         state.setdefault('view_tab', 'cases')
         settings = plot_state(mode, state)
         settings.setdefault('plot_mode', 'Plot 2D')
@@ -174,40 +178,40 @@ def selection_check(root, mode=None):
     cg = state if mode == 'CGYRO_vs_CGYRO' else state.get('CGYRO', {})
     tg = state.get('TGLF', {})
     if mode not in MODES:
-        errors.append('Choose a supported comparison mode.')
+        errors.append('请选择有效的对比方式。')
     if mode != 'TGLF_vs_TGLF':
         if cg.get('runid', None) not in root.get('CGYRO_scan', {}).get('RUN_DB', {}):
-            errors.append('Choose an available CGYRO run.')
+            errors.append('请选择已保存的 CGYRO 运行记录。')
         selections = [cg.get('selected_paras', {})]
         if mode == 'CGYRO_vs_CGYRO' and cg.get('force_read_all_nr_items', None):
             selections = [cg.get('selected_paras_by_nr', {}).get(str(nr), {}) for nr in cg.get('nr_CGYRO', [])]
         if not any(has_values(v) for selected in selections for v in selected.values()):
-            errors.append('Select at least one CGYRO parameter and value.')
+            errors.append('请选择 CGYRO 扫描参数及取值。')
         if mode == 'CGYRO_vs_CGYRO' and not cg.get('nr_CGYRO', None):
-            errors.append('Select at least one CGYRO radius.')
+            errors.append('请选择 CGYRO 半径。')
         try:
             window = float(settings.get('ave_window', 0.02))
             if not math.isfinite(window) or not 0 < window <= 1:
                 raise ValueError
         except (TypeError, ValueError):
-            errors.append('Averaging fraction must be > 0 and <= 1 (0.02 means the final 2%).')
+            errors.append('末段平均比例应大于 0 且不超过 1（0.02 表示最后 2%）。')
     if mode != 'CGYRO_vs_CGYRO':
         key = 'selected_paras_2d' if tg.get('spectra_mode', '1D') == '2D' else 'selected_paras'
         if not any(has_values(v) for v in tg.get(key, {}).values()):
-            errors.append('Select at least one TGLF parameter and value (both axes for 2D).')
+            errors.append('请选择 TGLF 参数及取值；二维扫描需要同时选择两条参数轴。')
         if mode in ('TGLF_vs_TGLF', 'TGLF_vs_CGYRO') and not tg.get('rho_selected', None):
-            errors.append('Select at least one TGLF radius.')
+            errors.append('请选择 TGLF 半径。')
         if mode == 'CGYRO_vs_TGLF':
             if not cg.get('nr_selected', None):
-                errors.append('Select at least one CGYRO radius.')
+                errors.append('请选择 CGYRO 半径。')
             for nr in cg.get('nr_selected', []):
                 if not any(tg.get('rho_pair_flags', {}).get(str(nr), {}).values()):
-                    errors.append('Pair CGYRO {} with a TGLF radius.'.format(nr))
+                    errors.append('请为 CGYRO {} 配对 TGLF 半径。'.format(nr))
         if mode == 'TGLF_vs_CGYRO':
             for rho in tg.get('rho_selected', []):
                 cfg = cg.get('rho_pair_cfg', {}).get(str(rho), {})
                 if not cfg.get('nr_selected', None) and not any(cfg.get('nr_flag', {}).values()):
-                    errors.append('Pair TGLF {} with a CGYRO radius.'.format(rho))
+                    errors.append('请为 TGLF {} 配对 CGYRO 半径。'.format(rho))
     if settings.get('divide_by_ky', None) and settings.get('divide_by_ky2', None):
         errors.append('Choose one spectrum scaling: raw, /ky, or /ky².')
     if mode == 'CGYRO_vs_CGYRO':
@@ -217,19 +221,12 @@ def selection_check(root, mode=None):
         if not math.isfinite(tol) or tol <= 0:
             raise ValueError
     except (TypeError, ValueError):
-        errors.append('Relative fluctuation tolerance must be finite and > 0.')
-    style = state.get('style', {})
-    for key, low, high in [('font_size', 6, 30), ('legend_font_size', 5, 24),
-                           ('line_width', .2, 8), ('figure_width', 0, 40), ('figure_height', 0, 30)]:
-        try:
-            value = float(style.get(key, STYLE_DEFAULTS[key]))
-            if not math.isfinite(value) or not low <= value <= high:
-                raise ValueError
-            if key.startswith('figure_') and value != 0 and value < 3:
-                raise ValueError
-        except (TypeError, ValueError):
-            errors.append('{} is outside the supported range.'.format(key))
+        errors.append('相对波动容差必须为大于 0 的有限数值。')
+    try:
+        global_plot_style(root)
+    except (TypeError, ValueError) as exc:
+        errors.append(str(exc))
     if settings.get('plot_log_y', None):
-        warnings.append('Log Y hides zero/negative values, including stable gamma and signed omega.')
+        warnings.append('Y 对数轴不显示零值和负值，包括稳定模态的增长率与负频率。')
     return {'mode': mode, 'errors': errors, 'warnings': warnings,
-            'summary': 'Ready to load selected curves.' if not errors else 'Selection needs attention.'}
+            'summary': '当前选择已就绪。' if not errors else '请补全选择或修正设置。'}

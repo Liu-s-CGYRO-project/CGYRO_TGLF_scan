@@ -4,6 +4,8 @@
 """
 Secondary GUI to get frequency and growth rates scans + transport coefficient sensitivity to TGLF inputs.
 """
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 from OMFITlib_gui_layout import finish_gui_layout
 
 layout_anchor = OMFITx.Label('', align='left')

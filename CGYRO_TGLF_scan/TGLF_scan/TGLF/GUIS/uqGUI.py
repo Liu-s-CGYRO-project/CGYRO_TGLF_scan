@@ -1,3 +1,5 @@
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 # -*-Python-*-
 # Modified by pvaezi at 2018/01/10 12:29
 # Original script by meneghini

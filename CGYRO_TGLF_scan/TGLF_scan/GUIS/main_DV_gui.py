@@ -6,6 +6,8 @@ This script sets up a GUI to run TGLF scans to probe the sensitivity of growth r
 to input variables.
 
 """
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 
 # Create database structure for all results
 from OMFITlib_gui_layout import finish_gui_layout

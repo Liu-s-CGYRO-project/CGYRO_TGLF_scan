@@ -45,6 +45,10 @@ def _walk(parent, gui, aux, registry):
             text = str(widget.cget('text'))
             if text in COMMON_TEXT:
                 widget.configure(text=COMMON_TEXT[text])
+        if widget.winfo_class() in ('TButton', 'Button') and 'text' in options:
+            caption = str(widget.cget('text'))
+            if caption in ('D', 'd'):
+                widget.configure(text='恢复默认')
         if 'command' in options and widget.winfo_class() in ('TButton', 'TCheckbutton', 'TRadiobutton', 'Button', 'Checkbutton', 'Radiobutton'):
             original = str(widget.cget('command'))
             if original and original != getattr(widget, '_cgyro_scoped_command', None):

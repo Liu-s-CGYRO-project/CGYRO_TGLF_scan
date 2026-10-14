@@ -1,4 +1,5 @@
 """Compare completed case records on their native TGLF ky grids."""
+from OMFITlib_plot_sources import spectrum_arrays
 from builtins import enumerate, float, len, list, range, str
 import numpy as np
 
@@ -28,8 +29,7 @@ def plot_cases(root, notebook):
             if attempt is None or attempt['status'] != 'complete':
                 continue
             spectrum = attempt['result']['eigenvalue_spectrum']
-            ky = np.asarray(spectrum['ky'], dtype=float)
-            gamma, freq = (np.asarray(spectrum[key], dtype=float) for key in ('gamma', 'freq'))
+            ky, freq, gamma = spectrum_arrays(spectrum)
             for index in range(len(gamma)):
                 label = '{} | {}={} | mode {}'.format(run['label'], run['plan']['coordinate'], point['radius'], index + 1)
                 curves.append((ky, gamma[index], freq[index], label))

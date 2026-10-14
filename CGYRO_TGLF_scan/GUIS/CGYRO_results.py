@@ -1,4 +1,6 @@
 """Open the task-indexed CGYRO result browser."""
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 from OMFITlib_cgyro_results import ResultBrowser
 from OMFITlib_gui_layout import finish_gui_layout
 

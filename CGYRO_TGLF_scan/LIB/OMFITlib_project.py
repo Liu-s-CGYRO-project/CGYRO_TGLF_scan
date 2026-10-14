@@ -3,6 +3,7 @@
 Reading the dashboard never submits jobs, inspects large result arrays, or
 replaces inputs. All mutations below are explicit button actions.
 """
+from OMFITlib_plot_sources import run_choices
 from builtins import abs, all, any, bool, dict, enumerate, float, int, isinstance, iter, len, list, next, ord, range, set, sorted, str, sum, tuple
 import ast
 import copy
@@ -36,7 +37,7 @@ LABELS = {'transfer': '输入转换', 'cgyro': 'CGYRO', 'tglf': 'TGLF',
 PAGES = OrderedDict([
     ('1 项目概览', 'overview'), ('2 环境配置与记录', 'run'),
     ('3 输入准备与转换', 'transfer'), ('4 CGYRO 扫描', 'cgyro'),
-    ('5 TGLF 计算与扫描', 'tglf'), ('6 绘图与对比', 'plots'), ('7 模板与 GitHub', 'templates'),
+    ('5 TGLF 扫描', 'tglf'), ('6 绘图与对比', 'plots'), ('7 模板与 GitHub', 'templates'),
 ])
 DEFAULTS = {'page': 'overview', 'runtime_module': 'cgyro', 'transfer_source': '',
             'cgyro_file': '', 'tglf_file': '', 'cgyro_source_mode': 'generated', 'cgyro_scan_page': 'input',
@@ -487,8 +488,7 @@ def comparison_issues(root, mode):
     if 'CGYRO' in mode and not read(root, ('CGYRO_scan', 'RUN_DB'), {}):
         problems.append('尚无已收集的 CGYRO 结果')
     if 'TGLF' in mode:
-        tg = root.get('TGLF_scan', {})
-        if not any(tg.get(key, None) for key in ('scanResults', 'scanResults_spectra', 'scanResults2D', 'scanResults2D_spectra')):
+        if not run_choices(root):
             problems.append('尚无可供此绘图入口使用的 TGLF 扫描结果')
     return problems
 

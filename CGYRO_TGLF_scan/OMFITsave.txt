@@ -424,3 +424,23 @@
 ['LIB']['OMFITlib_transfer_plot_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_plot_ui.py <-:-:-> {}
 ['Transfer_tool']['LIB']['OMFITlib_transfer_plot_render'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_plot_render.py <-:-:-> {}
 ['LIB']['OMFITlib_transfer_plot_render'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_plot_render.py <-:-:-> {}
+['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_api.py <-:-:-> {}
+['LIB']['OMFITlib_plot_style'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_style.py <-:-:-> {}
+['LIB']['OMFITlib_plot_style_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_style_ui.py <-:-:-> {}
+['LIB']['OMFITlib_plot_sources'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_sources.py <-:-:-> {}
+['LIB']['OMFITlib_tglf_records'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_records.py <-:-:-> {}
+['LIB']['OMFITlib_result_cleanup'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_result_cleanup.py <-:-:-> {}
+['GUIS']['Plot_style'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/Plot_style.py <-:-:-> {}
+['TGLF_scan']['TGLF']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_api.py <-:-:-> {}
+['TGLF_scan']['TGYRO']['PROFILES_GEN']['TRXPL']['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['TGLF_scan']['TGYRO']['PROFILES_GEN']['TRXPL']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_api.py <-:-:-> {}
+['TGLF_scan']['TGYRO']['PROFILES_GEN']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_api.py <-:-:-> {}
+['TGLF_scan']['TGYRO']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_api.py <-:-:-> {}
+['TGLF_scan']['TGYRO']['LIB']['OMFITlib_plot_style'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_style.py <-:-:-> {}
+['TGLF_scan']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_api.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_api.py <-:-:-> {}
+['Transfer_tool']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_api.py <-:-:-> {}
+['TGLF_scan']['LIB']['OMFITlib_plot_style'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_style.py <-:-:-> {}
+['Transfer_tool']['LIB']['OMFITlib_plot_style'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_style.py <-:-:-> {}
+['DOCS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['DOCS']['绘图接口'] <-:-:-> OMFITascii <-:-:-> ./DOCS/PLOTTING_API.md <-:-:-> {}

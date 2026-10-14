@@ -462,3 +462,23 @@
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_transfer_plot_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_plot_ui.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['Transfer_tool']['LIB']['OMFITlib_transfer_plot_render'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_plot_render.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_transfer_plot_render'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_plot_render.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_api.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_plot_style'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_plot_style.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_plot_style_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_plot_style_ui.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_plot_sources'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_plot_sources.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_tglf_records'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_tglf_records.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_result_cleanup'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_result_cleanup.py <-:-:-> {}
+['CGYRO_TGLF_scan']['GUIS']['Plot_style'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/Plot_style.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_api.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['TRXPL']['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['TRXPL']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_api.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['PROFILES_GEN']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_api.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_api.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['LIB']['OMFITlib_plot_style'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_plot_style.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_api.py <-:-:-> {}
+['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_api.py <-:-:-> {}
+['CGYRO_TGLF_scan']['Transfer_tool']['LIB']['OMFITlib_gui_api'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_api.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['LIB']['OMFITlib_plot_style'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_plot_style.py <-:-:-> {}
+['CGYRO_TGLF_scan']['Transfer_tool']['LIB']['OMFITlib_plot_style'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_plot_style.py <-:-:-> {}
+['CGYRO_TGLF_scan']['DOCS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['CGYRO_TGLF_scan']['DOCS']['绘图接口'] <-:-:-> OMFITascii <-:-:-> ./CGYRO_TGLF_scan/DOCS/PLOTTING_API.md <-:-:-> {}

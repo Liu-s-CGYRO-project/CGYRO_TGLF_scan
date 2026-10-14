@@ -6,6 +6,8 @@ This script contains the GUI that drives the modify_ions script
 that allows the user to add and remove ions from input.gacode
 
 """
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 defaultVars(add_ion=True)
 
 OMFITx.TitleGUI('修改离子物种')

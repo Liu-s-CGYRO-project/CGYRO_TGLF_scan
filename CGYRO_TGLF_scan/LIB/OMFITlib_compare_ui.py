@@ -1,5 +1,5 @@
 """Native OMFIT comparison tabs with a shared check/plot action area."""
-
+from OMFITlib_plot_style_ui import render_style
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     ValueError,
@@ -22,7 +22,6 @@ from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_compare_state import (
     MODES,
     MODE_LABELS,
-    STYLE_DEFAULTS,
     initialize_settings,
     plot_state,
     selection_check,
@@ -37,7 +36,7 @@ MODE_TABS = OrderedDict([
 ])
 CONTROL_TABS = OrderedDict([
     ('cases', '案例选择'), ('plot', '绘图设置'),
-    ('style', '图形样式'), ('actions', '导出与检查'),
+    ('actions', '导出与检查'),
 ])
 
 
@@ -58,9 +57,11 @@ class ComparisonUI(CaseSelection):
             # All modes remain mounted, so tab switches need no GUI redraw.
             self.ui.CompoundGUI(self.root['GUIS']['Compare_controls'], title='',
                                 comparison=pane, mode=mode, open_templates=open_templates)
+        self.ui.Tab('全局样式')
+        render_style(self.root, self.ui)
         self.ui.Tab('')
         if self.mode_notebook is not None:
-            self.mode_notebook.select(MODES.index(selected))
+            self.mode_notebook.select(len(MODES) if self.physics.get('compare_view') == 'style' else MODES.index(selected))
             self.mode_notebook.bind('<<NotebookTabChanged>>', self._mode_changed, add='+')
         self.panes = panes
         finish_gui_layout(panes[MODES.index(selected)].status_label, self.ui)
@@ -75,7 +76,10 @@ class ComparisonUI(CaseSelection):
     def _mode_changed(self, event):
         if event.widget is self.mode_notebook:
             try:
-                self.physics['compare_mode'] = MODES[self.mode_notebook.index(self.mode_notebook.select())]
+                index = self.mode_notebook.index(self.mode_notebook.select())
+                self.physics['compare_view'] = 'style' if index == len(MODES) else 'comparison'
+                if index < len(MODES):
+                    self.physics['compare_mode'] = MODES[index]
             except tk.TclError:
                 return
 
@@ -98,8 +102,9 @@ class ComparisonUI(CaseSelection):
             'TGLF_vs_CGYRO': self.render_mode_tglf_vs_cgyro,
         }[self.mode]
         renderers = {
-            'cases': lambda: cases(self.state), 'plot': self._render_plot,
-            'style': self._render_style, 'actions': self._render_actions,
+            'cases': lambda: cases(self.state),
+            'plot': lambda: (self._render_plot(), self._render_view_options()),
+            'actions': self._render_actions,
         }
         self.controls_notebook = None
         selected = self.state.get('view_tab', 'cases')
@@ -257,22 +262,8 @@ class ComparisonUI(CaseSelection):
                 self._check('highlight_max_gamma', '标记当前曲线最大 γ',
                             help='标记每条曲线当前显示的最大值：原始 γ、γ/ky 或 γ/ky²，跟随谱显示量、归一化与过滤设置；排除无效或被对数坐标隐藏的点。')
 
-    def _render_style(self):
-        self.ui.Separator('字体与线条')
-        with self.ui.same_row():
-            for key, label in [('font_size', '坐标字号'), ('legend_font_size', '图例字号')]:
-                self.ui.Entry(self._path('style', key), label, default=STYLE_DEFAULTS[key], width=7,
-                              kwlabel={'width': 10, 'anchor': 'w'})
-        with self.ui.same_row():
-            self.ui.Entry(self._path('style', 'line_width'), '线宽', default=STYLE_DEFAULTS['line_width'], width=7,
-                          kwlabel={'width': 10, 'anchor': 'w'})
-            self.ui.CheckBox(self._path('style', 'show_grid'), '显示浅色网格', default=True)
-        self.ui.Separator('画布与坐标轴')
-        with self.ui.same_row():
-            for key, label in [('figure_width', '宽度 / in'), ('figure_height', '高度 / in')]:
-                self.ui.Entry(self._path('style', key), label, default=0., width=7,
-                              kwlabel={'width': 10, 'anchor': 'w'})
-        self.ui.Label('宽度或高度设为 0 时自动决定。', align='left')
+    def _render_view_options(self):
+        self.ui.Separator('坐标轴与图例顺序')
         with self.ui.same_row():
             self._check('plot_log_x', 'X 对数轴')
             self._check('plot_log_y', 'Y 对数轴')
@@ -280,21 +271,12 @@ class ComparisonUI(CaseSelection):
                 self._check('plot_log_z', 'Z 对数轴')
         if self.plot_settings.get('plot_log_y', None):
             self.ui.Label('Y 对数轴会隐藏零值和负值。', align='left')
-        self.ui.Separator('图例')
-        self.ui.ComboBox(self._path('style', 'legend_location'), OrderedDict([
-            ('自动', 'best'), ('右上角', 'upper right'), ('左上角', 'upper left'), ('图外', 'outside')]),
-                         '图例位置', default='best', width=22, kwlabel={'width': 16, 'anchor': 'w'})
         cg = self.state if self.mode == 'CGYRO_vs_CGYRO' else self.state.get('CGYRO', {})
         tg = self.state.get('TGLF', {})
         names = self._selected_param_keys(cg.get('selected_paras', {}))
         names += self._selected_param_keys(tg.get('selected_paras', {}))
         names += self._selected_param_keys(tg.get('selected_paras_2d', {}))
         self._render_legend_order_controls(self._path, self.state, ','.join(dict.fromkeys(names)))
-        self.ui.Separator()
-        self.ui.Button('恢复外观默认值', self._reset_style, updateGUI=True, width=18)
-
-    def _reset_style(self):
-        self.state['style'] = dict(STYLE_DEFAULTS)
 
     def _render_actions(self):
         self.ui.Separator('导出数据')

@@ -1,3 +1,11 @@
+from OMFITlib_plot_style import plot_context
+
+def styled_plot(callback, **kwargs):
+    with plot_context(root):
+        return callback(**kwargs)
+
+from OMFITlib_gui_api import adapt
+OMFITx = adapt(OMFITx)
 # -*-Python-*-
 # Created by thomek at 27 Sep 2016  16:20
 
@@ -9,17 +17,17 @@ if 'output' in root['OUTPUTS']:
     OMFITx.CheckBox("scratch['plot_gb']", '绘制回旋玻姆归一化通量', default=True)
     OMFITx.CheckBox("scratch['plot_loggb']", '回旋玻姆通量采用对称对数坐标', default=False)
     OMFITx.Separator()
-    OMFITx.Button('绘制剖面与梯度尺度长度', "root['PLOTS']['plotTGYROprofiles2'].runNoGUI")
+    OMFITx.Button('绘制剖面与梯度尺度长度', lambda: styled_plot(root['PLOTS']['plotTGYROprofiles2'].runNoGUI))
     OMFITx.Button(
-        '绘制通量匹配', lambda: root['PLOTS']['plotTGYROfluxes2'].runNoGUI(gb=scratch['plot_gb'], loggb=scratch['plot_loggb'])
+        '绘制通量匹配', lambda: styled_plot(root['PLOTS']['plotTGYROfluxes2'].runNoGUI, gb=scratch['plot_gb'], loggb=scratch['plot_loggb'])
     )
     OMFITx.Button(
-        '绘制通量收敛过程', lambda: root['PLOTS']['plotTGYROconvergence2'].runNoGUI(gb=scratch['plot_gb'], loggb=scratch['plot_loggb'])
+        '绘制通量收敛过程', lambda: styled_plot(root['PLOTS']['plotTGYROconvergence2'].runNoGUI, gb=scratch['plot_gb'], loggb=scratch['plot_loggb'])
     )
-    OMFITx.Button('绘制剖面演化', "root['OUTPUTS']['output'].plot_profiles_evolution")
-    OMFITx.Button('绘制通量–梯度关系', lambda: root['PLOTS']['plotTGYROflux_gradient'].runNoGUI())
-    OMFITx.Button('绘制剖面与通量汇总', "root['PLOTS']['plotTGYROsummary'].plotFigure")
-    OMFITx.Button('绘制剖面迭代汇总', "root['OUTPUTS']['output'].plotFigure")
+    OMFITx.Button('绘制剖面演化', lambda: styled_plot(root['OUTPUTS']['output'].plot_profiles_evolution))
+    OMFITx.Button('绘制通量–梯度关系', lambda: styled_plot(root['PLOTS']['plotTGYROflux_gradient'].runNoGUI))
+    OMFITx.Button('绘制剖面与通量汇总', lambda: styled_plot(root['PLOTS']['plotTGYROsummary'].plotFigure))
+    OMFITx.Button('绘制剖面迭代汇总', lambda: styled_plot(root['OUTPUTS']['output'].plotFigure))
 
 OMFITx.Tab('运行对比')
 if len(root['RUN_DB']) == 0:
@@ -31,18 +39,18 @@ else:
     OMFITx.CheckBox("scratch['plot_gb']", '绘制回旋玻姆归一化通量', default=True)
     OMFITx.CheckBox("scratch['plot_loggb']", '回旋玻姆通量采用对称对数坐标', default=False)
     OMFITx.Separator()
-    OMFITx.Button('对比残差', "root['PLOTS']['plotTGYROcomparison_residual'].runNoGUI")
-    OMFITx.Button('对比剖面', "root['PLOTS']['plotTGYROcomparison_profiles'].runNoGUI")
+    OMFITx.Button('对比残差', lambda: styled_plot(root['PLOTS']['plotTGYROcomparison_residual'].runNoGUI))
+    OMFITx.Button('对比剖面', lambda: styled_plot(root['PLOTS']['plotTGYROcomparison_profiles'].runNoGUI))
     OMFITx.Button(
-        '对比通量', lambda: root['PLOTS']['plotTGYROcomparison_fluxes'].runNoGUI(gb=scratch['plot_gb'], loggb=scratch['plot_loggb'])
+        '对比通量', lambda: styled_plot(root['PLOTS']['plotTGYROcomparison_fluxes'].runNoGUI, gb=scratch['plot_gb'], loggb=scratch['plot_loggb'])
     )
     OMFITx.Button(
         '对比通量收敛过程',
-        lambda: root['PLOTS']['plotTGYROcomparison_fluxconvergence'].runNoGUI(gb=scratch['plot_gb'], loggb=scratch['plot_loggb']),
+        lambda: styled_plot(root['PLOTS']['plotTGYROcomparison_fluxconvergence'].runNoGUI, gb=scratch['plot_gb'], loggb=scratch['plot_loggb']),
     )
     OMFITx.Button(
         '对比与实验剖面的均方根误差、偏移及偏差',
-        lambda: root['PLOTS']['plotDeviation'].runNoGUI(),
+        lambda: styled_plot(root['PLOTS']['plotDeviation'].runNoGUI),
     )
 
     # function to load OMFITprofiles module from the existing project
@@ -104,6 +112,6 @@ else:
     if ismodule(profiles_module, ['OMFITprofiles', 'QUICKFIT']):
         OMFITx.Button(
             '与实验数据对比',
-            "root['PLOTS']['plotEXPcomparison_profiles'].runNoGUI",
+            lambda: styled_plot(root['PLOTS']['plotEXPcomparison_profiles'].runNoGUI),
             help="Plotting settings can be change directly in the script root['PLOTS']['plotEXPcomparison_profiles']",
         )

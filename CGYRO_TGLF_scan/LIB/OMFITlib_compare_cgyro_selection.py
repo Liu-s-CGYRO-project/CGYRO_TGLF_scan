@@ -1,5 +1,5 @@
 """CGYRO self-comparison: selection helpers, independent of GUI globals."""
-
+from OMFITlib_plot_style import validated as global_plot_style
 # Explicit builtins protect against the OMFIT pylab execution namespace.
 from builtins import Exception, TypeError, ValueError, abs, all, bool, dict, enumerate, float, hasattr, isinstance, len, list, repr, set, str, tuple
 import ast
@@ -243,7 +243,7 @@ def build_context(root):
 
     ctx['error_flag'] = settings.get('error_flag', 'CGYRO')
     ctx['effnum'] = settings.get('effnum', 5)
-    ctx['style'] = dict(STYLE_DEFAULTS, **settings.get('style', {}))
+    ctx['style'] = global_plot_style(root)
     ctx['ave_window'] = settings.get('ave_window', 0.02)
 
     ctx['plot_log_x'] = settings.get('plot_log_x', False)
@@ -265,12 +265,12 @@ def build_context(root):
     if ctx['error_tolerance'] <= 0:
         ctx['error_tolerance'] = 0.01
 
-    ctx['ms'] = 8
+    ctx['ms'] = float(ctx['style']['marker_size'])
     ctx['lw'] = float(ctx['style']['line_width'])
     ctx['fs1'] = float(ctx['style']['font_size'])
     ctx['fs2'] = float(ctx['style']['legend_font_size'])
     ctx['fs3'] = float(ctx['style']['font_size'])
-    ctx['bwith'] = 1.5
+    ctx['bwith'] = float(ctx['style']['axes_width'])
 
     ctx['selected_single_ky'] = maybe_abs_ky_list(ctx['selected_single_ky'], ctx)
     ctx['selected_eigen_ky'] = maybe_abs_ky_list(ctx['selected_eigen_ky'], ctx)

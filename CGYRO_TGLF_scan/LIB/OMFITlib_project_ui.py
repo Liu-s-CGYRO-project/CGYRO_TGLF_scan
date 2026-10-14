@@ -1,10 +1,11 @@
 """Native OMFIT workbench with dependency-aware workflow controls."""
+from OMFITlib_result_cleanup import active_jobs, clear_results
 from builtins import all, any, bool, callable, dict, float, int, isinstance, iter, len, list, min, next, range, sorted, str, sum
 from collections import OrderedDict
 import json
 import math
 import tkinter as tk
-from tkinter import font as tkfont, ttk
+from tkinter import font as tkfont, ttk, messagebox
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_gui_controls import checkbox
 from OMFITlib_tglf_workbench_ui import SCAN_TABS as CGYRO_SCAN_TABS, TGLFWorkbench
@@ -136,7 +137,7 @@ class ProjectUI:
             '已载入' if s['tglf_input'] else '未载入', s['multi_cases'], s['multi_selected']))
         with self.ui.same_row():
             self.nav('CGYRO 扫描', 'cgyro')
-            self.nav('TGLF 计算与扫描', 'tglf')
+            self.nav('TGLF 扫描', 'tglf')
         self.ui.Separator('3  运行与结果')
         self.label('CGYRO 当前状态：{}；归档运行：{}；TGLF 谱结果半径：{}。'.format(
             STATUS.get(s['cgyro_status'], s['cgyro_status']), s['cgyro_runs'], s['tglf_radii']))
@@ -144,10 +145,25 @@ class ProjectUI:
             self.nav('运行环境与记录', 'run')
             self.nav('绘图与模型对比', 'plots')
             self.nav('模板 / GitHub', 'templates')
+        self.ui.Separator('结果管理')
+        self.ui.Button('全局图形样式', lambda: self.root['GUIS']['Plot_style'].run())
+        self.ui.Button('清空全部结果…', self.clear_all_results, updateGUI=True,
+                       help='清空已保存的计算结果与运行记录，保留输入和配置。点击后会确认。')
         self.ui.Separator('流程规则')
         self.label('CGYRO：Transfer_tool 生成半径输入后，选择输入案例与 1–3 个参数轴批量运行。\n'
                    '已有完整 input.cgyro 也可直接载入并作为一个 nr 使用。\n'
                    'TGLF 多剖面：导入 input.gacode → 生成局部输入 → 计算 → 结果对比。')
+
+    def clear_all_results(self):
+        if active_jobs(self.root):
+            raise ValueError('还有正在运行或已提交的任务。请先结束任务并收集结果，再清空。')
+        parent = getattr(self.ui, '_aux', {}).get('parentGUI')
+        if messagebox.askokcancel('清空全部结果',
+                '清空本工程的 CGYRO、TGLF、TGYRO 计算结果和运行记录。\n'
+                '保留输入文件、已生成的半径输入、参数和运行配置。\n\n'
+                '远程文件与已经导出的图片不受影响。此操作无法撤销。',
+                parent=parent, icon='warning'):
+            clear_results(self.root, self.actions.factory)
 
     def render_transfer(self):
         self.ui.Tab('Transfer_tool 运行')
@@ -581,9 +597,9 @@ class ProjectUI:
                  if (group == 'all' or (group == 'common' and name in CGYRO_FIELDS) or spec['group'] == group)
                  and (not query or query in name or query in spec['label'].upper())]
         with self.ui.same_row():
-            self.ui.Button('恢复当前分组',
+            self.ui.Button('本组沿用输入值',
                            lambda: self.actions.reset_cgyro_parameters(names, source_key), updateGUI=True)
-            self.ui.Button('全部恢复输入值', self.actions.inherit_cgyro_parameters, updateGUI=True)
+            self.ui.Button('全部沿用输入值', self.actions.inherit_cgyro_parameters, updateGUI=True)
         if not names:
             self.label('没有匹配的参数。')
         previous_group = None
@@ -631,7 +647,7 @@ class ProjectUI:
                 self.ui.Entry(location(path + ('value',)), '', width=14, updateGUI=True,
                               state='normal' if spec.get('supported', True) else 'disabled', help=help_text,
                               postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
-            self.ui.Button('恢复', lambda: self.actions.reset_cgyro_parameters([name], source_key), updateGUI=True)
+            self.ui.Button('沿用输入', lambda: self.actions.reset_cgyro_parameters([name], source_key), updateGUI=True)
 
     def cgyro_checkbox(self, path, mapping, key, caption):
         return checkbox(self.ui, path, mapping, key, caption, updateGUI=True)
@@ -694,6 +710,8 @@ class ProjectUI:
             self.label('{}：{}'.format(case.get('label', '未命名案例'), STATUS.get(run.get('status', None), run.get('status', '尚未运行'))))
         self.nav('选择记录 / 重试 / 查看错误', 'multi')
         self.label('这里显示 工程保存的状态。不会在打开页面时轮询或提交任务。')
+        self.ui.Separator('结果管理')
+        self.ui.Button('清空全部结果…', self.clear_all_results, updateGUI=True)
         self.ui.Tab('操作历史')
         records = read(self.root, ('PROJECT_STATE', 'activity'), {})
         if not records:
@@ -942,13 +960,14 @@ class ProjectUI:
         return entry
 
     def render_plots(self):
-        self.label('扫描结果浏览以数值表显示 1–3 个参数轴；对比绘图用于跨案例或跨模型比较。')
+        self.label('选择运行记录、半径和扫描值，即可对比绘图。')
         with self.ui.same_row():
             self.ui.Button('Transfer_tool 剖面绘图',
                            lambda: self.settings.update(dict(page='transfer', transfer_tab='plots')), updateGUI=True)
             self.task('CGYRO 扫描结果浏览', ('GUIS', 'CGYRO_results'),
                       issues=[] if read(self.root, ('CGYRO_scan', 'RUN_DB'), {}) else ['尚无已收集的 CGYRO 扫描结果'])
-            self.nav('多 input.gacode 结果对比', 'multi')
+        with self.ui.same_row():
+            self.nav('多剖面结果对比', 'multi')
             self.task('TGYRO 结果绘图', MODULES['tgyro'] + ('GUIS', 'Plotgui'))
         self.compound(('GUIS', 'CGYRO_vs_TGLF'))
 
