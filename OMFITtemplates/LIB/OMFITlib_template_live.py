@@ -1,5 +1,5 @@
 """Stage template files and patch an existing OMFIT tree without project I/O."""
-from builtins import all, any, bytes, dict, getattr, hasattr, id, isinstance, iter, len, list, object, open, repr, reversed, set, sorted, str, tuple, type
+from builtins import all, any, bool, bytes, dict, float, getattr, hasattr, id, int, isinstance, iter, len, list, object, open, repr, reversed, set, sorted, str, tuple, type, zip
 import hashlib
 from pathlib import Path
 import shutil
@@ -83,6 +83,60 @@ def stamp(value):
     return (id(value),)
 
 
+def same_content(old, new):
+    """Compare owned code/settings without filenames, identities or evaluation."""
+    if old is new:
+        return True
+    if old is MISSING or new is MISSING:
+        return False
+    if (type(old).__module__, type(old).__name__) != (type(new).__module__, type(new).__name__):
+        return False
+    if any(base.__name__ == 'OMFITexpression' for base in type(old).__mro__):
+        return str(old.expression) == str(new.expression)
+    if python_node(old):
+        # Compare source bytes without parsing, executing or relying on locale.
+        def source(value):
+            if file_node(value):
+                with open(value.filename, 'rb') as stream:
+                    text = stream.read()
+            else:
+                text = value.read().encode('utf-8')
+            return text.replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+        return source(old) == source(new)
+    if file_node(old):
+        # Do not force parsing of file-backed inputs. Already loaded dictionaries
+        # must also match, otherwise keep the conservative replacement operation.
+        if isinstance(old, dict) and (keys(old) != keys(new) or not all(
+                same_content(raw(old, key), raw(new, key)) for key in keys(old))):
+            return False
+        def digest(value):
+            result = hashlib.sha256()
+            with open(value.filename, 'rb') as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b''):
+                    result.update(block)
+            return result.digest()
+        return digest(old) == digest(new)
+    if isinstance(old, dict):
+        return keys(old) == keys(new) and all(same_content(raw(old, key), raw(new, key)) for key in keys(old))
+    if isinstance(old, (list, tuple)):
+        return len(old) == len(new) and all(same_content(before, after) for before, after in zip(old, new))
+    if type(old) in (bool, int, float, str, bytes, type(None)):
+        return old == new
+    if hasattr(old, 'dtype') and hasattr(old, 'tobytes'):
+        return (not getattr(old.dtype, 'hasobject', True) and
+                str(old.dtype) == str(new.dtype) and old.shape == new.shape and old.tobytes() == new.tobytes())
+    # Unknown wrappers can overload equality or evaluate expressions.
+    return False
+
+
+def payload_size(value):
+    if file_node(value) and Path(value.filename).is_file():
+        return Path(value.filename).stat().st_size
+    if python_node(value):
+        return len(value.read().encode('utf-8'))
+    return None
+
+
 class Prepared:
     def __init__(self, template_path, data_policy='keep', settings_policy='keep', cancel=None):
         if data_policy not in ('keep', 'examples') or settings_policy not in ('keep', 'template'):
@@ -130,6 +184,7 @@ class LivePlan:
         except Exception as exc:
             raise TemplateError('无法载入模板树，尚未更新当前工程：' + str(exc)) from exc
         self.operations, self.guards, self.gui_paths = [], [], {}
+        self.added_modules = [name for name in prepared.release['roots'] if raw(omfit, name) is MISSING]
         for name in prepared.release['roots']:
             new, old = raw(self.incoming, name), raw(omfit, name)
             if not module(new) or (old is not MISSING and not module(old)):
@@ -140,6 +195,8 @@ class LivePlan:
     def _operation(self, path, old, new, data=False):
         parent = lookup(self.omfit, path[:-1])
         try:
+            if old is new or (not data and same_content(old, new)):
+                return
             fingerprint = None if data else stamp(old)
         except Exception as exc:
             raise TemplateError('无法比较更新节点 ' + location(path) + '：' + str(exc)) from exc
@@ -233,10 +290,14 @@ class LivePlan:
                 self._operation(child, before, after, data=True)
 
     def report(self):
+        scope = {op['path'][0] for op in self.operations}
         return dict(mode='live', release=self.prepared.release,
                     data_policy=self.prepared.data_policy, settings_policy=self.prepared.settings_policy,
-                    updated_modules=list(self.prepared.release['roots']),
-                    changes=[dict(path=location(op['path']), bytes=0,
+                    updated_modules=[name for name in self.prepared.release['roots']
+                                     if name in scope and name not in self.added_modules],
+                    added_modules=[name for name in self.added_modules if name in scope],
+                    changes=[dict(path=location(op['path']), bytes=None if op['data'] else
+                                  payload_size(op['old'] if op['new'] is MISSING else op['new']),
                         action='add' if op['old'] is MISSING else 'delete' if op['new'] is MISSING else 'replace')
                              for op in self.operations])
 

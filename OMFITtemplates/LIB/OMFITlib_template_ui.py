@@ -591,7 +591,7 @@ class TemplateManager(ManagerUpdateUI):
         for widget, normal_state in self.widgets:
             widget.configure(state='disabled' if value else normal_state)
         self.cancel_button.configure(state='normal' if value else 'disabled')
-        self.apply_button.configure(state='normal' if self.plan is not None and not value else 'disabled')
+        self.apply_button.configure(state='normal' if self.plan is not None and self.plan['changes'] and not value else 'disabled')
         self.report_button.configure(state='normal' if self.plan is not None and not value else 'disabled')
         self._publish_states()
         self.open_button.configure(state='normal' if self.session is not None and self.last_output and not value else 'disabled')
@@ -1169,7 +1169,7 @@ class TemplateManager(ManagerUpdateUI):
         labels = {'add': '新增', 'replace': '更新', 'delete': '删除'}
         for change in plan['changes'][:1500]:
             self.change_table.insert('', 'end', values=(labels[change['action']], change['path'],
-                                     '—' if plan.get('mode') == 'live' else human_size(change['bytes'])))
+                                     human_size(change['bytes']) if change.get('bytes') is not None else '—'))
         counts = {action: sum(c['action'] == action for c in plan['changes']) for action in labels}
         self.plan_info.set('新增 {add} · 更新 {replace} · 删除 {delete} 个节点；直接在当前会话生效。'.format(**counts)
             if plan.get('mode') == 'live' else '新增 {add} · 更新 {replace} · 删除 {delete}；保留 {keep} 个文件，预计输出约 {size}。{tail}'.format(
@@ -1181,11 +1181,13 @@ class TemplateManager(ManagerUpdateUI):
                 scope.append(label + '：' + '、'.join(plan[key]))
         if scope:
             self.plan_info.set('；'.join(scope) + '\n' + self.plan_info.get())
+        if not plan['changes']:
+            self.plan_info.set('当前内容与所选模板一致，无需更新。')
         self.status.set('预览完成：{} / {} / {}'.format(plan['release']['author'], plan['release']['id'], plan['release']['version']))
         self._set_busy(False)
 
     def _apply(self):
-        if self.plan is None:
+        if self.plan is None or not self.plan['changes']:
             return
         if self.session is not None:
             self._apply_live()
