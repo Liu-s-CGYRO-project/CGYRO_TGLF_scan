@@ -137,6 +137,7 @@
     "cgyro_file": "",
     "tglf_file": "",
     "cgyro_source_mode": "generated",
+    "cgyro_scan_page": "input",
     "cgyro_parameter_reference": "",
     "cgyro_parameter_group": "common",
     "cgyro_parameter_search": "",

@@ -6,7 +6,7 @@ import math
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_gui_layout import finish_gui_layout
-from OMFITlib_tglf_workbench_ui import TGLFWorkbench
+from OMFITlib_tglf_workbench_ui import SCAN_TABS as CGYRO_SCAN_TABS, TGLFWorkbench
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, loaded_file
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
 from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choices, installation_issues
@@ -348,8 +348,67 @@ class ProjectUI:
         if node is None:
             self.label('工程缺少 CGYRO_scan 模块。')
             return
-        base = MODULES['cgyro'] + ('SETTINGS',)
         self.ui.Tab('输入与扫描')
+        self.compound(('GUIS', 'CGYRO_controls'), workbench=self)
+        self.show_message(first_line=True)
+        rows = self.cgyro_rows
+        self.ui.Tab('计算参数')
+        self.render_cgyro_parameters(node, rows)
+        self.ui.Tab('结果与记录')
+        manifest = node.get('RUN_MANIFEST', {})
+        if manifest:
+            self.label('最近运行：{} · {}'.format(manifest.get('case_id', ''),
+                STATUS.get(manifest.get('status', ''), manifest.get('status', ''))))
+            if manifest.get('job_id', None):
+                self.label('作业：' + str(manifest['job_id']))
+            self.guarded('重新收集未归档结果', self.actions.collect, collect_issues(self.root))
+        ResultBrowser(self.root, self.ui).render(title=False)
+        self.nav('对比绘图（可选）', 'plots')
+
+    def render_cgyro_scan_tabs(self):
+        node = read(self.root, MODULES['cgyro'])
+        self.cgyro_rows = []
+        if node is None:
+            self.label('工程缺少 CGYRO_scan 模块。')
+            return
+        selected = self.settings['cgyro_scan_page']
+        if selected not in CGYRO_SCAN_TABS:
+            selected = 'input'
+        self.cgyro_scan_notebook = None
+        for page, caption in CGYRO_SCAN_TABS.items():
+            self.ui.Tab(caption)
+            if self.cgyro_scan_notebook is None:
+                # Native Tab returns None; read its owned frame and Notebook.
+                frame = getattr(self.ui, '_aux', {}).get('parentGUI')
+                if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook):
+                    self.cgyro_scan_notebook = frame.master
+            if page == 'input':
+                self.cgyro_rows = self.render_cgyro_input()
+            elif page == 'settings':
+                self.render_cgyro_scan_settings(node, self.cgyro_rows)
+            else:
+                self.render_cgyro_run(node)
+        self.select_cgyro_scan_page(selected)
+        if self.cgyro_scan_notebook is not None:
+            self.cgyro_scan_notebook.bind('<<NotebookTabChanged>>', self.cgyro_scan_page_changed, add='+')
+
+    def select_cgyro_scan_page(self, page):
+        self.settings['cgyro_scan_page'] = page
+        if self.cgyro_scan_notebook is not None:
+            try:
+                self.cgyro_scan_notebook.select(list(CGYRO_SCAN_TABS).index(page))
+            except tk.TclError:
+                return
+
+    def cgyro_scan_page_changed(self, event):
+        if event.widget is self.cgyro_scan_notebook:
+            try:
+                self.settings['cgyro_scan_page'] = list(CGYRO_SCAN_TABS)[
+                    self.cgyro_scan_notebook.index(self.cgyro_scan_notebook.select())]
+            except tk.TclError:
+                return
+
+    def render_cgyro_input(self):
         self.ui.ComboBox(self.prefix + "['cgyro_source_mode']", OrderedDict([
             ('Transfer_tool 半径输入', 'generated'), ('导入 input.cgyro', 'imported'),
             ('CGYRO 当前输入', 'current')]), '输入来源', state='readonly', updateGUI=True)
@@ -363,7 +422,7 @@ class ProjectUI:
         elif mode == 'generated':
             self.nav('生成 / 更换半径输入', 'transfer')
         rows = sync_cgyro_choices(self.root, self.settings, self.actions.factory)
-        self.ui.Separator('1  选择半径与主离子')
+        self.ui.Separator('半径与主离子')
         if rows:
             if len(rows) > 1:
                 with self.ui.same_row():
@@ -392,7 +451,10 @@ class ProjectUI:
                     for key, caption in cases[offset:offset + 2]:
                         self.cgyro_checkbox(self.prefix + "['cgyro_ion_cases'][{!r}]".format(key),
                                              self.settings['cgyro_ion_cases'], key, caption)
-        self.ui.Separator('2  设置扫描')
+        return rows
+
+    def render_cgyro_scan_settings(self, node, rows):
+        base = MODULES['cgyro'] + ('SETTINGS',)
         self.ui.Entry(location(base + ('EXPERIMENT', 'runid')), '结果名称', updateGUI=True)
         self.ui.Entry(location(base + ('PHYSICS', 'kyarr')), 'ky 取值', updateGUI=True,
                       help='输入列表，例如 [0.1, 0.2, 0.3]。')
@@ -435,7 +497,8 @@ class ProjectUI:
                               '同步取值', width=28, default=[], updateGUI=True,
                               help='与参数 ' + str(index) + ' 的取值逐项对应。独立组合请使用多个参数轴。')
                 linked += 1
-        self.ui.Separator('3  运行')
+
+    def render_cgyro_run(self, node):
         problems = cgyro_plan_issues(self.root)
         if not problems:
             plan = cgyro_plan_summary(self.root)
@@ -451,19 +514,6 @@ class ProjectUI:
         self.nav('修改运行环境', 'run')
         if issues:
             self.label('需要：' + '；'.join(issues[:2]))
-        self.show_message(first_line=True)
-        self.ui.Tab('计算参数')
-        self.render_cgyro_parameters(node, rows)
-        self.ui.Tab('结果与记录')
-        manifest = node.get('RUN_MANIFEST', {})
-        if manifest:
-            self.label('最近运行：{} · {}'.format(manifest.get('case_id', ''),
-                STATUS.get(manifest.get('status', ''), manifest.get('status', ''))))
-            if manifest.get('job_id', None):
-                self.label('作业：' + str(manifest['job_id']))
-            self.guarded('重新收集未归档结果', self.actions.collect, collect_issues(self.root))
-        ResultBrowser(self.root, self.ui).render(title=False)
-        self.nav('对比绘图（可选）', 'plots')
 
     def render_cgyro_parameters(self, node, rows):
         physics = node['SETTINGS']['PHYSICS']

@@ -105,12 +105,14 @@ finally:
     final_status = 'complete' if not failures else ('failed' if len(failures) == len(prepared) else 'partial')
     if isinstance(submission_error, KeyboardInterrupt):
         final_status = 'cancelled'
+    elif submission_error is not None and not failures:
+        final_status = 'failed'
     record.update(dict(status=final_status, failed=failures,
                        finished=datetime.now(timezone.utc).isoformat()))
     record.pop('outputs', None)  # Each outcome is now owned by its corresponding point.
     if submission_error is not None:
         raise submission_error
     if failures:
-        raise RuntimeError('TGLF: {} / {} points failed; see TGLF results in RUN_DB ({})'.format(
-            len(failures), len(prepared), run_id))
+        raise RuntimeError('TGLF: {} / {} points failed; see TGLF results in RUN_DB ({})\n{}: {}'.format(
+            len(failures), len(prepared), run_id, failures[0], record['points'][failures[0]]['error']))
     print('TGLF: {} points saved to RUN_DB / {}'.format(len(prepared), run_id))

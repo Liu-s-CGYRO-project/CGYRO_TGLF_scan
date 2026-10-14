@@ -232,6 +232,7 @@
 ['CGYRO_TGLF_scan']['GUIS']['Template_manager'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/Template_manager.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['GUIS']['TGLF_multi'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/TGLF_multi.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['GUIS']['TGLF_controls'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/TGLF_controls.py <-:-:-> {}
+['CGYRO_TGLF_scan']['GUIS']['CGYRO_controls'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/CGYRO_controls.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_project'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_project.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_project_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py <-:-:-> {}

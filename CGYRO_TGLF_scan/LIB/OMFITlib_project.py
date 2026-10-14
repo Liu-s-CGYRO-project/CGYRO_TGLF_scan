@@ -39,7 +39,7 @@ PAGES = OrderedDict([
     ('5 TGLF 计算与扫描', 'tglf'), ('6 绘图与对比', 'plots'), ('7 模板与 GitHub', 'templates'),
 ])
 DEFAULTS = {'page': 'overview', 'runtime_module': 'cgyro', 'transfer_source': '',
-            'cgyro_file': '', 'tglf_file': '', 'cgyro_source_mode': 'generated',
+            'cgyro_file': '', 'tglf_file': '', 'cgyro_source_mode': 'generated', 'cgyro_scan_page': 'input',
             'message': ''}
 ISOTOPE_MASSES = OrderedDict([('H', 0.5), ('D', 1.0), ('T', 1.5)])
 ION_CASES = OrderedDict([('BASE', '原始'), ('H', 'H'), ('D', 'D'), ('T', 'T')])
