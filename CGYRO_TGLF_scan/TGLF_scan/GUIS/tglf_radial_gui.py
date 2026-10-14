@@ -1,5 +1,9 @@
 # -*-Python-*-
 # Created by thomek at 05 Jul 2016  16:48
+from OMFITlib_gui_layout import finish_gui_layout
+
+layout_anchor = OMFITx.Label('', align='left')
+layout_anchor.master.pack_forget()
 
 OMFITx.TitleGUI('TGLF 实验剖面径向扫描')
 
@@ -32,3 +36,5 @@ if len(xp_flx):
         "root['PLOTS']['plot_gamma_vs_k_and_r']",
         help=("Make a plot of growth rate and frequency"  "vs ky and radius for each mode"),
     )
+
+finish_gui_layout(layout_anchor, OMFITx)

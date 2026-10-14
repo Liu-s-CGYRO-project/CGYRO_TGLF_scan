@@ -8,6 +8,10 @@ from 'dictionary_to_read' should be written.
 
 Inspired by the TGLF constraints_GUI.py by smithsp.
 """
+from OMFITlib_gui_layout import finish_gui_layout
+
+layout_anchor = OMFITx.Label('', align='left')
+layout_anchor.master.pack_forget()
 
 defaultVars(dictionary_to_read=None, dictionary_to_write='scan_vars_to_plot')
 
@@ -58,3 +62,5 @@ if dictionary_to_write in root:
             lbl=k,
             help='Scan output variable to be plotted. Set the plot label in the second field.',
         )
+
+finish_gui_layout(layout_anchor, OMFITx)

@@ -1,3 +1,13 @@
+# 修订记录 · 工程 1.18.5 / 管理器 1.10.6
+
+用户截图中一维扫描切换后，整页右侧字段和顶部按钮均被挤出可见区域。静态核对原生 OMFITx 的 GUI.update/configure_size：内容宽度取 max(taskGUIframeInterior.winfo_reqwidth(), 可见窗口宽度)，重绘后又启用 pack 传播；新增字段或未选中页签的请求宽度可能继续撑宽 Canvas 内的窗口项目。共用 NativeLayout 现只匹配自己的根 Canvas/window 项，关闭该根内容框的尺寸传播，显式绑定可见宽度，并按直接 pack 子项的请求高度、pady 和 ipady 计算完整高度。长表单使用原有竖向滚动，实际窗口尺寸不在每次切换时重设。
+
+OMFIT 的 configure_size 每次会清除并重建 Canvas 的 widget Configure 绑定；因此使用仅属于该 Canvas、内容框及其直接子行的额外 bindtag，放在原 widget 绑定之后。保留原生事件链，行高变化、移除及窗口事件经当前布局实例合并到 after_idle，不覆盖 Canvas 类或其他窗口。关闭或销毁子表单时取消待处理回调，关闭 Canvas 时解除本地 tag，旧布局的回调检查当前实例与锚点有效性。所有距离选项使用 winfo_pixels 解析，避免 Tcl 距离对象直接转 int；可用宽度扣除 Canvas 边框和焦点边线。记录嵌套 Notebook 时子级在前，依次重新计算所选内容高度；文本换行宽度与原生 Label 的行绑定保持一致，避免两个处理器反复改变行高，明确不换行的表单标签继续保持原规则。
+
+静态审阅全部七个总控页面，以及独立 CGYRO 扫描入口、Transfer_tool 输入来源切换、TGLF 原始 / 一维 / 二维 / UQ 设置、两层 TGLF 页签、多个剖面页和四类对比绘图选择。补齐独立 CGYRO 扫描、结果、同模型对比、局部互转和六个旧版 TGLF 表单入口；未映射的锚点仅用于获取根内容框，不增加空白行。旧版 TGLF 的提前 End 分支也在退出前完成布局，主工程与模块清单均登记库及其上下文依赖。工程页面及独立表单入口统一启用窄长字段和页签高度适配；行列数按实际区域宽度计算，窄窗单列，宽度够时最多双列。模板管理器另用自己的顶层窗口和 Notebook，检查了最小尺寸、字体测量、策略选择行换行、文本 wraplength 与表格水平 / 垂直滚动，未发现同一原生 Canvas 重绘宽度路径。结果表窗口和 FigureNotebook 属于各自窗口，未接入此根 Canvas 约束。
+
+接口依据为本地 OMFITx.py、tkinter.ttk / tkinter 的控件方法，以及 [Tk bindtags](https://www.tcl-lang.org/man/tcl8.6/TkCmd/bindtags.htm)、[pack 传播与间距](https://www.tcl-lang.org/man/tcl8.6/TkCmd/pack.htm)、[Canvas window 项](https://www.tcl-lang.org/man/tcl8.6/TkCmd/canvas.htm)手册。完成 Python 3.9 AST、入口覆盖与原控件 / 回调静态核对、OMFIT 库 / 设置 / 帮助、ZIP CRC / 源文件及 SHA-256 校验。按要求未运行回归、GUI、环境初始化或计算；未在真实桌面逐项操作切换。
+
 # 修订记录 · 工程 1.18.4 / 管理器 1.10.6
 
 TGLF 生成参数区的细线 Separator 替换为 ttk.LabelFrame。边框 groove、宽度 2 通过专用 CGYROSection.TLabelframe 样式设置，内部 padding=(10,8)、外部 padx=6 / pady=(14,10)。静态核对本地 tkinter.ttk 和 [Tk 8.6 Labelframe 手册](https://www.tcl-lang.org/man/tcl8.6/TkCmd/ttk_labelframe.htm)，borderwidth / relief 属于样式选项，不作为 Labelframe 的构造参数。标题使用合法的子控件 labelwidget 并标记现有 heading 角色，沿用 NativeLayout 的中文字体、加粗标题及明暗主题强调色。参数字段保持原双列布局和窄窗换行，生成按钮位于参数框外。

@@ -1,5 +1,9 @@
 # -*-Python-*-
 # Created by smithsp at 2013/11/07 15:41
+from OMFITlib_gui_layout import finish_gui_layout
+
+layout_anchor = OMFITx.Label('', align='left')
+layout_anchor.master.pack_forget()
 
 OMFITx.TitleGUI('TGLF 参数与径向扫描')
 
@@ -73,6 +77,7 @@ if 'input.gacode' in root['TGYRO']['PROFILES_GEN']['OUTPUTS'] or (
         else:
             OMFITx.Button('生成 TGLF 输入', "root['SCRIPTS']['setup_tglf']")
         show_reset()
+        finish_gui_layout(layout_anchor, OMFITx)
         OMFITx.End()
 
     # -------------------------
@@ -200,3 +205,5 @@ else:
         inp_loc = "root['TGYRO']['INPUTS']['input.tglf']"
 
         OMFITx.ObjectPicker(inp_loc, lbl='input.tglf 输入文件', objectType=OMFITgacode)
+
+finish_gui_layout(layout_anchor, OMFITx)

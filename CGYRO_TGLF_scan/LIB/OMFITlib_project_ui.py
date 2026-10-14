@@ -95,7 +95,7 @@ class ProjectUI:
 
     def render(self, panel_only=False):
         self.panel_only = panel_only
-        self.compact = panel_only or self.settings['page'] in ('cgyro', 'tglf', 'run')
+        self.compact = True
         if panel_only:
             self.ui.TitleGUI('CGYRO · 线性扫描')
             intro = self.label('CGYRO 线性扫描')
@@ -105,7 +105,7 @@ class ProjectUI:
             if page != 'cgyro':
                 self.nav('返回 CGYRO 扫描', 'cgyro')
             getattr(self, 'render_' + page)()
-            finish_gui_layout(intro, self.ui, compact=self.compact, fit_tabs=page in ('run', 'tglf'))
+            finish_gui_layout(intro, self.ui, compact=self.compact, fit_tabs=True)
             return
         self.ui.TitleGUI('CGYRO / TGLF · 工程总控')
         intro = self.label('服务器 → 程序版本 → 计算资源' if self.settings['page'] == 'run' else
@@ -119,7 +119,7 @@ class ProjectUI:
         if self.settings['page'] not in ('cgyro', 'tglf'):
             self.show_message()
         getattr(self, 'render_' + self.settings['page'])()
-        finish_gui_layout(intro, self.ui, compact=self.compact, fit_tabs=self.settings['page'] in ('run', 'tglf'))
+        finish_gui_layout(intro, self.ui, compact=self.compact, fit_tabs=True)
 
     def render_overview(self):
         s = summary(self.root)

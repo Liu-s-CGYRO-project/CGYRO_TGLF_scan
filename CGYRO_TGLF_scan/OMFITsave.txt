@@ -206,6 +206,8 @@
 ['TGLF_scan']['GUIS']['DV_scans_subgui'] <-:-:-> OMFITpythonGUI <-:-:-> ./TGLF_scan/GUIS/DV_scans_subgui.py <-:-:-> {}
 ['TGLF_scan']['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['TGLF_scan']['LIB']['OMFITlib_tglf'] <-:-:-> OMFITpythonTask <-:-:-> ./TGLF_scan/LIB/OMFITlib_tglf.py <-:-:-> {}
+['TGLF_scan']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
+['TGLF_scan']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
 ['TGLF_scan']['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./TGLF_scan/SettingsNamelist.txt <-:-:-> {}
 ['TGLF_scan']['SETTINGS']['SETUP']['workDir'] <-:-:-> OMFITexpression <-:-:-> _"OMFITworkDir(root,'')" <-:-:-> {}
 ['TGLF_scan']['__SETTINGS_AT_IMPORT__'] <-:-:-> OMFITjson <-:-:-> ./TGLF_scan/SettingsNamelist.txt_2_dd6fdf5b36/SettingsNamelist.txt <-:-:-> {}
@@ -337,6 +339,8 @@
 ['CGYRO_scan']['LIB']['OMFITlib_startup'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/LIB/OMFITlib_startup.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_read'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/LIB/OMFITlib_cgyro_read.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_parameters.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
 ['CGYRO_scan']['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./CGYRO_scan/SettingsNamelist.txt <-:-:-> {}
 ['CGYRO_scan']['SETTINGS']['SETUP']['workDir'] <-:-:-> OMFITexpression <-:-:-> _"OMFITworkDir(root,'')" <-:-:-> {}
 ['CGYRO_scan']['SETTINGS']['SETUP']['executable'] <-:-:-> OMFITexpression <-:-:-> _"'cgyro -e . -n ' + str(root['SETTINGS']['SETUP']['num_cores'])" <-:-:-> {}

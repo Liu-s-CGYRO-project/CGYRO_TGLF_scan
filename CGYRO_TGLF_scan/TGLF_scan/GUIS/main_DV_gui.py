@@ -8,6 +8,11 @@ to input variables.
 """
 
 # Create database structure for all results
+from OMFITlib_gui_layout import finish_gui_layout
+
+layout_anchor = OMFITx.Label('', align='left')
+layout_anchor.master.pack_forget()
+
 root.setdefault('TGLF_SCAN_DB', OMFITtree())
 
 
@@ -64,3 +69,5 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
 else:
     OMFITx.Label('')
     OMFITx.Label('填写扫描名称后进行敏感性分析')
+
+finish_gui_layout(layout_anchor, OMFITx)

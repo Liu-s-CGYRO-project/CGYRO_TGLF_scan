@@ -4,6 +4,10 @@
 """
 Secondary GUI to get frequency and growth rates scans + transport coefficient sensitivity to TGLF inputs.
 """
+from OMFITlib_gui_layout import finish_gui_layout
+
+layout_anchor = OMFITx.Label('', align='left')
+layout_anchor.master.pack_forget()
 
 root.setdefault('TGLF_inputs_to_scan', {})
 
@@ -295,3 +299,5 @@ if (
     )
 
     OMFITx.Button("Plot D,V scans", lambda: root['PLOTS']['plot_DV_scan'].run(), updateGUI=False)
+
+finish_gui_layout(layout_anchor, OMFITx)

@@ -2,9 +2,12 @@
 """Two conversion directions; infer TGLF input format from its fields."""
 from collections import OrderedDict
 from OMFITlib_transfer_workflow import tglf_input_format
+from OMFITlib_gui_layout import finish_gui_layout
 from omfit_classes.utils_base import evalExpr
 
 OMFITx.TitleGUI('局部输入互转')
+anchor = OMFITx.Label('', align='left')
+anchor.master.pack_forget()
 physics = root['SETTINGS']['PHYSICS']
 if 'conversion_mode' not in physics:
     old = str(evalExpr(physics.get('Transfer to tglf', False))).lower()
@@ -80,3 +83,4 @@ if mode == 'tglf_to_cgyro':
 OMFITx.Button('生成 input.' + ('tglf' if mode == 'cgyro_to_tglf' else 'cgyro'), convert_inputs,
     updateGUI=True, state='disabled' if problems else 'normal', help='；'.join(problems))
 OMFITx.Label('完成后可在“生成文件”查看、编辑；计算页面直接选择生成的文件。', align='left', wraplength=600)
+finish_gui_layout(anchor, OMFITx)

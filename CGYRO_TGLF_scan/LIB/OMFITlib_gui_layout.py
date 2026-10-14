@@ -1,5 +1,5 @@
 """Local font and geometry adjustments for this project's native OMFIT pages."""
-from builtins import all, dict, int, isinstance, len, list, max, min, range, str, tuple
+from builtins import all, dict, int, isinstance, len, list, max, min, range, str, sum, tuple
 from contextlib import contextmanager
 import hashlib
 import threading
@@ -33,7 +33,7 @@ def section_group(ui, title):
         aux['parentGUI'] = parent
 
 
-def finish_gui_layout(label, ui=None, compact=False, fit_tabs=False):
+def finish_gui_layout(label, ui=None, compact=True, fit_tabs=True):
     """Style the page containing an OMFITx.Label, retaining native bindings.
 
     OMFITx.Label returns a label in a row frame in the GUI's content frame.
@@ -129,11 +129,15 @@ class NativeLayout:
         self.heading_color = '#274b63' if light else '#a5cfe8'
         self.muted_color = '#52616b' if light else '#becbd4'
         self.rows = []
+        self.labels = []
+        self.notebooks = []
         self.scroll_pending = None
         self._walk(content)
         self.reflow()
         if compact and resize_window:
             self._portrait_window()
+        self._watch_viewport()
+        self._queue_scroll()
 
     def _portrait_window(self):
         """Set an initial narrow, tall viewport; let OMFIT scroll the content.
@@ -166,6 +170,7 @@ class NativeLayout:
             if kind == 'Toplevel':
                 continue
             if kind == 'TLabel':
+                self.labels.append(child)
                 role = getattr(child, '_cgyro_role', '')
                 current = child.cget('font') or self.style.lookup(child.cget('style') or 'TLabel', 'font') or 'TkDefaultFont'
                 bold = role in ('heading', 'pending') or tkfont.Font(root=child, font=current).actual('weight') == 'bold'
@@ -216,9 +221,10 @@ class NativeLayout:
                 child.configure(font=self.normal, spacing1=self.gap, spacing2=self.gap, spacing3=self.gap)
             self._walk(child)
             if kind == 'TNotebook' and self.fit_tabs:
+                # Nested books precede their parents when heights settle.
+                self.notebooks.append(child)
                 child.bind('<<NotebookTabChanged>>', lambda event, book=child: self._fit_tab(book), add='+')
                 child.bind('<Configure>', lambda event, book=child: self._fit_tab(book), add='+')
-                child.after_idle(lambda book=child: self._fit_tab(book))
         form = getattr(parent, '_cgyro_form', None)
         if form is not None:
             self._form(parent, children, *form)
@@ -266,27 +272,118 @@ class NativeLayout:
             selected = notebook.select()
             if selected:
                 height = max(1, notebook.nametowidget(selected).winfo_reqheight())
-                if int(notebook.cget('height')) != height:
+                if notebook.winfo_pixels(notebook.cget('height')) != height:
                     notebook.configure(height=height)
-                    if self.scroll_pending is None:
-                        self.scroll_pending = self.content.after_idle(self._sync_scroll)
+                    self._queue_scroll()
         except tk.TclError:
             return
 
-    def _sync_scroll(self):
-        """Refresh only the canvas window belonging to this native page."""
-        self.scroll_pending = None
+    def _watch_viewport(self):
+        content = self.content
+        if not getattr(content, '_cgyro_layout_cleanup', None):
+            def closed(event):
+                current = getattr(content, '_cgyro_gui_layout', None)
+                if event.widget is content and current is not None:
+                    current._cancel_scroll()
+            content._cgyro_layout_cleanup = content.bind('<Destroy>', closed, add='+')
         canvas = self.content.master
         if not isinstance(canvas, tk.Canvas):
+            return
+        tag = getattr(canvas, '_cgyro_viewport_tag', None)
+        if tag is None:
+            tag = 'CGYROViewport' + str(canvas)
+            def changed(event):
+                current = getattr(content, '_cgyro_gui_layout', None)
+                try:
+                    if current is not None and content.winfo_exists() and current.anchor.winfo_exists():
+                        current._queue_scroll()
+                except tk.TclError:
+                    pass
+            # OMFIT replaces the widget's Configure binding after every
+            # redraw. A local extra tag retains both its handler and ours.
+            canvas.bind_class(tag, '<Configure>', changed)
+            canvas.bind_class(tag, '<Destroy>', changed)
+            def cleanup(event):
+                if event.widget is canvas:
+                    current = getattr(content, '_cgyro_gui_layout', None)
+                    try:
+                        canvas.unbind_class(tag, '<Configure>')
+                        canvas.unbind_class(tag, '<Destroy>')
+                    except tk.TclError:
+                        pass
+                    if current is not None:
+                        current._cancel_scroll()
+            canvas.bind('<Destroy>', cleanup, add='+')
+            canvas._cgyro_viewport_tag = tag
+        # Direct rows notify us when their height changes or they disappear,
+        # even while propagation on the root content frame is disabled.
+        for widget in (canvas, self.content, *self.content.winfo_children()):
+            tags = list(widget.bindtags())
+            if tag not in tags:
+                tags.insert(1, tag)
+                widget.bindtags(tuple(tags))
+
+    def _queue_scroll(self):
+        if self.scroll_pending is None:
+            self.scroll_pending = self.content.after_idle(self._sync_scroll)
+
+    def _cancel_scroll(self):
+        if self.scroll_pending is not None:
+            try:
+                self.content.after_cancel(self.scroll_pending)
+            except tk.TclError:
+                pass
+            self.scroll_pending = None
+
+    def _content_height(self):
+        height = 0
+        for child in self.content.pack_slaves():
+            info = child.pack_info()
+            pads = [self.content.winfo_pixels(value) for value in
+                    self.content.tk.splitlist(info.get('pady', 0))]
+            outside = 2 * pads[0] if len(pads) == 1 else sum(pads)
+            height += child.winfo_reqheight() + outside + 2 * self.content.winfo_pixels(info.get('ipady', 0))
+        return max(1, height)
+
+    def _sync_scroll(self):
+        """Fit our root content to the viewport, retaining vertical scrolling."""
+        self.scroll_pending = None
+        if getattr(self.content, '_cgyro_gui_layout', None) is not self or not self.anchor.winfo_exists():
+            return
+        canvas = self.content.master
+        if not isinstance(canvas, tk.Canvas):
+            for notebook in self.notebooks:
+                self._fit_tab(notebook)
             return
         try:
             for item in canvas.find_all():
                 if canvas.type(item) != 'window' or canvas.itemcget(item, 'window') != str(self.content):
                     continue
-                height = max(1, self.content.winfo_reqheight())
-                canvas.itemconfigure(item, height=height)
-                bounds = canvas.tk.splitlist(canvas.cget('scrollregion'))
-                width = bounds[2] if len(bounds) == 4 else canvas.winfo_width()
+                inset = 2 * (canvas.winfo_pixels(canvas.cget('borderwidth')) +
+                             canvas.winfo_pixels(canvas.cget('highlightthickness')))
+                width = canvas.winfo_width() - inset
+                if width <= 1:
+                    width = max(1, self.width - 32)
+                # Native configure_size takes max(requested, visible width).
+                # Stop hidden panes or newly added rows inflating that request.
+                self.content.pack_propagate(False)
+                for label in self.labels:
+                    if not label.winfo_exists() or label.winfo_pixels(label.cget('wraplength')) <= 0:
+                        continue
+                    parent_width = label.master.winfo_width()
+                    # Native Label's row binding uses this same width. Keep
+                    # both handlers in agreement so wrapping cannot oscillate.
+                    limit = max(1, min(width, parent_width if parent_width > 1 else width))
+                    if label.winfo_pixels(label.cget('wraplength')) != limit:
+                        label.configure(wraplength=limit)
+                        self._queue_scroll()
+                for notebook in self.notebooks:
+                    self._fit_tab(notebook)
+                height = self._content_height()
+                if self.content.winfo_pixels(self.content.cget('width')) != width or self.content.winfo_pixels(self.content.cget('height')) != height:
+                    self.content.configure(width=width, height=height)
+                if canvas.winfo_pixels(canvas.itemcget(item, 'width')) != width or canvas.winfo_pixels(canvas.itemcget(item, 'height')) != height:
+                    canvas.itemconfigure(item, width=width, height=height)
                 canvas.configure(scrollregion=(0, 0, width, height))
                 break
         except tk.TclError:
@@ -298,8 +395,6 @@ class NativeLayout:
         width = frame.winfo_width()
         if width <= 1:
             width = self.width - 40 if self.compact else max(1, self.content.winfo_toplevel().winfo_width() - 40)
-        if self.compact:
-            width = min(width, self.width - 40)
         required = max(item.winfo_reqwidth() + 10 for item in items)
         columns = max(1, min(len(items), width // max(1, required)))
         if self.compact:
@@ -311,6 +406,7 @@ class NativeLayout:
             frame.columnconfigure(index, weight=1 if index < columns else 0, uniform='cgyro' if index < columns else '')
         for index, item in enumerate(items):
             item.grid(row=index // columns, column=index % columns, sticky='ew', padx=5, pady=self.gap // 2)
+        self._queue_scroll()
 
     def reflow(self):
         for frame, items in self.rows:

@@ -1,6 +1,10 @@
 # -*-Python-*-
 # Created by grierson at 27 Apr 2016  13:59
 # modified by sciortino, 22 July 2019
+from OMFITlib_gui_layout import finish_gui_layout
+
+layout_anchor = OMFITx.Label('', align='left')
+layout_anchor.master.pack_forget()
 
 OMFITx.TitleGUI('TGLF 杂质粒子输运系数')
 
@@ -149,3 +153,5 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
             OMFITx.Button('绘制扫描与剖面', lambda: root['PLOTS']['plot_resp_matrix'].run(plot_results=True))
         else:
             OMFITx.Button('绘制扫描与剖面', "root['PLOTS']['plotDandV']")
+
+finish_gui_layout(layout_anchor, OMFITx)
