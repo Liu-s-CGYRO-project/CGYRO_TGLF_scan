@@ -53,7 +53,7 @@ with plot_context(root):
 
 ## 添加控件和登记文件
 
-GUI 开头使用 `from OMFITlib_gui_api import adapt` 和 `OMFITx = adapt(OMFITx)`。原生 `help=` 原文会放入可缩放、可滚动的说明窗口。`D` / `d` 按钮显示为“恢复默认”，保留原回调；取消参数覆盖的按钮应命名“沿用输入”，不要混为默认值重置。
+GUI 开头使用 `from OMFITlib_gui_api import adapt` 和 `OMFITx = adapt(OMFITx)`。原生 `help=` 原文会放入可缩放、可滚动的说明窗口。`D` / `d` 按钮显示为“重置”，保留原回调；鼠标停留提示分别为模块默认值 / 模块载入时的值。提示仅绑定此按钮，离开、点击或销毁时关闭。取消参数覆盖的按钮应命名“沿用输入”，不要混为默认值重置。
 
 新入口和新库同时登记到工程根 `OMFITsave.txt` 与模块 `CGYRO_TGLF_scan/OMFITsave.txt`。OMFIT 按当前模块查找 `LIB`；子模块若使用共用库，也要登记对应的 LIB 别名及其传递依赖。回调所需的 OMFITlib 导入放在文件顶层，避免 GUI 返回后才导入导致 `ModuleNotFoundError`。
 

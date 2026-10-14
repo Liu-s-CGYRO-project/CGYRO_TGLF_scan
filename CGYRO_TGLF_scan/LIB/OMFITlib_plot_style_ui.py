@@ -43,5 +43,5 @@ def render_style(root, ui):
         with ui.same_row():
             entry('dpi', '显示 DPI')
             entry('export_dpi', '导出 DPI', '用于 PNG 等位图；PDF / SVG 的线条与文字保持矢量。')
-    ui.Button('恢复默认样式', lambda: state.update(dict(DEFAULTS)), updateGUI=True)
+    ui.Button('重置样式', lambda: state.update(dict(DEFAULTS)), updateGUI=True)
     finish_gui_layout(anchor, ui)

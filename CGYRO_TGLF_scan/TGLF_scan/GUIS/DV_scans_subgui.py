@@ -51,7 +51,7 @@ else:
 
 
 OMFITx.Label('')
-OMFITx.Button('恢复默认扫描变量', load_default_vars, updateGUI=True)
+OMFITx.Button('重置扫描变量', load_default_vars, updateGUI=True)
 
 
 OMFITx.Label('')
@@ -283,7 +283,7 @@ if (
     if len(root['scan_vars_to_plot']) == 0:
         load_default_DV_plot_vars()
 
-    OMFITx.Button('恢复默认绘图变量', load_default_DV_plot_vars, updateGUI=True)
+    OMFITx.Button('重置绘图变量', load_default_DV_plot_vars, updateGUI=True)
 
     OMFITx.CompoundGUI(
         root['GUIS']['selection_GUI'],

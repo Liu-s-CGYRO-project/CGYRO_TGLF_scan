@@ -6,6 +6,7 @@ project's widget commands; do not patch OMFITx or Tk globally.
 """
 from builtins import bool, dict, isinstance, list, set, str, tuple
 import tkinter as tk
+from OMFITlib_gui_api import compact_reset
 
 
 COMMON_TEXT = {'Tree': '数据树', 'File': '文件', 'Directory': '目录',
@@ -47,8 +48,8 @@ def _walk(parent, gui, aux, registry):
                 widget.configure(text=COMMON_TEXT[text])
         if widget.winfo_class() in ('TButton', 'Button') and 'text' in options:
             caption = str(widget.cget('text'))
-            if caption in ('D', 'd'):
-                widget.configure(text='恢复默认')
+            if caption in ('D', 'd', '恢复默认', '重置'):
+                compact_reset(widget, caption)
         if 'command' in options and widget.winfo_class() in ('TButton', 'TCheckbutton', 'TRadiobutton', 'Button', 'Checkbutton', 'Radiobutton'):
             original = str(widget.cget('command'))
             if original and original != getattr(widget, '_cgyro_scoped_command', None):

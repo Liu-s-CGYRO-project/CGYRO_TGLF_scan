@@ -5,6 +5,61 @@ import tkinter as tk
 from tkinter import ttk
 
 
+def compact_reset(widget, caption=''):
+    """Short reset caption and a local tooltip; keep the native command intact."""
+    if caption in ('D', 'd'):
+        widget._project_reset_origin = caption
+    origin = getattr(widget, '_project_reset_origin', '')
+    text = {'D': '重置为模块默认值', 'd': '重置为模块载入时的值'}.get(origin, '重置为默认值')
+    widget.configure(text='重置')
+    previous = getattr(widget, '_project_reset_tip', None)
+    if previous is not None:
+        previous['text'] = text
+        return
+    state = {'window': None, 'timer': None, 'text': text}
+    widget._project_reset_tip = state
+
+    def hide(event=None):
+        timer, window = state['timer'], state['window']
+        state['timer'], state['window'] = None, None
+        try:
+            if timer is not None:
+                widget.after_cancel(timer)
+            if window is not None:
+                window.destroy()
+        except tk.TclError:
+            pass
+
+    def show():
+        state['timer'] = None
+        try:
+            if not widget.winfo_exists():
+                return
+            tip = tk.Toplevel(widget)
+            state['window'] = tip
+            tip.withdraw()
+            tip.overrideredirect(True)
+            ttk.Label(tip, text=state['text'], padding=(8, 5), wraplength=320).pack()
+            tip.update_idletasks()
+            width, height = tip.winfo_reqwidth(), tip.winfo_reqheight()
+            x = max(0, min(widget.winfo_rootx(), widget.winfo_screenwidth() - width))
+            y = widget.winfo_rooty() + widget.winfo_height() + 4
+            if y + height > widget.winfo_screenheight():
+                y = max(0, widget.winfo_rooty() - height - 4)
+            tip.geometry('+{}+{}'.format(x, y))
+            tip.deiconify()
+        except tk.TclError:
+            hide()
+
+    def enter(event):
+        hide()
+        state['timer'] = widget.after(350, show)
+
+    widget.bind('<Enter>', enter, add='+')
+    for event in ('<Leave>', '<ButtonPress-1>', '<Destroy>'):
+        widget.bind(event, hide, add='+')
+
+
 def show_help(parent, text):
     if isinstance(text, (list, tuple)):
         text = '\n'.join(str(value) for value in text)
@@ -75,7 +130,7 @@ class ProjectWidgets:
                     continue
                 caption = str(widget.cget('text'))
                 if caption in ('D', 'd'):
-                    widget.configure(text='恢复默认')
+                    compact_reset(widget, caption)
                     defaults.append(widget)
                 elif caption == '?' and help_text:
                     widget.configure(command=lambda w=widget, text=help_text: show_help(w, text))
