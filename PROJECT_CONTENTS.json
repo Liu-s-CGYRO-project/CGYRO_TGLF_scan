@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.18.5",
-  "parent_release": "1.18.4",
+  "version": "1.18.6",
+  "parent_release": "1.18.5",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -261,7 +261,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_widgets.py": "567e74605b22c2d105f52321ec3ed08b8240a78991869f6d5d2c5020cf0c2498",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gacode_installations.py": "a558e4d108f6dece6c0c346e5a1fc4ef78931a523211eaa81986d2d9ebc037f0",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py": "9d9448f7a1bcd8a461c80efdf75ddf86d77c1f15878a760b04718fb4425b5fc4",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "364096a60af311716b4c79856665c7b3c14ebeefbea0033dff4932b19bea8641",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "55a9c28c2754f78fe5296d8b2c53385a5c6c64d5360e783a679a34a24bc3fba6",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project.py": "cfbd9bce2c32dbc3825cbc71272eff7a4ef81c2c976d919fa9e27c9dd4eb4b60",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_runtime.py": "d9d777622e8dc60c5664e55d39b6b2e3c5f5be820ecfc62c27f30965d22776a0",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py": "7f73262b17637798c67da48e363b5d6c9e6a182b2adbcef78fc2e5a2ee2e41f6",
@@ -510,7 +510,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "533bb820ce9b7bfe6eac8a8a84a97ddcf88d4b2ac5beadc23788709a21283bbb"
+    "VALIDATION.md": "0fb7b85fae646d2c9c960536475a3010f5387e640963b96fce83467975953f7b"
   },
   "workbench_features": [
     "native_omfit_project_gui",
@@ -562,7 +562,8 @@
     "tglf_native_tabs",
     "tglf_scan_subtabs",
     "tglf_parameter_section_border",
-    "shared_gui_viewport_reflow"
+    "shared_gui_viewport_reflow",
+    "gui_pack_padding_types"
   ],
   "template_manager_version": "1.10.6",
   "support_archive_sha256": "cb71c03e57997da7bba99b724ca9a757fff6bad5a62f9daf4639bc6f6588618b",

@@ -1,5 +1,5 @@
 """Local font and geometry adjustments for this project's native OMFIT pages."""
-from builtins import all, dict, int, isinstance, len, list, max, min, range, str, sum, tuple
+from builtins import all, bytearray, bytes, dict, int, isinstance, len, list, max, min, range, str, sum, tuple
 from contextlib import contextmanager
 import hashlib
 import threading
@@ -339,8 +339,15 @@ class NativeLayout:
         height = 0
         for child in self.content.pack_slaves():
             info = child.pack_info()
-            pads = [self.content.winfo_pixels(value) for value in
-                    self.content.tk.splitlist(info.get('pady', 0))]
+            padding = info.get('pady', 0)
+            if isinstance(padding, (tuple, list)):
+                values = padding
+            else:
+                # pack_info can return an int or a Tcl distance/list object.
+                # splitlist accepts text, not an arbitrary Python scalar.
+                text = padding if isinstance(padding, (str, bytes, bytearray)) else str(padding)
+                values = self.content.tk.splitlist(text)
+            pads = [self.content.winfo_pixels(value) for value in values]
             outside = 2 * pads[0] if len(pads) == 1 else sum(pads)
             height += child.winfo_reqheight() + outside + 2 * self.content.winfo_pixels(info.get('ipady', 0))
         return max(1, height)
@@ -364,9 +371,6 @@ class NativeLayout:
                 width = canvas.winfo_width() - inset
                 if width <= 1:
                     width = max(1, self.width - 32)
-                # Native configure_size takes max(requested, visible width).
-                # Stop hidden panes or newly added rows inflating that request.
-                self.content.pack_propagate(False)
                 for label in self.labels:
                     if not label.winfo_exists() or label.winfo_pixels(label.cget('wraplength')) <= 0:
                         continue
@@ -380,8 +384,14 @@ class NativeLayout:
                 for notebook in self.notebooks:
                     self._fit_tab(notebook)
                 height = self._content_height()
+                # Complete measurement and set a valid size before freezing
+                # propagation. A measurement error must not freeze a zero-size
+                # frame and unmap the rest of the page.
                 if self.content.winfo_pixels(self.content.cget('width')) != width or self.content.winfo_pixels(self.content.cget('height')) != height:
                     self.content.configure(width=width, height=height)
+                # Native configure_size takes max(requested, visible width).
+                # Stop hidden panes or newly added rows inflating that request.
+                self.content.pack_propagate(False)
                 if canvas.winfo_pixels(canvas.itemcget(item, 'width')) != width or canvas.winfo_pixels(canvas.itemcget(item, 'height')) != height:
                     canvas.itemconfigure(item, width=width, height=height)
                 canvas.configure(scrollregion=(0, 0, width, height))

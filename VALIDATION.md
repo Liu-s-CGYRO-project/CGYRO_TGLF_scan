@@ -1,3 +1,13 @@
+# 修订记录 · 工程 1.18.6 / 管理器 1.10.6
+
+用户真实回溯定位到共用 NativeLayout._content_height：pack_info 返回的 pady 可以是 Python 整数，前一版直接将该值传给 tk.splitlist，触发 TypeError。此前静态核对只确认方法存在，未正确处理这项返回值的类型，导致 _sync_scroll 已关闭尺寸传播却尚未算出有效高度，根内容框过小，后续控件被 pack 隐藏。本次按回溯修复，覆盖所有使用共用布局的页面及独立入口。
+
+pady 为元组 / 列表时直接取各元素；为 str / bytes / bytearray 时使用原文本，其余标量或 Tcl 对象先 str 转换后再 splitlist。每一项继续使用 winfo_pixels 解析，保持 Tk 距离单位与 DPI；单个值计上下两边，两个值分别相加，ipady 仍计两边。对照 [Tk pack 间距与传播规则](https://www.tcl-lang.org/man/tcl8.6/TkCmd/pack.htm)和本地 tkinter.Pack.pack_info / _splitdict，后者保留 Tcl 返回值的 Python 类型，不保证全为字符串。其余 splitlist 调用分别来自字体列表和已字符串化的 Tcl 命令，本次无需修改。
+
+_sync_scroll 先处理文字和页签，完成 _content_height，再设置根内容框的有效宽高，之后才调用 pack_propagate(False)，最后更新自己的 Canvas/window 项与滚动区域。测量阶段发生异常时不会先冻结一个尚未设置有效尺寸的内容框。不以捕获 TypeError 隐藏本次错误；扫描、参数、页签、回调及提交逻辑保持原样。
+
+完成 Python 3.9 AST、返回值类型分支和几何更新顺序静态审阅，核对除两处布局方法及 builtins 导入外的 Python AST 保留；完成 OMFIT 库 / 设置 / 帮助、ZIP CRC / 源文件和 SHA-256 校验。按要求未运行回归、GUI、环境初始化或计算；真实 OMFIT 桌面恢复效果尚未运行验收。
+
 # 修订记录 · 工程 1.18.5 / 管理器 1.10.6
 
 用户截图中一维扫描切换后，整页右侧字段和顶部按钮均被挤出可见区域。静态核对原生 OMFITx 的 GUI.update/configure_size：内容宽度取 max(taskGUIframeInterior.winfo_reqwidth(), 可见窗口宽度)，重绘后又启用 pack 传播；新增字段或未选中页签的请求宽度可能继续撑宽 Canvas 内的窗口项目。共用 NativeLayout 现只匹配自己的根 Canvas/window 项，关闭该根内容框的尺寸传播，显式绑定可见宽度，并按直接 pack 子项的请求高度、pady 和 ipady 计算完整高度。长表单使用原有竖向滚动，实际窗口尺寸不在每次切换时重设。
