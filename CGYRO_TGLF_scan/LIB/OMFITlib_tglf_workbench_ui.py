@@ -9,6 +9,9 @@ from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, SCEN
     generation_overrides, generation_seed, initialize, numeric_parameters, parameter_value,
     plan, radial_input_issues, selected_rows)
 
+TABS = OrderedDict([('scan', '输入与扫描'), ('parameters', '计算参数'),
+                    ('results', '结果与记录'), ('multi', '多个剖面对比')])
+
 
 class TGLFWorkbench:
     def __init__(self, view):
@@ -28,18 +31,41 @@ class TGLFWorkbench:
         return self.view.label(text)
 
     def render(self):
-        self.ui.ComboBox(self.prefix + "['page']", OrderedDict([
-            ('输入与扫描', 'scan'), ('TGLF 参数', 'parameters'), ('结果与记录', 'results'),
-            ('多个剖面对比', 'multi')]), 'TGLF', state='readonly', updateGUI=True)
-        page = self.settings['page']
-        if page == 'multi':
-            self.view.compound(('GUIS', 'TGLF_multi'))
-        elif page == 'parameters':
-            self.parameters()
-        elif page == 'results':
-            self.results()
-        else:
-            self.scan()
+        selected = self.settings['page'] if self.settings['page'] in TABS else 'scan'
+        self.notebook = None
+        for page, caption in TABS.items():
+            self.ui.Tab(caption)
+            if self.notebook is None:
+                # OMFITx.Tab returns None; its context owns the active tab frame.
+                frame = getattr(self.ui, '_aux', {}).get('parentGUI')
+                if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook):
+                    self.notebook = frame.master
+            if page == 'multi':
+                self.view.compound(('GUIS', 'TGLF_multi'))
+            elif page == 'parameters':
+                self.parameters()
+            elif page == 'results':
+                self.results()
+            else:
+                self.scan()
+        self.select_page(selected)
+        if self.notebook is not None:
+            self.notebook.bind('<<NotebookTabChanged>>', self.page_changed, add='+')
+
+    def select_page(self, page):
+        self.settings['page'] = page
+        if self.notebook is not None:
+            try:
+                self.notebook.select(list(TABS).index(page))
+            except tk.TclError:
+                return
+
+    def page_changed(self, event):
+        if event.widget is self.notebook:
+            try:
+                self.settings['page'] = list(TABS)[self.notebook.index(self.notebook.select())]
+            except tk.TclError:
+                return
 
     def scan(self):
         self.ui.Separator('01  输入')
@@ -220,7 +246,7 @@ class TGLFWorkbench:
             self.ui.ComboBox(self.prefix + "['units_override']", {'沿用输入': '', 'GYRO': 'GYRO', 'CGYRO': 'CGYRO'},
                              '归一化', width=12, state='readonly', updateGUI=True,
                              postcommand=lambda location=None: self.settings.__setitem__('scenario', 'custom'))
-            self.ui.Button('更多 TGLF 参数', lambda: self.settings.__setitem__('page', 'parameters'), updateGUI=True)
+            self.ui.Button('更多 TGLF 参数', lambda: self.select_page('parameters'))
 
     def parameter_field(self, name, values, label):
         reference = values.get(name, COMMON[name][0])
@@ -264,7 +290,6 @@ class TGLFWorkbench:
         self.settings['selected'].update({row['key']: selected for row in self.available})
 
     def parameters(self):
-        self.ui.Button('返回输入与扫描', lambda: self.settings.__setitem__('page', 'scan'), updateGUI=True)
         self.label('修改后回车，扫描取值优先。')
         if self.reference:
             self.label('参考：' + self.reference['label'])

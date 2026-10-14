@@ -1,3 +1,11 @@
+# 修订记录 · 工程 1.18.2 / 管理器 1.10.6
+
+TGLF 页的 page 下拉框替换为四个原生 OMFITx.Tab，沿用 scan / parameters / results / multi 保存值。静态对照本地 OMFITx.Tab：返回值为 None，当前页签框架保存在 _aux.parentGUI，框架父控件为 ttk.Notebook；仅从该上下文读取实际 Notebook，保留原生注册、页签框架及控件绑定。渲染后按保存的 page 选择页签，NotebookTabChanged 将真实选择写回 page；原运行动作写 results、剖面导入或生成写 scan 的导航继续生效。
+
+“更多 TGLF 参数”直接选择计算参数页签，不触发全局 GUI 重绘；参数页移除重复的返回按钮。四个原有页面内容和输入、扫描、参数、结果回调保留。工程总控和独立面板的 TGLF 页面均启用已有 fit_tabs 布局，关闭 Notebook 的垂直 expand 并按选中页签高度更新滚动区域；嵌套的多剖面对比页签继续使用原生 CompoundGUI。
+
+完成 Python 3.9 AST、原生 Tab / Notebook 接口与导航静态核对、OMFIT 库 / 设置 / 帮助、ZIP CRC / 源文件及 SHA-256 校验。按要求未运行回归、GUI、环境初始化或计算；实际桌面排版及按钮交互未运行验收。
+
 # 修订记录 · 工程 1.18.1 / 管理器 1.10.6
 
 用户回调堆栈定位到 radial_input_issues 内的临时 OMFITlib_tglf_multi_data 导入。核对本地原生 omfit_python.py：自定义导入器只在 OMFIT 脚本执行期间存在，finally 删除 OMFITlib 模块缓存并撤销导入器；GUI 按钮回调在脚本返回后执行，故库已登记仍会报 ModuleNotFoundError。将 profile_digest 导入移到工作台库顶层，使回调保留同一函数引用。摘要算法、剖面变化判断、输入元数据及任务构造均不修改，无需因本次更新重新生成输入。
