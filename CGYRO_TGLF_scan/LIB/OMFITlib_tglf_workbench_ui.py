@@ -410,15 +410,21 @@ class TGLFWorkbench:
     def result_table(self, anchor, record):
         window = tk.Toplevel(anchor.winfo_toplevel())
         window.title('TGLF 结果 · ' + record['id'])
-        window.geometry('900x650')
+        window.withdraw()
+        point_count = max(1, len(record.get('points', {})))
+        max_width = max(1, int(window.winfo_screenwidth() * 0.9))
+        max_height = max(1, int(window.winfo_screenheight() * 0.85))
+        automatic_size = [None]
         frame = ttk.Frame(window)
         frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         columns = ('point', 'input', 'parameters', 'status', 'qe', 'qi')
         style = ttk.Style(window)
         font = tkfont.Font(root=window, font=style.lookup('Treeview', 'font') or 'TkDefaultFont')
         style_name = 'TGLFResults' + str(window).replace('.', '_') + '.Treeview'
-        style.configure(style_name, rowheight=font.metrics('linespace') + 8)
-        table = ttk.Treeview(frame, columns=columns, show='headings', style=style_name)
+        row_height = font.metrics('linespace') + 8
+        style.configure(style_name, font=font, rowheight=row_height)
+        table = ttk.Treeview(frame, columns=columns, show='headings', style=style_name,
+                             height=min(point_count, 12))
         table._tglf_font = font
         for key, title, width in zip(columns, ('任务', '输入 / 半径', '扫描值', '状态', 'Qe / QGB', 'Qi / QGB'), (90, 160, 210, 80, 110, 110)):
             table.heading(key, text=title)
@@ -439,9 +445,44 @@ class TGLFWorkbench:
         x.grid(row=1, column=0, sticky='ew')
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
-        details = tk.Text(window, height=7, wrap='word')
-        details.pack(fill=tk.X, padx=8, pady=(0, 8))
+        details_frame = ttk.Frame(window)
+        details = tk.Text(details_frame, height=2, width=1, wrap='word')
+        details.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        details_scroll = ttk.Scrollbar(details_frame, orient=tk.VERTICAL, command=details.yview)
+        details_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        details.configure(yscrollcommand=details_scroll.set)
         details.configure(state='disabled')
+        details_font = tkfont.Font(root=window, font=details.cget('font'))
+        details._tglf_font = details_font
+        footer = ttk.Frame(window)
+        footer.pack(fill=tk.X, padx=8, pady=(0, 8))
+
+        def fit_window():
+            current_size = (window.winfo_width(), window.winfo_height())
+            manual_size = automatic_size[0] is not None and current_size != automatic_size[0]
+            window.update_idletasks()
+            chrome_height = window.winfo_reqheight() - int(table.cget('height')) * row_height
+            visible_rows = max(1, min(point_count, 12, (max_height - chrome_height) // row_height))
+            table.configure(height=visible_rows)
+            window.update_idletasks()
+            window.minsize(min(420, max_width), min(max_height, max(1, chrome_height + row_height)))
+            # Only follow content while the user has kept the automatic size.
+            if not manual_size:
+                width = min(max_width, max(420, window.winfo_reqwidth()))
+                height = min(max_height, window.winfo_reqheight())
+                window.geometry('{}x{}'.format(width, height))
+                window.update_idletasks()
+                automatic_size[0] = ((window.winfo_width(), window.winfo_height())
+                                     if window.winfo_ismapped() else (width, height))
+
+        def hide_details():
+            details_frame.pack_forget()
+            hide_button.pack_forget()
+            fit_window()
+
+        hide_button = ttk.Button(footer, text='收起详情', command=hide_details)
+        ttk.Button(footer, text='关闭', command=window.destroy).pack(side=tk.RIGHT)
+
         def select(event=None):
             selected = table.selection()
             if not selected:
@@ -458,6 +499,13 @@ class TGLFWorkbench:
             details.configure(state='normal')
             details.delete('1.0', tk.END)
             details.insert('1.0', '\n'.join(lines))
-            details.configure(state='disabled')
+            detail_rows = max(2, min(len('\n'.join(lines).splitlines()), 8,
+                                      max_height // max(1, details_font.metrics('linespace') * 3)))
+            details.configure(state='disabled', height=detail_rows)
+            details_frame.pack(fill=tk.X, padx=8, pady=(0, 8), before=footer)
+            hide_button.pack(side=tk.LEFT)
+            fit_window()
         table.bind('<<TreeviewSelect>>', select)
-        ttk.Button(window, text='关闭', command=window.destroy).pack(pady=(0, 8))
+        table.bind('<Double-1>', lambda event: select() if table.identify_row(event.y) else None)
+        fit_window()
+        window.deiconify()

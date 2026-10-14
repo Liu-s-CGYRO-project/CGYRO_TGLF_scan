@@ -131,6 +131,7 @@ class NativeLayout:
         self.rows = []
         self.labels = []
         self.notebooks = []
+        self.panels = []
         self.scroll_pending = None
         self._walk(content)
         self.reflow()
@@ -169,6 +170,8 @@ class NativeLayout:
             kind = child.winfo_class()
             if kind == 'Toplevel':
                 continue
+            if kind in ('TFrame', 'TLabelframe'):
+                self.panels.append(child)
             if kind == 'TLabel':
                 self.labels.append(child)
                 role = getattr(child, '_cgyro_role', '')
@@ -223,8 +226,10 @@ class NativeLayout:
             if kind == 'TNotebook' and self.fit_tabs:
                 # Nested books precede their parents when heights settle.
                 self.notebooks.append(child)
-                child.bind('<<NotebookTabChanged>>', lambda event, book=child: self._fit_tab(book), add='+')
-                child.bind('<Configure>', lambda event, book=child: self._fit_tab(book), add='+')
+                # Selection precedes deferred geometry propagation through
+                # nested panes. Measure after that event, not inside it.
+                child.bind('<<NotebookTabChanged>>', lambda event: self._queue_scroll(), add='+')
+                child.bind('<Configure>', lambda event: self._queue_scroll(), add='+')
         form = getattr(parent, '_cgyro_form', None)
         if form is not None:
             self._form(parent, children, *form)
@@ -274,9 +279,18 @@ class NativeLayout:
                 height = max(1, notebook.nametowidget(selected).winfo_reqheight())
                 if notebook.winfo_pixels(notebook.cget('height')) != height:
                     notebook.configure(height=height)
-                    self._queue_scroll()
+                    return True
         except tk.TclError:
-            return
+            return False
+        return False
+
+    def _settle_tabs(self):
+        """Let changed child sizes propagate before sizing their root Canvas."""
+        for notebook in self.notebooks:
+            if self._fit_tab(notebook):
+                self._queue_scroll()
+                return False
+        return True
 
     def _watch_viewport(self):
         content = self.content
@@ -292,32 +306,37 @@ class NativeLayout:
         tag = getattr(canvas, '_cgyro_viewport_tag', None)
         if tag is None:
             tag = 'CGYROViewport' + str(canvas)
-            def changed(event):
-                current = getattr(content, '_cgyro_gui_layout', None)
-                try:
-                    if current is not None and content.winfo_exists() and current.anchor.winfo_exists():
-                        current._queue_scroll()
-                except tk.TclError:
-                    pass
-            # OMFIT replaces the widget's Configure binding after every
-            # redraw. A local extra tag retains both its handler and ours.
-            canvas.bind_class(tag, '<Configure>', changed)
-            canvas.bind_class(tag, '<Destroy>', changed)
+            canvas._cgyro_viewport_tag = tag
+        def changed(event):
+            current = getattr(content, '_cgyro_gui_layout', None)
+            try:
+                if current is not None and content.winfo_exists() and current.anchor.winfo_exists():
+                    current._queue_scroll()
+            except tk.TclError:
+                pass
+        # OMFIT replaces widget Configure bindings after every redraw. The
+        # local tag retains native handlers, including after a live upgrade
+        # from a version whose existing tag did not yet observe Map events.
+        for sequence in ('<Configure>', '<Map>', '<Destroy>'):
+            if not canvas.bind_class(tag, sequence):
+                canvas.bind_class(tag, sequence, changed)
+        if not getattr(canvas, '_cgyro_viewport_cleanup', None):
             def cleanup(event):
                 if event.widget is canvas:
                     current = getattr(content, '_cgyro_gui_layout', None)
                     try:
                         canvas.unbind_class(tag, '<Configure>')
+                        canvas.unbind_class(tag, '<Map>')
                         canvas.unbind_class(tag, '<Destroy>')
                     except tk.TclError:
                         pass
                     if current is not None:
                         current._cancel_scroll()
-            canvas.bind('<Destroy>', cleanup, add='+')
-            canvas._cgyro_viewport_tag = tag
-        # Direct rows notify us when their height changes or they disappear,
-        # even while propagation on the root content frame is disabled.
-        for widget in (canvas, self.content, *self.content.winfo_children()):
+            canvas._cgyro_viewport_cleanup = canvas.bind('<Destroy>', cleanup, add='+')
+        # Observe intermediate pane/compound frames too. Their requested size
+        # can settle after an inner tab changes while its parent stays clipped.
+        # Map events also reach newly selected panes with unchanged allocation.
+        for widget in (canvas, self.content, *self.content.winfo_children(), *self.notebooks, *self.panels):
             tags = list(widget.bindtags())
             if tag not in tags:
                 tags.insert(1, tag)
@@ -359,8 +378,7 @@ class NativeLayout:
             return
         canvas = self.content.master
         if not isinstance(canvas, tk.Canvas):
-            for notebook in self.notebooks:
-                self._fit_tab(notebook)
+            self._settle_tabs()
             return
         try:
             for item in canvas.find_all():
@@ -381,8 +399,8 @@ class NativeLayout:
                     if label.winfo_pixels(label.cget('wraplength')) != limit:
                         label.configure(wraplength=limit)
                         self._queue_scroll()
-                for notebook in self.notebooks:
-                    self._fit_tab(notebook)
+                if not self._settle_tabs():
+                    return
                 height = self._content_height()
                 # Complete measurement and set a valid size before freezing
                 # propagation. A measurement error must not freeze a zero-size

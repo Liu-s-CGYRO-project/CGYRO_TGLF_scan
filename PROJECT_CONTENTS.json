@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.18.7",
-  "parent_release": "1.18.6",
+  "version": "1.18.8",
+  "parent_release": "1.18.7",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -262,7 +262,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_widgets.py": "567e74605b22c2d105f52321ec3ed08b8240a78991869f6d5d2c5020cf0c2498",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gacode_installations.py": "a558e4d108f6dece6c0c346e5a1fc4ef78931a523211eaa81986d2d9ebc037f0",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py": "9d9448f7a1bcd8a461c80efdf75ddf86d77c1f15878a760b04718fb4425b5fc4",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "55a9c28c2754f78fe5296d8b2c53385a5c6c64d5360e783a679a34a24bc3fba6",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "efe71365d38d8cde12b9b3e295a9c31d9dd3d92a767053d45dbd3ccb8f991028",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project.py": "36f1fbc77361031da9c59b48cd685c6a53be6c9254df6e765c843135008ef07c",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_runtime.py": "d9d777622e8dc60c5664e55d39b6b2e3c5f5be820ecfc62c27f30965d22776a0",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py": "7e6c42e452325b45a226af9dd6a39eee0c90beed90cd28b8bb9277467ce3b3f1",
@@ -272,7 +272,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_ui.py": "e1eadb49b7a781f86f6716acb6da4ff0720a22cf1bdc7742aa5a8ebd61014717",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_preparation.py": "f674143d9bd07179ed09603c0e03240fd81356c4b18a915bab322e252d5134e5",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_workbench.py": "9b6ea6042d86b278e839f890ae2a065853be4a2f6e1733022cef75afdc6a8f97",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_workbench_ui.py": "0bd3bee006f7782ea0d183760d715df0663cebe6cc022135ff42dd5f702ca331",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_workbench_ui.py": "0f558c7e981a0dc9dda600911f1db89c5bb2361642ab25034c6165c4b462645c",
     "CGYRO_TGLF_scan/PLOTS/CGYRO_results.py": "66803a863ab6a81ce60613ede1f621f9ec1d0b8147f49fa54d01803adb16de22",
     "CGYRO_TGLF_scan/PLOTS/CGYRO_vs_CGYRO.py": "0633649baafd1d7930e94982035fc0bcd78d8ce29b49e134a758fd70adbd6667",
     "CGYRO_TGLF_scan/PLOTS/CGYRO_vs_TGLF.py": "e8fdaf88d7779cf6964c710fdc75c66e18b27ba1e9d7062eaa9cc9f84549d9c2",
@@ -511,7 +511,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "5cb88daa25bef518a9404a07b00505eada85e1bee026343e3f9d94154571b6c6"
+    "VALIDATION.md": "6eee8633f916816882aa2acb91b3b1bc1d1b791a9c274070e7c70a1038766437"
   },
   "workbench_features": [
     "native_omfit_project_gui",
@@ -566,7 +566,9 @@
     "shared_gui_viewport_reflow",
     "gui_pack_padding_types",
     "cgyro_scan_subtabs",
-    "tglf_array_wait_and_diagnostics"
+    "tglf_array_wait_and_diagnostics",
+    "nested_tab_geometry_settling",
+    "compact_tglf_result_table"
   ],
   "template_manager_version": "1.10.6",
   "support_archive_sha256": "cb71c03e57997da7bba99b724ca9a757fff6bad5a62f9daf4639bc6f6588618b",
