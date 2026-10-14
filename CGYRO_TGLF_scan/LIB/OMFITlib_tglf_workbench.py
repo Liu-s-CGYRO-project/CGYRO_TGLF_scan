@@ -64,6 +64,12 @@ def clone(value):
     return value.duplicate() if hasattr(value, 'duplicate') else copy.deepcopy(value)
 
 
+def fully_failed(record):
+    """A failed submission with any usable point must remain in the result list."""
+    return record.get('status', '') == 'failed' and not any(
+        point.get('status', '') == 'complete' for point in record.get('points', {}).values())
+
+
 def generation_seed(root):
     seed = get(root, SEED_PATH)
     if seed is None:
@@ -176,7 +182,7 @@ def initialize(root, factory=dict):
                     parameter2=physics.get('scanParameter2D', 'XNUE'), values1=[], values2=[],
                     parallel=physics.get('parallelScan', 3), single_Ti=physics.get('single_Ti', False),
                     uq_count=1, samples=15, sampling='L', parameter_group='common', search='',
-                    page='scan', scan_page='input')
+                    page='scan', scan_page='input', show_failed_runs=False)
     coordinate = 'rho' if get(root, ('TGLF_scan', 'TGYRO', 'INPUTS', 'input.tgyro', 'TGYRO_USE_RHO'), 1) else 'r/a'
     try:
         native_radius = float(get(root, ('TGLF_scan', 'SETTINGS', 'PHYSICS', 'rho'), 0.5))

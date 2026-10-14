@@ -1,6 +1,7 @@
 """OMFIT page for importing, configuring and running multiple input.gacode files."""
 from builtins import all, any, bool, dict, len, list, str, sum
 from OMFITlib_gui_layout import finish_gui_layout
+from OMFITlib_gui_controls import checkbox
 from OMFITlib_project_runtime import shared_issues
 from OMFITlib_tglf_multi_data import DEFAULTS, case_plan, duplicate_case, initialize, profile_digest
 from OMFITlib_tglf_multi_plot import flux_summary
@@ -50,7 +51,7 @@ class MultiInputUI:
             path = "root['TGLF_CASES'][{!r}]".format(key)
             ui.Separator(case['label'])
             with ui.same_row():
-                ui.CheckBox(path + "['enabled']", '参与运行与对比', default=True)
+                checkbox(ui, path + "['enabled']", case, 'enabled', '参与运行与对比', default=True)
                 ui.Entry(path + "['label']", '案例名称')
                 ui.Button('复制为新案例', lambda key=key: duplicate_case(self.root, key, self.factory), updateGUI=True)
             with ui.same_row():
@@ -66,7 +67,7 @@ class MultiInputUI:
                 ui.Entry(self.prefix + '[{!r}]'.format(key), key, default=DEFAULTS[key])
         with ui.same_row():
             for key in ('USE_BPER', 'USE_BPAR'):
-                ui.CheckBox(self.prefix + '[{!r}]'.format(key), key, default=DEFAULTS[key])
+                checkbox(ui, self.prefix + '[{!r}]'.format(key), self.settings, key, key, default=DEFAULTS[key])
         ui.ComboBox(self.prefix + "['include_ions']", {'全部离子': 'all', '仅热离子': 'thermal'},
                     '参与 TGLF 的离子', default='all')
         ui.Entry(self.prefix + "['extra']", '共用附加参数', default='', multiline=True,
@@ -77,7 +78,8 @@ class MultiInputUI:
             self.root['SETTINGS'].setdefault('WORKBENCH', {})['page'] = 'run'
             self.root['GUIS']['main'].run()
         ui.Button('打开统一环境配置', open_environment)
-        ui.CheckBox(self.prefix + "['continue_on_error']", '单项失败后继续其他计算', default=True)
+        checkbox(ui, self.prefix + "['continue_on_error']", self.settings, 'continue_on_error',
+                 '单项失败后继续其他计算', default=True)
         ui.Tab('3. 运行与结果')
         selected = sum(bool(case['enabled']) for case in self.cases.values())
         ui.Label('已选择 {} / {} 个案例。每次“生成输入”均新建记录；完成的结果会保留。'.format(selected, len(self.cases)), align='left')

@@ -6,10 +6,11 @@ import math
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_gui_layout import section_group
+from OMFITlib_gui_controls import checkbox
 from OMFITlib_project import MODULES, location, read, runtime_issues
 from OMFITlib_tglf_preparation import preparation_resources
 from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, SCENARIOS, SCENARIO_FIELDS,
-    generation_overrides, generation_seed, initialize, numeric_parameters, parameter_value,
+    fully_failed, generation_overrides, generation_seed, initialize, numeric_parameters, parameter_value,
     plan, radial_input_issues, selected_rows)
 
 TABS = OrderedDict([('scan', '输入与扫描'), ('parameters', '计算参数'),
@@ -455,14 +456,25 @@ class TGLFWorkbench:
             self.label('尚无新界面的运行记录。原有 TGLF 结果仍在工程数据树中。')
             self.view.nav('已有结果绘图', 'plots')
             return
+        failed = [key for key, record in runs.items() if fully_failed(record)]
+        if failed:
+            with self.ui.same_row():
+                checkbox(self.ui, self.prefix + "['show_failed_runs']", self.settings,
+                         'show_failed_runs', '显示失败记录（{}）'.format(len(failed)), updateGUI=True)
+                self.ui.Button('清理失败记录', self.actions.clear_failed_tglf_records, updateGUI=True)
         choices = OrderedDict()
         for key in sorted(runs.keys(), reverse=True):
+            if not self.settings['show_failed_runs'] and key in failed:
+                continue
             caption = record_summary(runs[key], key)
             unique, repeat = caption, 1
             while unique in choices:
                 repeat += 1
                 unique = caption + '（{}）'.format(repeat)
             choices[unique] = key
+        if not choices:
+            self.label('暂无可查看的结果。')
+            return
         if self.settings.get('result_run', None) not in choices.values():
             self.settings['result_run'] = next(iter(choices.values()))
         self.ui.ComboBox(self.prefix + "['result_run']", choices, '运行记录', state='readonly', updateGUI=True)

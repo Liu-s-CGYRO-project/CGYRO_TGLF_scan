@@ -6,6 +6,7 @@ import math
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_gui_layout import finish_gui_layout
+from OMFITlib_gui_controls import checkbox
 from OMFITlib_tglf_workbench_ui import SCAN_TABS as CGYRO_SCAN_TABS, TGLFWorkbench
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, loaded_file
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
@@ -150,6 +151,8 @@ class ProjectUI:
 
     def render_transfer(self):
         self.ui.Tab('Transfer_tool 运行')
+        frame = getattr(self.ui, '_aux', {}).get('parentGUI')
+        notebook = frame.master if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook) else None
         self.compound(('Transfer_tool', 'GUIS', 'transfer'), show_run_button=False)
         self.run_controls('transfer')
         files = transfer_generated_rows(self.root)
@@ -159,6 +162,8 @@ class ProjectUI:
                 lambda: self.settings.update(dict(page='cgyro', cgyro_source_mode=ready['mode'])), updateGUI=True)
         self.ui.Tab('生成文件')
         self.transfer_files(files)
+        self.ui.Tab('剖面绘图')
+        self.compound(('Transfer_tool', 'GUIS', 'plots'))
         self.ui.Tab('局部输入互转')
         self.compound(('Transfer_tool', 'GUIS', 'convert'))
         self.ui.Tab('高级设置')
@@ -175,6 +180,19 @@ class ProjectUI:
                 postcommand=lambda location=None, kind=kind: self.actions.import_transfer_seed(kind), updateGUI=True)
         self.label('起止半径、坐标和点数以“Transfer_tool 运行”页为准；离子数量、质量和电荷每次运行时从当前剖面同步。')
         self.nav('统一 GACODE 环境配置', 'run')
+        if notebook is not None:
+            pages = ['run', 'files', 'plots', 'convert', 'advanced']
+            selected = self.settings.setdefault('transfer_tab', 'run')
+            if selected not in pages:
+                selected = self.settings['transfer_tab'] = 'run'
+            notebook.select(pages.index(selected))
+            def remember(event):
+                if event.widget is notebook:
+                    try:
+                        self.settings['transfer_tab'] = pages[notebook.index(notebook.select())]
+                    except tk.TclError:
+                        pass
+            notebook.bind('<<NotebookTabChanged>>', remember, add='+')
 
     def transfer_files(self, rows):
         if not rows:
@@ -616,17 +634,7 @@ class ProjectUI:
             self.ui.Button('恢复', lambda: self.actions.reset_cgyro_parameters([name], source_key), updateGUI=True)
 
     def cgyro_checkbox(self, path, mapping, key, caption):
-        value = mapping.get(key, False)
-        value = str(value).lower() in ('true', '.true.', '1', '1.0')
-        mapping[key] = value
-        # Native CheckBox returns one widget per location, including a single path.
-        control = self.ui.CheckBox(path, caption, default=False, updateGUI=True)[0]
-        variable = tk.BooleanVar(master=control, value=value)
-        control.configure(variable=variable, onvalue=1, offvalue=0)
-        variable.set(value)
-        control.state(['!alternate', 'selected' if value else '!selected'])
-        control._cgyro_boolean = variable
-        return control
+        return checkbox(self.ui, path, mapping, key, caption, updateGUI=True)
 
     def render_tglf(self):
         TGLFWorkbench(self).render()
@@ -936,6 +944,8 @@ class ProjectUI:
     def render_plots(self):
         self.label('扫描结果浏览以数值表显示 1–3 个参数轴；对比绘图用于跨案例或跨模型比较。')
         with self.ui.same_row():
+            self.ui.Button('Transfer_tool 剖面绘图',
+                           lambda: self.settings.update(dict(page='transfer', transfer_tab='plots')), updateGUI=True)
             self.task('CGYRO 扫描结果浏览', ('GUIS', 'CGYRO_results'),
                       issues=[] if read(self.root, ('CGYRO_scan', 'RUN_DB'), {}) else ['尚无已收集的 CGYRO 扫描结果'])
             self.nav('多 input.gacode 结果对比', 'multi')

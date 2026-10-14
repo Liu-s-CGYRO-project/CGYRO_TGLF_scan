@@ -47,6 +47,9 @@ try:
     root['SCRIPTS']['tgyro_tglf.py'].run()
     print('Transfer_tool：生成各半径的 input.cgyro / input.tglf …')
     root['SCRIPTS']['profiles_gen4input.py'].run()
+    # Keep the plotted profile paired with this completed local-input set, even
+    # after the input chooser is used again or the raw input is restored below.
+    outputs['Particle_processing']['plot_profile'] = profile.duplicate()
     # Keep the imported (or newly generated raw) profile reusable for another preset.
     root['INPUTS']['input.gacode'] = source_profile
 except BaseException:

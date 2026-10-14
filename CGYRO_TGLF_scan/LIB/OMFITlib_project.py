@@ -20,7 +20,7 @@ from OMFITlib_gacode_installations import (PROGRAMS, detection_is_current, insta
     parse_probe, probe_script, sync_environment, valid_path)
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, tgyro_batch_settings, tglf_input_format
 from OMFITlib_tglf_workbench import (PROFILE_PATH, RADII, initialize as initialize_tglf,
-    generation_overrides, input_rows as tglf_rows, plan as tglf_plan)
+    fully_failed, generation_overrides, input_rows as tglf_rows, plan as tglf_plan)
 from OMFITlib_tglf_multi_data import profile_digest, profile_info, tgyro_input
 from OMFITlib_transfer_particles import particle_options
 from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters, initialize_parameters,
@@ -708,6 +708,18 @@ class ProjectActions:
         record.update(dict(status='cancelled' if cancelled else 'failed', error=str(exc)))
         self.settings['message'] = error_notice(title, cancelled)
         return record
+
+    def clear_failed_tglf_records(self):
+        runs = read(self.root, ('TGLF_scan', 'RUN_DB'), {})
+        keys = [key for key, record in runs.items() if fully_failed(record)]
+        for key in keys:
+            del runs[key]
+        settings, _ = initialize_tglf(self.root, self.factory)
+        if settings.get('result_run', '') in keys:
+            settings['result_run'] = ''
+            settings['result_point'] = ''
+        self._record('清理 TGLF 失败记录', status='complete', removed_run_ids=keys)
+        self.settings['message'] = ''
 
     def open_page(self, page):
         if page in ('review', 'multi'):

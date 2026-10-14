@@ -41,6 +41,11 @@ def load_profile(location=None):
     root['INPUTS'][kind] = value
     physics['generation']['thermal_reference_ion'] = 0
     if kind == 'input.gacode':
+        previous = root['Transfer_file'].get('input.gacode', None)
+        report = root['OUTPUTS'].get('Particle_processing', {})
+        if previous is not None and report.get('after', None) and 'plot_profile' not in report:
+            # Migrate an existing generated set before replacing its old profile.
+            report['plot_profile'] = previous.duplicate()
         root['Transfer_file']['input.gacode'] = value.duplicate()
     scratch['profile_filename'] = source['path']
 
@@ -161,4 +166,5 @@ if show_run_button:
                  state='disabled' if issues else 'normal', help='；'.join(issues))
     if issues:
         OMFITx.Label('需要补充：' + '；'.join(issues), align='left', wraplength=840)
+    OMFITx.Button('剖面绘图', lambda: root['GUIS']['plots'].run())
     finish_gui_layout(anchor, OMFITx)

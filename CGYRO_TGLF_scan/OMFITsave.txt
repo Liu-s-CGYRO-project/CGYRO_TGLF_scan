@@ -414,3 +414,12 @@
 ['TGLF_scan']['SCRIPTS']['generate_tglf_inputs'] <-:-:-> OMFITpythonTask <-:-:-> ./TGLF_scan/SCRIPTS/generate_tglf_inputs.py <-:-:-> {}
 ['TGLF_scan']['RUN_DB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['TGLF_scan']['PLOTS']['workbench_result'] <-:-:-> OMFITpythonTask <-:-:-> ./TGLF_scan/PLOTS/workbench_result.py <-:-:-> {}
+['LIB']['OMFITlib_gui_controls'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_controls.py <-:-:-> {}
+['Transfer_tool']['LIB']['OMFITlib_gui_controls'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_controls.py <-:-:-> {}
+['Transfer_tool']['GUIS']['plots'] <-:-:-> OMFITpythonGUI <-:-:-> ./Transfer_tool/GUIS/plots.py <-:-:-> {}
+['Transfer_tool']['LIB']['OMFITlib_transfer_plot_data'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_plot_data.py <-:-:-> {}
+['LIB']['OMFITlib_transfer_plot_data'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_plot_data.py <-:-:-> {}
+['Transfer_tool']['LIB']['OMFITlib_transfer_plot_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_plot_ui.py <-:-:-> {}
+['LIB']['OMFITlib_transfer_plot_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_plot_ui.py <-:-:-> {}
+['Transfer_tool']['LIB']['OMFITlib_transfer_plot_render'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_plot_render.py <-:-:-> {}
+['LIB']['OMFITlib_transfer_plot_render'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_plot_render.py <-:-:-> {}
