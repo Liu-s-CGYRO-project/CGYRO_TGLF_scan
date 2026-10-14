@@ -175,7 +175,8 @@ def initialize(root, factory=dict):
     defaults = dict(mode='single', parameter1=physics.get('scanParameter', 'RLTS_1'),
                     parameter2=physics.get('scanParameter2D', 'XNUE'), values1=[], values2=[],
                     parallel=physics.get('parallelScan', 3), single_Ti=physics.get('single_Ti', False),
-                    uq_count=1, samples=15, sampling='L', parameter_group='common', search='', page='scan')
+                    uq_count=1, samples=15, sampling='L', parameter_group='common', search='',
+                    page='scan', scan_page='input')
     coordinate = 'rho' if get(root, ('TGLF_scan', 'TGYRO', 'INPUTS', 'input.tgyro', 'TGYRO_USE_RHO'), 1) else 'r/a'
     try:
         native_radius = float(get(root, ('TGLF_scan', 'SETTINGS', 'PHYSICS', 'rho'), 0.5))

@@ -11,6 +11,7 @@ from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, SCEN
 
 TABS = OrderedDict([('scan', '输入与扫描'), ('parameters', '计算参数'),
                     ('results', '结果与记录'), ('multi', '多个剖面对比')])
+SCAN_TABS = OrderedDict([('input', '输入准备'), ('settings', '扫描设置'), ('run', '运行')])
 
 
 class TGLFWorkbench:
@@ -68,7 +69,45 @@ class TGLFWorkbench:
                 return
 
     def scan(self):
-        self.ui.Separator('01  输入')
+        # CompoundGUI gives the sub-tabs their own native Notebook context.
+        self.view.compound(('GUIS', 'TGLF_controls'), workbench=self)
+        self.view.show_message(first_line=True)
+
+    def render_scan_tabs(self):
+        selected = self.settings['scan_page'] if self.settings['scan_page'] in SCAN_TABS else 'input'
+        self.scan_notebook = None
+        for page, caption in SCAN_TABS.items():
+            self.ui.Tab(caption)
+            if self.scan_notebook is None:
+                frame = getattr(self.ui, '_aux', {}).get('parentGUI')
+                if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook):
+                    self.scan_notebook = frame.master
+            if page == 'input':
+                self.input()
+            elif page == 'settings':
+                self.scan_settings()
+            else:
+                self.run()
+        self.select_scan_page(selected)
+        if self.scan_notebook is not None:
+            self.scan_notebook.bind('<<NotebookTabChanged>>', self.scan_page_changed, add='+')
+
+    def select_scan_page(self, page):
+        self.settings['scan_page'] = page
+        if self.scan_notebook is not None:
+            try:
+                self.scan_notebook.select(list(SCAN_TABS).index(page))
+            except tk.TclError:
+                return
+
+    def scan_page_changed(self, event):
+        if event.widget is self.scan_notebook:
+            try:
+                self.settings['scan_page'] = list(SCAN_TABS)[self.scan_notebook.index(self.scan_notebook.select())]
+            except tk.TclError:
+                return
+
+    def input(self):
         groups = OrderedDict()
         for caption, name in [('剖面文件（input.gacode）', 'radial'),
                               ('Transfer_tool 生成的半径输入', 'transfer'),
@@ -85,12 +124,12 @@ class TGLFWorkbench:
             source = self.view.settings.get('tglf_import_source', {})
             if source.get('path', None):
                 self.label('已载入：' + source['path'])
-        if self.settings['source'] == 'radial' and not self.available:
-            self.view.show_message(first_line=True)
-            return
+
+    def scan_settings(self):
         if not self.available:
-            self.label('请先载入输入文件。')
-        self.ui.Separator('02  扫描设置')
+            self.label('请先准备输入文件。')
+            self.ui.Button('准备输入', lambda: self.select_scan_page('input'))
+            return
         self.radius_selection()
         if self.available:
             anchor = self.label('已选 {} 个输入'.format(len(self.selected)))
@@ -147,7 +186,8 @@ class TGLFWorkbench:
             self.label('各参数按独立正态分布采样；均值和标准差是实际数值。')
         if mode != 'single':
             self.view.cgyro_checkbox(self.prefix + "['single_Ti']", self.settings, 'single_Ti', '温度扫描同步到输入中同温的热离子')
-        self.ui.Separator('03  运行')
+
+    def run(self):
         self.ui.Entry(self.prefix + "['parallel']", '并发任务数', width=12, updateGUI=True)
         problems = runtime_issues(self.root, 'tglf')
         try:
@@ -162,7 +202,6 @@ class TGLFWorkbench:
             self.view.nav('环境与队列', 'run')
         if problems:
             self.label('需要补充：' + '；'.join(problems[:2]))
-        self.view.show_message(first_line=True)
 
     def profile(self):
         profile = read(self.root, PROFILE_PATH)

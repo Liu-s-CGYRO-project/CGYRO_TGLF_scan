@@ -711,7 +711,10 @@ class ProjectActions:
 
     def open_page(self, page):
         if page in ('review', 'multi'):
-            initialize_tglf(self.root, self.factory)[0]['page'] = 'multi' if page == 'multi' else 'scan'
+            settings, _ = initialize_tglf(self.root, self.factory)
+            settings['page'] = 'multi' if page == 'multi' else 'scan'
+            if page == 'review':
+                settings['scan_page'] = 'input'
             page = 'tglf'
         self.settings['page'] = page
 
@@ -799,7 +802,7 @@ class ProjectActions:
         detected = tglf_input_format(obj)
         self.propose_tglf(obj, '导入 TGLF 文件：' + str(path))
         self.settings['tglf_import_source'] = dict(path=str(path), server=str(server), tunnel=str(tunnel), format=detected)
-        initialize_tglf(self.root, self.factory)[0].update(dict(source='current', page='scan'))
+        initialize_tglf(self.root, self.factory)[0].update(dict(source='current', page='scan', scan_page='settings'))
         self.settings[kind + '_file'] = str(path)
 
     def handoff(self, target, source=None):
@@ -1382,7 +1385,7 @@ class ProjectActions:
         pg = module(self.root, 'profiles')['SETTINGS']
         pg['PHYSICS']['start_from'] = 'input.gacode'
         pg['DEPENDENCIES']['profpowbal'] = "root['INPUTS']['input.gacode']"
-        settings.update(dict(source='radial', page='scan', profile_source=dict(source),
+        settings.update(dict(source='radial', page='scan', scan_page='input', profile_source=dict(source),
                              profile_changed=changed or settings.get('profile_changed', False)))
         # Keep the last generated inputs/results until the new complete set is ready.
         self.settings['message'] = ''
@@ -1468,7 +1471,7 @@ class ProjectActions:
             coordinate=coordinate, include_ions=settings['include_ions'],
             profile_digest=profile_digest(profile), source=dict(settings.get('profile_source', {})),
             environment=environment, command=command, parameters=parameters)
-        settings.update(dict(source='radial', page='scan', profile_changed=False))
+        settings.update(dict(source='radial', page='scan', scan_page='settings', profile_changed=False))
         self.settings['message'] = '输入文件已生成。'
 
     def resolve_input(self, record_id, use_incoming):

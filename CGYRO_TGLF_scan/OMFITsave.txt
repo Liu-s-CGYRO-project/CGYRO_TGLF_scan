@@ -228,6 +228,7 @@
 ['GUIS']['CGYRO_results'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/CGYRO_results.py <-:-:-> {}
 ['GUIS']['Template_manager'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/Template_manager.py <-:-:-> {}
 ['GUIS']['TGLF_multi'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/TGLF_multi.py <-:-:-> {}
+['GUIS']['TGLF_controls'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/TGLF_controls.py <-:-:-> {}
 ['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['LIB']['OMFITlib_project'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project.py <-:-:-> {}
 ['LIB']['OMFITlib_project_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_ui.py <-:-:-> {}

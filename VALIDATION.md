@@ -1,3 +1,11 @@
+# 修订记录 · 工程 1.18.3 / 管理器 1.10.6
+
+将 TGLF 输入页中原 01 输入、02 扫描设置、03 运行三个纵向块拆为 input / scan_settings / run 渲染方法，原输入控件、半径和参数选择、任务预览、运行条件及回调保留。上层四个原生页签保持原样；其“输入与扫描”通过新增的 TGLF_controls GUI 使用原生 CompoundGUI 创建独立上下文，再以 OMFITx.Tab 创建“输入准备”“扫描设置”“运行”三个子页签。未借用上层的 Notebook 或手工覆盖原生上下文。
+
+新增 scan_page 默认 input，以 setdefault 补齐旧设置；外层 page 和内层 scan_page 分别从各自 Notebook 读写。生成成功和直接导入 TGLF 文件后设置 scan_page=settings；载入完整剖面回到 input，运行返回后沿用既有 page=results。生成失败时不会前进。子 GUI 的主工程与模块清单均登记，独立打开该入口时转入已有工程总控 TGLF 页面；页面构造、切换和刷新不会自动提交任务。现有 fit_tabs 同时调整两层页签的高度与顶部对齐，消息在子页签外共用。
+
+完成 Python 3.9 AST、原控件 / 回调迁移与导航静态核对、原生 CompoundGUI / Tab 接口、OMFIT 库 / 设置 / 帮助、ZIP CRC / 源文件及 SHA-256 校验。按要求未运行回归、GUI、环境初始化或计算；实际桌面排版和交互未运行验收。
+
 # 修订记录 · 工程 1.18.2 / 管理器 1.10.6
 
 TGLF 页的 page 下拉框替换为四个原生 OMFITx.Tab，沿用 scan / parameters / results / multi 保存值。静态对照本地 OMFITx.Tab：返回值为 None，当前页签框架保存在 _aux.parentGUI，框架父控件为 ttk.Notebook；仅从该上下文读取实际 Notebook，保留原生注册、页签框架及控件绑定。渲染后按保存的 page 选择页签，NotebookTabChanged 将真实选择写回 page；原运行动作写 results、剖面导入或生成写 scan 的导航继续生效。
