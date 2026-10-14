@@ -54,7 +54,7 @@ class ProjectWidgets:
             return function
 
         def create(*args, **kwargs):
-            parent = getattr(self._api, '_aux', {}).get('parentGUI')
+            parent = getattr(self._api, '_aux', {}).get('parentGUI', None)
             help_text = kwargs.get('help', '')
             # Respect native positional signatures; never rewrite entry values.
             if not help_text:

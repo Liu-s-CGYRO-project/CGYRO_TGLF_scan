@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import zipfile
 from omfit_help import validate_module_help, validate_module_settings
+from check_omfit_api import validate_project_api
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'OMFITtemplates/LIB'))
@@ -88,6 +89,14 @@ def build(output):
     if any((ROOT / name).is_symlink() for name in selected):
         raise TemplateError('分发工程不允许符号链接')
     validate_library_imports(rows, ROOT)
+    module_root = ROOT / 'CGYRO_TGLF_scan'
+    python_refs = {(ROOT / row.ref).resolve() for row in rows
+                   if row.ref and row.kind.startswith('OMFITpython')
+                   and module_root in (ROOT / row.ref).resolve().parents}
+    try:
+        api_review = validate_project_api(module_root, python_refs)
+    except ValueError as exc:
+        raise TemplateError(str(exc)) from exc
     for manifest in (ROOT / 'CGYRO_TGLF_scan/OMFITsave.txt', ROOT / 'OMFITtemplates/OMFITsave.txt'):
         if manifest.is_file():
             validate_library_imports(parse_tree(manifest.read_bytes()), manifest.parent)
@@ -120,7 +129,7 @@ def build(output):
                 raise TemplateError('ZIP CRC 校验失败')
     return {'output': str(output), 'files': len(selected), 'bytes': output.stat().st_size,
             'sha256': hashlib.sha256(output.read_bytes()).hexdigest(), 'calculation_data_files': 0,
-            'modules': project.roots}
+            'modules': project.roots, 'api_compatibility': api_review}
 
 
 if __name__ == '__main__':

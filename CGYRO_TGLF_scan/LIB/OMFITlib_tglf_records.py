@@ -33,7 +33,7 @@ def record_summary(record, run_id):
         if not name:
             continue
         values = axis.get('values', [])
-        variants = [item for source in sources for item in source.get('axes', []) if item.get('name') == name]
+        variants = [item for source in sources for item in source.get('axes', []) if item.get('name', None) == name]
         varies = any(item.get('values', []) != values for item in variants)
         try:
             if values and not varies:

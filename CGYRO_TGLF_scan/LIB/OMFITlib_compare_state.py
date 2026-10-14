@@ -141,7 +141,7 @@ def initialize_settings(root):
         physics['compare_mode'] = 'CGYRO_vs_TGLF'
     for mode in MODES:
         state = physics.setdefault(mode, {})
-        if state.get('view_tab') == 'style':
+        if state.get('view_tab', None) == 'style':
             state['view_tab'] = 'plot'
             if mode == physics['compare_mode']:
                 physics['compare_view'] = 'style'

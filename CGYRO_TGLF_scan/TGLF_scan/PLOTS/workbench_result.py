@@ -46,7 +46,7 @@ with plot_context(root):
         if record['mode'] == 'uq':
             x_name = record['plan']['uq'][0]['name']
         sources = {tuple(source['path']): source for source in record['plan'].get('sources', [])}
-        radial = not x_name and all(sources.get(tuple(p.get('source', ())), {}).get('rho') is not None for _, p in points)
+        radial = not x_name and all(sources.get(tuple(p.get('source', ())), {}).get('rho', None) is not None for _, p in points)
         groups = {}
         for index, (key, point) in enumerate(points, 1):
             group = point['label']

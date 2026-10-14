@@ -142,6 +142,6 @@ def equivalent_local_input(value, kind, main_count, expected_ions, rhostar=None)
     residuals = {name: abs(after[name] - before[name]) / max(1.0, abs(before[name])) for name in before}
     if any(error > TOLERANCE for error in residuals.values()):
         raise ValueError('等效杂质未满足电荷、Zeff、质量、压力或梯度约束，已停止生成。')
-    record.update(after=after, residuals=residuals, output_ion_count=len(new_ions))
+    record.update(dict(after=after, residuals=residuals, output_ion_count=len(new_ions)))
     closure['equivalent'] = record
     return closure

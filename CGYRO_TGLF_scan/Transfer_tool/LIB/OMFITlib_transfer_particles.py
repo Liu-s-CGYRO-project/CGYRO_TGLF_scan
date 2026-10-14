@@ -48,8 +48,8 @@ def particle_options(options):
     if coordinate not in ('rho', 'r/a'):
         raise ValueError('请选择 rho 或 r/a 坐标。')
     # Include the rule and interval in provenance, invalidating old/manual results.
-    values.update(minimum=minimum, maximum=maximum, coordinate=coordinate,
-                  main_ion_rule=MAIN_ION_RULE, main_ion_threshold=MAIN_ION_THRESHOLD)
+    values.update(dict(minimum=minimum, maximum=maximum, coordinate=coordinate,
+                  main_ion_rule=MAIN_ION_RULE, main_ion_threshold=MAIN_ION_THRESHOLD))
     if values['particle_mode'] == 'equivalent':
         values['equivalent_rule'] = EQUIVALENT_RULE
     return values
@@ -352,7 +352,7 @@ def prepare_particles(source, options):
     for index, ion in enumerate(after):
         ion['is_main'] = index < main_count
         if ion['is_main']:
-            ion.update(source_index=mains[index]['index'], mean_fraction=mains[index]['mean_fraction'])
+            ion.update(dict(source_index=mains[index]['index'], mean_fraction=mains[index]['mean_fraction']))
         elif mode == 'equivalent':
             ion['source_index'] = [original['index'] for original in before
                                    if original['index'] not in main_indices][index - main_count]

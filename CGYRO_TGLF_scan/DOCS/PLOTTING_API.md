@@ -1,6 +1,6 @@
 # 绘图与界面扩展接口
 
-工程 1.20.0 将数据读取、样式和 GUI 控件分成独立文件。添加绘图时优先复用这些接口。
+从工程 1.20.0 起，数据读取、样式和 GUI 控件分成独立文件。添加绘图时优先复用这些接口。
 
 | 文件 | 职责 |
 | --- | --- |
@@ -58,3 +58,9 @@ GUI 开头使用 `from OMFITlib_gui_api import adapt` 和 `OMFITx = adapt(OMFITx
 新入口和新库同时登记到工程根 `OMFITsave.txt` 与模块 `CGYRO_TGLF_scan/OMFITsave.txt`。OMFIT 按当前模块查找 `LIB`；子模块若使用共用库，也要登记对应的 LIB 别名及其传递依赖。回调所需的 OMFITlib 导入放在文件顶层，避免 GUI 返回后才导入导致 `ModuleNotFoundError`。
 
 结果清理仅处理 `OMFITlib_result_cleanup.BRANCHES` 与明确的运行记录。新后端应在该文件补充结果分支和活动状态检查。不要用遍历全树或按目录名猜测的方式删除数据；不要把 `INPUTS`、生成的半径输入、剖面或共享环境设置列入清理范围。
+
+## OMFIT 字典兼容约定
+
+OMFIT 的 `SortedDict` 与 Python `dict` 的可选参数不同。读工程、设置和运行记录时使用 `node.get(key, None)`，创建缺省项时使用 `node.setdefault(key, default)`，批量写入时使用 `node.update(dict(...))`。不要省略 `get` 的默认值，也不要向树的 `update` 直接传关键字参数。
+
+从 1.20.1 起，`tools/build_project.py` 在打包前调用 `tools/check_omfit_api.py`，静态检查这三种调用。它不执行 GUI、绘图或求解器。Tk 的 `Listbox.get(index)` 和 `os.environ.get(key)` 按各自的原生接口保留。

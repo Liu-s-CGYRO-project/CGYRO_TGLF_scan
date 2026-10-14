@@ -61,14 +61,14 @@ class ComparisonUI(CaseSelection):
         render_style(self.root, self.ui)
         self.ui.Tab('')
         if self.mode_notebook is not None:
-            self.mode_notebook.select(len(MODES) if self.physics.get('compare_view') == 'style' else MODES.index(selected))
+            self.mode_notebook.select(len(MODES) if self.physics.get('compare_view', None) == 'style' else MODES.index(selected))
             self.mode_notebook.bind('<<NotebookTabChanged>>', self._mode_changed, add='+')
         self.panes = panes
         finish_gui_layout(panes[MODES.index(selected)].status_label, self.ui)
 
     def _current_notebook(self):
         # OMFITx.Tab returns None; its active frame owns the actual Notebook.
-        frame = getattr(self.ui, '_aux', {}).get('parentGUI')
+        frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
         if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook):
             return frame.master
         return None

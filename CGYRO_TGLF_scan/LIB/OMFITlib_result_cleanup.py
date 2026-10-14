@@ -35,8 +35,8 @@ def active_jobs(root):
             for point in record.get('points', {}).values():
                 records.extend((str(key), attempt) for attempt in point.get('attempts', {}).values())
     return [label for label, record in records if hasattr(record, 'get') and (
-        record.get('status') in ACTIVE or
-        (record.get('status') == 'submitted_or_finished' and not record.get('failed_points')))]
+        record.get('status', None) in ACTIVE or
+        (record.get('status', None) == 'submitted_or_finished' and not record.get('failed_points', None)))]
 
 
 def clear_results(root, factory=dict):
@@ -66,7 +66,7 @@ def clear_results(root, factory=dict):
     # Keep input replacement history, strip archived calculation payloads.
     for key in list(activity.keys()):
         record = activity[key]
-        if not record.get('previous_inputs'):
+        if not record.get('previous_inputs', None):
             del activity[key]
             continue
         for name in ('tglf_data', 'tgyro_result', 'result', 'results', 'outputs'):
@@ -77,7 +77,7 @@ def clear_results(root, factory=dict):
     workbench.pop('cgyro_result_view', None)
     for key in ('result_run', 'result_point'):
         workbench.get('tglf', {})[key] = ''
-    root.get('SETTINGS', {}).get('TGLF_MULTI', {}).update(status='')
+    root.get('SETTINGS', {}).get('TGLF_MULTI', {}).update(dict(status=''))
     physics = root.get('SETTINGS', {}).get('PHYSICS', {})
     for mode in MODES:
         saved = physics.get(mode, {})

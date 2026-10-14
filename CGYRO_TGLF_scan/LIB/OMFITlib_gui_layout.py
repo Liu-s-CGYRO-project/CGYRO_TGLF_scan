@@ -12,7 +12,7 @@ from OMFITlib_gui_context import bind_actions
 def section_group(ui, title):
     """Enclose native controls without changing their bindings or tab context."""
     aux = getattr(ui, '_aux', None)
-    parent = aux.get('parentGUI') if isinstance(aux, dict) else None
+    parent = aux.get('parentGUI', None) if isinstance(aux, dict) else None
     if not isinstance(parent, tk.Misc):
         ui.Separator(title)
         yield

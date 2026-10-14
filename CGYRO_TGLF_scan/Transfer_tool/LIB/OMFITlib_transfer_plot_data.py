@@ -75,7 +75,7 @@ def local_rows(root):
         match = re.fullmatch(r'input\.tglf_(\d+)', str(name))
         if match:
             index = int(match.group(1))
-            radius = metadata.get(name, {}).get('rho')
+            radius = metadata.get(name, {}).get('rho', None)
             rows.append(dict(index=index, name=str(name), rho=radius, input=branch[name]))
     if any(row['rho'] is None for row in rows):
         grid = get(root, ('OUTPUTS', 'TGYRO', 'rho'))

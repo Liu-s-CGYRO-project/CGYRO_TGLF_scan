@@ -15,7 +15,7 @@ def run_choices(root):
     runs = root.get('TGLF_scan', {}).get('RUN_DB', {})
     for key in sorted(runs, key=str, reverse=True):
         record = runs[key]
-        if not any(p.get('status') == 'complete' for p in record.get('points', {}).values()):
+        if not any(p.get('status', None) == 'complete' for p in record.get('points', {}).values()):
             continue
         label = record_summary(record, key)
         if label in choices:
@@ -24,7 +24,7 @@ def run_choices(root):
     scan = root.get('TGLF_scan', {})
     for dimension in ('1D', '2D'):
         key = 'scanResults2D' if dimension == '2D' else 'scanResults'
-        if scan.get(key) or scan.get(key + '_spectra'):
+        if scan.get(key, None) or scan.get(key + '_spectra', None):
             choices['旧版 ' + dimension + ' 扫描'] = 'legacy:' + dimension
     return choices
 
@@ -33,7 +33,7 @@ def source_dimension(root, source):
     if str(source).startswith('legacy:'):
         return str(source).split(':', 1)[1]
     record = root.get('TGLF_scan', {}).get('RUN_DB', {}).get(source, {})
-    return '2D' if record.get('mode', record.get('plan', {}).get('mode')) == '2d' else '1D'
+    return '2D' if record.get('mode', record.get('plan', {}).get('mode', None)) == '2d' else '1D'
 
 
 def spectrum_arrays(spectrum):
@@ -104,26 +104,26 @@ def tglf_results(root, state, target='Spectra', dimension=None):
     # A repeated numeric radius from distinct inputs must not overwrite another.
     radius_owners = {}
     for path, item in sources.items():
-        key = item.get('rho')
+        key = item.get('rho', None)
         if key is not None:
             radius_owners.setdefault(key, []).append(path)
     output = {}
     for index, (point_id, point) in enumerate(record.get('points', {}).items(), 1):
-        if point.get('status') != 'complete':
+        if point.get('status', None) != 'complete':
             continue
         result = point.get('result', {})
         if target == 'Spectra' and 'eigenvalue_spectrum' not in result:
             continue
         source_path = tuple(point.get('source', ()))
         item = sources.get(source_path, {})
-        radius = item.get('rho')
+        radius = item.get('rho', None)
         if radius is None or len(radius_owners.get(radius, [])) > 1 or item.get('coordinate', 'rho') != 'rho':
             radius = point.get('label', '输入')
             # Include path identity for equally labelled imported inputs.
-            if any(p != source_path and s.get('label') == radius for p, s in sources.items()):
+            if any(p != source_path and s.get('label', None) == radius for p, s in sources.items()):
                 radius = str(radius) + ' / ' + '/'.join(str(k) for k in source_path)
         values = point.get('parameters', {})
-        mode = record.get('mode', saved.get('mode'))
+        mode = record.get('mode', saved.get('mode', None))
         if mode == 'uq':
             names, coordinates = ['样本'], [index]
         elif axes:

@@ -160,7 +160,7 @@ class ComparisonWidgets:
         win = tk.Toplevel(parent)
         win.title(title)
         win.geometry('480x380')
-        ttk.Label(win, text='Drag rows to reorder. Add keywords or re:patterns.').pack(padx=10, pady=8)
+        ttk.Label(win, text='拖动条目调整顺序；可添加关键词或 re:正则表达式。', wraplength=440).pack(padx=10, pady=8)
         box = tk.Listbox(win, exportselection=False)
         box.pack(fill='both', expand=True, padx=10)
         text = state.get('legend_order_text', None) or default_text
@@ -181,8 +181,8 @@ class ComparisonWidgets:
             for idx in reversed(box.curselection()):
                 box.delete(idx)
 
-        ttk.Button(row, text='Add', command=add).pack(side='left')
-        ttk.Button(row, text='Remove', command=remove).pack(side='left')
+        ttk.Button(row, text='添加', command=add).pack(side='left')
+        ttk.Button(row, text='删除', command=remove).pack(side='left')
         dragging = [None]
 
         def move(event):
@@ -204,8 +204,8 @@ class ComparisonWidgets:
 
         footer = ttk.Frame(win)
         footer.pack(pady=8)
-        ttk.Button(footer, text='Save', command=save).pack(side='left', padx=5)
-        ttk.Button(footer, text='Cancel', command=win.destroy).pack(side='left', padx=5)
+        ttk.Button(footer, text='保存', command=save).pack(side='left', padx=5)
+        ttk.Button(footer, text='取消', command=win.destroy).pack(side='left', padx=5)
         win.transient(parent)
         win.grab_set()
         win.wait_window()
@@ -216,12 +216,12 @@ class ComparisonWidgets:
         parent = tk._default_root
         if parent is None:
             raise RuntimeError('Open the comparison panel in OMFIT before choosing an export folder.')
-        return filedialog.askdirectory(parent=parent, title='Choose export folder',
+        return filedialog.askdirectory(parent=parent, title='选择导出目录',
                                        initialdir=initial_dir if os.path.isdir(initial_dir) else os.getcwd()) or None
 
     def _render_tolerance_toggle(self, path, state, key, label, **unused):
         with self.ui.same_row():
             self.ui.CheckBox(path(key), label, default=False, updateGUI=True, width=24)
-            self.ui.Entry(path('error_tolerance'), 'error 上限', default=0.01, width=10,
+            self.ui.Entry(path('error_tolerance'), '相对波动上限', default=0.01, width=10,
                           kwlabel={'width': 10, 'anchor': 'w'},
-                          help='自定义相对时间波动阈值，0.01 表示 1%。勾选过滤后，ω 或 γ 的 error 超过此值的点被排除；未勾选时保留该设置但不执行过滤。')
+                          help='相对时间波动阈值，0.01 表示 1%。勾选过滤后，ω 或 γ 的相对波动超过此值的点被排除；未勾选时不执行过滤。')

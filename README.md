@@ -1,3 +1,5 @@
+工程 1.20.1 修复绘图页面的 OMFIT 字典接口兼容错误，补齐结果读取和清理中的同类调用；同步界面文案与帮助，打包前增加接口静态检查。
+
 # CGYRO / TGLF OMFIT Project
 
 用于 Linux 桌面的 OMFIT 工程，包含已审计、修复和整理的 CGYRO/TGLF 工具，以及项目内置的 **OMFIT GitHub 模板管理器**。

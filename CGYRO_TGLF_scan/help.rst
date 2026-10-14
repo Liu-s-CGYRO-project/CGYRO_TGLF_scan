@@ -29,7 +29,7 @@ TGLF 统一在“5 TGLF 扫描”使用，通过“输入与扫描”“计算�
 输入完整后再替换旧集合。复用 Transfer_tool 当前剖面时，文件框显示完整数据树地址。
 Transfer_tool 半径集排在直接导入 TGLF 文件之前，也可选择已有 TGYRO 半径集或局部互转文件。
 完整剖面、生成输入和日志保存在 TGLF_scan/TGYRO/RUN_DB/inputs_*，计算输入位于 TGLF_scan/input.tglf。
-原始参数方式每个所选输入运行一次；一维、二维参数扫描与半径选择可组合。
+不扫描参数时，每个所选输入运行一次；一维、二维参数扫描与半径选择可组合。
 扫描取值可用原值倍数、实际范围或列表；多半径倍数扫描分别使用每个输入的基准值。
 UQ 使用各参数的独立正态分布、指定样本数及 Latin Hypercube / Hammersley 采样。
 计算参数可直接修改，扫描值优先，未改的参数沿用每个源文件；运行副本开启通量模型。
@@ -102,7 +102,7 @@ the loaded results without resubmitting the scan.
 
 CGYRO radius inputs and original/H/D/T ion variants are combined as input cases.
 The rebuilt CGYRO page selects the source, cases, ky and optional physical axes,
-then prepares, submits and collects with one Run action. The second tab shows
+then prepares, submits and collects with one Run action. The Results & records tab shows
 records and numerical results. Each case can scan ky alone, or add one to three
 physical parameters. The original CGYRO module GUI uses the same interface.
 Calculation directories use flat point IDs. ``RUN_DB`` stores the task coordinates,
@@ -129,15 +129,18 @@ the workbench's plotting page or ``GUIS/CGYRO_vs_TGLF``. The legacy
 Panel order
 -----------
 
-1. **Cases**: choose the run, source dimension, radii, pairings, and scan values.
+1. **Cases**: choose the run, radii, pairings, and scan values. The selected
+   TGLF run determines the source dimension automatically.
 2. **Plot**: choose spectra, a growth-rate ratio, CGYRO eigenfunctions, or a
    TGLF flux view. Only applicable controls are shown.
-3. **Style**: choose font/line sizes, figure dimensions, grid/log axes,
-   legend placement and legend ordering.
-4. **Export & checks**: inspect selection messages, export spectra, or show
+   Log axes and legend ordering are also configured here.
+3. **Export & checks**: inspect selection messages, export spectra, or show
    the CGYRO status map. Figures can be saved through the figure toolbar.
 
-The Plot and Check selection buttons are above the tabs. In TGLF-only mode,
+A shared **Global style** tab sets font/line sizes, colors, figure dimensions,
+grid and legend placement for the project's main plotting entry points.
+
+The Plot and Check selection buttons are below the tabs. In TGLF-only mode,
 choose Linear spectra or Integrated flux before choosing the source data.
 
 Selection and data behavior
@@ -174,7 +177,8 @@ CGYRO self-comparison details
 * Spectra-only uses two panels. The optional fluctuation panels share case
   colors with the frequency/growth-rate panels. Legends are finalized once
   per page, using two columns for long lists and automatic height when needed.
-* The peak marker selects maximum raw gamma before /ky display scaling.
+* The peak marker selects the maximum currently displayed gamma quantity,
+  including the selected /ky scaling and filtering.
   Signed spectra, population standard deviations and main-ion scaling retain
   the existing conventions. Saved sample counts must match frequency arrays.
 * Single-ky scans preserve missing grid points as gaps. 3D scans use surfaces
@@ -213,11 +217,11 @@ registered in both the full project and standalone module OMFITsave.txt files.
 Validation limits
 -----------------
 
-The refactor is tested with saved setting structures, synthetic data,
-OMFIT boundary doubles and Matplotlib. Full OMFIT desktop integration,
-site-specific solver versions and physical convergence must be verified
-in the target environment. Historical calculation results are preserved;
-they were not recomputed by this UI/code refactor.
+The current revision was reviewed using Python 3.9 syntax, OMFIT method
+signatures, module registration and package integrity checks. No regression,
+GUI, plotting or solver execution was performed for this revision. Full
+OMFIT desktop integration, site-specific solver versions and physical
+convergence require verification in the target environment.
 
 全局样式与结果清理
 ~~~~~~~~~~~~~~~~~~

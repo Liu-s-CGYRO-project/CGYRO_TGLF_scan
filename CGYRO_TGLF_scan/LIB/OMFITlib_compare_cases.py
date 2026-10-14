@@ -44,7 +44,7 @@ class CaseSelection(ComparisonWidgets):
         if not choices:
             self.ui.Label('尚无已完成的 TGLF 计算。', align='left')
             return {}, []
-        if state.get('result_source') not in choices.values():
+        if state.get('result_source', None) not in choices.values():
             state['result_source'] = next(iter(choices.values()))
         self.ui.ComboBox(path('result_source'), choices, '运行记录', updateGUI=True,
                          state='readonly', width=36, kwlabel={'width': 12, 'anchor': 'w'})

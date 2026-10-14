@@ -26,7 +26,7 @@ STATUS = {'prepared': '输入已准备', 'submitted': '已提交', 'loaded': '�
           'failed': '失败', 'cancelled': '已中止', 'partial': '部分完成',
           'ready': '输入就绪', 'prepare_failed': '输入生成失败', 'preparing': '输入生成中',
           'returned': '脚本已返回', 'inputs_copied': '输入已复制', 'archived': '已保留旧数据'}
-STATUS.update(awaiting_choice='等待用户选择', accepted='使用传入输入', kept_current='保留当前输入', superseded='已有新候选')
+STATUS.update(dict(awaiting_choice='等待用户选择', accepted='使用传入输入', kept_current='保留当前输入', superseded='已有新候选'))
 
 
 class ProjectUI:
@@ -157,7 +157,7 @@ class ProjectUI:
     def clear_all_results(self):
         if active_jobs(self.root):
             raise ValueError('还有正在运行或已提交的任务。请先结束任务并收集结果，再清空。')
-        parent = getattr(self.ui, '_aux', {}).get('parentGUI')
+        parent = getattr(self.ui, '_aux', {}).get('parentGUI', None)
         if messagebox.askokcancel('清空全部结果',
                 '清空本工程的 CGYRO、TGLF、TGYRO 计算结果和运行记录。\n'
                 '保留输入文件、已生成的半径输入、参数和运行配置。\n\n'
@@ -167,7 +167,7 @@ class ProjectUI:
 
     def render_transfer(self):
         self.ui.Tab('Transfer_tool 运行')
-        frame = getattr(self.ui, '_aux', {}).get('parentGUI')
+        frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
         notebook = frame.master if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook) else None
         self.compound(('Transfer_tool', 'GUIS', 'transfer'), show_run_button=False)
         self.run_controls('transfer')
@@ -413,7 +413,7 @@ class ProjectUI:
             self.ui.Tab(caption)
             if self.cgyro_scan_notebook is None:
                 # Native Tab returns None; read its owned frame and Notebook.
-                frame = getattr(self.ui, '_aux', {}).get('parentGUI')
+                frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
                 if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook):
                     self.cgyro_scan_notebook = frame.master
             if page == 'input':
@@ -631,7 +631,7 @@ class ProjectUI:
         path = base + ('fixed_parameters', name)
         reference = ('输入值：{}'.format(source_values[name]) if name in source_values else
                      '文件未写入，显示参考值：{}；修改后才写入运行副本。'.format(spec['reference']))
-        help_text = reference + '\n修改并回车后应用到所选输入；“恢复”沿用各输入自己的值。'
+        help_text = reference + '\n修改并回车后应用到所选输入；“沿用输入”取消覆盖，使用各输入自己的值。'
         with self.ui.same_row() as line:
             frame = getattr(line, 'frm_top', None)
             if isinstance(frame, tk.Misc):
@@ -709,7 +709,7 @@ class ProjectUI:
             run = case.get('runs', {}).get(case.get('selected_run', None), {})
             self.label('{}：{}'.format(case.get('label', '未命名案例'), STATUS.get(run.get('status', None), run.get('status', '尚未运行'))))
         self.nav('选择记录 / 重试 / 查看错误', 'multi')
-        self.label('这里显示 工程保存的状态。不会在打开页面时轮询或提交任务。')
+        self.label('此页显示工程中保存的运行状态。')
         self.ui.Separator('结果管理')
         self.ui.Button('清空全部结果…', self.clear_all_results, updateGUI=True)
         self.ui.Tab('操作历史')

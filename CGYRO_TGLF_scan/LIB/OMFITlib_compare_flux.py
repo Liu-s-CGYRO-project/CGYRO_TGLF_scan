@@ -450,7 +450,7 @@ def extract_flux_components(node, flux_species='Both', merge_ions=True):
     """
     # Native results already identify the integral flux table. Read it before
     # traversing unrelated lazy spectra or files in the same result object.
-    gbflux = node.get('gbflux') if hasattr(node, 'get') else None
+    gbflux = node.get('gbflux', None) if hasattr(node, 'get') else None
     container = find_flux_container(gbflux) if gbflux is not None else None
     if container is None:
         container = find_flux_container(node)

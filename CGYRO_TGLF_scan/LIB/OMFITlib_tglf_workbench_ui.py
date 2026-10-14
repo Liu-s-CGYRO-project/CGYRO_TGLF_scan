@@ -45,7 +45,7 @@ class TGLFWorkbench:
             self.ui.Tab(caption)
             if self.notebook is None:
                 # OMFITx.Tab returns None; its context owns the active tab frame.
-                frame = getattr(self.ui, '_aux', {}).get('parentGUI')
+                frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
                 if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook):
                     self.notebook = frame.master
             if page == 'multi':
@@ -86,7 +86,7 @@ class TGLFWorkbench:
         for page, caption in SCAN_TABS.items():
             self.ui.Tab(caption)
             if self.scan_notebook is None:
-                frame = getattr(self.ui, '_aux', {}).get('parentGUI')
+                frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
                 if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook):
                     self.scan_notebook = frame.master
             if page == 'input':
@@ -170,7 +170,7 @@ class TGLFWorkbench:
                         self.ui.Entry(self.prefix + "['scan_end{}']".format(index), '终点', width=8, updateGUI=True)
                         self.ui.Entry(self.prefix + "['scan_count{}']".format(index), '点数', width=8, updateGUI=True)
         elif mode == 'uq':
-            self.ui.ComboBox(self.prefix + "['uq_count']", list(range(1, 6)), '参数数', state='readonly', updateGUI=True)
+            self.ui.ComboBox(self.prefix + "['uq_count']", list(range(1, 6)), '参数数量', state='readonly', updateGUI=True)
             continuous = [name for name in choices if not isinstance(values[name], bool) and name not in INTEGERS]
             for index in range(int(self.settings['uq_count'])):
                 item = self.settings['uq'].setdefault(str(index), self.actions.factory())
@@ -417,22 +417,22 @@ class TGLFWorkbench:
         record = runs[self.settings['result_run']]
         points = record.get('points', {})
         complete = sum(point.get('status', None) == 'complete' for point in points.values())
-        anchor = self.label('已完成 {} / {}；输入、扫描值、结果及日志保存在 TGLF_scan / RUN_DB。'.format(complete, len(points)))
+        anchor = self.label('已完成 {} / {} 个任务。'.format(complete, len(points)))
         identity = self.label('记录编号：' + str(self.settings['result_run']))
         if isinstance(identity, tk.Misc):
             identity._cgyro_role = 'muted'
         self.ui.Button('查看结果表', lambda: self.result_table(anchor, record))
         if complete:
             self.view.task('查看通量趋势', ('TGLF_scan', 'PLOTS', 'workbench_result'), record=record)
-            choices = OrderedDict((key + ' · ' + point['label'] + ' · ' + ', '.join(
-                '{}={:g}'.format(name, value) for name, value in point['parameters'].items()), key)
+            choices = OrderedDict((key + ' · ' + point['label'] + ' · ' + (', '.join(
+                '{}={:g}'.format(name, value) for name, value in point['parameters'].items()) or '原值'), key)
                 for key, point in points.items() if point.get('status', None) == 'complete')
             if self.settings.get('result_point', None) not in choices.values():
                 self.settings['result_point'] = next(iter(choices.values()))
             self.ui.ComboBox(self.prefix + "['result_point']", choices, '计算点', state='readonly', updateGUI=True)
             self.view.task('查看该点的频率 / 增长率谱', ('TGLF_scan', 'PLOTS', 'workbench_result'),
                            record=record, point_id=self.settings['result_point'])
-        self.view.nav('旧结果与 CGYRO 对比', 'plots')
+        self.view.nav('结果对比绘图', 'plots')
 
     def result_table(self, anchor, record):
         window = tk.Toplevel(anchor.winfo_toplevel())

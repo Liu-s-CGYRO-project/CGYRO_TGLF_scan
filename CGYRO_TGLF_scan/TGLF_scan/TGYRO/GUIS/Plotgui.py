@@ -34,7 +34,7 @@ if len(root['RUN_DB']) == 0:
     OMFITx.Label('尚无可比较的运行记录。')
 else:
     OMFITx.Separator()
-    OMFITx.ListEditor("scratch['plot_runids']", list(root['RUN_DB'].keys()), lbl='Select runs', default=[], unique=True, updateGUI=False)
+    OMFITx.ListEditor("scratch['plot_runids']", list(root['RUN_DB'].keys()), lbl='选择运行记录', default=[], unique=True, updateGUI=False)
     OMFITx.Separator()
     OMFITx.CheckBox("scratch['plot_gb']", '绘制回旋玻姆归一化通量', default=True)
     OMFITx.CheckBox("scratch['plot_loggb']", '回旋玻姆通量采用对称对数坐标', default=False)
@@ -104,7 +104,7 @@ else:
         OMFITx.ModulePicker(
             "root['SETTINGS']['DEPENDENCIES']['profiles_module']",
             modules=['OMFITprofiles', 'QUICKFIT'],
-            lbl='Profile modules',
+            lbl='剖面模块',
             default='',
             updateGUI=True,
         )

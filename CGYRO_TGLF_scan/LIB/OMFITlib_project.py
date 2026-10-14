@@ -90,7 +90,7 @@ def cgyro_scan_axes(root):
         1: (('Para', 'Range'),),
         2: (('Para_x', 'Range_x'), ('Para_y', 'Range_y')),
         3: (('Para_x', 'Range_x'), ('Para_y', 'Range_y'), ('Para_z', 'Range_z')),
-    }.get(dimensions)
+    }.get(dimensions, None)
     if keys is None:
         raise ValueError('参数轴数量只能是 0、1、2 或 3。')
     group = physics.get(str(dimensions) + 'd', {})

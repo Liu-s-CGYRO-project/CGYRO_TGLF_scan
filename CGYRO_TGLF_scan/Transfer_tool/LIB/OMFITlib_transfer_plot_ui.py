@@ -31,7 +31,7 @@ class TransferPlotsUI:
         for group, caption in GROUPS.items():
             ui.Tab(caption)
             if notebook is None:
-                frame = getattr(ui, '_aux', {}).get('parentGUI')
+                frame = getattr(ui, '_aux', {}).get('parentGUI', None)
                 if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook):
                     notebook = frame.master
             if group == 'estimates':
