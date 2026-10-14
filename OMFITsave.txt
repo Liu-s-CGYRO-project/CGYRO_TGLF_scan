@@ -227,6 +227,7 @@
 ['CGYRO_TGLF_scan']['GUIS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['GUIS']['main'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/main.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['GUIS']['CGYRO_vs_TGLF'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/CGYRO_vs_TGLF.py <-:-:-> {}
+['CGYRO_TGLF_scan']['GUIS']['Compare_controls'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/Compare_controls.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['GUIS']['CGYRO_vs_CGYRO'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/CGYRO_vs_CGYRO.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['GUIS']['CGYRO_results'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/CGYRO_results.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['GUIS']['Template_manager'] <-:-:-> OMFITpythonGUI <-:-:-> ./CGYRO_TGLF_scan/GUIS/Template_manager.py <-:-:-> {}

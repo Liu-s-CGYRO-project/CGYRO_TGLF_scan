@@ -4,11 +4,16 @@
 from builtins import (
     ValueError,
     dict,
+    getattr,
+    isinstance,
     len,
+    list,
 )
 from collections import (
     OrderedDict,
 )
+import tkinter as tk
+from tkinter import ttk
 from OMFITlib_compare_cases import (
     CaseSelection,
 )
@@ -24,42 +29,96 @@ from OMFITlib_compare_state import (
 )
 
 
+MODE_TABS = OrderedDict([
+    ('CGYRO_vs_TGLF', 'CGYRO / TGLF'),
+    ('CGYRO_vs_CGYRO', 'CGYRO 对比'),
+    ('TGLF_vs_TGLF', 'TGLF 对比'),
+    ('TGLF_vs_CGYRO', 'TGLF / CGYRO'),
+])
+CONTROL_TABS = OrderedDict([
+    ('cases', '案例选择'), ('plot', '绘图设置'),
+    ('style', '图形样式'), ('actions', '导出与检查'),
+])
+
+
 class ComparisonUI(CaseSelection):
     def render(self, open_templates=None):
+        self.physics = initialize_settings(self.root)
+        selected = self.physics['compare_mode']
+        self.ui.TitleGUI('CGYRO / TGLF · 对比绘图')
+        self.mode_notebook = None
+        panes = []
+        for mode in MODES:
+            self.ui.Tab(MODE_TABS[mode])
+            if self.mode_notebook is None:
+                self.mode_notebook = self._current_notebook()
+            pane = ComparisonUI(self.root, self.ui)
+            panes.append(pane)
+            # A native CompoundGUI gives each mode its own inner Notebook.
+            # All modes remain mounted, so tab switches need no GUI redraw.
+            self.ui.CompoundGUI(self.root['GUIS']['Compare_controls'], title='',
+                                comparison=pane, mode=mode, open_templates=open_templates)
+        self.ui.Tab('')
+        if self.mode_notebook is not None:
+            self.mode_notebook.select(MODES.index(selected))
+            self.mode_notebook.bind('<<NotebookTabChanged>>', self._mode_changed, add='+')
+        self.panes = panes
+        finish_gui_layout(panes[MODES.index(selected)].status_label, self.ui)
+
+    def _current_notebook(self):
+        # OMFITx.Tab returns None; its active frame owns the actual Notebook.
+        frame = getattr(self.ui, '_aux', {}).get('parentGUI')
+        if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook):
+            return frame.master
+        return None
+
+    def _mode_changed(self, event):
+        if event.widget is self.mode_notebook:
+            try:
+                self.physics['compare_mode'] = MODES[self.mode_notebook.index(self.mode_notebook.select())]
+            except tk.TclError:
+                return
+
+    def render_controls(self, mode, open_templates=None):
         physics = initialize_settings(self.root)
-        self.mode = physics['compare_mode']
+        self.mode = mode
         self.state = physics[self.mode]
         self.plot_settings = plot_state(self.mode, self.state)
         self.prefix = "root['SETTINGS']['PHYSICS'][{!r}]".format(self.mode)
-        self.ui.TitleGUI('CGYRO / TGLF · 对比绘图')
-        self.ui.ComboBox("root['SETTINGS']['PHYSICS']['compare_mode']",
-                         OrderedDict((MODE_LABELS[mode], mode) for mode in MODES),
-                         '对比方式', default='CGYRO_vs_TGLF', updateGUI=True, width=28,
-                         kwlabel={'width': 12, 'anchor': 'w'})
+        self.ui.Label(MODE_LABELS[self.mode].split(' · ', 1)[-1], align='left')
         if self.mode == 'TGLF_vs_TGLF':
             self.ui.ComboBox(self._plot_path('tglf_vs_tglf_mode'),
                              OrderedDict([('频率 / 增长率谱', 'Spectra'), ('积分通量', 'Flux')]),
                              '对比数据', default='Spectra', updateGUI=True, width=24,
                              kwlabel={'width': 12, 'anchor': 'w'})
-        self.ui.Tab('1 案例选择')
-        renderer = {
+        cases = {
             'CGYRO_vs_TGLF': self.render_mode_cgyro_vs_tglf,
             'CGYRO_vs_CGYRO': self.render_mode_cgyro_vs_cgyro,
             'TGLF_vs_TGLF': self.render_mode_tglf_vs_tglf,
             'TGLF_vs_CGYRO': self.render_mode_tglf_vs_cgyro,
         }[self.mode]
-        renderer(self.state)
-        self.ui.Tab('2 绘图设置')
-        self._render_plot()
-        self.ui.Tab('3 图形样式')
-        self._render_style()
-        self.ui.Tab('4 导出与检查')
-        self._render_actions()
-        self._render_related_tools(open_templates)
+        renderers = {
+            'cases': lambda: cases(self.state), 'plot': self._render_plot,
+            'style': self._render_style, 'actions': self._render_actions,
+        }
+        self.controls_notebook = None
+        selected = self.state.get('view_tab', 'cases')
+        if selected not in CONTROL_TABS:
+            selected = 'cases'
+        for page, caption in CONTROL_TABS.items():
+            self.ui.Tab(caption)
+            if self.controls_notebook is None:
+                self.controls_notebook = self._current_notebook()
+            renderers[page]()
+            if page == 'actions':
+                self._render_related_tools(open_templates)
+        if self.controls_notebook is not None:
+            self.controls_notebook.select(list(CONTROL_TABS).index(selected))
+            self.controls_notebook.bind('<<NotebookTabChanged>>', self._controls_changed, add='+')
         # EFIT/TGLF native GUIs return to the untabbed frame for common actions.
         self.ui.Tab('')
         self.ui.Separator()
-        report = selection_check(self.root)
+        report = selection_check(self.root, self.mode)
         missing = comparison_issues(self.root, self.mode)
         if missing:
             status = '暂无可绘图的数据：' + '；'.join(missing)
@@ -67,12 +126,19 @@ class ComparisonUI(CaseSelection):
             status = '选择尚未完成 · {} 项待检查，请查看“导出与检查”。'.format(len(report['errors']))
         else:
             status = '当前选择已就绪 · 点击绘图读取所选结果。'
-        status_label = self.ui.Label(status, align='left')
+        self.status_label = self.ui.Label(status, align='left')
         with self.ui.same_row():
             self.ui.Button('检查选择', self._refresh_check, updateGUI=True, width=16)
             self.ui.Button('绘制所选数据', self._plot, state='disabled' if missing else 'normal', width=20,
                            help='按当前案例、参数和绘图设置生成图形。计算结果仅在点击后读取。')
-        finish_gui_layout(status_label, self.ui)
+
+    def _controls_changed(self, event):
+        if event.widget is self.controls_notebook:
+            try:
+                self.state['view_tab'] = list(CONTROL_TABS)[
+                    self.controls_notebook.index(self.controls_notebook.select())]
+            except tk.TclError:
+                return
 
     def _path(self, *keys):
         return self._dict_path(self.prefix, *keys)
@@ -238,7 +304,7 @@ class ComparisonUI(CaseSelection):
                            help='在选择的目录中新建导出文件夹，保存原始谱及设置；不会覆盖已有文件。')
         self.ui.Label('图片请在绘图窗口中保存为 PNG、PDF 或 SVG。', align='left')
         self.ui.Separator('选择检查')
-        report = selection_check(self.root)
+        report = selection_check(self.root, self.mode)
         self.ui.Label('选择已通过检查。' if not report['errors'] else '请处理以下选择或设置：', align='left')
         for message in report['errors'] + report['warnings']:
             self.ui.Label('• '+message, align='left')
@@ -259,14 +325,15 @@ class ComparisonUI(CaseSelection):
                 self.ui.Button('模板 / GitHub', open_templates, width=14)
 
     def _refresh_check(self):
-        return selection_check(self.root)
+        return selection_check(self.root, self.mode)
 
     def _assert_selection(self):
-        report = selection_check(self.root)
+        report = selection_check(self.root, self.mode)
         if report['errors']:
             raise ValueError('\n'.join(report['errors']))
 
     def _plot(self):
+        self.root['SETTINGS']['PHYSICS']['compare_mode'] = self.mode
         missing = comparison_issues(self.root, self.mode)
         if missing:
             raise ValueError('；'.join(missing))
@@ -290,6 +357,7 @@ class ComparisonUI(CaseSelection):
             self.state[flag] = old
 
     def _status(self):
+        self.root['SETTINGS']['PHYSICS']['compare_mode'] = self.mode
         old = self.state.get('check_cgyro_output_now', False)
         self.state['check_cgyro_output_now'] = True
         try:

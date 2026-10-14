@@ -141,6 +141,7 @@ def initialize_settings(root):
         physics['compare_mode'] = 'CGYRO_vs_TGLF'
     for mode in MODES:
         state = physics.setdefault(mode, {})
+        state.setdefault('view_tab', 'cases')
         settings = plot_state(mode, state)
         settings.setdefault('plot_mode', 'Plot 2D')
         if settings['plot_mode'] == 'Plot 纬/纬_ref':

@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.19.0",
-  "parent_release": "1.18.9",
+  "version": "1.19.1",
+  "parent_release": "1.19.0",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -235,6 +235,7 @@
     "CGYRO_TGLF_scan/GUIS/CGYRO_results.py": "b416445616af805642f5c8037437b8f3b623e4b8b4ed98b7b565faaeb56ef5d4",
     "CGYRO_TGLF_scan/GUIS/CGYRO_vs_CGYRO.py": "ef178032e30866a8a6b64fbdf569eef758bc053afed19c8892ff205cd39ccd52",
     "CGYRO_TGLF_scan/GUIS/CGYRO_vs_TGLF.py": "cd24a774dc0a8599344eb7ef10790295a27b6baf34d7d15edf418c6e1d30175c",
+    "CGYRO_TGLF_scan/GUIS/Compare_controls.py": "81bbc38564a466de6d4c72d304ccadcbda82b8e6dd3adc74266ac1df2524d6a6",
     "CGYRO_TGLF_scan/GUIS/TGLF_controls.py": "2f0544ba4a0c7f59752ec748341e72e1e005bca115004c219f493e80fe8955d0",
     "CGYRO_TGLF_scan/GUIS/TGLF_multi.py": "555d78e5a7043bf5e1daf5f25565b6fce414a30c74d413c4b1d1775d522752b6",
     "CGYRO_TGLF_scan/GUIS/Template_manager.py": "0f597f04c35fba22fafaf913f0a2b63772fce1b70d41e03eeeef4f0faa85c28f",
@@ -254,11 +255,11 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_options.py": "d5b5712621fe6991f9a94b1258069eedc54bfc8e0a67bf11bfabaa905f0d8f5c",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_series.py": "5df7644f9515e8c2fb89d1ff1a78ba65d1afb23609a0d676f00ee10953a94a7b",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_spectra.py": "4f3f5f86e1b17c161344f4a099e115b9ee62dcf3cf373ea47ba49052e39efb0f",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_compare_state.py": "c0ea53c63ca471636df671264075a96f488ee8b51068e409e5f6303956e63792",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_compare_state.py": "d4f8ddb94ff4345b0a1bbc0aed9b49e11335160fb4b1159ac6ae4fa4f7810bbb",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_status.py": "907a6163af20c64f26c7dbf3f5f916c00a757772a9c60d22eb5e9b304dfb017f",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_style.py": "1d3750bdfe3857ff21b5c201bf920f46aca021d4475e5d6e42aa78ebc7330e9f",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_tglf.py": "f1c88ebf740ecc2a49dc8c771042164795aa0743bfb5aa6734352e499eb123f8",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py": "1e0f6908215f332e3204648470282856aa87ffcfa67a0950987c58aac0b5656e",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py": "8e5d864fc0b9d14e288a1a7233cde466bbe58f86d40c9c7887e5111d6d9b58a8",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_widgets.py": "567e74605b22c2d105f52321ec3ed08b8240a78991869f6d5d2c5020cf0c2498",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gacode_installations.py": "a558e4d108f6dece6c0c346e5a1fc4ef78931a523211eaa81986d2d9ebc037f0",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py": "9d9448f7a1bcd8a461c80efdf75ddf86d77c1f15878a760b04718fb4425b5fc4",
@@ -484,7 +485,7 @@
     "CGYRO_TGLF_scan/help.rst": "4aff70b8395ce58086beccd91389a78477c918a3666087d38dcdb6506a1cb873",
     "MainSettingsNamelist.txt": "18c52429df491c0886df36a7de01700f5ceaab2c6495a65c36aba72ab6e0dd4f",
     "OMFIT_COMPATIBILITY.md": "2b06f06986133a2f25c4a199f279505c32207751b9c122f58fbd3ef6c5b323c6",
-    "OMFITsave.txt": "8ba4e4ae69241a5f6db409be5465f5c57016726a9164ad421c00a156b9549c40",
+    "OMFITsave.txt": "94fa8e189c43c8c6430197b511b3752edafef3b5b3c383591171c52401ed03a7",
     "OMFITtemplates/GUIS/main.py": "381cebad5eb76eeb9228e5dffd1092708daff396033957bf1c8a81bcb3e3e626",
     "OMFITtemplates/LIB/OMFITlib_template_archive.py": "04623f787ba7f11d20e4a40160f531a216d835679fd819ba16097942d284e965",
     "OMFITtemplates/LIB/OMFITlib_template_cli.py": "e65c3c29a64b441b05e18ec054c408d1abf44d8bcdddbbc8a4ee80cc3a459b04",
@@ -516,7 +517,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "cd36e56b600473c03057cf89bec44bead2b4fbac2322145ade9ad55c1070c861"
+    "VALIDATION.md": "7fe6f09b69f71126f7a5c2d884771c774af64f1b59f8038b4e76a24c8a9f1572"
   },
   "workbench_features": [
     "native_omfit_project_gui",
@@ -578,7 +579,8 @@
     "readable_tglf_run_history",
     "transfer_plot_catalogue",
     "tglf_failed_record_cleanup",
-    "explicit_boolean_checkbuttons"
+    "explicit_boolean_checkbuttons",
+    "comparison_mode_tabs"
   ],
   "template_manager_version": "1.10.7",
   "support_archive_sha256": "cb71c03e57997da7bba99b724ca9a757fff6bad5a62f9daf4639bc6f6588618b",
