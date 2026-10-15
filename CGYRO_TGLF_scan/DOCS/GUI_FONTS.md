@@ -26,6 +26,10 @@
 
 ## 接口
 
+下拉列表在首次展开时由 Tk 创建；字体处理接入各控件的 postcommand，在原命令执行后、原生列表布局前同步字体。每个选项上下留白为 max(3, linespace // 5) 像素，使用 Listbox 的 selectborderwidth 参与行高度量。Tk 的行高为 linespace + 1 + 2 * selectborderwidth，鼠标与键盘继续使用原生索引和绑定。参见 [Tk 8.6 Combobox 实现](https://github.com/tcltk/tk/blob/core-8-6-branch/library/ttk/combobox.tcl)和 [Listbox 行高度量](https://github.com/tcltk/tk/blob/core-8-6-branch/generic/tkListbox.c)。
+
+postcommand 的原始 Tcl 脚本通过 Tcl 列表引用保留，并先执行一次；字体处理复用一个控件回调，刷新不重复包裹。仅在弹出前创建 Listbox，仍使用 Tk 的显示、滚动条、选择和关闭流程。已经创建的列表在界面字体刷新时也同步更新。
+
 | 文件 / 接口 | 用途 |
 | --- | --- |
 | OMFITlib_font_manifest | 固定资源包直链、大小、摘要及文件清单，不含字体字节 |

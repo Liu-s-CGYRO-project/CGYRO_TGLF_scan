@@ -26,7 +26,7 @@ _library = None
 _registration_source = ''
 # Loader changes must invalidate old interpreter caches even when the original
 # font file stays identical across project releases.
-FONT_PROFILE = 'gui-metrics-v3:' + FONT_SHA256
+FONT_PROFILE = 'gui-metrics-v4:' + FONT_SHA256
 DEFAULT_SIZE = 11
 MIN_SIZE = 9
 MAX_SIZE = 18
@@ -229,6 +229,53 @@ def gui_font(widget, base='TkDefaultFont', **overrides):
     return cache[key]
 
 
+def _sync_combobox_popdown(widget, create=False):
+    """Set the native list font and row spacing before Tk measures its window."""
+    if not widget.winfo_exists():
+        return
+    if create:
+        # Tk creates this Tcl-only Listbox lazily. It is absent from Python's
+        # widget tree and does not pass through our normal Map font handler.
+        popup = str(widget.tk.call('ttk::combobox::PopdownWindow', str(widget)))
+    else:
+        popup = str(widget) + '.popdown'
+    listbox = popup + '.f.l'
+    if not widget.tk.call('winfo', 'exists', listbox):
+        return
+    font = gui_font(widget, widget.cget('font') or 'TkDefaultFont')
+    gap = max(3, font.metrics('linespace') // 5)
+    # Native Listbox lineHeight = font linespace + 1 + 2*selectborderwidth.
+    # This adds real room to every row, rather than adding empty options or
+    # resizing text without updating Tk's item geometry and hit testing.
+    widget.tk.call(listbox, 'configure', '-font', str(font), '-selectborderwidth', gap)
+
+
+def _configure_combobox_popdown(widget, font):
+    """Keep the original postcommand and selection/keyboard bindings intact."""
+    pattern = '*' + str(widget).lstrip('.') + '*Listbox.'
+    widget.option_add(pattern + 'font', str(font), 80)
+    widget.option_add(pattern + 'selectBorderWidth', max(3, font.metrics('linespace') // 5), 80)
+    state = getattr(widget, '_project_cjk_post', None)
+    if state is None:
+        state = widget._project_cjk_post = {'script': None}
+        def prepare():
+            state['handler'](widget, create=True)
+        state['command'] = widget.register(prepare)
+    # Dispatch through state so live code updates do not retain an old closure.
+    state['handler'] = _sync_combobox_popdown
+    current = str(widget.cget('postcommand'))
+    if current != state['script']:
+        # Tcl quotes the original script as a list element, preserving spaces,
+        # newlines, substitutions and its error behavior. Run it once first,
+        # then synchronize fonts before native ConfigureListbox/PlacePopdown.
+        original = widget.tk.call('list', 'uplevel', '#0', current)
+        callback = widget.tk.call('list', state['command'])
+        script = str(widget.tk.call('format', '%s\n%s', original, callback))
+        widget.configure(postcommand=script)
+        state['script'] = script
+    _sync_combobox_popdown(widget)
+
+
 def style_widget(widget):
     """Change typography only, including popdown fonts and table headings."""
     kind = widget.winfo_class()
@@ -269,11 +316,7 @@ def style_widget(widget):
             gap = max(2, font.metrics('linespace') // 6)
             widget.configure(spacing1=gap, spacing2=gap, spacing3=gap)
         if kind == 'TCombobox':
-            # Match only this combobox, including a popdown created later.
-            widget.option_add('*' + str(widget).lstrip('.') + '*Listbox.font', str(font), 80)
-            popdown = str(widget) + '.popdown.f.l'
-            if widget.tk.call('winfo', 'exists', popdown):
-                widget.tk.call(popdown, 'configure', '-font', str(font))
+            _configure_combobox_popdown(widget, font)
 
 
 def style_widgets(parent):
