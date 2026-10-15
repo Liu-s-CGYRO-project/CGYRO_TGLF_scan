@@ -6,7 +6,7 @@ import threading
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_gui_context import bind_actions
-from OMFITlib_gui_fonts import configure_window_fonts, gui_font
+from OMFITlib_gui_fonts import configure_window_fonts, font_size, gui_font
 
 
 @contextmanager
@@ -108,6 +108,7 @@ class NativeLayout:
         base = label.cget('font') or self.style.lookup(label.cget('style') or 'TLabel', 'font') or 'TkDefaultFont'
         self.normal = gui_font(content, base, weight='normal')
         self.bold = gui_font(content, base, weight='bold')
+        self.heading = gui_font(content, base, size=font_size(content) + 1, weight='bold')
         self.gap = max(4, self.normal.metrics('linespace') // 5)
         self.width = min(760, max(640, self.normal.measure('0') * 72), content.winfo_screenwidth() - 64)
         self.tag = hashlib.sha256(repr(self.normal.actual()).encode('utf-8')).hexdigest()[:12]
@@ -123,6 +124,7 @@ class NativeLayout:
         self.panels = []
         self.reset_help_buttons = []
         self.reset_help_spacers = []
+        self.forms = []
         self.scroll_pending = None
         self._walk(content)
         # Match the real help buttons after their font and padding are styled.
@@ -153,9 +155,17 @@ class NativeLayout:
 
     def _style_name(self, widget, font, **options):
         old = str(widget.cget('style')) or widget.winfo_class()
+        if old == getattr(widget, '_project_cjk_applied_style', None):
+            old = widget._project_cjk_base_style
+        if old == getattr(widget, '_cgyro_layout_style', None):
+            old = widget._cgyro_layout_base_style
         name = 'CGYRO.' + self.tag + '.' + old
-        self.style.configure(name, font=(font.actual('family'), font.actual('size'), font.actual('weight')), **options)
+        # Retain the named font so a later font download or size change reaches
+        # styles already used by mounted and hidden tabs.
+        self.style.configure(name, font=font, **options)
         widget.configure(style=name)
+        widget._cgyro_layout_base_style = old
+        widget._cgyro_layout_style = name
 
     def _walk(self, parent):
         children = parent.winfo_children()
@@ -177,7 +187,8 @@ class NativeLayout:
                 child.configure(font=self.bold if bold else self.normal, width=0,
                                 padding=(0, self.gap if bold else self.gap // 2))
                 if role == 'heading':
-                    child.configure(foreground=self.heading_color, padding=(0, self.gap * 2, 0, self.gap))
+                    child.configure(font=self.heading, foreground=self.heading_color,
+                                    padding=(0, self.gap * 2, 0, self.gap))
                 elif role == 'muted':
                     child.configure(foreground=self.muted_color)
                 elif role == 'pending':
@@ -209,7 +220,7 @@ class NativeLayout:
             elif kind == 'TNotebook':
                 old = str(child.cget('style')) or 'TNotebook'
                 name = 'CGYRO.' + self.tag + '.' + old
-                self.style.configure(name + '.Tab', font=(self.normal.actual('family'), self.normal.actual('size')),
+                self.style.configure(name + '.Tab', font=self.normal,
                                      padding=(10, self.gap + 2))
                 child.configure(style=name)
                 if self.fit_tabs and child.winfo_manager() == 'pack':
@@ -231,6 +242,7 @@ class NativeLayout:
         form = getattr(parent, '_cgyro_form', None)
         if form is not None:
             self._form(parent, children, *form)
+            self.forms.append((parent, form))
         if row:
             for child in children:
                 child.pack_forget()
@@ -290,7 +302,8 @@ class NativeLayout:
                 child.grid(row=1, column=index, sticky='ew' if child is field else 'w',
                            padx=(0, 4), pady=(0, self.gap // 2))
         else:
-            frame.columnconfigure(0, minsize=max(self.normal.measure('每进程线程数'),
+            frame.columnconfigure(0, minsize=max(self.normal.measure(caption),
+                                               self.normal.measure('每进程线程数'),
                                                self.normal.measure('profiles_gen')) + 18)
             frame.columnconfigure(1, weight=1)
             for index, child in enumerate(children):
@@ -467,3 +480,17 @@ class NativeLayout:
     def reflow(self):
         for frame, items in self.rows:
             self._row(frame, items)
+
+    def refresh_font_metrics(self):
+        """Re-measure after a GUI font/size change without rebuilding callbacks."""
+        self.gap = max(4, self.normal.metrics('linespace') // 5)
+        self.width = min(760, max(640, self.normal.measure('0') * 72), self.content.winfo_screenwidth() - 64)
+        for frame, form in self.forms:
+            if frame.winfo_exists() and not form[2]:
+                frame.columnconfigure(0, minsize=max(self.normal.measure(form[1]),
+                                                   self.normal.measure('每进程线程数'),
+                                                   self.normal.measure('profiles_gen')) + 18)
+        for frame, items in self.rows:
+            frame._cgyro_columns = None
+        self.reflow()
+        self._queue_scroll()

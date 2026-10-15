@@ -18,6 +18,8 @@ def render_style(root, ui):
         ui.Entry(path + '[{!r}]'.format(key), label, default=DEFAULTS[key], width=10,
                  help=help, kwlabel={'width': 12, 'anchor': 'w'})
 
+    with section_group(ui, '界面字体'):
+        ui.Button('界面字体与字号', open_font_manager)
     with section_group(ui, '字体与线条'):
         with ui.same_row():
             entry('chinese_font_family', '中文字体', '默认思源宋体（Source Han Serif CN）；首次使用下载到共享缓存，后续无需重复下载。')
@@ -31,7 +33,6 @@ def render_style(root, ui):
             entry('line_width', '线宽 / pt')
             entry('marker_size', '标记大小 / pt')
         entry('axes_width', '轴线宽 / pt')
-        ui.Button('字体管理', open_font_manager)
     with section_group(ui, '配色与图例'):
         ui.ComboBox(path + "['palette']", OrderedDict([
             ('清晰配色', 'okabe_ito'), ('常规配色', 'tableau'), ('自定义', 'custom')]),

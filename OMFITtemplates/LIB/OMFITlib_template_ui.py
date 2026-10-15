@@ -9,7 +9,7 @@ import traceback
 import webbrowser
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
-from OMFITlib_gui_fonts import configure_window_fonts, gui_font, style_widget
+from OMFITlib_gui_fonts import configure_window_fonts, font_size, gui_font, style_widget
 from OMFITlib_font_ui import open_font_manager, set_proxy
 
 from OMFITlib_template_archive import TemplateError, human_size, json_bytes, parse_json
@@ -152,11 +152,12 @@ class TemplateManager(ManagerUpdateUI):
         w.minsize(940, 680)
         # nametofont(root=...) requires Python 3.10; Font supports 3.9 and
         # still binds to this window's interpreter in an embedded OMFIT session.
-        default = gui_font(w).actual()
-        family = default['family']
-        font = (family, default['size'] if default['size'] < 0 else max(10, default['size']))
-        self._metrics_font = gui_font(w, size=font[1])
+        font = gui_font(w)
+        self._metrics_font = font
         self.font = font
+        self.heading_font = gui_font(w, size=font_size(w) + 1, weight='bold')
+        self._path_rows = []
+        w._project_cjk_metrics_handler = self._refresh_font_metrics
         self._line_gap = max(6, self._metrics_font.metrics('linespace') // 3)
         self._path_label_width = max(self._metrics_font.measure(text) for text in
             ('当前工程 ZIP', '输出工程 ZIP', '来源工程 ZIP', '选用模板包', '本地模板库', '共享目录（可选）')) + 12
@@ -171,7 +172,7 @@ class TemplateManager(ManagerUpdateUI):
         for name in ('TM.TLabel', 'TM.Muted.TLabel'):
             style.map(name, foreground=[('disabled', '#7a8492')], background=[('disabled', '#f4f6fa')])
         style.map('TM.TFrame', background=[('disabled', '#f4f6fa')])
-        style.configure('TM.Title.TLabel', background='#f4f6fa', foreground='#143454', font=(font[0], 22, 'bold'))
+        style.configure('TM.Title.TLabel', background='#f4f6fa', foreground='#143454', font=self.heading_font)
         style.configure('TM.TButton', font=font, padding=(12, 7))
         style.configure('TM.TEntry', padding=(5, 4))
         style.configure('TM.TCombobox', padding=(5, 4))
@@ -180,12 +181,20 @@ class TemplateManager(ManagerUpdateUI):
         for name in ('TM.TEntry', 'TM.TCombobox'):
             style.map(name, foreground=[('disabled', '#7a8492')], fieldbackground=[('disabled', '#eceff3')])
         style.configure('TM.Treeview', font=font, rowheight=max(30, self._metrics_font.metrics('linespace') + 8))
-        style.configure('TM.Treeview.Heading', font=(font[0], font[1], 'bold'))
+        style.configure('TM.Treeview.Heading', font=gui_font(w, weight='bold'))
         style.configure('TM.TNotebook', background='#f4f6fa', tabmargins=(0, 6, 0, 0))
         style.configure('TM.TNotebook.Tab', font=font, padding=(18, 10))
         style.configure('TM.Horizontal.TProgressbar', background='#2476b8', troughcolor='#e1e7ef',
                         lightcolor='#2476b8', darkcolor='#2476b8', bordercolor='#b4c1d1')
         w.configure(background='#f4f6fa')
+
+    def _refresh_font_metrics(self):
+        self._line_gap = max(6, self._metrics_font.metrics('linespace') // 3)
+        self._path_label_width = max(self._metrics_font.measure(text) for text in
+            ('当前工程 ZIP', '输出工程 ZIP', '来源工程 ZIP', '选用模板包', '本地模板库', '共享目录（可选）')) + 12
+        for row in self._path_rows:
+            if row.winfo_exists():
+                row.columnconfigure(0, minsize=self._path_label_width)
 
     def _frame(self, parent, **kwargs):
         return ttk.Frame(parent, style='TM.TFrame', **kwargs)
@@ -265,6 +274,7 @@ class TemplateManager(ManagerUpdateUI):
         row.pack(fill='x', pady=5)
         row.columnconfigure(0, minsize=self._path_label_width)
         row.columnconfigure(1, weight=1)
+        self._path_rows.append(row)
         self._label(row, label).grid(row=0, column=0, sticky='w', padx=(0, 12))
         self._entry(row, variable, width=1).grid(row=0, column=1, sticky='ew', padx=(0, 8))
         self._button(row, '浏览…', command).grid(row=0, column=2)
@@ -275,7 +285,9 @@ class TemplateManager(ManagerUpdateUI):
         main.pack(fill='both', expand=True)
         header = self._frame(main)
         header.pack(fill='x')
-        ttk.Label(header, text='OMFIT 模板管理', font=(self.font[0], 22, 'bold'), style='TM.Title.TLabel').pack(side='left')
+        title = ttk.Label(header, text='OMFIT 模板管理', font=self.heading_font, style='TM.Title.TLabel')
+        title._cgyro_role = 'heading'
+        title.pack(side='left')
         self.manager_update_button = self._button(header, '检查管理器更新', self._check_manager_update)
         self.manager_update_button.pack(side='right')
         self._label(main, variable=self.manager_version_info, muted=True, wraplength=1000).pack(fill='x', pady=(6, 0))

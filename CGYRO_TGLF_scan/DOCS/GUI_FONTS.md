@@ -14,7 +14,15 @@
 
 缓存位置为 XDG_CACHE_HOME 或 LOCALAPPDATA 下的 omfit-cgyro/fonts；两者均未设置时使用 ~/.cache/omfit-cgyro/fonts。文件路径保持旧版的 SHA-256 命名。只有通过整包和逐文件校验后才原子写入缓存，不修改系统字体配置。缓存目录不可写时使用当前进程的临时目录，字体管理窗口显示实际位置。
 
-离线环境先在能联网的机器下载资源包，然后在“全局样式 → 字体管理”或管理器“设置与记录 → 字体管理”导入 ZIP。界面包和绘图包可以分别导入；完成后离线使用。首次下载窗口采用英文启动提示，避免字体尚未就绪时显示乱码。取消首次下载后页面使用系统字体；可稍后通过字体管理重新下载或导入。
+离线环境先在能联网的机器下载资源包，然后在“全局样式 → 界面字体与字号”或管理器“设置与记录 → 字体管理”导入 ZIP。界面包和绘图包可以分别导入；完成后离线使用。首次下载窗口采用英文启动提示，避免字体尚未就绪时显示乱码。取消首次下载后页面使用系统字体；可稍后通过字体管理重新下载或导入。
+
+## 界面字号与实际生效状态
+
+正文、输入框、按钮、页签和数值使用统一的 11 pt；分组标题为 12 pt 粗体。点数随 Tk 的显示缩放换算，不继承 OMFIT 各控件混杂的原始字号。“GUI size / pt”可选择 9–18 pt，点击“Apply GUI font”立即应用到已登记的窗口和隐藏页签，并保存在字体缓存目录的 gui_preferences.json。绘图字号单独保留在全局绘图样式中。
+
+控件内边距、表格行高和文本行距按实际字体度量计算。字体变更会更新保留的 Tk 命名字体，重新测量表单标签和页签内容，避免仍使用旧字号的尺寸。原生 OMFIT 新建字段后再次应用字体；已打开的窗口在加载器更新后也会重新绑定本模块的字体处理函数，不替换原生回调。
+
+“GUI file: ready”仅说明文件通过校验；“GUI active”以及 CJK、Latin、digits 三项显示 Tk 实际选中的字体，并显示 Tk 后端和失败原因。旧版缓存的加载失败不会阻止更新或导入后重新应用。Linux 优先通过 Tk 自己加载的依赖定位 Fontconfig，避免 Conda Tk 与系统 Fontconfig 不一致。Tk 若只支持 X11 位图字体，窗口会明确说明需要支持 Xft 的 Tk；缓存完整不代表渲染后端已经支持字体。
 
 ## 接口
 
@@ -24,9 +32,11 @@
 | OMFITlib_font_cache.ensure_cached_fonts(kind, progress=None, cancel=None) | 界面无关的下载和缓存，kind 为 gui 或 plot |
 | OMFITlib_font_cache.import_font_pack(path, progress=None, cancel=None) | 校验并导入离线包 |
 | OMFITlib_font_ui.ensure_fonts(kind, parent=None) | 缓存命中直接返回；需要下载时在工作线程处理，Tk 显示进度 |
-| OMFITlib_font_ui.open_font_manager(parent=None) | 重试下载、离线导入和缓存状态 |
+| OMFITlib_font_ui.open_font_manager(parent=None) | 重试下载、离线导入、GUI 字号和实际渲染状态 |
 | OMFITlib_gui_fonts.configure_window_fonts(window) | 只设置项目窗口的字体，不更改 Tk 全局命名字体 |
-| OMFITlib_gui_fonts.gui_font(widget, base='TkDefaultFont', **overrides) | 沿用字号、字重和斜体属性 |
+| OMFITlib_gui_fonts.gui_font(widget, base='TkDefaultFont', **overrides) | 统一界面字号，沿用字重和斜体；显式 size 可用于标题 |
+| OMFITlib_gui_fonts.font_size(widget) / set_font_size(widget, value) | 读取或保存界面字号，自动刷新项目窗口 |
+| OMFITlib_gui_fonts.font_status(widget) | 实际字体、渲染后端、生效状态和错误信息 |
 | OMFITlib_gui_fonts.refresh_window_fonts(parent) | 离线导入后刷新已登记的项目窗口 |
 | OMFITlib_plot_fonts.font_rc(style) | 保留同一幅图延迟重绘与导出时的字体配置 |
 

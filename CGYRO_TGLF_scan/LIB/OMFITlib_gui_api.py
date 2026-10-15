@@ -1,5 +1,5 @@
 """Local OMFIT widget adapter: full help text without global tooltip patches."""
-from OMFITlib_gui_fonts import configure_window_fonts, gui_font
+from OMFITlib_gui_fonts import configure_window_fonts, gui_font, style_widget
 from builtins import callable, getattr, isinstance, list, max, min, set, str, tuple
 import inspect
 import tkinter as tk
@@ -129,6 +129,9 @@ class ProjectWidgets:
                         added.extend([frame] + children(frame))
             defaults = []
             for widget in added:
+                # Native OMFIT assigns its own font while creating fields.
+                # Override it after creation, including before a hidden tab maps.
+                style_widget(widget)
                 if widget.winfo_class() != 'TButton':
                     continue
                 caption = str(widget.cget('text'))
