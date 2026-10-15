@@ -17,9 +17,11 @@ def run_choices(root):
         record = runs[key]
         if not any(p.get('status', None) == 'complete' for p in record.get('points', {}).values()):
             continue
-        label = record_summary(record, key)
-        if label in choices:
-            label += ' · ' + str(key).rsplit('_', 1)[-1]
+        caption = record_summary(record, key)
+        label, repeat = caption, 1
+        while label in choices:
+            repeat += 1
+            label = caption + '（{}）'.format(repeat)
         choices[label] = str(key)
     scan = root.get('TGLF_scan', {})
     for dimension in ('1D', '2D'):

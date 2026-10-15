@@ -117,6 +117,14 @@ class NativeLayout:
         original = tkfont.Font(root=content, font=base).actual()
         probe = tkfont.Font(root=content, **original)
         family = str(content.tk.call('font', 'actual', str(probe), '-family', '中'))
+        # Prefer a clear Chinese sans-serif face over the theme's automatic
+        # CJK fallback, retaining the original size and a fallback if absent.
+        families = content.tk.splitlist(content.tk.call('font', 'families'))
+        for candidate in ('Noto Sans CJK SC', 'Noto Sans SC', 'Source Han Sans SC',
+                          'Microsoft YaHei', 'WenQuanYi Micro Hei', 'WenQuanYi Zen Hei'):
+            if candidate in families:
+                family = candidate
+                break
         self.normal = tkfont.Font(root=content, family=family, size=original['size'])
         self.bold = tkfont.Font(root=content, family=family, size=original['size'], weight='bold')
         self.gap = max(4, self.normal.metrics('linespace') // 5)
