@@ -6,6 +6,7 @@ import threading
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_gui_context import bind_actions
+from OMFITlib_gui_caption import apply_sort_caption
 
 
 @contextmanager
@@ -203,6 +204,7 @@ class NativeLayout:
                     child.configure(foreground='#185a9d' if self.heading_color == '#274b63' else '#8bc7fa')
                 if self.compact:
                     child.configure(wraplength=self.width - 80)
+                apply_sort_caption(child, self.bold if bold else self.normal, self.style, self.background)
             elif kind in ('TEntry', 'TCombobox'):
                 child.configure(font=self.normal)
                 if self.compact:

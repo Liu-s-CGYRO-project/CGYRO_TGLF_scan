@@ -444,3 +444,12 @@
 ['Transfer_tool']['LIB']['OMFITlib_plot_style'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_style.py <-:-:-> {}
 ['DOCS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['DOCS']['绘图接口'] <-:-:-> OMFITascii <-:-:-> ./DOCS/PLOTTING_API.md <-:-:-> {}
+['DOCS']['字体许可'] <-:-:-> OMFITascii <-:-:-> ./DOCS/FONT_LICENSE.txt <-:-:-> {}
+['LIB']['OMFITlib_gui_caption'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_caption.py <-:-:-> {}
+['LIB']['OMFITlib_gui_caption_font'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_caption_font.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_gui_caption'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_caption.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_gui_caption_font'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_caption_font.py <-:-:-> {}
+['TGLF_scan']['LIB']['OMFITlib_gui_caption'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_caption.py <-:-:-> {}
+['TGLF_scan']['LIB']['OMFITlib_gui_caption_font'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_caption_font.py <-:-:-> {}
+['Transfer_tool']['LIB']['OMFITlib_gui_caption'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_caption.py <-:-:-> {}
+['Transfer_tool']['LIB']['OMFITlib_gui_caption_font'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_caption_font.py <-:-:-> {}
