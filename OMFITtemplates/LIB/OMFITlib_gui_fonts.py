@@ -4,21 +4,17 @@ The font is registered for this process only. Widget styles and font options
 are scoped to each project window; native callbacks and named Tk fonts stay
 untouched. Keep the standalone manager copy identical with build_gui_fonts.py.
 """
-from builtins import dict, getattr, int, isinstance, max, open, sorted, str, tuple
-import base64
+from builtins import dict, getattr, hasattr, int, isinstance, max, open, sorted, str, tuple
 import ctypes
 from ctypes.util import find_library
-import hashlib
 import os
-from pathlib import Path
 import sys
-import tempfile
 import threading
 import warnings
-import zlib
 import tkinter as tk
 from tkinter import font as tkfont, ttk
-from OMFITlib_gui_font_data import FONT_B85, FONT_SHA256, FONT_FAMILY
+from OMFITlib_gui_font_data import FONT_FILENAME, FONT_SHA256, FONT_FAMILY
+from OMFITlib_font_ui import ensure_fonts
 
 
 _lock = threading.RLock()
@@ -27,42 +23,20 @@ _registered = False
 _library = None
 
 
-def font_path():
-    """Decode the licensed full font once, using an atomic private cache file."""
+def font_path(parent=None):
+    """Reuse old font caches; acquire the independent pack only when needed."""
     global _path
-    with _lock:
-        if _path is not None:
-            return _path
-        data = zlib.decompress(base64.b85decode(FONT_B85))
-        if hashlib.sha256(data).hexdigest() != FONT_SHA256:
-            raise ValueError('Bundled CJK font checksum mismatch')
-        cache = Path(os.environ.get('XDG_CACHE_HOME') or
-                     os.environ.get('LOCALAPPDATA') or (Path.home() / '.cache')) / 'omfit-cgyro' / 'fonts'
-        try:
-            cache.mkdir(parents=True, exist_ok=True, mode=0o700)
-        except OSError:
-            cache = Path(tempfile.mkdtemp(prefix='omfit-cjk-'))
-        target = cache / (FONT_SHA256 + '.otf')
-        if not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest() != FONT_SHA256:
-            with tempfile.NamedTemporaryFile(dir=cache, suffix='.otf', delete=False) as output:
-                temporary = Path(output.name)
-                output.write(data)
-            try:
-                os.replace(temporary, target)
-            finally:
-                if temporary.exists():
-                    temporary.unlink()
-        _path = str(target)
-        return _path
+    if _path is None:
+        _path = ensure_fonts('gui', parent=parent)[FONT_FILENAME]
+    return _path
 
 
-def _register():
+def _register(path):
     """Add an application font without editing Fontconfig or system fonts."""
     global _registered, _library
     with _lock:
         if _registered:
             return
-        path = font_path()
         if sys.platform.startswith('linux'):
             library = ctypes.CDLL(find_library('fontconfig') or 'libfontconfig.so.1')
             library.FcConfigGetCurrent.argtypes = []
@@ -88,12 +62,15 @@ def _register():
 def font_family(widget):
     """Resolve once per interpreter; report an unavailable renderer once."""
     owner = widget._root()
+    if getattr(owner, '_project_cjk_loading', False):
+        return None
     state = getattr(owner, '_project_cjk_family', None)
     if state is not None and state[0] == FONT_SHA256:
         return state[1]
     family = None
     try:
-        _register()
+        owner._project_cjk_loading = True
+        _register(font_path(parent=widget))
         probe = tkfont.Font(root=widget, family=FONT_FAMILY, size=12)
         actual = str(widget.tk.call('font', 'actual', str(probe), '-family', '排'))
         if actual.casefold() != FONT_FAMILY.casefold():
@@ -101,8 +78,24 @@ def font_family(widget):
         family = FONT_FAMILY
     except (AttributeError, ImportError, OSError, RuntimeError, ValueError, tk.TclError) as exc:
         warnings.warn('OMFIT CJK font: ' + str(exc), RuntimeWarning, stacklevel=2)
+    finally:
+        owner._project_cjk_loading = False
     owner._project_cjk_family = (FONT_SHA256, family)
     return family
+
+
+def refresh_window_fonts(parent):
+    """Retry typography after an offline import, touching project windows only."""
+    owner = parent._root()
+    if hasattr(owner, '_project_cjk_family'):
+        del owner._project_cjk_family
+    stack = [owner]
+    while stack:
+        widget = stack.pop()
+        if getattr(widget, '_project_cjk_default_font', None) is not None:
+            configure_window_fonts(widget)
+            style_widgets(widget)
+        stack.extend(widget.winfo_children())
 
 
 def gui_font(widget, base='TkDefaultFont', **overrides):

@@ -46,9 +46,11 @@ def font_families(style):
     version = re.match(r'^(\d+)\.(\d+)', mpl.__version__)
     if version and tuple(int(part) for part in version.groups()) < (3, 6):
         raise ValueError('中英文混排需要 Matplotlib 3.6 或以上版本。')
-    register_bundled_fonts()
-    english = _file_family(style.get('font_file', ''), '英文字体') or str(style['font_family']).strip()
-    chinese = _file_family(style.get('chinese_font_file', ''), '中文字体') or str(style['chinese_font_family']).strip()
+    english_file = _file_family(style.get('font_file', ''), '英文字体')
+    chinese_file = _file_family(style.get('chinese_font_file', ''), '中文字体')
+    english = english_file or str(style['font_family']).strip()
+    chinese = chinese_file or str(style['chinese_font_family']).strip()
+    register_bundled_fonts(tuple(family for family, custom in ((english, english_file), (chinese, chinese_file)) if not custom))
     available = {font.name.casefold(): font.name for font in font_manager.fontManager.ttflist}
     aliases = {'simsun': ('SimSun', '宋体'), '宋体': ('SimSun', '宋体'), 'arial': ('Arial', 'ArialMT')}
     selected = []

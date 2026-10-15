@@ -10,6 +10,7 @@ import webbrowser
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 from OMFITlib_gui_fonts import configure_window_fonts, gui_font, style_widget
+from OMFITlib_font_ui import open_font_manager, set_proxy
 
 from OMFITlib_template_archive import TemplateError, human_size, json_bytes, parse_json
 from OMFITlib_template_paths import default_library, legacy_preferences_path, preferences_path
@@ -138,6 +139,10 @@ class TemplateManager(ManagerUpdateUI):
 
     def _configure(self):
         w = self.window
+        try:
+            set_proxy(self._selected_proxy())
+        except TemplateError:
+            pass
         configure_window_fonts(w)
         # Window decorations use the Linux window manager's fonts, not Tk's.
         w.title('OMFIT Template Manager')
@@ -486,6 +491,7 @@ class TemplateManager(ManagerUpdateUI):
         self._path_row(page, '共享目录（可选）', self.shared, lambda: self._choose_dir(self.shared))
         actions = self._frame(page)
         actions.pack(fill='x')
+        self._button(actions, '字体管理', lambda: open_font_manager(self.window)).pack(side='left', padx=(0, 10))
         self._button(actions, '读取当前工程的更新记录', self._history).pack(side='left')
         self._button(actions, '初始化 GitHub 空仓库', self._initialize_repository).pack(side='left', padx=10)
         self.log = self._text_area(page, wrap='word', background='#ffffff', foreground='#17283d',
@@ -735,7 +741,9 @@ class TemplateManager(ManagerUpdateUI):
 
     def _proxy_hint(self):
         try:
-            self.proxy_info.set(connection_label(self._selected_proxy()) + ' · 点击“测试连接”验证 GitHub HTTPS。')
+            proxy = self._selected_proxy()
+            set_proxy(proxy)
+            self.proxy_info.set(connection_label(proxy) + ' · 点击“测试连接”验证 GitHub HTTPS。')
         except TemplateError as exc:
             self.proxy_info.set(str(exc))
 
@@ -1456,7 +1464,6 @@ def open_manager(current_project='', library=None, preferences=None, session=Non
             previous.window.lift()
             return previous
         window = tk.Toplevel(parent)
-        configure_window_fonts(window)
     else:
         window = tk.Tk(className='OMFITtemplates')
     manager = TemplateManager(window, current_project=current_project, library=library, preferences=preferences, session=session)

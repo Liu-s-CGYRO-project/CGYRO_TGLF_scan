@@ -35,8 +35,8 @@
 ['TESTS']['test_live.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_live.py <-:-:-> {}
 ['LIB']['OMFITlib_gui_fonts'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_fonts.py <-:-:-> {}
 ['LIB']['OMFITlib_gui_font_data'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_font_data.py <-:-:-> {}
+['LIB']['OMFITlib_font_cache'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_font_cache.py <-:-:-> {}
+['LIB']['OMFITlib_font_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_font_ui.py <-:-:-> {}
+['LIB']['OMFITlib_font_manifest'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_font_manifest.py <-:-:-> {}
 ['DOCS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['DOCS']['字体许可'] <-:-:-> OMFITascii <-:-:-> ./DOCS/FONT_LICENSE.txt <-:-:-> {}
-['LIB']['OMFITlib_gui_font_part1'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_font_part1.py <-:-:-> {}
-['LIB']['OMFITlib_gui_font_part2'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_font_part2.py <-:-:-> {}
-['LIB']['OMFITlib_gui_font_part3'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_font_part3.py <-:-:-> {}

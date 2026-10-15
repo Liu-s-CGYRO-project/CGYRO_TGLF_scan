@@ -1,13 +1,11 @@
 """Build a result-free, self-contained OMFIT project from reviewed tree references."""
 import argparse
 import ast
-import base64
 import hashlib
 import json
 from pathlib import Path
 import sys
 import zipfile
-import zlib
 from omfit_help import validate_module_help, validate_module_settings
 from check_omfit_api import validate_project_api
 
@@ -17,43 +15,43 @@ from OMFITlib_template_archive import Project, TemplateError, json_bytes, parse_
 from OMFITlib_template_service import new_file
 
 
+def _font_constants(path):
+    tree = ast.parse(path.read_text(encoding='utf-8'), feature_version=(3, 9))
+    return {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)}
+
+
 def validate_gui_fonts():
-    """Keep embedded/standalone typography identical; do not load native fonts."""
-    first = ROOT / 'CGYRO_TGLF_scan'
-    second = ROOT / 'OMFITtemplates'
-    names = ['LIB/OMFITlib_gui_fonts.py', 'LIB/OMFITlib_gui_font_data.py', 'DOCS/FONT_LICENSE.txt']
-    names.extend('LIB/OMFITlib_gui_font_part' + str(index) + '.py' for index in (1, 2, 3))
+    """Check cache-loader parity and pinned metadata without acquiring fonts."""
+    first, second = ROOT / 'CGYRO_TGLF_scan', ROOT / 'OMFITtemplates'
+    names = ['LIB/' + name + '.py' for name in ('OMFITlib_gui_fonts', 'OMFITlib_gui_font_data',
+             'OMFITlib_font_cache', 'OMFITlib_font_ui', 'OMFITlib_font_manifest')]
+    names.append('DOCS/FONT_LICENSE.txt')
     for name in names:
         if (first / name).read_bytes() != (second / name).read_bytes():
-            raise TemplateError('独立模块字体副本不一致：' + name)
-    tree = ast.parse((first / 'LIB/OMFITlib_gui_font_data.py').read_text(encoding='utf-8'), feature_version=(3, 9))
-    constants = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body
-                 if isinstance(node, ast.Assign) and node.targets[0].id != 'FONT_B85'}
-    encoded = []
-    for index in (1, 2, 3):
-        source = first / ('LIB/OMFITlib_gui_font_part' + str(index) + '.py')
-        if source.stat().st_size > 8 * 1024 ** 2:
-            raise TemplateError('字体分片超过旧管理器的单文件限制')
-        part_tree = ast.parse(source.read_text(encoding='utf-8'), feature_version=(3, 9))
-        values = {node.targets[0].id: ast.literal_eval(node.value) for node in part_tree.body if isinstance(node, ast.Assign)}
-        encoded.append(values['FONT_PART' + str(index)])
-    assignment = next(node.value for node in tree.body if isinstance(node, ast.Assign) and node.targets[0].id == 'FONT_B85')
-    expected = ast.parse('FONT_PART1 + FONT_PART2 + FONT_PART3', mode='eval').body
-    if ast.dump(assignment) != ast.dump(expected):
-        raise TemplateError('字体分片组合与已核对的顺序不一致')
-    font = zlib.decompress(base64.b85decode(b''.join(encoded)))
-    digest = hashlib.sha256(font).hexdigest()
-    if digest != constants['FONT_SHA256'] or digest != '2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b':
-        raise TemplateError('字体资源与已核对的上游文件不一致')
+            raise TemplateError('独立模块字体加载器不一致：' + name)
+    values = _font_constants(first / 'LIB/OMFITlib_font_manifest.py')
+    identity = _font_constants(first / 'LIB/OMFITlib_gui_font_data.py')
+    if identity['FONT_SHA256'] != '2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b':
+        raise TemplateError('GUI 字体上游标识改变')
+    if values['FONT_FILES'][identity['FONT_FILENAME']]['sha256'] != identity['FONT_SHA256']:
+        raise TemplateError('GUI 字体清单不一致')
+    prefix = 'https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit-fonts/v1/'
+    for kind, pack in values['FONT_BUNDLES'].items():
+        if pack['url'] != prefix + pack['filename'] or pack['bytes'] <= 0 or len(pack['sha256']) != 64:
+            raise TemplateError('字体独立包标识无效：' + kind)
+        for name in pack['fonts']:
+            spec = values['FONT_FILES'][name]
+            if spec['bundle'] != kind or any(pack['members'][name][key] != spec[key] for key in ('bytes', 'sha256')):
+                raise TemplateError('字体独立包与文件标识不一致：' + name)
     if hashlib.sha256((first / 'DOCS/FONT_LICENSE.txt').read_bytes()).hexdigest() != '6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2':
         raise TemplateError('字体许可文件不一致')
 
 
 def validate_plot_fonts():
-    """Check pinned payloads and notices without importing or rendering fonts."""
+    """Check original face hashes and complete notices without font loading."""
     specification = json.loads((ROOT / 'tools/plot_fonts_sources.json').read_bytes())
-    tree = ast.parse((ROOT / 'CGYRO_TGLF_scan/LIB/OMFITlib_plot_font_data.py').read_text(encoding='utf-8'), feature_version=(3, 9))
-    constants = {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)}
+    constants = _font_constants(ROOT / 'CGYRO_TGLF_scan/LIB/OMFITlib_plot_font_data.py')
+    resources = _font_constants(ROOT / 'CGYRO_TGLF_scan/LIB/OMFITlib_font_manifest.py')['FONT_FILES']
     assets = constants['FONT_ASSETS']
     if constants['DEFAULT_FONTS'] != specification['defaults'] or len(assets) != len(specification['faces']):
         raise TemplateError('绘图字体默认值或资源清单不一致')
@@ -61,11 +59,12 @@ def validate_plot_fonts():
     for asset, face in zip(assets, specification['faces']):
         if any(asset[key] != face[key] for key in ('filename', 'family', 'style', 'weight')):
             raise TemplateError('绘图字体资源与上游清单不一致')
-        data = zlib.decompress(base64.b85decode(asset['payload']))
-        digest = hashlib.sha256(data).hexdigest()
-        if digest != asset['sha256'] or digest != specification['files'][asset['filename']]['sha256']:
-            raise TemplateError('绘图字体字节与上游文件不一致：' + asset['filename'])
-        digests.append(digest)
+        expected = specification['files'][asset['filename']]
+        if any(asset[key] != expected[key] or resources[asset['filename']][key] != expected[key] for key in ('bytes', 'sha256')):
+            raise TemplateError('绘图字体字节标识与上游文件不一致：' + asset['filename'])
+        if 'payload' in asset:
+            raise TemplateError('主程序不得重新嵌入字体文件')
+        digests.append(asset['sha256'])
     if hashlib.sha256(''.join(digests).encode('ascii')).hexdigest() != constants['BUNDLE_ID']:
         raise TemplateError('绘图字体资源版本不一致')
     notice = (ROOT / 'CGYRO_TGLF_scan/DOCS/PLOT_FONTS_LICENSE.txt').read_bytes()
@@ -73,7 +72,6 @@ def validate_plot_fonts():
         begin = ('=' * 72 + '\n' + name + '\n' + '=' * 72 + '\n').encode('utf-8')
         if begin not in notice:
             raise TemplateError('缺少绘图字体许可：' + name)
-        # Compare original bytes, preserving upstream line endings and EOF.
         data = notice.split(begin, 1)[1][:specification['files'][name]['bytes']]
         if hashlib.sha256(data).hexdigest() != specification['files'][name]['sha256']:
             raise TemplateError('绘图字体许可不一致：' + name)
@@ -181,6 +179,8 @@ def build(output):
                 archive.writestr(info, (ROOT / name).read_bytes())
             for name in sorted(directories):
                 archive.writestr(name.rstrip('/') + '/', b'')
+        if temporary.stat().st_size >= 1000000:
+            raise TemplateError('代码安装包超过 1 MB，请将大型资源移到独立资源包')
         with Project(temporary) as project:
             project.require_entry_first()
             owned = project.ownership(project.roots)
