@@ -8,6 +8,8 @@ OMFIT, GitHub, templates, versions, incremental updates
 
 Long Description
 ----------------
+管理器按两步升级：先安装不带字库的 1.10.9 下载修复补丁，重开后再安装 1.10.10 字体版。旧版只识别传统发布入口；后续字体版本使用 omfit-manager/v2/ 标签，由 1.10.9 及更新版本读取。更新请求沿用已有 GitHub 登录，未登录时仍可公开下载；限额提示区分匿名出口与账号，并显示预计恢复等待时间。
+
 面向带桌面的 Linux，在 OMFIT 内浏览、拉取和发布不同开发者的模板版本。
 
 1.10.8 管理器与工程界面共用随包的 Noto Sans CJK SC，覆盖按钮、字段、下拉列表和预览表格。

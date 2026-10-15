@@ -22,6 +22,8 @@ from OMFITlib_template_incremental import FORMAT, _verify_tree, manifest_name, v
 
 README = '''# OMFIT 模板管理器 {version}
 
+管理器按两步升级：先安装不带字库的 1.10.9 下载修复补丁，重开后再安装 1.10.10 字体版。旧版只识别传统发布入口；后续字体版本使用 omfit-manager/v2/ 标签，由 1.10.9 及更新版本读取。更新请求沿用已有 GitHub 登录，未登录时仍可公开下载；限额提示区分匿名出口与账号，并显示预计恢复等待时间。
+
 这是独立的管理器发行包，不附带计算工程、案例或结果。已有模板库和代理偏好沿用用户配置目录。
 
 1.10.8 内置完整 Noto Sans CJK SC，统一窗口、字段、下拉列表和表格字体；自动加载，无需系统安装。原始字体与 SIL OFL 1.1 许可一同分发。

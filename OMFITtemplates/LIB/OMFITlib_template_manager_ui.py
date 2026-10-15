@@ -39,7 +39,7 @@ class ManagerUpdateUI:
         cancel = self._manager_auto_cancel if automatic else self.cancel
         module_dir = Path(__file__).resolve().parents[1]
         def check():
-            client = GitHub(DEFAULT_REPOSITORY, token='', proxy=proxy, cancel=cancel)
+            client = GitHub(DEFAULT_REPOSITORY, proxy=proxy, cancel=cancel)
             result = check_manager_update(client)
             if result['available'] and result.get('incremental'):
                 try:
@@ -172,7 +172,7 @@ class ManagerUpdateUI:
             self._error(exc)
             return
         def install():
-            path = install_incremental(GitHub(DEFAULT_REPOSITORY, token='', proxy=proxy,
+            path = install_incremental(GitHub(DEFAULT_REPOSITORY, proxy=proxy,
                 cancel=self.cancel, progress=self._progress), plan)
             if self.session is None:
                 result = subprocess.run([sys.executable, str(Path(path) / 'OMFITtemplates/launch.py'), '--check-ui'],
@@ -236,5 +236,5 @@ class ManagerUpdateUI:
             messagebox.showinfo('Manager Package Downloaded', str(path) + '\n\n' + instruction,
                                 parent=self.manager_update_dialog or self.window)
         self._run('正在下载管理器安装包…',
-            lambda: download_manager_package(GitHub(DEFAULT_REPOSITORY, token='', proxy=proxy,
+            lambda: download_manager_package(GitHub(DEFAULT_REPOSITORY, proxy=proxy,
                 cancel=self.cancel, progress=self._progress), package, output), downloaded)

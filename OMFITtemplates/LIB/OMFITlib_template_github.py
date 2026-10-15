@@ -10,6 +10,7 @@ import shutil
 import ssl
 import subprocess
 from time import monotonic, sleep
+from time import time as wall_time
 from urllib import error, parse, request
 
 from OMFITlib_template_archive import CHUNK, TemplateError, json_bytes, parse_json
@@ -135,6 +136,73 @@ def file_hash(path, cancel=None):
             digest.update(chunk)
 
 
+def download_asset(client, identity, size, digest, output, label, progress=None):
+    """Stream a verified GET into a seekable temporary file or memory buffer.
+
+    Report available network blocks instead of waiting for a complete file.
+    Retry only interrupted reads, restarting the unverified current asset;
+    completed assets in the caller and the running installation stay intact.
+    """
+    if not 0 < identity or not 0 < size < MAX_ASSET or not re.fullmatch(r'[a-f0-9]{64}', digest):
+        raise TemplateError('GitHub 下载附件信息无效')
+    report = progress if progress is not None else client.progress
+    path = client.base + '/releases/assets/' + str(identity)
+    for attempt in range(1, READ_ATTEMPTS + 1):
+        check_cancel(client.cancel)
+        output.seek(0)
+        output.truncate(0)
+        done, hasher, next_progress = 0, hashlib.sha256(), 0.0
+        if report:
+            message = '正在连接下载：' + label if attempt == 1 else '正在重试下载（{}/{}）：{}'.format(attempt, READ_ATTEMPTS, label)
+            report(message, 0, size)
+        try:
+            with client._open(path, accept='application/octet-stream') as response:
+                read_block = getattr(response, 'read1', response.read)
+                while True:
+                    check_cancel(client.cancel)
+                    try:
+                        chunk = read_block(min(DOWNLOAD_CHUNK, size + 1 - done))
+                    except (error.URLError, OSError, IncompleteRead, RemoteDisconnected) as exc:
+                        reason = getattr(exc, 'reason', exc)
+                        if isinstance(reason, ssl.SSLCertVerificationError):
+                            raise TemplateError('GitHub HTTPS 证书验证失败，请检查系统证书与代理配置。') from None
+                        raise GitHubNetworkError('读取下载数据时连接中断') from None
+                    check_cancel(client.cancel)
+                    if not chunk:
+                        break
+                    done += len(chunk)
+                    if done > size:
+                        raise TemplateError('下载超过声明大小：' + label)
+                    # Keep local write failures distinct from network failures.
+                    output.write(chunk)
+                    hasher.update(chunk)
+                    now = monotonic()
+                    if report and (now >= next_progress or done == size):
+                        message = '正在下载：' + label
+                        if attempt > 1:
+                            message += '（重试 {}/{}）'.format(attempt, READ_ATTEMPTS)
+                        report(message, done, size)
+                        next_progress = now + 0.1
+            if done != size:
+                raise GitHubNetworkError('下载响应提前结束')
+        except GitHubNetworkError:
+            if attempt == READ_ATTEMPTS:
+                raise GitHubNetworkError('下载中断或读取超时：{}；已尝试 {} 次。当前版本保留，请检查代理或网络后重试。'.format(label, READ_ATTEMPTS)) from None
+            if report:
+                report('下载中断，准备重试（{}/{}）：{}'.format(attempt + 1, READ_ATTEMPTS, label), 0, size)
+            if client.cancel is not None:
+                client.cancel.wait(attempt)
+            else:
+                sleep(attempt)
+            check_cancel(client.cancel)
+            continue
+        if hasher.hexdigest() != digest:
+            raise TemplateError('下载 SHA-256 校验失败：' + label)
+        if report:
+            report('下载校验完成：' + label, done, size)
+        return
+
+
 def release_tag(metadata):
     release_name(metadata)
     return 'omfit/' + '/'.join(metadata[k] for k in ('author', 'id', 'version'))
@@ -225,7 +293,18 @@ class GitHub:
                        422: 'GitHub 拒绝此版本：可能已存在同名标签或资源，或仓库尚无提交。'}.get(status,
                         'GitHub 请求失败（HTTP {}），请稍后检查远端状态。'.format(status))
             if status in (403, 429) and remaining == '0':
-                message = 'GitHub API 限额已用完，请稍后重试；公开仓库也可登录后提高可用限额。'
+                message = ('当前登录账号的 GitHub API 额度已用完。' if self._token else
+                           'GitHub 匿名 API 额度已用完；额度按出口 IP 共享，公共代理的其他使用者也会占用。')
+                try:
+                    delay = max(0, int(exc.headers.get('X-RateLimit-Reset', '0')) - int(wall_time()))
+                except (TypeError, ValueError):
+                    delay = 0
+                if delay:
+                    message += '预计约 {} 分钟后恢复，请等待后再试。'.format((delay + 59) // 60)
+                else:
+                    message += '请稍后再试。'
+                if not self._token:
+                    message += '也可在管理器中登录 GitHub 后重新连接，使用账号额度。'
             raise GitHubError(status, message) from None
         except (error.URLError, OSError, TimeoutError) as exc:
             raise self._connection_error(exc) from None
