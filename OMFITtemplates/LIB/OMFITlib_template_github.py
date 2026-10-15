@@ -135,6 +135,73 @@ def file_hash(path, cancel=None):
             digest.update(chunk)
 
 
+def download_asset(client, identity, size, digest, output, label, progress=None):
+    """Stream a verified GET into a seekable temporary file or memory buffer.
+
+    Report available network blocks instead of waiting for a complete file.
+    Retry only interrupted reads, restarting the unverified current asset;
+    completed assets in the caller and the running installation stay intact.
+    """
+    if not 0 < identity or not 0 < size < MAX_ASSET or not re.fullmatch(r'[a-f0-9]{64}', digest):
+        raise TemplateError('GitHub 下载附件信息无效')
+    report = progress if progress is not None else client.progress
+    path = client.base + '/releases/assets/' + str(identity)
+    for attempt in range(1, READ_ATTEMPTS + 1):
+        check_cancel(client.cancel)
+        output.seek(0)
+        output.truncate(0)
+        done, hasher, next_progress = 0, hashlib.sha256(), 0.0
+        if report:
+            message = '正在连接下载：' + label if attempt == 1 else '正在重试下载（{}/{}）：{}'.format(attempt, READ_ATTEMPTS, label)
+            report(message, 0, size)
+        try:
+            with client._open(path, accept='application/octet-stream') as response:
+                read_block = getattr(response, 'read1', response.read)
+                while True:
+                    check_cancel(client.cancel)
+                    try:
+                        chunk = read_block(min(DOWNLOAD_CHUNK, size + 1 - done))
+                    except (error.URLError, OSError, IncompleteRead, RemoteDisconnected) as exc:
+                        reason = getattr(exc, 'reason', exc)
+                        if isinstance(reason, ssl.SSLCertVerificationError):
+                            raise TemplateError('GitHub HTTPS 证书验证失败，请检查系统证书与代理配置。') from None
+                        raise GitHubNetworkError('读取下载数据时连接中断') from None
+                    check_cancel(client.cancel)
+                    if not chunk:
+                        break
+                    done += len(chunk)
+                    if done > size:
+                        raise TemplateError('下载超过声明大小：' + label)
+                    # Keep local write failures distinct from network failures.
+                    output.write(chunk)
+                    hasher.update(chunk)
+                    now = monotonic()
+                    if report and (now >= next_progress or done == size):
+                        message = '正在下载：' + label
+                        if attempt > 1:
+                            message += '（重试 {}/{}）'.format(attempt, READ_ATTEMPTS)
+                        report(message, done, size)
+                        next_progress = now + 0.1
+            if done != size:
+                raise GitHubNetworkError('下载响应提前结束')
+        except GitHubNetworkError:
+            if attempt == READ_ATTEMPTS:
+                raise GitHubNetworkError('下载中断或读取超时：{}；已尝试 {} 次。当前版本保留，请检查代理或网络后重试。'.format(label, READ_ATTEMPTS)) from None
+            if report:
+                report('下载中断，准备重试（{}/{}）：{}'.format(attempt + 1, READ_ATTEMPTS, label), 0, size)
+            if client.cancel is not None:
+                client.cancel.wait(attempt)
+            else:
+                sleep(attempt)
+            check_cancel(client.cancel)
+            continue
+        if hasher.hexdigest() != digest:
+            raise TemplateError('下载 SHA-256 校验失败：' + label)
+        if report:
+            report('下载校验完成：' + label, done, size)
+        return
+
+
 def release_tag(metadata):
     release_name(metadata)
     return 'omfit/' + '/'.join(metadata[k] for k in ('author', 'id', 'version'))

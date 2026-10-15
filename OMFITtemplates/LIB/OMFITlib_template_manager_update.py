@@ -1,16 +1,18 @@
 """Check and download manager-only releases without changing a running project."""
 from builtins import dict, int, len, list, max, open, set, str
-import hashlib
 from pathlib import Path
 import re
 from urllib import parse
 
-from OMFITlib_template_archive import CHUNK, TemplateError
+from OMFITlib_template_archive import TemplateError
+from OMFITlib_template_github import download_asset
 from OMFITlib_template_service import check_cancel, new_file
 from OMFITlib_template_versions import MANAGER_VERSION, semantic_version
 from OMFITlib_template_incremental import manifest_name, verified_asset
 
 MANAGER_TAG_PREFIX = 'omfit-manager/v'
+STAGED_TAG_PREFIX = 'omfit-manager/v2/'
+DOWNLOAD_FIX_VERSION = '1.10.9'
 MAX_MANAGER_PACKAGE = 128 * 1024 ** 2
 
 
@@ -27,9 +29,19 @@ def check_manager_update(client, current_version=MANAGER_VERSION):
     for release in client._pages(client.base + '/releases'):
         check_cancel(client.cancel)
         tag = str(release.get('tag_name', ''))
-        if release.get('draft') or release.get('prerelease') or not tag.startswith(MANAGER_TAG_PREFIX):
+        if release.get('draft') or release.get('prerelease'):
             continue
-        version = tag[len(MANAGER_TAG_PREFIX):]
+        # Old installers recognize only the legacy prefix plus a semantic
+        # version. Keep the small download fix on that channel; font-heavy
+        # releases become visible only after the fixed downloader is installed.
+        if tag.startswith(STAGED_TAG_PREFIX):
+            if current < semantic_version(DOWNLOAD_FIX_VERSION):
+                continue
+            version = tag[len(STAGED_TAG_PREFIX):]
+        elif tag.startswith(MANAGER_TAG_PREFIX):
+            version = tag[len(MANAGER_TAG_PREFIX):]
+        else:
+            continue
         key = semantic_version(version)
         if key is not None and key[3] == 1:
             candidates.append((key, version, release))
@@ -67,7 +79,7 @@ def check_manager_update(client, current_version=MANAGER_VERSION):
     manifest = incremental_assets.get(manifest_name(version))
     result.update(latest=version, available=key > current, packages=packages,
                   incremental=dict(manifest=manifest, assets=incremental_assets) if manifest is not None else None,
-                  url='https://github.com/' + client.repo + '/releases/tag/' + parse.quote(MANAGER_TAG_PREFIX + version, safe=''),
+                  url='https://github.com/' + client.repo + '/releases/tag/' + parse.quote(release['tag_name'], safe=''),
                   notes=str(release.get('body') or '')[:20000])
     return result
 
@@ -81,22 +93,7 @@ def download_manager_package(client, package, destination):
         raise TemplateError('管理器安装包信息无效')
     destination = Path(destination).expanduser().resolve()
     with new_file(destination) as temporary:
-        done, hasher = 0, hashlib.sha256()
-        with client._open(client.base + '/releases/assets/' + str(identity), accept='application/octet-stream') as response:
-            with open(temporary, 'wb') as output:
-                while True:
-                    check_cancel(client.cancel)
-                    chunk = response.read(CHUNK)
-                    if not chunk:
-                        break
-                    done += len(chunk)
-                    if done > size:
-                        raise TemplateError('管理器下载超过声明大小')
-                    output.write(chunk)
-                    hasher.update(chunk)
-                    if client.progress:
-                        client.progress('正在下载管理器', done, size)
+        with open(temporary, 'w+b') as output:
+            download_asset(client, identity, size, digest, output, package['name'])
         check_cancel(client.cancel)
-        if done != size or hasher.hexdigest() != digest:
-            raise TemplateError('管理器安装包大小或 SHA-256 校验失败，请重试')
     return str(destination)

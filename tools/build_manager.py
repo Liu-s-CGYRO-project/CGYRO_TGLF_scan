@@ -22,6 +22,8 @@ from OMFITlib_template_incremental import FORMAT, _verify_tree, manifest_name, v
 
 README = '''# OMFIT 模板管理器 {version}
 
+1.10.9 是字体更新之前的小补丁，不包含字体文件。下载按实际收到的数据刷新进度，显示当前文件；连接中断和读取超时最多重试三次，支持取消，大小与 SHA-256 校验保持。先安装此版本并重开管理器，再安装 1.10.10 字体更新。
+
 这是独立的管理器发行包，不附带计算工程、案例或结果。已有模板库和代理偏好沿用用户配置目录。
 
 ## Linux 桌面

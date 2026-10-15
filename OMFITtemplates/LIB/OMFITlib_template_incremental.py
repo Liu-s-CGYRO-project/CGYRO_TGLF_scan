@@ -1,8 +1,9 @@
 """Verified file-level manager updates staged outside the running installation."""
-from builtins import all, any, bool, bytearray, bytes, dict, int, len, list, max, min, open, set, sorted, str, sum, tuple, type
+from builtins import all, any, bool, dict, int, len, list, max, open, set, sorted, str, sum, tuple, type
 import ast
 import gzip
 import hashlib
+import io
 import os
 from pathlib import Path
 import re
@@ -11,6 +12,7 @@ import tempfile
 import uuid
 
 from OMFITlib_template_archive import TemplateError, json_bytes, parse_json, parse_tree, safe_name
+from OMFITlib_template_github import download_asset
 from OMFITlib_template_paths import xdg_path
 from OMFITlib_template_service import check_cancel
 from OMFITlib_template_versions import semantic_version
@@ -77,23 +79,12 @@ def file_matches(path, spec):
         return False
 
 
-def _read_asset(client, asset, limit, label):
+def _read_asset(client, asset, limit, label, progress=None):
     if asset.get('repository') != client.repo or not 0 < int(asset['size']) <= limit:
         raise TemplateError('增量更新来源或附件大小无效')
-    data = bytearray()
-    with client._open(client.base + '/releases/assets/' + str(int(asset['asset_id'])), accept='application/octet-stream') as response:
-        while True:
-            check_cancel(client.cancel)
-            chunk = response.read(min(64 * 1024, limit + 1 - len(data)))
-            if not chunk:
-                break
-            data.extend(chunk)
-            if len(data) > asset['size']:
-                raise TemplateError('增量下载超过声明大小：' + label)
-    check_cancel(client.cancel)
-    if len(data) != asset['size'] or hashlib.sha256(data).hexdigest() != asset['sha256']:
-        raise TemplateError('增量下载校验失败：' + label)
-    return bytes(data)
+    with io.BytesIO() as output:
+        download_asset(client, int(asset['asset_id']), int(asset['size']), asset['sha256'], output, label, progress)
+        return output.getvalue()
 
 
 def plan_incremental(client, release, module_dir, source_overrides=None):
@@ -188,20 +179,23 @@ def install_incremental(client, plan, directory=None):
             else:
                 key = spec['asset']
                 if key not in blobs:
-                    compressed = _read_asset(client, plan['assets'][key], MAX_FILE + 65536, name)
+                    def progress(label, received, expected):
+                        if client.progress:
+                            client.progress(label, done + received, total)
+                    compressed = _read_asset(client, plan['assets'][key], MAX_FILE + 65536,
+                                             Path(name).name, progress=progress)
                     # Bounded streaming decompression rejects oversized and
                     # concatenated gzip payloads without extracting paths.
-                    import io
                     with gzip.GzipFile(fileobj=io.BytesIO(compressed)) as stream:
                         data = stream.read(spec['size'] + 1)
                     if len(data) != spec['size'] or hashlib.sha256(data).hexdigest() != spec['sha256']:
                         raise TemplateError('增量文件内容校验失败：' + name)
                     blobs[key] = data
                     done += len(compressed)
-                    if client.progress:
-                        client.progress('正在下载变更文件', done, total)
                 target.write_bytes(blobs[key])
             target.chmod(spec['mode'])
+        if client.progress:
+            client.progress('下载完成，正在校验管理器…', done, total)
         _verify_tree(stage, manifest)
         check_cancel(client.cancel)
         receipt = dict(manifest=manifest, manifest_sha256=plan['manifest_sha256'])
