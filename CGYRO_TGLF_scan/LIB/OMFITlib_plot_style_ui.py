@@ -18,7 +18,11 @@ def render_style(root, ui):
                  help=help, kwlabel={'width': 12, 'anchor': 'w'})
 
     with section_group(ui, '字体与线条'):
-        entry('font_family', '字体', '例如 DejaVu Sans、Arial、Times New Roman。中文字符使用已安装的中文字体回退。')
+        with ui.same_row():
+            entry('chinese_font_family', '中文字体', '默认思源宋体（Source Han Serif CN），已随包内置；用于标题、坐标轴和图例中的中文。')
+            entry('font_family', '英文字体', '默认 Liberation Sans，已随包内置；作为 Arial 的相近替代，用于英文、数字和常用数学符号。')
+        entry('chinese_font_file', '中文字体文件', '可选：替换内置字体时填写 .ttf、.otf 或 .ttc 文件路径。留空即可使用内置字体；指定文件后自动读取其字体名称。')
+        entry('font_file', '英文字体文件', '可选：替换内置英文字体时填写字体文件路径，默认无需填写。中英文混排需要 Matplotlib 3.6 或以上版本。')
         with ui.same_row():
             entry('font_size', '字号 / pt')
             entry('legend_font_size', '图例字号 / pt')

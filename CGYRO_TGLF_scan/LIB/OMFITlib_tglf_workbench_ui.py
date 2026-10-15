@@ -1,4 +1,5 @@
 """A single, narrow TGLF workbench for local inputs and radial scans."""
+from OMFITlib_gui_fonts import configure_window_fonts, gui_font, style_widget
 from builtins import abs, any, bool, dict, enumerate, float, getattr, int, isinstance, iter, len, list, max, min, next, range, set, sorted, str, sum, zip
 from collections import OrderedDict
 from datetime import datetime, timezone
@@ -436,6 +437,7 @@ class TGLFWorkbench:
 
     def result_table(self, anchor, record):
         window = tk.Toplevel(anchor.winfo_toplevel())
+        configure_window_fonts(window)
         window.title('TGLF 结果 · ' + record_summary(record, record['id']))
         window.withdraw()
         point_count = max(1, len(record.get('points', {})))
@@ -446,12 +448,13 @@ class TGLFWorkbench:
         frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         columns = ('point', 'input', 'parameters', 'status', 'qe', 'qi')
         style = ttk.Style(window)
-        font = tkfont.Font(root=window, font=style.lookup('Treeview', 'font') or 'TkDefaultFont')
+        font = gui_font(window, style.lookup('Treeview', 'font') or 'TkDefaultFont')
         style_name = 'TGLFResults' + str(window).replace('.', '_') + '.Treeview'
         row_height = font.metrics('linespace') + 8
         style.configure(style_name, font=font, rowheight=row_height)
         table = ttk.Treeview(frame, columns=columns, show='headings', style=style_name,
                              height=min(point_count, 12))
+        style_widget(table)
         table._tglf_font = font
         for key, title, width in zip(columns, ('任务', '输入 / 半径', '扫描值', '状态', 'Qe / QGB', 'Qi / QGB'), (90, 160, 210, 80, 110, 110)):
             table.heading(key, text=title)
@@ -479,7 +482,8 @@ class TGLFWorkbench:
         details_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         details.configure(yscrollcommand=details_scroll.set)
         details.configure(state='disabled')
-        details_font = tkfont.Font(root=window, font=details.cget('font'))
+        details_font = gui_font(details, details.cget('font'))
+        details.configure(font=details_font)
         details._tglf_font = details_font
         footer = ttk.Frame(window)
         footer.pack(fill=tk.X, padx=8, pady=(0, 8))

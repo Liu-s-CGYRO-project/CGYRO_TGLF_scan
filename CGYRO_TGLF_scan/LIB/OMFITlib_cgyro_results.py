@@ -1,4 +1,5 @@
 """RUN_DB-backed CGYRO result browser for one-, two- and three-axis scans."""
+from OMFITlib_gui_fonts import configure_window_fonts, style_widget
 from builtins import (Exception, TypeError, ValueError, abs, any, dict, float, int,
                       len, list, max, min, range, sorted, str, tuple, zip)
 from collections import OrderedDict
@@ -254,6 +255,7 @@ class ResultBrowser:
         peak = max((row for row in ordered if np.isfinite(row['gamma'])),
                    key=lambda row: row['gamma'], default=None)
         window = tk.Toplevel(self.anchor.winfo_toplevel())
+        configure_window_fonts(window)
         window.title('CGYRO 数值结果')
         width = min(800, window.winfo_screenwidth() - 64)
         height = min(880, window.winfo_screenheight() - 100)
@@ -268,6 +270,7 @@ class ResultBrowser:
         columns = ['task'] + names + ['KY', 'omega', 'gamma', 'omega_error', 'gamma_error', 'peak']
         headings = ['任务'] + names + ['ky', '平均 ω', '平均 γ', 'ω 相对波动', 'γ 相对波动', '当前最大 γ']
         table = ttk.Treeview(frame, columns=columns, show='headings')
+        style_widget(table)
         for column, heading in zip(columns, headings):
             table.heading(column, text=heading)
             table.column(column, anchor='center', width=118 if column != 'task' else 92,

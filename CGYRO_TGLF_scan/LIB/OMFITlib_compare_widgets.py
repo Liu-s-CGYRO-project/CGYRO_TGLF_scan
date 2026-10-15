@@ -1,4 +1,5 @@
 """Reusable OMFIT selectors and one native Tk legend editor."""
+from OMFITlib_gui_fonts import configure_window_fonts
 
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
@@ -160,6 +161,7 @@ class ComparisonWidgets:
         if parent is None:
             raise RuntimeError('Open the comparison panel in OMFIT before editing the legend list.')
         win = tk.Toplevel(parent)
+        configure_window_fonts(win)
         win.title(title)
         win.geometry('480x380')
         ttk.Label(win, text='拖动条目调整顺序；可添加关键词或 re:正则表达式。', wraplength=440).pack(padx=10, pady=8)

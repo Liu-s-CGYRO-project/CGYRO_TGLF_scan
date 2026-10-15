@@ -6,7 +6,7 @@ import threading
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_gui_context import bind_actions
-from OMFITlib_gui_caption import apply_sort_caption
+from OMFITlib_gui_fonts import configure_window_fonts, gui_font
 
 
 @contextmanager
@@ -61,17 +61,7 @@ def _style_console(console):
         current = str(console.cget('font'))
         if previous is not None and current == str(previous['font']):
             return
-        original = tkfont.Font(root=console, font=current or 'TkFixedFont').actual()
-        probe = tkfont.Font(root=console, **original)
-        family = str(console.tk.call('font', 'actual', str(probe), '-family', '中'))
-        # Prefer CJK monospace fonts for aligned numerical output when installed.
-        families = console.tk.splitlist(console.tk.call('font', 'families'))
-        for candidate in ('Noto Sans Mono CJK SC', 'Sarasa Mono SC', 'WenQuanYi Zen Hei Mono'):
-            if candidate in families:
-                family = candidate
-                break
-        original['family'] = family
-        font = tkfont.Font(root=console, **original)
+        font = gui_font(console, current or 'TkFixedFont')
         gap = max(3, font.metrics('linespace') // 5)
         console.configure(font=font, spacing1=gap, spacing2=gap, spacing3=gap)
         # Keep the named font alive; changing fonts does not edit log contents.
@@ -113,21 +103,11 @@ class NativeLayout:
         self.anchor = label
         self.compact = compact
         self.fit_tabs = fit_tabs
+        configure_window_fonts(content.winfo_toplevel())
         self.style = ttk.Style(content)
         base = label.cget('font') or self.style.lookup(label.cget('style') or 'TLabel', 'font') or 'TkDefaultFont'
-        original = tkfont.Font(root=content, font=base).actual()
-        probe = tkfont.Font(root=content, **original)
-        family = str(content.tk.call('font', 'actual', str(probe), '-family', '中'))
-        # Prefer a clear Chinese sans-serif face over the theme's automatic
-        # CJK fallback, retaining the original size and a fallback if absent.
-        families = content.tk.splitlist(content.tk.call('font', 'families'))
-        for candidate in ('Noto Sans CJK SC', 'Noto Sans SC', 'Source Han Sans SC',
-                          'Microsoft YaHei', 'WenQuanYi Micro Hei', 'WenQuanYi Zen Hei'):
-            if candidate in families:
-                family = candidate
-                break
-        self.normal = tkfont.Font(root=content, family=family, size=original['size'])
-        self.bold = tkfont.Font(root=content, family=family, size=original['size'], weight='bold')
+        self.normal = gui_font(content, base, weight='normal')
+        self.bold = gui_font(content, base, weight='bold')
         self.gap = max(4, self.normal.metrics('linespace') // 5)
         self.width = min(760, max(640, self.normal.measure('0') * 72), content.winfo_screenwidth() - 64)
         self.tag = hashlib.sha256(repr(self.normal.actual()).encode('utf-8')).hexdigest()[:12]
@@ -204,7 +184,6 @@ class NativeLayout:
                     child.configure(foreground='#185a9d' if self.heading_color == '#274b63' else '#8bc7fa')
                 if self.compact:
                     child.configure(wraplength=self.width - 80)
-                apply_sort_caption(child, self.bold if bold else self.normal, self.style, self.background)
             elif kind in ('TEntry', 'TCombobox'):
                 child.configure(font=self.normal)
                 if self.compact:

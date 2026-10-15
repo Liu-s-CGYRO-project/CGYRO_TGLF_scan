@@ -290,9 +290,9 @@ def plot_cgyro_output_status(root, ctx):
 
             ax.set_ylim(-0.1, 4.1)
             ax.set_yticks([0, 1, 2, 3, 4])
-            ax.set_xlabel('$k_y$*$\\rho_s$', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
-            ax.set_ylabel('output status code', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
-            ax.set_title(f'check cgyro output (nr={nr}, {para})', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
+            ax.set_xlabel('$k_y$*$\\rho_s$', fontdict={'size': ctx['fs1']})
+            ax.set_ylabel('output status code', fontdict={'size': ctx['fs1']})
+            ax.set_title(f'check cgyro output (nr={nr}, {para})', fontdict={'size': ctx['fs1']})
             ax.tick_params(labelsize=ctx['fs2'])
 
             ax.text(

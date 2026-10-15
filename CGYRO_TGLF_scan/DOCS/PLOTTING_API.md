@@ -6,9 +6,12 @@
 | --- | --- |
 | `LIB/OMFITlib_plot_sources.py` | 把 TGLF 运行记录转换为只读绘图视图，兼容旧扫描缓存；统一谱数组维度 |
 | `LIB/OMFITlib_plot_style.py` | 全局外观设置、配色和绘图上下文 |
+| `LIB/OMFITlib_plot_fonts.py` | 中英文字体组合、字体文件加载、公式字体及延迟绘制 / 导出上下文 |
+| `LIB/OMFITlib_plot_font_assets.py` | 随包思源宋体与 Liberation Sans 的校验、缓存及进程内注册 |
 | `LIB/OMFITlib_plot_style_ui.py` | 全局样式编辑页 |
 | `LIB/OMFITlib_tglf_records.py` | 运行记录摘要，供扫描页和对比页共同使用 |
 | `LIB/OMFITlib_gui_api.py` | 本工程的帮助窗口、默认值按钮和复选框适配 |
+| `LIB/OMFITlib_gui_fonts.py` | 随包字体加载、窗口字体与表格行高；接入方法见 `DOCS/GUI_FONTS.md` |
 | `LIB/OMFITlib_result_cleanup.py` | 明确列出的结果清理范围和运行状态检查 |
 
 ## 添加一个绘图入口
@@ -33,6 +36,12 @@ with plot_context(root):
 曲线优先使用默认颜色循环和线宽，避免在新脚本里写死 `color`、`linewidth` 和 `fontsize`。用 `ax.axhline` / `ax.axvline` 表示参考线；需要保留特殊宽度的数据线可以设置 `gid='reference'`。原生图中有物理含义的特殊颜色、热图色标及参考线不强制重染。默认字号、线宽、标记、轴线、画布尺寸和 DPI 由全局页控制。
 
 `apply_figure_style(figure, validated(root))` 可用于不经过 pyplot 注册的自建 Figure。更改全局样式后重新绘图；已打开的图不会被其他窗口的设置修改。
+
+绘图默认使用内置的思源宋体（`Source Han Serif CN`）与 `Liberation Sans`，作为宋体与 Arial 的相近替代；无需安装字体或填写路径。中文包含常规 / 粗体，英文包含常规 / 斜体 / 粗体 / 粗斜体，原始文件与完整 SIL OFL 1.1 许可一同分发。来源、摘要及重建方法见 `DOCS/GUI_FONTS.md`、`DOCS/PLOT_FONTS_LICENSE.txt` 和 `tools/plot_fonts_sources.json`。
+
+`font_family` 保留为英文字体字段，`chinese_font_family` 是中文字体；可选 `font_file` / `chinese_font_file` 指定运行服务器上的其他字体文件，文件配置优先并自动读取字体名称。Matplotlib 3.6 起支持[同一个文本对象内逐字形选择字体](https://matplotlib.org/stable/users/explain/text/fonts.html#font-fallback)，组合顺序为英文、中文。找不到自定义字体时，报明字体名称及全局样式配置入口。
+
+普通数学字符使用英文配置的正体、斜体及粗体；显式的等宽 / 花体命令保留其数学字体语义，未覆盖的数学符号使用 STIX 回退。每幅图在自身 `draw` / `savefig` 操作期间恢复保存的字体上下文，确保 Tk 延迟绘制和导出时仍使用相同字体。PDF / PS 设置字体嵌入，SVG 使用字形路径；实际嵌入格式由 Matplotlib 后端及字体格式决定，其他图及进程外的设置不受影响。
 
 ## 读取 TGLF 结果
 

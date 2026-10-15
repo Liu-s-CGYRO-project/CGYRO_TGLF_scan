@@ -9,6 +9,7 @@ import traceback
 import webbrowser
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
+from OMFITlib_gui_fonts import configure_window_fonts, gui_font, style_widget
 
 from OMFITlib_template_archive import TemplateError, human_size, json_bytes, parse_json
 from OMFITlib_template_paths import default_library, legacy_preferences_path, preferences_path
@@ -137,6 +138,7 @@ class TemplateManager(ManagerUpdateUI):
 
     def _configure(self):
         w = self.window
+        configure_window_fonts(w)
         # Window decorations use the Linux window manager's fonts, not Tk's.
         w.title('OMFIT Template Manager')
         width = min(1180, max(940, w.winfo_screenwidth() - 80))
@@ -145,21 +147,10 @@ class TemplateManager(ManagerUpdateUI):
         w.minsize(940, 680)
         # nametofont(root=...) requires Python 3.10; Font supports 3.9 and
         # still binds to this window's interpreter in an embedded OMFIT session.
-        default = tkfont.Font(root=w, name='TkDefaultFont', exists=True).actual()
-        available = set(tkfont.families(root=w))
-        family = next((candidate for candidate in ('Noto Sans CJK SC', 'Source Han Sans SC',
-                       'WenQuanYi Micro Hei', 'Noto Sans SC', 'WenQuanYi Zen Hei',
-                       'Droid Sans Fallback', 'AR PL UMing CN') if candidate in available), default['family'])
+        default = gui_font(w).actual()
+        family = default['family']
         font = (family, default['size'] if default['size'] < 0 else max(10, default['size']))
-        self._metrics_font = tkfont.Font(root=w, family=font[0], size=font[1])
-        # On older Linux desktops the Latin default can fall back to much
-        # taller CJK glyphs. Use Tk's actual Chinese face for layout metrics too.
-        try:
-            family = str(w.tk.call('font', 'actual', str(self._metrics_font), '-family', '中'))
-            self._metrics_font.configure(family=family)
-            font = (family, font[1])
-        except tk.TclError:
-            pass
+        self._metrics_font = gui_font(w, size=font[1])
         self.font = font
         self._line_gap = max(6, self._metrics_font.metrics('linespace') // 3)
         self._path_label_width = max(self._metrics_font.measure(text) for text in
@@ -311,6 +302,7 @@ class TemplateManager(ManagerUpdateUI):
         frame.pack(fill='both', expand=True, pady=8)
         table = ttk.Treeview(frame, columns=[c[0] for c in columns], show='headings', selectmode='browse',
                              style='TM.Treeview', height=height)
+        style_widget(table)
         scrollbar = ttk.Scrollbar(frame, orient='vertical', command=table.yview)
         horizontal = ttk.Scrollbar(frame, orient='horizontal', command=table.xview)
         table.configure(yscrollcommand=scrollbar.set, xscrollcommand=horizontal.set)
@@ -775,6 +767,7 @@ class TemplateManager(ManagerUpdateUI):
             self.proxy_dialog.lift()
             return
         dialog = self.proxy_dialog = tk.Toplevel(self.window)
+        configure_window_fonts(dialog)
         dialog.title('GitHub Proxy Settings')
         dialog.geometry('780x420')
         dialog.minsize(720, 400)
@@ -939,6 +932,7 @@ class TemplateManager(ManagerUpdateUI):
             self._error(exc)
             return
         dialog = tk.Toplevel(self.window)
+        configure_window_fonts(dialog)
         dialog.title('Initialize GitHub Repository')
         dialog.geometry('850x600')
         self._label(dialog, '目标：' + repo + ' / README.md\n将创建下面的说明文件和首次提交。', wraplength=800).pack(fill='x', padx=15, pady=15)
@@ -1363,6 +1357,7 @@ class TemplateManager(ManagerUpdateUI):
                 lines.extend('{}  {}  {}'.format(spec['kind'], human_size(spec['bytes']), name)
                              for name, spec in sorted(manifest['files'].items()))
             dialog = tk.Toplevel(self.window)
+            configure_window_fonts(dialog)
             dialog.title('Template Package Files')
             dialog.geometry('900x580')
             text = self._text_area(dialog, wrap='none', padx=12, pady=12)
@@ -1461,6 +1456,7 @@ def open_manager(current_project='', library=None, preferences=None, session=Non
             previous.window.lift()
             return previous
         window = tk.Toplevel(parent)
+        configure_window_fonts(window)
     else:
         window = tk.Tk(className='OMFITtemplates')
     manager = TemplateManager(window, current_project=current_project, library=library, preferences=preferences, session=session)

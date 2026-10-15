@@ -255,7 +255,7 @@ def _plot_flux_spectrum_page(fn, panel_data, quantity_name, ctx, page_label=None
         )
         apply_figure_layout(fig_empty, ctx)
         ax0 = ax_empty[0, 0]
-        ax0.set_title(f'{title_text} flux spectrum', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
+        ax0.set_title(f'{title_text} flux spectrum', fontdict={'size': ctx['fs1']})
         ax0.text(0.5, 0.5, 'No sum_flux_spectrum data', ha='center', va='center', transform=ax0.transAxes)
         ax0.set_axis_off()
         return
@@ -300,11 +300,11 @@ def _plot_flux_spectrum_page(fn, panel_data, quantity_name, ctx, page_label=None
                     axi.set_xscale('log')
 
             if i_sp == 0:
-                axi.set_title(str(field_labels[i_fd]), fontdict={'family': 'DejaVu Sans', 'size': ctx['fs2']})
+                axi.set_title(str(field_labels[i_fd]), fontdict={'size': ctx['fs2']})
             if i_fd == 0:
-                axi.set_ylabel(str(species_labels[i_sp]), fontdict={'family': 'DejaVu Sans', 'size': ctx['fs2']})
+                axi.set_ylabel(str(species_labels[i_sp]), fontdict={'size': ctx['fs2']})
             if i_sp == n_sp - 1:
-                axi.set_xlabel('$k_y$*$\\rho_s$', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs2']})
+                axi.set_xlabel('$k_y$*$\\rho_s$', fontdict={'size': ctx['fs2']})
             else:
                 axi.set_xticklabels([])
 

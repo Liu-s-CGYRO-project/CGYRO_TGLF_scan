@@ -292,9 +292,9 @@ def plot_gamma_ratio_compare_page(ax, ctx, curves, page_title=''):
         x_label = x_label_candidates[0]
     else:
         x_label = 'parameter value'
-    ax.set_xlabel(str(x_label), fontdict={'family': 'DejaVu Sans', 'size': ctx.get('fs1', 16)})
-    ax.set_ylabel(r'$\gamma$/$\gamma_{ref}$', fontdict={'family': 'DejaVu Sans', 'size': ctx.get('fs1', 16)})
-    ax.set_title(title_txt, fontdict={'family': 'DejaVu Sans', 'size': ctx.get('fs1', 16)})
+    ax.set_xlabel(str(x_label), fontdict={'size': ctx.get('fs1', 16)})
+    ax.set_ylabel(r'$\gamma$/$\gamma_{ref}$', fontdict={'size': ctx.get('fs1', 16)})
+    ax.set_title(title_txt, fontdict={'size': ctx.get('fs1', 16)})
     ax.grid(True, alpha=0.3)
 
     if ctx.get('plot_log_x', False):
@@ -355,7 +355,7 @@ def plot_on_axes(
 
     style_2d_axes(ax, ctx['bwith'])
 
-    ax[0, 0].set_title(title_omega, fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
+    ax[0, 0].set_title(title_omega, fontdict={'size': ctx['fs1']})
     ax[0, 0].plot(ky, y_omega, label=label_str, linewidth=ctx['lw'])
     if ctx['plot_log_x']:
         ax[0, 0].set_xscale('log')
@@ -363,8 +363,8 @@ def plot_on_axes(
         ax[0, 0].set_yscale('log')
         ax[1, 0].set_yscale('log')
 
-    ax[0, 1].set_title('Relative model difference' if ctx.get('error_flag', None) == 'CGYRO-TGLF' else 'Relative time fluctuation', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
-    ax[1, 1].set_title('Relative model difference' if ctx.get('error_flag', None) == 'CGYRO-TGLF' else 'Relative time fluctuation', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
+    ax[0, 1].set_title('Relative model difference' if ctx.get('error_flag', None) == 'CGYRO-TGLF' else 'Relative time fluctuation', fontdict={'size': ctx['fs1']})
+    ax[1, 1].set_title('Relative model difference' if ctx.get('error_flag', None) == 'CGYRO-TGLF' else 'Relative time fluctuation', fontdict={'size': ctx['fs1']})
     if show_error:
         error_line, = ax[0, 1].plot(ky, omega_error, linewidth=ctx['lw'], label=error_label)
         error_line._comparison_identity = label_str
@@ -372,11 +372,11 @@ def plot_on_axes(
         error_line, = ax[1, 1].plot(ky, gamma_error, linewidth=ctx['lw'], label=error_label)
         error_line._comparison_identity = label_str
 
-    ax[1, 0].set_title(title_gamma, fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
+    ax[1, 0].set_title(title_gamma, fontdict={'size': ctx['fs1']})
     ax[1, 0].plot(ky, y_gamma, label=label_str, linewidth=ctx['lw'])
 
-    ax[1, 0].set_xlabel('$k_y$*$\\rho_s$', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']}, labelpad=5)
-    ax[1, 1].set_xlabel('$k_y$*$\\rho_s$', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']}, labelpad=5)
+    ax[1, 0].set_xlabel('$k_y$*$\\rho_s$', fontdict={'size': ctx['fs1']}, labelpad=5)
+    ax[1, 1].set_xlabel('$k_y$*$\\rho_s$', fontdict={'size': ctx['fs1']}, labelpad=5)
 
     if ctx.get('highlight_max_gamma', False):
         max_gamma_idx = argmax(y_gamma)
@@ -429,13 +429,13 @@ def _plot_model_curves_one_column(ax, col_idx, ctx, curves, model_name):
         ax[1, col_idx].plot(ky, y_gamma, linewidth=ctx['lw'], label=label_str)
 
     ax[0, col_idx].set_title(
-        f'{model_name} {base_omega}', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']}
+        f'{model_name} {base_omega}', fontdict={'size': ctx['fs1']}
     )
     ax[1, col_idx].set_title(
-        f'{model_name} {base_gamma}', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']}
+        f'{model_name} {base_gamma}', fontdict={'size': ctx['fs1']}
     )
-    ax[0, col_idx].set_xlabel('$k_y$*$\\rho_s$', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']}, labelpad=5)
-    ax[1, col_idx].set_xlabel('$k_y$*$\\rho_s$', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']}, labelpad=5)
+    ax[0, col_idx].set_xlabel('$k_y$*$\\rho_s$', fontdict={'size': ctx['fs1']}, labelpad=5)
+    ax[1, col_idx].set_xlabel('$k_y$*$\\rho_s$', fontdict={'size': ctx['fs1']}, labelpad=5)
 
     if ctx.get('plot_log_x', False):
         ax[0, col_idx].set_xscale('log')
@@ -498,10 +498,10 @@ def _plot_no_error_column(ax, col_idx, ctx, curves, mode_idx):
         ax[1, col_idx].plot(ky, y_gamma, label=label_str, linewidth=ctx['lw'])
 
     title_omega, title_gamma = mode_titles(ctx, mode_idx)
-    ax[0, col_idx].set_title(title_omega, fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
-    ax[1, col_idx].set_title(title_gamma, fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
-    ax[0, col_idx].set_xlabel('$k_y$*$\\rho_s$', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']}, labelpad=5)
-    ax[1, col_idx].set_xlabel('$k_y$*$\\rho_s$', fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']}, labelpad=5)
+    ax[0, col_idx].set_title(title_omega, fontdict={'size': ctx['fs1']})
+    ax[1, col_idx].set_title(title_gamma, fontdict={'size': ctx['fs1']})
+    ax[0, col_idx].set_xlabel('$k_y$*$\\rho_s$', fontdict={'size': ctx['fs1']}, labelpad=5)
+    ax[1, col_idx].set_xlabel('$k_y$*$\\rho_s$', fontdict={'size': ctx['fs1']}, labelpad=5)
 
     if ctx.get('plot_log_x', False):
         ax[0, col_idx].set_xscale('log')

@@ -1,4 +1,5 @@
 """Local OMFIT widget adapter: full help text without global tooltip patches."""
+from OMFITlib_gui_fonts import configure_window_fonts, gui_font
 from builtins import callable, getattr, isinstance, list, max, min, set, str, tuple
 import inspect
 import tkinter as tk
@@ -36,6 +37,7 @@ def compact_reset(widget, caption=''):
             if not widget.winfo_exists():
                 return
             tip = tk.Toplevel(widget)
+            configure_window_fonts(tip)
             state['window'] = tip
             tip.withdraw()
             tip.overrideredirect(True)
@@ -64,6 +66,7 @@ def show_help(parent, text):
     if isinstance(text, (list, tuple)):
         text = '\n'.join(str(value) for value in text)
     top = tk.Toplevel(parent.winfo_toplevel())
+    configure_window_fonts(top)
     top.title('说明')
     top.transient(parent.winfo_toplevel())
     sw, sh = top.winfo_screenwidth(), top.winfo_screenheight()
@@ -74,7 +77,7 @@ def show_help(parent, text):
     frame = ttk.Frame(top, padding=12)
     frame.pack(fill='both', expand=True)
     body = tk.Text(frame, wrap='word', width=1, height=1, padx=10, pady=8,
-                   font='TkDefaultFont', borderwidth=0)
+                   font=gui_font(top), borderwidth=0)
     scroll = ttk.Scrollbar(frame, command=body.yview)
     body.configure(yscrollcommand=scroll.set)
     body.grid(row=0, column=0, sticky='nsew')

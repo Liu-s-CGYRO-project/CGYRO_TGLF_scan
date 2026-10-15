@@ -1,4 +1,5 @@
 """Native OMFIT workbench with dependency-aware workflow controls."""
+from OMFITlib_gui_fonts import configure_window_fonts, gui_font, style_widget
 from OMFITlib_result_cleanup import active_jobs, clear_results
 from builtins import all, any, bool, callable, dict, float, int, isinstance, iter, len, list, min, next, range, sorted, str, sum
 from collections import OrderedDict
@@ -238,6 +239,7 @@ class ProjectUI:
         state = dict(parameters={}, edits={}, digest='', selected='', loading=False)
         code = 'cgyro' if str(path[-1]).startswith('input.cgyro') else 'tglf'
         window = tk.Toplevel(anchor.winfo_toplevel())
+        configure_window_fonts(window)
         window.title('生成输入 · ' + caption)
         width = min(720, window.winfo_screenwidth() - 64)
         height = min(840, window.winfo_screenheight() - 100)
@@ -246,10 +248,11 @@ class ProjectUI:
         frame = ttk.Frame(window)
         frame.pack(fill=tk.BOTH, expand=True, padx=10)
         style = ttk.Style(window)
-        preview_font = tkfont.Font(root=window, font=style.lookup('Treeview', 'font') or 'TkDefaultFont')
+        preview_font = gui_font(window, style.lookup('Treeview', 'font') or 'TkDefaultFont')
         style_name = 'TransferPreview' + str(window).replace('.', '_') + '.Treeview'
         style.configure(style_name, font=preview_font, rowheight=preview_font.metrics('linespace') + 8)
         table = ttk.Treeview(frame, columns=('parameter', 'value'), show='headings', style=style_name)
+        style_widget(table)
         table._transfer_font = preview_font
         table.heading('parameter', text='参数')
         table.heading('value', text='数值')

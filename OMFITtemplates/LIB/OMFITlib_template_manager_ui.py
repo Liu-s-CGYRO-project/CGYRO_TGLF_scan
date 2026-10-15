@@ -1,4 +1,5 @@
 """Manager update dialog shared by standalone Tk and the OMFIT module."""
+from OMFITlib_gui_fonts import configure_window_fonts
 from builtins import len, str
 from pathlib import Path
 import subprocess
@@ -100,6 +101,7 @@ class ManagerUpdateUI:
         self.manager_update_result = result
         self._manager_version_hint(result)
         dialog = self.manager_update_dialog = tk.Toplevel(self.window)
+        configure_window_fonts(dialog)
         dialog.title('OMFIT Template Manager Updates')
         dialog.geometry('760x560')
         dialog.minsize(680, 480)

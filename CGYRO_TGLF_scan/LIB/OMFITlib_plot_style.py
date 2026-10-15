@@ -8,10 +8,11 @@ from contextlib import contextmanager
 from functools import partial
 import math
 import matplotlib as mpl
-from matplotlib import colors, font_manager
+from matplotlib import colors
 from cycler import cycler
+from OMFITlib_plot_fonts import FONT_DEFAULTS, font_families, font_rc, initialize_fonts, with_font_rc
 
-DEFAULTS = dict(font_family='DejaVu Sans', font_size=12., legend_font_size=9.,
+DEFAULTS = dict(FONT_DEFAULTS, font_size=12., legend_font_size=9.,
                 line_width=1.8, marker_size=5., axes_width=1., show_grid=True,
                 palette='okabe_ito', custom_colors='', legend_location='best',
                 figure_width=0., figure_height=0., dpi=120., export_dpi=300.)
@@ -40,6 +41,7 @@ def settings(root):
         old = physics.get(physics.get('compare_mode', ''), {}).get('style', {})
         setup['PLOT_STYLE'] = dict(DEFAULTS, **{k: old[k] for k in DEFAULTS if k in old})
     result = setup['PLOT_STYLE']
+    initialize_fonts(result)
     for key, value in DEFAULTS.items():
         result.setdefault(key, value)
     return result
@@ -66,8 +68,8 @@ def validated(root):
         if not math.isfinite(number) or (number < 0 if optional else number <= 0):
             raise ValueError('全局图形样式数值无效：' + key)
         style[key] = number
-    if not str(style['font_family']).strip():
-        raise ValueError('全局图形样式需要字体名称')
+    if not str(style['font_family']).strip() or not str(style['chinese_font_family']).strip():
+        raise ValueError('全局图形样式需要中文和英文字体名称')
     if style['legend_location'] not in ('best', 'upper right', 'upper left', 'outside'):
         raise ValueError('请选择有效的图例位置')
     if not isinstance(style['show_grid'], bool):
@@ -76,17 +78,10 @@ def validated(root):
     return style
 
 
-def font_families(style):
-    # Matplotlib resolves the first installed font containing each glyph.
-    available = {font.name for font in font_manager.fontManager.ttflist}
-    requested = str(style['font_family'])
-    names = [requested, 'Noto Sans CJK SC', 'Microsoft YaHei', 'WenQuanYi Zen Hei', 'DejaVu Sans']
-    return list(dict.fromkeys(name for name in names if name in available or name in ('sans-serif', 'serif', 'monospace')))
-
-
 def apply_figure_style(figure, style):
     """Apply appearance to a finished figure; retain data, limits and reference lines."""
     from matplotlib.text import Text
+    fonts = font_rc(style)
     width, height = figure.get_size_inches()
     figure.set_size_inches(style['figure_width'] or width, style['figure_height'] or height, forward=True)
     figure.set_dpi(style['dpi'])
@@ -94,10 +89,14 @@ def apply_figure_style(figure, style):
     # on this figure, while respecting an explicit dpi passed by the caller.
     original_save = getattr(figure, '_project_savefig', figure.savefig)
     figure._project_savefig = original_save
-    figure.savefig = partial(original_save, dpi=style['export_dpi'])
-    family = font_families(style)
+    figure.savefig = partial(with_font_rc, original_save, fonts, dpi=style['export_dpi'])
+    original_draw = getattr(figure, '_project_draw', figure.draw)
+    figure._project_draw = original_draw
+    figure.draw = partial(with_font_rc, original_draw, fonts)
+    family = fonts['font.family']
     for text in figure.findobj(match=Text):
         text.set_fontfamily(family)
+        text.set_math_fontfamily('custom')
         text.set_fontsize(style['font_size'])
     for axis in figure.axes:
         axis.tick_params(labelsize=max(6., style['font_size'] - 1), width=style['axes_width'])
@@ -134,12 +133,13 @@ def plot_context(root):
     import matplotlib.pyplot as plt
     style = validated(root)
     previous = set(plt.get_fignums())
-    rc = {'font.family': font_families(style), 'font.size': style['font_size'],
+    rc = dict(font_rc(style))
+    rc.update({'font.size': style['font_size'],
           'legend.fontsize': style['legend_font_size'], 'lines.linewidth': style['line_width'],
           'lines.markersize': style['marker_size'], 'axes.linewidth': style['axes_width'],
           'axes.prop_cycle': cycler(color=palette(style)), 'axes.grid': style['show_grid'],
           'grid.alpha': .18, 'figure.dpi': style['dpi'], 'savefig.dpi': style['export_dpi'],
-          'legend.loc': 'upper left' if style['legend_location'] == 'outside' else style['legend_location']}
+          'legend.loc': 'upper left' if style['legend_location'] == 'outside' else style['legend_location']})
     with mpl.rc_context(rc):
         yield style
         for number in set(plt.get_fignums()) - previous:

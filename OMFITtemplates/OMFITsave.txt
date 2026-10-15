@@ -33,3 +33,10 @@
 ['TESTS']['test_incremental.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_incremental.py <-:-:-> {}
 ['LIB']['OMFITlib_template_live'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_live.py <-:-:-> {}
 ['TESTS']['test_live.py'] <-:-:-> OMFITascii <-:-:-> ./tests/test_live.py <-:-:-> {}
+['LIB']['OMFITlib_gui_fonts'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_fonts.py <-:-:-> {}
+['LIB']['OMFITlib_gui_font_data'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_font_data.py <-:-:-> {}
+['DOCS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['DOCS']['字体许可'] <-:-:-> OMFITascii <-:-:-> ./DOCS/FONT_LICENSE.txt <-:-:-> {}
+['LIB']['OMFITlib_gui_font_part1'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_font_part1.py <-:-:-> {}
+['LIB']['OMFITlib_gui_font_part2'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_font_part2.py <-:-:-> {}
+['LIB']['OMFITlib_gui_font_part3'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_font_part3.py <-:-:-> {}

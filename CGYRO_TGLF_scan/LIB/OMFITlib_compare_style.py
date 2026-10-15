@@ -312,10 +312,10 @@ def style_two_panel_xy_axes(ax, ctx, title_left, title_right, xlabel_left, xlabe
     if xlabel_right is None:
         xlabel_right = xlabel_left
 
-    ax[0, 0].set_title(title_left, fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
-    ax[0, 1].set_title(title_right, fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']})
-    ax[0, 0].set_xlabel(str(xlabel_left), fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']}, labelpad=5)
-    ax[0, 1].set_xlabel(str(xlabel_right), fontdict={'family': 'DejaVu Sans', 'size': ctx['fs1']}, labelpad=5)
+    ax[0, 0].set_title(title_left, fontdict={'size': ctx['fs1']})
+    ax[0, 1].set_title(title_right, fontdict={'size': ctx['fs1']})
+    ax[0, 0].set_xlabel(str(xlabel_left), fontdict={'size': ctx['fs1']}, labelpad=5)
+    ax[0, 1].set_xlabel(str(xlabel_right), fontdict={'size': ctx['fs1']}, labelpad=5)
 
     if ctx.get('plot_log_x', False):
         ax[0, 0].set_xscale('log')

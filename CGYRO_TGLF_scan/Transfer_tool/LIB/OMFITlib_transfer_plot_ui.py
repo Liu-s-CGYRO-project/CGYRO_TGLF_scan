@@ -1,4 +1,5 @@
 """Compact, data-aware tabs for all Transfer_tool plot entries."""
+from OMFITlib_gui_fonts import configure_window_fonts, style_widget
 from builtins import dict, float, getattr, isinstance, len, list, min, str, tuple, zip
 import tkinter as tk
 from tkinter import ttk
@@ -94,11 +95,13 @@ class TransferPlotsUI:
             raise ValueError('；'.join(issues))
         values = parameter_rows(self.root)
         window = tk.Toplevel(anchor.winfo_toplevel())
+        configure_window_fonts(window)
         window.title('Transfer_tool · 局部参数')
         columns = ('nr', 'rho', 'a/LTi', 'a/LTe', 'a/Lne', 'shear', 'q', 'beta_e', 'nu', 'alpha')
         frame = ttk.Frame(window, padding=8)
         frame.pack(fill=tk.BOTH, expand=True)
         table = ttk.Treeview(frame, columns=columns, show='headings', height=min(len(values), 12))
+        style_widget(table)
         for key in columns:
             table.heading(key, text=key)
             table.column(key, width=90 if key != 'nr' else 50, minwidth=45, stretch=False)
