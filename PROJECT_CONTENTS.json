@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.20.2",
-  "parent_release": "1.20.1",
+  "version": "1.20.3",
+  "parent_release": "1.20.2",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -267,7 +267,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_api.py": "87492a6289df12b107f578498dfd700aee19e8fcd17263bce64a466126af17b0",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py": "f29bfeff5bf610b8191cdf83f0c5051d8a61df04c90a1fe0bc3c1e9f66f03f31",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_controls.py": "af49f4f91cda3c1aacdd68bcf69f466f973ef64084cdbf9bbe20e4bb26874852",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "67109efd409ba0e37578d69aaae4b01e91c56f12ef46712c1f8f5f5fccd550b2",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "cadc924cac7f6071f0219a0c54d08aab7ae186b49f8c1b7e4b14cb452fec9b47",
     "CGYRO_TGLF_scan/LIB/OMFITlib_plot_sources.py": "6d911c10ec4ef9691250f46931166dab0223ace6ad2f1b85e31661cb4c8e4257",
     "CGYRO_TGLF_scan/LIB/OMFITlib_plot_style.py": "2248da8fb599966d724e9de7dbdd0eefb42308a6940b1f7ee93e2a93cd1443e8",
     "CGYRO_TGLF_scan/LIB/OMFITlib_plot_style_ui.py": "ae1e08f005aa1eb9120b188337e4b90f3280a1cc9e49859a910e1317af7e1aa6",
@@ -525,7 +525,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "6e92e1bddbca5825a8e61faf4fdfc6f786176c146cd2088f5ee0b8669be70696"
+    "VALIDATION.md": "105e464df7b625e9b9bb52f7370418177ea7ab417b55440e0e8aac2eeecc8383"
   },
   "workbench_features": [
     "native_omfit_project_gui",
@@ -596,7 +596,8 @@
     "explicit_reset_labels",
     "plot_extension_api",
     "omfit_mapping_api_compatibility",
-    "compact_reset_buttons"
+    "compact_reset_buttons",
+    "aligned_reset_buttons"
   ],
   "template_manager_version": "1.10.7",
   "support_archive_sha256": "cb71c03e57997da7bba99b724ca9a757fff6bad5a62f9daf4639bc6f6588618b",

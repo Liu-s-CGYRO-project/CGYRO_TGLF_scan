@@ -132,8 +132,16 @@ class NativeLayout:
         self.labels = []
         self.notebooks = []
         self.panels = []
+        self.reset_help_buttons = []
+        self.reset_help_spacers = []
         self.scroll_pending = None
         self._walk(content)
+        # Match the real help buttons after their font and padding are styled.
+        # Empty help slots keep resets aligned on rows without a question mark.
+        help_width = max((button.winfo_reqwidth() for button in self.reset_help_buttons),
+                         default=self.normal.measure('?') + 16)
+        for spacer in self.reset_help_spacers:
+            spacer.configure(width=help_width)
         self.reflow()
         if compact and resize_window:
             self._portrait_window()
@@ -230,6 +238,7 @@ class NativeLayout:
                 # nested panes. Measure after that event, not inside it.
                 child.bind('<<NotebookTabChanged>>', lambda event: self._queue_scroll(), add='+')
                 child.bind('<Configure>', lambda event: self._queue_scroll(), add='+')
+        children = self._reserve_reset_help(parent, children)
         form = getattr(parent, '_cgyro_form', None)
         if form is not None:
             self._form(parent, children, *form)
@@ -246,6 +255,36 @@ class NativeLayout:
             else:
                 self.rows.append((parent, children))
                 parent.bind('<Configure>', lambda event, frame=parent, items=children: self._row(frame, items), add='+')
+
+    def _reserve_reset_help(self, frame, children):
+        """Keep a help slot after native resets, including within same_row."""
+        resets = [child for child in children if getattr(child, '_project_reset_origin', '') in ('D', 'd')]
+        if len(resets) != 1:
+            return children
+        reset = resets[0]
+        if reset.winfo_manager() != 'pack' and getattr(frame, '_cgyro_form', None) is None:
+            return children
+        spacer = getattr(frame, '_cgyro_reset_help_spacer', None)
+        ordered = [child for child in children if child is not spacer]
+        index = ordered.index(reset) + 1
+        tail = ordered[index:]
+        if tail and tail[0].winfo_class() == 'TButton' and str(tail[0].cget('text')) == '?':
+            self.reset_help_buttons.append(tail[0])
+            return children
+        # Native optional web links follow help; retain their position and command.
+        if not all(child.winfo_class() == 'TButton' and str(child.cget('text')) == 'w' for child in tail):
+            return children
+        if spacer is None:
+            spacer = ttk.Frame(frame, width=self.normal.measure('?') + 16)
+            frame._cgyro_reset_help_spacer = spacer
+        if getattr(frame, '_cgyro_form', None) is None:
+            options = {'side': tk.LEFT, 'expand': False, 'fill': tk.NONE, 'padx': 0, 'pady': 0}
+            if tail:
+                options['before'] = tail[0]
+            spacer.pack(**options)
+        self.reset_help_spacers.append(spacer)
+        ordered.insert(index, spacer)
+        return ordered
 
     def _form(self, frame, children, field, caption, wide, short):
         """Align native field labels; paths and scripts get a full-width row."""
