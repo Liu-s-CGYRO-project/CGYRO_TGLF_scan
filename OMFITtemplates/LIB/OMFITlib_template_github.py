@@ -10,6 +10,7 @@ import shutil
 import ssl
 import subprocess
 from time import monotonic, sleep
+from time import time as wall_time
 from urllib import error, parse, request
 
 from OMFITlib_template_archive import CHUNK, TemplateError, json_bytes, parse_json
@@ -292,7 +293,18 @@ class GitHub:
                        422: 'GitHub 拒绝此版本：可能已存在同名标签或资源，或仓库尚无提交。'}.get(status,
                         'GitHub 请求失败（HTTP {}），请稍后检查远端状态。'.format(status))
             if status in (403, 429) and remaining == '0':
-                message = 'GitHub API 限额已用完，请稍后重试；公开仓库也可登录后提高可用限额。'
+                message = ('当前登录账号的 GitHub API 额度已用完。' if self._token else
+                           'GitHub 匿名 API 额度已用完；额度按出口 IP 共享，公共代理的其他使用者也会占用。')
+                try:
+                    delay = max(0, int(exc.headers.get('X-RateLimit-Reset', '0')) - int(wall_time()))
+                except (TypeError, ValueError):
+                    delay = 0
+                if delay:
+                    message += '预计约 {} 分钟后恢复，请等待后再试。'.format((delay + 59) // 60)
+                else:
+                    message += '请稍后再试。'
+                if not self._token:
+                    message += '也可在管理器中登录 GitHub 后重新连接，使用账号额度。'
             raise GitHubError(status, message) from None
         except (error.URLError, OSError, TimeoutError) as exc:
             raise self._connection_error(exc) from None

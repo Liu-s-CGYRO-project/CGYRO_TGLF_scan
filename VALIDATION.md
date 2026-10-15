@@ -891,3 +891,5 @@ python3 -m unittest discover -s OMFITtemplates/tests -v
 python3 -m unittest discover -s tests -v
 python3 tools/build_project.py
 ```
+
+管理器更新使用已有 GitHub 登录凭据；未登录时仍支持公开下载。限额耗尽时说明匿名共享出口或账号额度，并按响应头提示预计恢复等待时间。
