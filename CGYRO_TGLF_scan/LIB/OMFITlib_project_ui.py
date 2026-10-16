@@ -17,6 +17,7 @@ from OMFITlib_cgyro_results import ResultBrowser
 from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS,
     initialize_parameters, numeric_source, parameter_catalog, scan_parameter_names)
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, KY_MODES, VALUE_MODES, ky_values, value_list
+from OMFITlib_cgyro_parameter_help import parameter_help
 from OMFITlib_project import (ERROR_NOTICE_SUFFIX, ION_CASES, LABELS, MODULES, PAGES, cgyro_input_issues,
     cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, generated_tglf_sources, location, module,
     input_digest, pending_inputs, read, runtime_issues, summary, sync_cgyro_choices, sync_cgyro_ion_cases, text_value,
@@ -585,7 +586,8 @@ class ProjectUI:
             self.ui.Separator('参数轴 ' + str(index))
             with self.ui.same_row():
                 self.scan_field(self.ui.ComboBox(location(base + ('PHYSICS', group, pkey)), options,
-                    '参数', state='search', width=16, updateGUI=True), 16)
+                    '参数', state='search', width=16, updateGUI=True,
+                    help=parameter_help(str(cfg[pkey]))), 16)
                 self.scan_field(self.ui.ComboBox(prefix + "['mode']", VALUE_MODES, '方式',
                     state='readonly', width=14, updateGUI=True,
                     help='实际值范围直接生成数值；原值倍数分别乘以每个输入的原值；沿用输入只计算原值。'), 14)
@@ -593,7 +595,8 @@ class ProjectUI:
             linked = 2
             while pkey + str(linked) in cfg or rkey + str(linked) in cfg:
                 self.scan_field(self.ui.ComboBox(location(base + ('PHYSICS', group, pkey + str(linked))), options,
-                    '联动参数', state='search', width=18, default='', updateGUI=True), 18)
+                    '联动参数', state='search', width=18, default='', updateGUI=True,
+                    help=parameter_help(str(cfg.get(pkey + str(linked), '')))), 18)
                 self.scan_field(self.ui.Entry(location(base + ('PHYSICS', group, rkey + str(linked))),
                     '同步取值', width=28, default=[], updateGUI=True,
                     help='与参数 ' + str(index) + ' 的取值逐项对应。独立组合请使用多个参数轴。'), 28)
@@ -698,12 +701,8 @@ class ProjectUI:
         path = base + ('fixed_parameters', name)
         reference = ('输入值：{}'.format(source_values[name]) if name in source_values else
                      '文件未写入，显示参考值：{}；修改后才写入运行副本。'.format(spec['reference']))
-        help_text = reference + '\n修改并回车后应用到所选输入；“沿用输入”取消覆盖，使用各输入自己的值。'
-        if name == 'GAMMA_E':
-            help_text += '\nE×B 剪切率（归一化 a/cs）；与 GAMMA_P 旋转剪切分别设置。'
-        elif name in ('Z_EFF', 'Z_EFF_METHOD'):
-            help_text += '\n指定 Zeff 需要 Z_EFF_METHOD=1 且 COLLISION_MODEL=1 或 5；'
-            help_text += '方法 2 按实际离子密度与电荷计算。模型 4 不使用独立指定 Zeff。'
+        help_text = parameter_help(name, spec) + '\n\n' + reference
+        help_text += '\n修改并回车后应用到所选输入；“沿用输入”取消覆盖，使用各输入自己的值。'
         with self.ui.same_row() as line:
             frame = getattr(line, 'frm_top', None)
             if isinstance(frame, tk.Misc):
@@ -713,11 +712,6 @@ class ProjectUI:
                 self.ui.ComboBox(location(path + ('value',)), OrderedDict([
                     ('0 固定 RK4', 0), ('1 自适应 Cash-Karp', 1),
                     ('2 自适应 Bogacki-Shampine', 2), ('3 自适应 Verner', 3)]), '',
-                    width=24, state='readonly', updateGUI=True, help=help_text,
-                    postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
-            elif name == 'Z_EFF_METHOD':
-                self.ui.ComboBox(location(path + ('value',)), OrderedDict([
-                    ('1 指定 Zeff', 1), ('2 按粒子组成计算', 2)]), '',
                     width=24, state='readonly', updateGUI=True, help=help_text,
                     postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
             else:

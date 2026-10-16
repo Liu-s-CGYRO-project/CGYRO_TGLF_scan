@@ -46,7 +46,7 @@ H/D/T 案例先合并已识别的全部 Z=1 主离子，再将合并后的质量
 
 `LIB/OMFITlib_cgyro_isotopes.py` 提供 `isotope_input(source, mass, main_indices, rhostar=None, global_curvature=False)` 和 `remap_physics(physics, dimensions, mapping)`。返回独立输入和包含原编号、新编号、参数与规则的记录；案例准备、预检查及提交使用同一接口。局部输入要求 PROFILE_MODEL=1；非 1 的粒子梯度倍率需要先折算进源输入。
 
-新版 Transfer_tool 记录原生 locpargen 的 rhos/a，按 expro 的有效曲率定义还原并合并密度和压力二阶导数。旧等效杂质记录中的 rhostar 也可复用。旧输入缺少该尺度时，仅允许 N_GLOBAL=0 的局部扫描，未使用的曲率字段保留加权值；全局扫描会要求重新生成输入，不猜测尺度。
+新版 Transfer_tool 记录原生 locpargen 的 rhos/a，按 expro 的有效曲率定义还原并合并密度和压力二阶导数。旧等效杂质记录中的 rhostar 也可复用。旧输入缺少该尺度时，仅允许 GLOBAL_FLAG=0 的局部扫描，未使用的曲率字段保留加权值；全局扫描会要求重新生成输入，不猜测尺度。N_GLOBAL 只控制全局输出分辨率，不能据此判断是否启用全局剖面变化。
 
 ## 完整粒子组成的 Zeff 与剪切
 
@@ -57,3 +57,18 @@ CGYRO 同时写入 `Z_EFF_METHOD=1` 和所选 `COLLISION_MODEL=1` 或 `5`（默�
 CGYRO 的 `GAMMA_E` 已列入“平衡与剪切”，可直接编辑或扫描，`Z_EFF` / `Z_EFF_METHOD` 位于“场与碰撞”。GAMMA_E 的求解器作用仍遵循 CGYRO 的线性 / 非线性模型，界面不改写这些模型。
 
 定义依据：[CGYRO 原生参数](https://github.com/gafusion/gacode/blob/27b63e321c8474a6a4bd1198dc586da9c393fd0b/cgyro/bin/cgyro_parse.py)、[有效曲率](https://github.com/gafusion/gacode/blob/27b63e321c8474a6a4bd1198dc586da9c393fd0b/f2py/expro/expro_locsim.f90)、[指定 Zeff 的模型条件](https://github.com/gafusion/gacode/blob/27b63e321c8474a6a4bd1198dc586da9c393fd0b/cgyro/src/cgyro_make_profiles.F90#L257)。
+
+## 参数帮助接口
+
+“计算参数”旁的“?”及扫描轴参数的帮助共用 `LIB/OMFITlib_cgyro_parameter_help.py`。常用参数逐项列出可输入的数值 / 枚举值、含义、单位 / 归一化和生效条件；粒子编号字段共用 `SPECIES_HELP`，形状谐波按前缀识别。新增说明在 `PARAMETER_HELP` 追加 `(可输入值, 含义, 单位, 条件)` 元组即可，不需修改 GUI 或求解器。未核对的扩展参数明确标注未收录含义，不按名称编造。
+
+```python
+from OMFITlib_cgyro_parameter_help import parameter_help
+text = parameter_help('EQUILIBRIUM_MODEL')
+```
+
+说明为随包提供的中文数据，离线可用；“?”使用可滚动窗口，较长的说明不会被截断。输入框继续只接受参数值，物理解释不混入数值字段。Z_EFF_METHOD 采用普通数值输入框，填 1 或 2，回车生效。
+
+来源为 [官网字母索引](https://gacode.io/cgyro/cgyro_list.html)、[归一化与分类表](https://gacode.io/cgyro.html)、[旋转定义](https://gacode.io/rotation.html)，并核对上述固定源码版本。官网部分默认值与新版源码不同，界面不据网页强行修改源输入或 GUI 参考值；输入值和参考值在帮助末尾单独显示。EQUILIBRIUM_MODEL 的官网旧项 3 与新版仅接受 1 / 2 的差异已标注；新版模型 2 为 Miller Extended Harmonic（MXH）。COLLISION_MODEL 的 6 / 7 也注明版本限制。
+
+重要生效条件包括：线性计算不使用 GAMMA_E；独立指定 Zeff 需要 Z_EFF_METHOD=1 和碰撞模型 1 / 5；多数实验剖面倍率只对 PROFILE_MODEL=2 生效，局部输入应直接调整对应物理量。帮助说明输入约定，不替代服务器自身的版本检查与数值收敛检查。

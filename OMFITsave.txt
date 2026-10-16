@@ -239,6 +239,7 @@
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_project_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_results'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_results.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_parameters.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_parameter_help'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_parameter_help.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_isotopes'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_isotopes.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_scan_values'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_scan_values.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cases.py <-:-:-> {}
@@ -344,6 +345,7 @@
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_startup'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/LIB/OMFITlib_startup.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_read'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/LIB/OMFITlib_cgyro_read.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_parameters.py <-:-:-> {}
+['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_parameter_help'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_parameter_help.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_isotopes'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_isotopes.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_scan_values'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_scan_values.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py <-:-:-> {}

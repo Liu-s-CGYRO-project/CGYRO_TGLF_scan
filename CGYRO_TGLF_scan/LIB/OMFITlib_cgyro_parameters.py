@@ -182,7 +182,7 @@ def parameter_value(name, raw):
     if name == 'DELTA_T_METHOD' and value not in (0, 1, 2, 3):
         raise ValueError('DELTA_T_METHOD 请选择 0（固定 RK4）或 1–3（自适应积分）。')
     if name == 'Z_EFF_METHOD' and value not in (1, 2):
-        raise ValueError('Z_EFF_METHOD 请选择 1（指定 Zeff）或 2（按粒子组成计算）。')
+        raise ValueError('Z_EFF_METHOD 请填写 1（指定 Zeff）或 2（按粒子组成计算）。')
     if name == 'Z_EFF' and value < 1:
         raise ValueError('Z_EFF 必须大于或等于 1。')
     if spec['positive'] and value <= 0:

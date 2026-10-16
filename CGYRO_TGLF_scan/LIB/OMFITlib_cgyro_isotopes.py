@@ -87,7 +87,7 @@ def isotope_input(source, mass, main_indices, rhostar=None, global_curvature=Fal
     else:
         if global_curvature:
             raise ValueError('全局 H/D/T 扫描缺少原生曲率归一化，请用新版 Transfer_tool 重新生成半径输入。')
-        # N_GLOBAL=0 ignores these fields. Preserve a documented local fallback;
+        # GLOBAL_FLAG=0 ignores these fields. Preserve a documented local fallback;
         # never silently use it for a global calculation.
         sn = math.fsum(weight * row['SDLNNDR'] for weight, row in zip(wn, rows))
         st = math.fsum(weight * row['SDLNTDR'] for weight, row in zip(wp, rows))

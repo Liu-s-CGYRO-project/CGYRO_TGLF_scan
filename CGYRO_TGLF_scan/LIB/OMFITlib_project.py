@@ -357,9 +357,9 @@ def _cgyro_case_input(root, row, source, ion_case, physics, dimensions):
         scanned = scan_parameter_names(physics, dimensions)
         overrides = validated_overrides(physics, [source], scanned)
         global_values = [parameter['values'] for axis in configured_scan_axes(physics, dimensions, source)
-                         for parameter in [axis] + axis.get('linked', []) if parameter['name'] == 'N_GLOBAL']
+                         for parameter in [axis] + axis.get('linked', []) if parameter['name'] == 'GLOBAL_FLAG']
         global_curvature = (any(number > 0 for number in global_values[0]) if global_values else
-                            float(overrides.get('N_GLOBAL', source.get('N_GLOBAL', 0))) > 0)
+                            float(overrides.get('GLOBAL_FLAG', source.get('GLOBAL_FLAG', 0))) > 0)
         value, provenance = isotope_input(source, ISOTOPE_MASSES[ion_case],
             _cgyro_main_indices(root, source, row['path']), scale, global_curvature)
         case_physics = remap_physics(physics, dimensions, provenance['index_map'])
