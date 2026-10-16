@@ -10,7 +10,7 @@ import math
 import matplotlib as mpl
 from matplotlib import colors
 from cycler import cycler
-from OMFITlib_plot_fonts import FONT_DEFAULTS, font_families, font_rc, initialize_fonts, with_font_rc
+from OMFITlib_plot_fonts import FONT_DEFAULTS, apply_text_fonts, font_families, font_rc, initialize_fonts, with_font_rc
 
 DEFAULTS = dict(FONT_DEFAULTS, font_size=12., legend_font_size=9.,
                 line_width=1.8, marker_size=5., axes_width=1., show_grid=True,
@@ -68,8 +68,8 @@ def validated(root):
         if not math.isfinite(number) or (number < 0 if optional else number <= 0):
             raise ValueError('全局图形样式数值无效：' + key)
         style[key] = number
-    if not str(style['font_family']).strip() or not str(style['chinese_font_family']).strip():
-        raise ValueError('全局图形样式需要中文和英文字体名称')
+    if not str(style['font_family']).strip():
+        raise ValueError('全局图形样式需要英文字体名称')
     if style['legend_location'] not in ('best', 'upper right', 'upper left', 'outside'):
         raise ValueError('请选择有效的图例位置')
     if not isinstance(style['show_grid'], bool):
@@ -93,10 +93,8 @@ def apply_figure_style(figure, style):
     original_draw = getattr(figure, '_project_draw', figure.draw)
     figure._project_draw = original_draw
     figure.draw = partial(with_font_rc, original_draw, fonts)
-    family = fonts['font.family']
+    apply_text_fonts(figure, fonts)
     for text in figure.findobj(match=Text):
-        text.set_fontfamily(family)
-        text.set_math_fontfamily('custom')
         text.set_fontsize(style['font_size'])
     for axis in figure.axes:
         axis.tick_params(labelsize=max(6., style['font_size'] - 1), width=style['axes_width'])

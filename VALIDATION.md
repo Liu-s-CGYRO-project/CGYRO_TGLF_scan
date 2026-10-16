@@ -1,3 +1,11 @@
+# 修订记录 · 工程 1.22.6
+
+输出图统一英文。新增独立的 OMFITlib_plot_labels，集中维护内置中英文显示词条；标题、坐标轴、图例、注释及表格 Text 在样式应用、延迟重绘与导出时转换，后续刻度更新通过各文本对象的 draw / get_window_extent 绑定处理。未知自定义中文片段获得图内可区分的 Label N，原文与显示标识对应关系保留在 figure._project_label_aliases；数据树、案例编号、参数键、数值和单位不修改。GUI 文案保留。新库在顶层、工程模块及三个使用绘图样式的子模块中登记。
+
+移除 Matplotlib 3.6 版本拦截，绘图只解析一种英文字体，默认 Liberation Sans；不读取或校验旧 chinese_font_family / chinese_font_file，也不依赖同一文本中的多字体回退。新字体配置版本迁移原有默认值，保留自定义英文配置。全局样式移除中文绘图字体字段，界面字体入口保留。字体登记优先使用 addfont，缺少时使用原生 createFontList，并清除旧 findfont 缓存。mathtext.fallback、旧 mathtext.fallback_to_cm、mathtext.bfit 及 Text.set_math_fontfamily 均按实际能力选用。字体诊断使用 ASCII 固定说明，保留实际路径和请求名称。完整字库、SIL OFL 许可与资源包标识保留，不重复编码或改写字体资源。
+
+静态参考 Matplotlib 官方 3.1.3 字体管理器源码、3.5.3 Text API 及现行字体回退说明。完成 Python 3.9 AST、符号 / OMFIT 映射接口 / LIB 依赖、兼容分支与安装包校验。未运行回归、GUI、实际绘图、导出、真实服务器环境或现场安装。保留 Kill local 的本次作业取消逻辑；管理器仍为 1.10.16，代码安装包小于 1 MB。
+
 # 修订记录 · 工程 1.22.5
 
 CGYRO Slurm 等待阶段将取消逻辑接入原有 Kill local，不增加按钮、不修改 OMFIT 本体或全局执行函数。临时 Tk Map 处理器仅识别含本次作业号、UUID 和等待标识的原生进度面板，重新绑定其中的 Kill local；原生嵌入式运行窗口和独立窗口共用相同识别，离开等待作用域后移除处理器并恢复按钮。上传、其他模块、PBS 和纯本地计算保持原行为。

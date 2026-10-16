@@ -3,8 +3,8 @@
 主程序和管理器只携带字体名称、文件摘要与加载代码。完整字体分成独立的界面包和绘图包；首次使用时下载到用户缓存目录，之后跨版本共用。程序更新不会再次携带几十兆字库。旧版已经生成且通过 SHA-256 校验的缓存直接复用。
 
 - 界面：完整 Noto Sans CJK SC Regular。
-- 绘图中文：完整思源宋体 Source Han Serif CN，常规和粗体。
-- 绘图英文：完整 Liberation Sans，常规、斜体、粗体和粗斜体，作为 Arial 的可分发相近替代。
+- 绘图：完整 Liberation Sans，常规、斜体、粗体和粗斜体，作为 Arial 的可分发相近替代；输出文字统一英文。
+- 保留资源：完整思源宋体 Source Han Serif CN，常规和粗体，继续保存在既有独立资源包和缓存中，当前绘图不再使用。
 
 字体保留原始字节与完整 SIL OFL 1.1 许可。没有裁剪字形或降低显示质量。字体名称和文件配置继续在“全局样式”修改；自定义字体覆盖默认值。
 
@@ -50,7 +50,7 @@ OMFIT 原生校验会切换 valid / error 等样式。控件局部事件监听�
 | OMFITlib_gui_fonts.refresh_window_fonts(parent) | 离线导入后刷新已登记的项目窗口 |
 | OMFITlib_plot_fonts.font_rc(style) | 保留同一幅图延迟重绘与导出时的字体配置 |
 
-新子模块接入 GUI 字体时，登记 gui_fonts、gui_font_data、font_ui、font_cache、font_manifest 五个 LIB；绘图另登记 plot_fonts、plot_font_assets、plot_font_data。顶层工程和各子模块的 OMFITsave.txt 都已登记。Matplotlib 中英文混排仍需 3.6 或以上版本。
+新子模块接入 GUI 字体时，登记 gui_fonts、gui_font_data、font_ui、font_cache、font_manifest 五个 LIB；绘图另登记 plot_fonts、plot_font_assets、plot_font_data 和 plot_labels。顶层工程和各子模块的 OMFITsave.txt 都已登记。输出图全部采用英文及 Liberation Sans，不再读取中文绘图字体设置或要求 Matplotlib 3.6；GUI 的中文字体设置保持原有用途。
 
 ## 重建
 

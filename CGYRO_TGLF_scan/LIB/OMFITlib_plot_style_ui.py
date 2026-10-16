@@ -21,11 +21,8 @@ def render_style(root, ui):
     with section_group(ui, '界面字体'):
         ui.Button('界面字体与字号', open_font_manager)
     with section_group(ui, '字体与线条'):
-        with ui.same_row():
-            entry('chinese_font_family', '中文字体', '默认思源宋体（Source Han Serif CN）；首次使用下载到共享缓存，后续无需重复下载。')
-            entry('font_family', '英文字体', '默认 Liberation Sans，作为 Arial 的相近替代；字体独立缓存，用于英文、数字和常用数学符号。')
-        entry('chinese_font_file', '中文字体文件', '可选：填写 .ttf、.otf 或 .ttc 文件路径。留空使用缓存的默认字体；指定文件后自动读取其字体名称。')
-        entry('font_file', '英文字体文件', '可选：填写英文字体文件路径，覆盖缓存的默认字体。中英文混排需要 Matplotlib 3.6 或以上版本。')
+        entry('font_family', '绘图字体', '输出图统一使用英文。默认 Liberation Sans，作为 Arial 的相近替代；用于英文、数字和常用数学符号。')
+        entry('font_file', '字体文件', '可选：填写 .ttf、.otf 或 .ttc 文件路径，覆盖缓存的默认英文字体。不要求 Matplotlib 3.6，不读取旧的中文绘图字体设置。')
         with ui.same_row():
             entry('font_size', '字号 / pt')
             entry('legend_font_size', '图例字号 / pt')

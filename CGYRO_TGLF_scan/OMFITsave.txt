@@ -499,6 +499,10 @@
 ['Transfer_tool']['LIB']['OMFITlib_font_manifest'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_font_manifest.py <-:-:-> {}
 ['DOCS']['字体接口'] <-:-:-> OMFITascii <-:-:-> ./DOCS/GUI_FONTS.md <-:-:-> {}
 ['LIB']['OMFITlib_plot_fonts'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_fonts.py <-:-:-> {}
+['LIB']['OMFITlib_plot_labels'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_labels.py <-:-:-> {}
+['TGLF_scan']['TGYRO']['LIB']['OMFITlib_plot_labels'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_labels.py <-:-:-> {}
+['TGLF_scan']['LIB']['OMFITlib_plot_labels'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_labels.py <-:-:-> {}
+['Transfer_tool']['LIB']['OMFITlib_plot_labels'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_labels.py <-:-:-> {}
 ['TGLF_scan']['TGYRO']['LIB']['OMFITlib_plot_fonts'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_fonts.py <-:-:-> {}
 ['TGLF_scan']['LIB']['OMFITlib_plot_fonts'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_fonts.py <-:-:-> {}
 ['Transfer_tool']['LIB']['OMFITlib_plot_fonts'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_fonts.py <-:-:-> {}
