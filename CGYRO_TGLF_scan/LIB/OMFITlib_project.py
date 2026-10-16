@@ -439,10 +439,24 @@ def cgyro_input_issues(root):
 
 def collect_issues(root):
     manifest = read(root, ('CGYRO_scan', 'RUN_MANIFEST'), {})
-    if not manifest or manifest.get('status', None) not in ('submitted', 'submitted_or_finished', 'running', 'loaded'):
+    if not manifest or manifest.get('status', None) not in ('submitted', 'submitted_or_finished', 'running', 'loaded', 'failed', 'cancelled'):
         return ['尚无已执行 / 已提交的 CGYRO 运行；仅生成输入后不能收集结果']
     if not manifest.get('points', None) or not manifest.get('workDir', None):
         return ['当前运行记录缺少扫描点或工作目录']
+    return []
+
+
+def sync_run_issues(root):
+    manifest = read(root, ('CGYRO_scan', 'RUN_MANIFEST'), {})
+    if not manifest or manifest.get('status', '') == 'published':
+        return ['尚无需要同步状态的 CGYRO 运行']
+    if not re.fullmatch(r'[0-9]+', str(manifest.get('job_id', '') or '')):
+        return ['当前记录没有 Slurm 作业号，不能推断远程状态']
+    remote = read(root, ('CGYRO_scan', 'SETTINGS', 'REMOTE_SETUP'), {})
+    scheduler = str(manifest.get('scheduler', '') or remote.get(
+        str(manifest.get('serverPicker', '') or ''), {}).get('scheduler', '')).lower()
+    if scheduler != 'slurm':
+        return ['此按钮用于同步 Slurm 作业；其他运行可通过收集结果更新状态']
     return []
 
 
@@ -1300,6 +1314,19 @@ class ProjectActions:
             return self.call('归档已收集的 CGYRO 结果', MODULES['cgyro'] + ('SCRIPTS', 'CGYROScan.py'))
         finally:
             setup['irun'], setup['idownsync'] = old_run, old_download
+
+    def sync_cgyro_run(self):
+        issues = sync_run_issues(self.root)
+        if issues:
+            raise ValueError('；'.join(issues))
+        self.call('同步 CGYRO 作业状态', MODULES['cgyro'] + ('SCRIPTS', 'refresh_run_status.py'))
+        state = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST', 'status'), '')
+        outcome = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST', 'scheduler_sync', 'outcome'), '')
+        self.settings['message'] = ('作业已取消；原记录和输出保留，可开始新运行。' if state == 'cancelled' else
+                                    '作业已失败；原记录和输出保留，可收集日志或开始新运行。' if state == 'failed' else
+                                    '未能确认作业终态，原记录继续保留，请查看运行记录。' if outcome == 'unknown' else
+                                    '作业仍在排队或运行。' if outcome == 'active' else
+                                    '作业状态已同步；已结束的运行可继续收集结果。')
 
     def save_command(self, name):
         command = self.settings.get('command_draft', '').strip()

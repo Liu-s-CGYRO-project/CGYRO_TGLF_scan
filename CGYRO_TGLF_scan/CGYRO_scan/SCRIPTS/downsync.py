@@ -3,6 +3,7 @@
 from builtins import Exception, RuntimeError, ValueError, float, int, isinstance, len, list, set, str, tuple
 import os
 import re
+from OMFITlib_cgyro_run_state import refresh_run_state
 
 
 def shell_quote(value):
@@ -60,10 +61,10 @@ def job_log_tail(points):
     return output + ('\n' + errors if errors else '')
 
 
-def failure_report(points):
+def failure_report(points, status='failed'):
     points = unique_points(points)
     manifest['failed_points'] = points
-    manifest['status'] = 'failed'
+    manifest['status'] = status
     solver_errors = manifest.get('solver_errors', {})
     summary = '\n'.join(point + ': ' + error for point in points for error in solver_errors.get(point, []))
     try:
@@ -87,20 +88,15 @@ def failure_report(points):
     return report
 
 
-def probe_run_outputs(scheduler, job_id):
+def probe_run_outputs(scheduler, job_id, scheduler_record=None):
     command = ''
-    if scheduler == 'slurm' and re.fullmatch(r'[0-9]+', job_id):
-        command += ('queued=$(squeue -h -j ' + job_id + ') || exit 1;\n'
-                    'if [ -n "$queued" ]; then printf "CGYRO_ACTIVE\\n"; exit 0; fi\n'
-                    'if command -v sacct >/dev/null 2>&1; then\n'
-                    '  sacct -X -n -P -j ' + job_id + ' --format=JobID,State,ExitCode 2>/dev/null '
-                    '| while IFS= read -r row; do printf "CGYRO_STATE|%s\\n" "$row"; done\nfi\n')
     for point in parentdir:
         command += 'point=' + shell_quote(point) + '; missing="";\n'
         command += ('for name in out.cgyro.grids out.cgyro.time; do\n'
                     '  [ -s "$point/$name" ] || missing="$missing $name";\ndone\n'
                     'if [ -s "$point/cgyro.exit" ]; then\n'
-                    '  code=$(cat -- "$point/cgyro.exit"); [ "$code" = 0 ] || missing="$missing exit=$code";\nfi\n'
+                    '  code=$(cat -- "$point/cgyro.exit"); [ "$code" = 0 ] || missing="$missing exit=$code";\n'
+                    'else missing="$missing no_exit_record"; fi\n'
                     'if [ -s "$point/out.cgyro.info" ]; then\n'
                     '  solver_errors=$(grep -E "^[[:space:]]*ERROR:" "$point/out.cgyro.info" || true);\n'
                     '  if [ -n "$solver_errors" ]; then\n'
@@ -135,10 +131,15 @@ def probe_run_outputs(scheduler, job_id):
                 if match and int(match.group(1)) < len(parentdir):
                     point = parentdir[int(match.group(1))]
                     failed.add(point)
-    manifest['scheduler_status'] = '\n'.join(states)
+    if states:
+        manifest['scheduler_status'] = '\n'.join(states)
     manifest['solver_errors'] = solver_errors
     if set(seen) != set(parentdir):
         raise RuntimeError('CGYRO output probe did not return the complete task list; results have not been loaded.')
+    if scheduler_record is not None:
+        for point, state in scheduler_record.get('point_states', {}).items():
+            if state and state != 'COMPLETED':
+                failed.add(point)
     return unique_points([point for point in parentdir if point in failed])
 
 
@@ -230,11 +231,22 @@ caseTag = manifest['case_tag']
 caseRoot = root['Cases']
 parentdir = list(manifest['points'])
 loaded_cases = []
+partial_cases = []
+terminal_status = ''
 if icgyro == 1:
     scheduler = str(manifest.get('scheduler', '') or rmtsetup.get(
         str(manifest.get('serverPicker', '') or ''), {}).get('scheduler', '') or '').lower()
-    failed_cases = probe_run_outputs(scheduler, str(manifest.get('job_id', '') or ''))
-    if failed_cases:
+    scheduler_record = None
+    if scheduler == 'slurm':
+        scheduler_record = refresh_run_state(root, OMFITx)
+        if scheduler_record['active']:
+            raise RuntimeError('CGYRO job is still queued/running; collect after it finishes.')
+        if scheduler_record['outcome'] == 'unknown' and not scheduler_record['queue_verified']:
+            raise RuntimeError('Could not confirm the CGYRO job state; its existing record is preserved.')
+        if scheduler_record['outcome'] in ('cancelled', 'failed'):
+            terminal_status = scheduler_record['outcome']
+    failed_cases = probe_run_outputs(scheduler, str(manifest.get('job_id', '') or ''), scheduler_record)
+    if failed_cases and not terminal_status:
         # Keep exception text ASCII: older OMFIT script serialization can
         # replace non-ASCII task-script messages with question marks.
         raise RuntimeError(failure_report(failed_cases))
@@ -260,12 +272,23 @@ for itemdir in parentdir:
         if candidate['n_time'] < 1:
             raise ValueError('Result contains no time samples')
         caseRoot[caseTag][itemdir] = candidate
-        loaded_cases.append(itemdir)
+        if itemdir in failed_cases:
+            partial_cases.append(itemdir)  # Readable samples, never a completed calculation.
+        else:
+            loaded_cases.append(itemdir)
     except Exception as exc:
         print('Failed to load ' + itemdir + ': ' + str(exc))
         failed_cases.append(itemdir)
 root['RUN_MANIFEST']['loaded_points'] = loaded_cases
-root['RUN_MANIFEST']['failed_points'] = failed_cases
-if failed_cases:
+root['RUN_MANIFEST']['partial_points'] = partial_cases
+root['RUN_MANIFEST']['failed_points'] = unique_points(failed_cases)
+if terminal_status == 'cancelled':
+    report = failure_report(failed_cases, status='cancelled')
+    print('CGYRO job was cancelled. Preserved complete points: {}; readable partial points: {}. '
+          'The run is not published as a completed calculation; a fresh run is allowed.'.format(
+              len(loaded_cases), len(partial_cases)))
+    print(report)
+elif failed_cases:
     raise RuntimeError(failure_report(failed_cases) + '\nPrevious archived results are preserved.')
-root['RUN_MANIFEST']['status'] = 'loaded'
+else:
+    root['RUN_MANIFEST']['status'] = 'loaded'

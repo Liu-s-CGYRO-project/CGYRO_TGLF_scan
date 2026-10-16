@@ -7,6 +7,7 @@ from OMFITlib_cgyro_read import *
 from OMFITlib_cgyro_parameters import (FIELDS as CALCULATION_FIELDS, apply_parameters, initialize_parameters,
                                       parameter_value, validate_zeff)
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolved_scan_axes
+from OMFITlib_cgyro_run_state import refresh_run_state
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -252,10 +253,17 @@ if restart_mode not in (0, 1):
     raise ValueError('restart_mode must be 0 or 1')
 previous_manifest = root.get('RUN_MANIFEST', {})
 previous_status = previous_manifest.get('status', None)
-previous_failed = previous_status == 'failed' or (
+previous_failed = previous_status in ('failed', 'cancelled') or (
     previous_status == 'submitted_or_finished' and bool(previous_manifest.get('failed_points', [])))
-if previous_cases and previous_manifest and previous_status != 'published' and not previous_failed:
-    raise ValueError('The previous CGYRO run has not been published; collect it before starting another run')
+if previous_manifest and previous_status != 'published' and not previous_failed:
+    # A killed local wait does not update a remote job's final status. Query the
+    # saved run, rather than treating the stale local flag as a live allocation.
+    refresh_run_state(root, OMFITx)
+    previous_status = previous_manifest.get('status', None)
+    previous_failed = previous_status in ('failed', 'cancelled')
+    if previous_status != 'published' and not previous_failed:
+        raise ValueError('The previous CGYRO run is still active, needs collection, or has an unconfirmed scheduler state. '
+                         'Synchronize its job status or collect its results before starting another run.')
 if restart_mode and not previous_cases:
     raise ValueError('No saved cases are available for restart')
 run_token = uuid.uuid4().hex
@@ -346,7 +354,7 @@ for new_dir, overrides, point_metadata in points:
     point_table[new_dir] = point_metadata
 
 # Commit the prepared run only after every point passes validation and packaging.
-if previous_cases:
+if previous_manifest or previous_cases:
     history_key = root.get('RUN_MANIFEST', {}).get('run_token', 'imported-' + run_token)
     if 'RUN_HISTORY' not in root:
         root['RUN_HISTORY'] = OMFITtree()
@@ -355,8 +363,9 @@ if previous_cases:
     archived_manifest = copy.deepcopy(previous_manifest)
     if previous_status == 'published':
         archived_manifest.pop('point_table', None)  # Permanent task rows live once in RUN_DB.
-    elif previous_failed:
-        root['RUN_HISTORY'][history_key]['cases'] = copy.deepcopy(previous_cases)
+    elif previous_failed or not previous_manifest:
+        old_tag = previous_manifest.get('case_tag', caseName)
+        root['RUN_HISTORY'][history_key]['cases'] = copy.deepcopy(caseRoot.get(old_tag, OMFITtree()))
     root['RUN_HISTORY'][history_key]['manifest'] = archived_manifest
 manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': max(1, scan_dimensions),
             'scan_dimensions': scan_dimensions,
@@ -613,7 +622,10 @@ if setup['irun']==1:
         )
         if wait_code != 0:
             root['RUN_MANIFEST']['wait_error'] = output_to_text(wait_errors)
-            raise RuntimeError('Could not query CGYRO job ' + job_id + '; submission remains recorded. '
-                               + output_to_text(wait_errors))
+            final_state = refresh_run_state(root, OMFITx) if scheduler == 'slurm' else None
+            if final_state is None or not final_state['terminal']:
+                raise RuntimeError('Could not query CGYRO job ' + job_id + '; submission remains recorded. '
+                                   + output_to_text(wait_errors))
 
-    root['RUN_MANIFEST']['status'] = 'submitted_or_finished'
+    if root['RUN_MANIFEST'].get('status', '') not in ('cancelled', 'failed'):
+        root['RUN_MANIFEST']['status'] = 'submitted_or_finished'

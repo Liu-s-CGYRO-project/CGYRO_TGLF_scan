@@ -21,7 +21,7 @@ from OMFITlib_cgyro_parameter_help import parameter_help
 from OMFITlib_project import (ERROR_NOTICE_SUFFIX, ION_CASES, LABELS, MODULES, PAGES, cgyro_input_issues,
     cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, generated_tglf_sources, location, module,
     input_digest, pending_inputs, read, runtime_issues, summary, sync_cgyro_choices, sync_cgyro_ion_cases, text_value,
-    tglf_input_issues, transfer_generated_rows, transfer_parameter_value, transfer_sources)
+    sync_run_issues, tglf_input_issues, transfer_generated_rows, transfer_parameter_value, transfer_sources)
 
 STATUS = {'prepared': '输入已准备', 'submitted': '已提交', 'loaded': '结果已读取',
           'submitted_or_finished': '已提交或执行返回',
@@ -396,6 +396,7 @@ class ProjectUI:
                 STATUS.get(manifest.get('status', ''), manifest.get('status', ''))))
             if manifest.get('job_id', None):
                 self.label('作业：' + str(manifest['job_id']))
+            self.guarded('同步作业状态', self.actions.sync_cgyro_run, sync_run_issues(self.root))
             self.guarded('重新收集未归档结果', self.actions.collect, collect_issues(self.root))
         ResultBrowser(self.root, self.ui).render(title=False)
         self.nav('对比绘图（可选）', 'plots')
@@ -771,6 +772,7 @@ class ProjectUI:
         self.ui.Separator('CGYRO 当前运行')
         self.label('状态：{}；作业：{}\n目录：{}'.format(STATUS.get(manifest.get('status', None), manifest.get('status', '尚无记录')),
                     manifest.get('job_id', '—'), manifest.get('workDir', '—')))
+        self.guarded('同步 CGYRO 作业状态', self.actions.sync_cgyro_run, sync_run_issues(self.root))
         self.guarded('收集 CGYRO 当前结果', self.actions.collect, collect_issues(self.root))
         self.ui.Separator('TGLF 多剖面运行')
         cases = self.root.get('TGLF_CASES', {})
