@@ -119,9 +119,9 @@ class ManagerUpdateUI:
         self._label(page, summary, wraplength=700).pack(fill='x')
         self._label(page, '当前：' + result['current'] + '    最新稳定版：' + (result['latest'] or '暂无'),
                     muted=True).pack(anchor='w', pady=(8, 4))
-        self._label(page, '管理器更新源：' + result['repository'] + '\n网络：' + self.proxy_info.get(),
+        self._notice(page, '管理器更新源：' + result['repository'] + '\n网络：' + self.proxy_info.get(),
                     muted=True, wraplength=700).pack(fill='x')
-        self._label(page, '增量更新只下载变更文件，校验后安装并重新打开管理器。当前工程、计算结果和模板库保留；在 OMFIT 中正常保存工程即可保留更新。',
+        self._notice(page, '增量更新只下载变更文件，校验后安装并重新打开管理器。当前工程、计算结果和模板库保留；在 OMFIT 中正常保存工程即可保留更新。',
                     muted=True, wraplength=700).pack(fill='x', pady=10)
         plan = result.get('plan')
         self.manager_install_button = None

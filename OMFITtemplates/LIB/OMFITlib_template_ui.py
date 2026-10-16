@@ -29,6 +29,87 @@ DATA_OPTIONS = {'保留当前案例与结果': 'keep', '切换到模板示例': 
 SETTING_OPTIONS = {'保留当前设置，补全新增项': 'keep', '使用模板设置': 'template'}
 
 
+class _Notice(ttk.Frame):
+    """Wrap notices into separate label rows with room for CJK fallback glyphs."""
+    def __init__(self, parent, font, text='', variable=None, muted=False, wraplength=1000):
+        super().__init__(parent, style='TM.TFrame', takefocus=False)
+        self._font = font
+        self._text = text
+        self._variable = variable
+        self._width_hint = wraplength
+        self._width = None
+        self._pending = None
+        self._labels = []
+        self._label_style = 'TM.Muted.TLabel' if muted else 'TM.TLabel'
+        self._trace = variable.trace_add('write', self._queue) if variable is not None else None
+        self._project_cjk_metrics_handler = self._queue
+        self.bind('<Configure>', self._configured, add='+')
+        self.bind('<Destroy>', self._dispose, add='+')
+        self._render()
+
+    def _configured(self, event):
+        if event.width != self._width:
+            self._queue()
+
+    def _queue(self, *args):
+        if self._pending is None:
+            self._pending = self.after_idle(self._render)
+
+    def _wrap(self, paragraph, width):
+        lines = []
+        while paragraph:
+            if self._font.measure(paragraph) <= width:
+                lines.append(paragraph)
+                break
+            low, high = 1, len(paragraph)
+            while low < high:
+                middle = (low + high + 1) // 2
+                if self._font.measure(paragraph[:middle]) <= width:
+                    low = middle
+                else:
+                    high = middle - 1
+            # Prefer a word boundary; CJK and long paths can wrap by glyph.
+            end = max(paragraph.rfind(' ', 0, low + 1), paragraph.rfind('\t', 0, low + 1))
+            if end <= 0:
+                end = low
+            lines.append(paragraph[:end].rstrip())
+            paragraph = paragraph[end:].lstrip()
+        return lines or ['']
+
+    def _render(self):
+        self._pending = None
+        actual = self.winfo_width()
+        width = actual if actual > 1 else self._width_hint
+        self._width = actual
+        text = self._variable.get() if self._variable is not None else self._text
+        lines = []
+        for paragraph in str(text).replace('\r\n', '\n').replace('\r', '\n').split('\n'):
+            lines.extend(self._wrap(paragraph, max(1, width)))
+        line = self._font.metrics('linespace')
+        cjk = (self._font.measure('\u56fd') * 6 + 4) // 5
+        gap = max(6, line // 3)
+        padding = (max(0, cjk - line) + gap + 1) // 2
+        while len(self._labels) > len(lines):
+            self._labels.pop().destroy()
+        for index, text in enumerate(lines):
+            if index == len(self._labels):
+                label = ttk.Label(self, style=self._label_style, anchor='w')
+                label.pack(fill='x')
+                self._labels.append(label)
+            # No label contains a newline or uses Tk's tighter internal wrap.
+            self._labels[index].configure(text=text, font=self._font, padding=(0, padding), wraplength=0)
+
+    def _dispose(self, event):
+        if event.widget is not self:
+            return
+        if self._pending is not None:
+            self.after_cancel(self._pending)
+            self._pending = None
+        if self._trace is not None:
+            self._variable.trace_remove('write', self._trace)
+            self._trace = None
+
+
 class TemplateManager(ManagerUpdateUI):
     def __init__(self, window, current_project='', library=None, preferences=None, session=None):
         self.window = window
@@ -223,6 +304,10 @@ class TemplateManager(ManagerUpdateUI):
         unit = max(1, self._metrics_font.measure('0'))
         return (self._metrics_font.measure(str(text)) + unit - 1) // unit
 
+    def _notice(self, parent, text='', variable=None, muted=False, wraplength=1000):
+        return _Notice(parent, self.font, text=text, variable=variable,
+                       muted=muted, wraplength=wraplength)
+
     def _text_area(self, parent, **kwargs):
         kwargs.setdefault('font', self.font)
         kwargs.setdefault('spacing1', self._line_gap // 2)
@@ -382,10 +467,10 @@ class TemplateManager(ManagerUpdateUI):
         self.empty_hint = ttk.Frame(self.library_table, style='TM.Empty.TFrame')
         self._set_empty_hint('连接 GitHub 仓库，浏览团队模板版本。\n也可选择本地模板库使用已下载的版本。')
         self.library_table.bind('<Configure>', self._layout_empty_hint, add='+')
-        info = self._label(page, variable=self.release_info, wraplength=1000, muted=True)
+        info = self._notice(page, variable=self.release_info, muted=True)
         actions = self._frame(page)
         actions.pack(side='bottom', fill='x', pady=(6, 0), before=self.library_table.master)
-        info.pack(side='bottom', fill='x', pady=5, before=self.library_table.master)
+        info.pack(side='bottom', fill='x', pady=(8, 4), before=self.library_table.master)
         self.library_actions = {}
         for label, callback in [('拉取并使用 →', self._use_selected), ('在 GitHub 查看', self._browse_release),
                                 ('导入包', self._import), ('导出包', self._export), ('上传本地包', self._upload_selected)]:
@@ -422,12 +507,12 @@ class TemplateManager(ManagerUpdateUI):
                                 sticky='w', padx=(0 if stacked else 24, 8), pady=3)
             settings_choice.grid(row=1 if stacked else 0, column=1 if stacked else 3, sticky='w', pady=3)
         row.bind('<Configure>', layout_policies)
-        self._label(page, ('直接更新内存中的工程，保留选中的案例与结果；照常保存工程即可持久保存。'
+        self._notice(page, ('直接更新内存中的工程，保留选中的案例与结果；照常保存工程即可持久保存。'
                           '\n“切换到示例”会替换模板模块内的全部案例与结果。') if self.session is not None else
                     '“切换到示例”替换模板模块内的全部案例与结果；未保存的修改需先在 OMFIT 保存。',
                     muted=True, wraplength=1000).pack(fill='x')
         self.change_table = self._table(page, [('action', '变更', 85), ('path', '节点路径' if self.session else '文件路径', 710), ('size', '大小', 100)])
-        summary = self._label(page, variable=self.plan_info, wraplength=1000)
+        summary = self._notice(page, variable=self.plan_info)
         actions = self._frame(page)
         actions.pack(side='bottom', fill='x', before=self.change_table.master)
         summary.pack(side='bottom', fill='x', pady=5, before=self.change_table.master)
@@ -484,10 +569,10 @@ class TemplateManager(ManagerUpdateUI):
         self._label(choices, '发布到').pack(side='left', padx=(0, 8))
         self._combo(choices, self.publish_destination, ['GitHub', '本地模板库']).pack(side='left')
         self._label(page, '默认只打包代码、模板输入和设置；示例建议来自单独准备的小型工程。', muted=True).pack(anchor='w', pady=(4, 12))
-        self._label(page, variable=self.inspection_info, wraplength=1000, justify='left').pack(fill='x')
+        self._notice(page, variable=self.inspection_info).pack(fill='x')
         bottom = self._frame(page)
         bottom.pack(side='bottom', fill='x', pady=(12, 0))
-        self._label(bottom, variable=self.upload_info, wraplength=1000).pack(fill='x', pady=(0, 10))
+        self._notice(bottom, variable=self.upload_info).pack(fill='x', pady=(0, 10))
         actions = self._frame(bottom)
         actions.pack(fill='x')
         self._button(actions, '准备模板包', self._publish).pack(side='left', padx=(0, 10))
