@@ -132,8 +132,9 @@ except (KeyError, TypeError, ValueError, OverflowError) as exc:
     particle_issue = str(exc)
     OMFITx.Label('主离子识别：' + particle_issue, align='left', wraplength=840)
 details = [
-    '主离子：所选半径区间内平均 ni/ne > 30%，全部保留。',
-    '所有方案均保持主离子密度比例，并校正密度和密度梯度准中性。',
+    '先在原始完整剖面副本上固定电子密度、校正准中性，再识别主离子及执行粒子方案。',
+    '主离子：准中性校正后，所选半径区间内平均 ni/ne > 30%，全部保留。',
+    '处理后和局部插值后再次检查密度、密度梯度；CGYRO 同步密度曲率。Zeff 不参与电荷闭合。',
     DESCRIPTIONS.get(physics['generation']['particle_mode'], '请选择粒子方案。'),
     '原始剖面保留；处理结果及记录保存到 OUTPUTS/Particle_processing。',
 ]
@@ -143,6 +144,10 @@ if source_profile is None and kind != 'input.gacode':
     details.append('其他剖面来源在生成 input.gacode 后自动识别；指定热化参考时可使用已生成的 input.gacode。')
 last_report = root['OUTPUTS'].get('Particle_processing', {})
 if last_report.get('after', None):
+    source_check = last_report.get('source_neutrality', {})
+    if source_check:
+        details.append('原始完整剖面准中性：密度残差 {:.2g} → {:.2g}，梯度残差 {:.2g}。'.format(
+            source_check['density_residual_before'], source_check['density_residual'], source_check['gradient_residual']))
     details.append('上次剖面组成：\n' + '\n'.join(species_label(ion) for ion in last_report['after']))
     if last_report.get('equivalent_stage', None) == 'local_inputs':
         details.append('各半径等效杂质的 Z、密度、MASS 和来源记录在 OUTPUTS/Particle_processing/local_inputs。')
@@ -153,7 +158,7 @@ if last_report.get('thermal_reference', None):
     details.append('上次热化参考：' + species_label(last_report['thermal_reference']))
 OMFITx.ComboBox(prefix + "['particle_mode']", PRESETS, '处理方案', updateGUI=True, help='\n\n'.join(details))
 if physics['generation']['particle_mode'] == 'main_only':
-    OMFITx.Label('主离子密度之和为 1；Zeff 由删除杂质前的全部离子计算。', align='left', wraplength=840)
+    OMFITx.Label('先校正完整剖面准中性并计算 Zeff，再保留主离子、归一化密度之和为 1。', align='left', wraplength=840)
     OMFITx.ComboBox(prefix + "['zeff_collision_model']", ZEFF_COLLISIONS, 'CGYRO 碰撞模型',
                    state='readonly', updateGUI=True,
                    help='指定 Zeff 仅在 CGYRO 模型 1 或 5 且 Z_EFF_METHOD=1 时生效；生成输入时一并设置。\n'

@@ -5,7 +5,7 @@ import math
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-ZEFF_RULE = 'normalized_main_composition_zeff_v2'
+ZEFF_RULE = 'source_neutral_composition_zeff_v3'
 ZEFF_DEFAULTS = dict(zeff_collision_model=1)
 ZEFF_COLLISIONS = OrderedDict([('1 Lorentz', 1), ('5 简化 Lorentz', 5)])
 
@@ -21,7 +21,7 @@ def zeff_options(options):
 
 
 def zeff_profile(source, options, mains):
-    """Compute sum(ni*Zi**2)/ne from all original ions, never a stored Zeff."""
+    """Compute from the neutralized full source, before any preset removes ions."""
     if any(not math.isclose(float(ion['charge']), 1.0, rel_tol=0, abs_tol=1e-8) for ion in mains):
         raise ValueError('主离子归一化 + Zeff 方案只适用于 Z=1 的 H/D/T 主离子。')
     values = zeff_options(options)
@@ -33,7 +33,8 @@ def zeff_profile(source, options, mains):
         original = np.full_like(x, float(original))
     if original.shape != x.shape or not np.all(np.isfinite(original)) or np.any(original < 1 - 1e-10):
         raise ValueError('原完整粒子组成计算出的 Zeff 必须是与 rmin 对应且不小于 1 的有限数值。')
-    return dict(rule=ZEFF_RULE, source='composition', original_source='composition',
+    return dict(rule=ZEFF_RULE, source='neutralized_full_composition', original_source='composition',
+                stage='after_source_neutrality_before_particle_selection',
                 formula='sum(ni*Zi**2)/ne',
                 collision_model=values['zeff_collision_model'],
                 rmin_normalized=(x / x[-1]).tolist(), values=original.tolist())

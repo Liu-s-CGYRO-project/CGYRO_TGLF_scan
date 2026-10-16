@@ -20,12 +20,13 @@ DESCRIPTIONS = {
     'all': '保留全部离子及热 / 快类型，所有主离子按原密度比例共同校正准中性。',
     'thermalize': '同种热杂质合并；对应任一主离子的快离子独立保留，温度、环向及极向流速采用所选热杂质的值。缺少所需热离子时停止。此为热化近似，压力会改变。',
     'equivalent': '全部非主离子合成一种等效杂质，各半径分别计算 Z、密度和 MASS；保持总电荷、Zeff 贡献、总质量及压力。主离子全部保留，密度和密度梯度均满足准中性。',
-    'main_only': '只保留电子及 Z=1 主离子，保持主离子密度比例；局部归一化后主离子密度之和为 1。Zeff 始终由删除杂质前的全部离子密度和电荷计算（ΣniZi²/ne），不读取输入文件的 Zeff 字段。仅表示杂质碰撞效应，不包含杂质响应或输运。CGYRO 使用所选 Lorentz 碰撞模型和 Z_EFF_METHOD=1。',
+    'main_only': '先对保留全部粒子的原始剖面副本做准中性校正，再计算完整组成的 Zeff（ΣniZi²/ne），不读取输入文件的 Zeff 字段。然后只保留电子及 Z=1 主离子，保持主离子比例并再次闭合电荷，局部归一化后主离子密度之和为 1。Zeff 仅表示杂质碰撞效应，不包含杂质响应或输运。CGYRO 使用所选 Lorentz 碰撞模型和 Z_EFF_METHOD=1。',
 }
 PARTICLE_DEFAULTS = {'particle_mode': 'all', 'thermal_reference_ion': 0}
 MAIN_ION_THRESHOLD = 0.30
-MAIN_ION_RULE = 'mean_ni_over_ne_in_radial_interval_v1'
+MAIN_ION_RULE = 'mean_ni_over_ne_after_source_neutrality_v2'
 EQUIVALENT_RULE = 'all_nonmain_local_charge_zeff_mass_pressure_v1'
+NEUTRALITY_RULE = 'source_first_fixed_ne_density_gradient_curvature_v3'
 TOLERANCE = 1e-8
 ROUND_OFF = 64 * np.finfo(float).eps
 
@@ -54,7 +55,8 @@ def particle_options(options):
         raise ValueError('请选择 rho 或 r/a 坐标。')
     # Include the rule and interval in provenance, invalidating old/manual results.
     values.update(dict(minimum=minimum, maximum=maximum, coordinate=coordinate,
-                  main_ion_rule=MAIN_ION_RULE, main_ion_threshold=MAIN_ION_THRESHOLD))
+                  main_ion_rule=MAIN_ION_RULE, main_ion_threshold=MAIN_ION_THRESHOLD,
+                  neutrality_rule=NEUTRALITY_RULE))
     if values['particle_mode'] == 'equivalent':
         values['equivalent_rule'] = EQUIVALENT_RULE
     return values
@@ -119,8 +121,8 @@ def _validate_profile(profile):
     return ne
 
 
-def detect_main_ions(profile, options):
-    """Classify original populations by the interval mean of ni/ne, before edits.
+def _detect_main_ions(profile, options):
+    """Classify the supplied full composition by the interval mean of ni/ne.
 
     Integrate the piecewise-linear fraction in the selected coordinate, including
     both interval endpoints. No volume weighting or output-grid dependence.
@@ -155,6 +157,12 @@ def detect_main_ions(profile, options):
     if not candidates:
         raise ValueError('本轮半径范围内没有平均 ni/ne > 30% 的主离子（最高 {:.6g}%）；请检查剖面和半径范围。'.format(largest * 100))
     return sorted(candidates, key=lambda ion: (-ion['mean_fraction'], ion['index']))
+
+
+def detect_main_ions(source, options):
+    """Preview selection using the same neutral source copy as generation."""
+    profile, _ = prepare_source_profile(source, options)
+    return _detect_main_ions(profile, options)
 
 
 def main_ion_label(ion):
@@ -199,29 +207,37 @@ def _close_gradients(charges, densities, gradients, ne, electron_gradient, main_
     return gradients, float(np.max(np.abs(residual)))
 
 
-def _close_density(profile, main_count):
+def _ordered_ions(profile, main_indices=None):
+    ions = species(profile)
+    if main_indices is None:
+        return ions
+    order = list(main_indices) + [ion['index'] for ion in ions if ion['index'] not in main_indices]
+    return [ions[index - 1] for index in order]
+
+
+def _close_density(profile, main_count, main_indices=None):
     """Close against fixed ne, never invoke OMFIT's negative-density ne fallback."""
     ne = np.asarray(profile['ne'], dtype=float)
-    ions = species(profile)
+    ions = _ordered_ions(profile, main_indices)
     charges = np.array([ion['charge'] for ion in ions])
     densities = np.array([profile['ni_' + str(ion['index'])] for ion in ions])
     densities, error = _close_densities(charges, densities, ne, main_count)
     for index in range(main_count):
-        profile['ni_' + str(index + 1)] = densities[index]
+        profile['ni_' + str(ions[index]['index'])] = densities[index]
     profile['z_eff'] = profile.calc_zeff()
     profile['ptot'] = profile.calc_ptot()
     return error
 
 
-def _close_profile_gradient(profile, main_count):
-    ne, ions = np.asarray(profile['ne'], dtype=float), species(profile)
+def _close_profile_gradient(profile, main_count, main_indices=None):
+    ne, ions = np.asarray(profile['ne'], dtype=float), _ordered_ions(profile, main_indices)
     electron_gradient = _array(profile, 'dlnnedr', ne.shape)
     charges = np.array([ion['charge'] for ion in ions])
     densities = np.array([profile['ni_' + str(ion['index'])] for ion in ions])
     gradients = np.array([_array(profile, 'dlnnidr_' + str(ion['index']), ne.shape) for ion in ions])
     gradients, error = _close_gradients(charges, densities, gradients, ne, electron_gradient, main_count)
     for index in range(main_count):
-        profile['dlnnidr_' + str(index + 1)] = gradients[index]
+        profile['dlnnidr_' + str(ions[index]['index'])] = gradients[index]
     # Keep the total pressure gradient consistent with the corrected species.
     weighted = ne * profile['Te'] * (electron_gradient + _array(profile, 'dlntedr', ne.shape))
     for ion in ions:
@@ -298,17 +314,60 @@ def _pressure_nt(profile):
         np.zeros_like(profile['ne']))
 
 
+def prepare_source_profile(source, options):
+    """Neutralize the full original composition before any preset or selection.
+
+    Initial abundant populations only identify who balances charge; no ion is
+    removed, reordered, merged or thermalized. The final selection is made from
+    this corrected full composition, in both the GUI preview and generation.
+    """
+    options = particle_options(options)
+    profile = source.duplicate()
+    ne = _validate_profile(profile).copy()
+    ions = species(profile)
+    mains = _detect_main_ions(profile, options)
+    indices = [ion['index'] for ion in mains]
+    before = np.array([profile['ni_' + str(ion['index'])] for ion in ions])
+    charges = np.array([ion['charge'] for ion in ions])
+    electron_gradient = _array(profile, 'dlnnedr', ne.shape)
+    pressure = _pressure_nt(profile)
+    before_density = float(np.max(np.abs(np.sum(charges[:, None] * before, axis=0) / ne - 1.0)))
+    density_error = _close_density(profile, len(mains), indices)
+    gradient_error = _close_profile_gradient(profile, len(mains), indices)
+    _validate_profile(profile)
+    if not np.array_equal(np.asarray(profile['ne']), ne):
+        raise ValueError('原始剖面准中性校正改变了电子密度，已停止生成。')
+    if not np.array_equal(_array(profile, 'dlnnedr', ne.shape), electron_gradient):
+        raise ValueError('原始剖面准中性校正改变了电子密度梯度，已停止生成。')
+    after = np.array([profile['ni_' + str(ion['index'])] for ion in ions])
+    residual = float(np.max(np.abs(np.sum(charges[:, None] * after, axis=0) / ne - 1.0)))
+    if not math.isfinite(residual) or residual > TOLERANCE:
+        raise ValueError('原始完整剖面未通过准中性检查，尚未执行粒子方案。')
+    gradients = np.array([_array(profile, 'dlnnidr_' + str(ion['index']), ne.shape) for ion in ions])
+    moments = charges[:, None] * after * gradients
+    target = ne * electron_gradient
+    scale = np.maximum(ne, np.abs(target) + np.sum(np.abs(moments), axis=0))
+    residual_gradient = float(np.max(np.abs(np.sum(moments, axis=0) - target) / scale))
+    if not math.isfinite(residual_gradient) or residual_gradient > TOLERANCE:
+        raise ValueError('原始完整剖面的密度梯度未通过准中性检查，尚未执行粒子方案。')
+    return profile, dict(rule=NEUTRALITY_RULE, stage='full_source_before_particle_selection',
+                         fixed_electron_density=True, balancing_ions=[dict(ion) for ion in mains],
+                         ion_count=len(ions), density_residual_before=before_density,
+                         density_residual=max(density_error, residual), gradient_residual=max(gradient_error, residual_gradient),
+                         max_relative_pressure_change=float(np.max(np.abs(_pressure_nt(profile) / pressure - 1.0))))
+
+
 def prepare_particles(source, options):
     """Return (processed OMFITinputgacode, compact provenance), preserving source."""
     options = particle_options(options)
-    profile = source.duplicate()
-    ne_before = _validate_profile(profile).copy()
+    profile, source_neutrality = prepare_source_profile(source, options)
+    ne_before = np.asarray(profile['ne']).copy()
     before = species(profile)
     pressure_before = _pressure_nt(profile)
-    mains = detect_main_ions(profile, options)
+    mains = _detect_main_ions(profile, options)
     main_indices = [ion['index'] for ion in mains]
     main_count = len(mains)
-    prescribed_zeff = zeff_profile(source, options, mains) if options['particle_mode'] == 'main_only' else None
+    prescribed_zeff = zeff_profile(profile, options, mains) if options['particle_mode'] == 'main_only' else None
     thermal_reference = (_thermal_reference(profile, options, before, mains)
                          if options['particle_mode'] == 'thermalize' else None)
     profile.reorder_ions(main_indices + [ion['index'] for ion in before if ion['index'] not in main_indices], verbose=False)
@@ -365,6 +424,7 @@ def prepare_particles(source, options):
     for item in changes['kept_separate']:
         after[item['index'] - 1]['thermalized_fast'] = True
     report = dict(options=options, before=before, after=after, main_ions=mains, main_count=main_count,
+                  source_neutrality=source_neutrality,
                   equivalent_stage='local_inputs' if mode == 'equivalent' else None,
                   thermal_reference=thermal_reference['species'] if thermal_reference is not None else None,
                   density_residual=density_error, gradient_residual=gradient_error,
@@ -377,21 +437,18 @@ def prepare_particles(source, options):
     return profile, report
 
 
-def close_local_input(value, kind, main_count, expected_ions):
-    """Close both density and logarithmic gradients after radial interpolation.
-
-    For CGYRO use DENS, Z, DLNNDR; for TGLF use AS, ZS, RLNS.
-    All gradients share the same radial normalization within each local input.
-    """
+def _local_arrays(value, kind):
+    """Read signed charges, densities and gradients without changing the card."""
     if kind == 'cgyro':
         count_key, density_key, charge_key, gradient_key = 'N_SPECIES', 'DENS_', 'Z_', 'DLNNDR_'
     elif kind == 'tglf':
         count_key, density_key, charge_key, gradient_key = 'NS', 'AS_', 'ZS_', 'RLNS_'
     else:
         raise ValueError('不支持的局部输入类型。')
-    count = int(value[count_key])
-    if count < 2 or count != value[count_key]:
+    raw_count = float(value[count_key])
+    if not math.isfinite(raw_count) or raw_count < 2 or int(raw_count) != raw_count:
         raise ValueError('局部输入需要电子和至少一种离子。')
+    count = int(raw_count)
     indices = list(range(1, count + 1))
     charges = np.array([float(value[charge_key + str(i)]) for i in indices])
     densities = np.array([float(value[density_key + str(i)]) for i in indices])
@@ -401,6 +458,89 @@ def close_local_input(value, kind, main_count, expected_ions):
     electrons, ions = np.flatnonzero(charges < 0), np.flatnonzero(charges > 0)
     if len(electrons) != 1 or len(ions) + 1 != count or np.any(densities < 0):
         raise ValueError('局部输入的粒子组成或密度无效。')
+    electron = int(electrons[0])
+    if not math.isclose(charges[electron], -1.0, rel_tol=0, abs_tol=1e-12) or densities[electron] <= 0:
+        raise ValueError('局部输入的电子电荷必须为 -1，电子密度必须为正数。')
+    return density_key, gradient_key, charges, densities, gradients, electron, ions
+
+
+def _raw_local_curvatures(value, gradients, rhostar):
+    """Undo expro_locsim's effective-curvature terms, using its native rhos/a."""
+    if rhostar is None or not math.isfinite(float(rhostar)) or float(rhostar) <= 0:
+        raise ValueError('CGYRO 准中性曲率校正缺少原生 rhos/a，请重新运行 Transfer_tool。')
+    count = len(gradients)
+    gt = np.array([float(value['DLNTDR_' + str(i)]) for i in range(1, count + 1)])
+    sn = np.array([float(value['SDLNNDR_' + str(i)]) for i in range(1, count + 1)])
+    if not np.all(np.isfinite(gt)) or not np.all(np.isfinite(sn)):
+        raise ValueError('CGYRO 局部输入包含非有限的温度梯度或密度曲率。')
+    raw = sn - (1.5 * gt**2 + gradients**2 - gradients * gt) * float(rhostar)
+    if not np.all(np.isfinite(raw)):
+        raise ValueError('CGYRO 密度曲率换算溢出。')
+    return raw, gt
+
+
+def _moment_residual(charges, densities, moment, electron, ions):
+    ne = -charges[electron] * densities[electron]
+    ion_moment = charges[ions] * densities[ions] * moment[ions]
+    target = ne * moment[electron]
+    scale = max(ne, abs(target) + float(np.sum(np.abs(ion_moment))))
+    return abs(float(np.sum(ion_moment)) - target) / scale
+
+
+def _sync_local_pressure(value, kind, densities, gradients, electron, rhostar):
+    """Refresh native pressure derivatives after the particle fields change."""
+    pressure_key = 'SBETA' if kind == 'cgyro' else 'P_PRIME_LOC'
+    if pressure_key not in value:
+        return
+    tkey, gtkey = ('TEMP_', 'DLNTDR_') if kind == 'cgyro' else ('TAUS_', 'RLTS_')
+    temperatures = np.array([float(value[tkey + str(i)]) for i in range(1, len(densities) + 1)])
+    gt = np.array([float(value[gtkey + str(i)]) for i in range(1, len(densities) + 1)])
+    beta = float(value['BETAE_UNIT' if kind == 'cgyro' else 'BETAE'])
+    if (not np.all(np.isfinite(temperatures)) or np.any(temperatures <= 0)
+            or not np.all(np.isfinite(gt)) or not math.isfinite(beta) or beta < 0):
+        raise ValueError('局部温度、温度梯度或电子比压无效，无法同步压力导数。')
+    pressure_weights = densities * temperatures
+    normalization = densities[electron] * temperatures[electron]
+    if kind == 'cgyro':
+        sn, _ = _raw_local_curvatures(value, gradients, rhostar)
+        st = np.array([float(value['SDLNTDR_' + str(i)]) for i in range(1, len(densities) + 1)]) - gt**2 * float(rhostar)
+        moment = sn + st - 2 * gradients * gt * float(rhostar)
+        result = beta * float(np.dot(pressure_weights, moment)) / normalization
+    else:
+        q, radius = float(value['Q_LOC']), float(value['RMIN_LOC'])
+        if not math.isfinite(q) or not math.isfinite(radius) or radius <= 0:
+            raise ValueError('TGLF 局部 q 或小半径无效，无法同步压力梯度。')
+        beta_star = beta * float(np.dot(pressure_weights, gradients + gt)) / normalization
+        result = -abs(q) / radius * beta_star / (8 * math.pi)
+    if not math.isfinite(result):
+        raise ValueError('准中性校正后的压力导数溢出。')
+    value[pressure_key] = result
+
+
+def validate_local_neutrality(value, kind, rhostar=None):
+    """Independently check the final solver fields; Zeff is not a charge species."""
+    _, _, charges, densities, gradients, electron, ions = _local_arrays(value, kind)
+    ne = -charges[electron] * densities[electron]
+    density_error = abs(float(np.dot(charges, densities))) / ne
+    gradient_error = _moment_residual(charges, densities, gradients, electron, ions)
+    record = dict(rule=NEUTRALITY_RULE, density_residual=density_error, gradient_residual=gradient_error)
+    if kind == 'cgyro':
+        if np.any(densities <= 0):
+            raise ValueError('CGYRO 要求每种保留粒子的密度为正数；此半径存在零密度，请调整半径或粒子方案。')
+        raw, _ = _raw_local_curvatures(value, gradients, rhostar)
+        record['curvature_residual'] = _moment_residual(charges, densities, raw, electron, ions)
+    if any(not math.isfinite(error) or error > TOLERANCE for key, error in record.items() if key.endswith('_residual')):
+        raise ValueError('最终 {} 输入未通过密度、密度梯度或密度曲率准中性检查；已停止生成。'.format(kind.upper()))
+    return record
+
+
+def close_local_input(value, kind, main_count, expected_ions, rhostar=None):
+    """Close density, its first derivative, and native CGYRO second derivative.
+
+    Electron quantities and non-main species remain fixed. A common multiplier
+    for all mains preserves their density ratios and derivative differences.
+    """
+    density_key, gradient_key, charges, densities, gradients, electron, ions = _local_arrays(value, kind)
     if int(main_count) != main_count or not 1 <= main_count <= len(ions):
         raise ValueError('缺少有效的主离子识别记录，请重新运行 Transfer_tool。')
     main_count = int(main_count)
@@ -408,20 +548,52 @@ def close_local_input(value, kind, main_count, expected_ions):
             not math.isclose(charges[ions[index]], ion['charge'], rel_tol=1e-10, abs_tol=1e-12)
             for index, ion in enumerate(expected_ions)):
         raise ValueError('局部输入的离子组成与本轮粒子记录不一致，已停止发布。')
-    electron = int(electrons[0])
     electron_charge = -charges[electron] * densities[electron]
-    if electron_charge <= 0:
-        raise ValueError('局部输入的电子密度必须为正数。')
+    before_density = abs(float(np.dot(charges, densities))) / electron_charge
+    before_gradient = _moment_residual(charges, densities, gradients, electron, ions)
+    raw, gt = _raw_local_curvatures(value, gradients, rhostar) if kind == 'cgyro' else (None, None)
     ne = np.array([electron_charge])
     ni, density_error = _close_densities(charges[ions], densities[ions, None], ne, main_count)
     gi, gradient_error = _close_gradients(charges[ions], ni, gradients[ions, None], ne,
                                          np.array([gradients[electron]]), main_count)
+    record = dict(rule=NEUTRALITY_RULE, main_count=main_count,
+                  density_residual_before=before_density, gradient_residual_before=before_gradient,
+                  density_residual=density_error, gradient_residual=gradient_error)
+    if raw is not None:
+        record['curvature_residual_before'] = _moment_residual(charges, densities, raw, electron, ions)
+        corrected = raw[ions].copy()
+        # n_new = alpha*n_old: -a*rhos*n_new''/n_new contains the common
+        # -a*rhos*alpha''/alpha and the species-dependent cross derivative.
+        delta = gi[:main_count, 0] - gradients[ions[:main_count]]
+        corrected[:main_count] -= 2 * float(rhostar) * gradients[ions[:main_count]] * delta
+        weighted = charges[ions] * ni[:, 0]
+        main_charge = float(np.sum(weighted[:main_count]))
+        target = electron_charge * raw[electron] - float(np.dot(weighted, corrected))
+        scale = max(electron_charge, abs(electron_charge * raw[electron]) + float(np.sum(np.abs(weighted * corrected))))
+        if main_charge <= 0:
+            if abs(target) > TOLERANCE * scale:
+                raise ValueError('主离子总密度为零处无法满足密度曲率准中性。')
+        else:
+            corrected[:main_count] += target / main_charge
+        curvature_error = abs(float(np.dot(weighted, corrected)) - electron_charge * raw[electron]) / scale
+        if not np.all(np.isfinite(corrected)) or not math.isfinite(curvature_error) or curvature_error > TOLERANCE:
+            raise ValueError('密度曲率未通过准中性校正。')
+        record['curvature_residual'] = curvature_error
+        for index in range(main_count):
+            position = int(ions[index])
+            gn, gti = gi[index, 0], gt[position]
+            effective = corrected[index] + (1.5 * gti**2 + gn**2 - gn * gti) * float(rhostar)
+            if not math.isfinite(effective):
+                raise ValueError('CGYRO 校正后的有效密度曲率溢出。')
+            value['SDLNNDR_' + str(position + 1)] = float(effective)
     for index in range(main_count):
         position = int(ions[index])
         densities[position] = ni[index, 0]
+        gradients[position] = gi[index, 0]
         value[density_key + str(position + 1)] = float(ni[index, 0])
         value[gradient_key + str(position + 1)] = float(gi[index, 0])
+    _sync_local_pressure(value, kind, densities, gradients, electron, rhostar)
     zeff_key = 'Z_EFF' if kind == 'cgyro' else 'ZEFF'
     if zeff_key in value:
         value[zeff_key] = float(np.dot(charges[ions] ** 2, densities[ions]) / electron_charge)
-    return dict(main_count=main_count, density_residual=density_error, gradient_residual=gradient_error)
+    return record

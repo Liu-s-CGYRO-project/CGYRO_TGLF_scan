@@ -77,7 +77,7 @@ def _moments(rows):
 def equivalent_local_input(value, kind, main_count, expected_ions, rhostar=None):
     """Mutate a newly generated card, returning per-radius auditable provenance."""
     # First enforce native-interpolation closure; preserve these main populations.
-    closure = close_local_input(value, kind, main_count, expected_ions)
+    closure = close_local_input(value, kind, main_count, expected_ions, rhostar)
     if kind not in SCHEMAS:
         raise ValueError('不支持的局部输入类型。')
     count_key, fields = SCHEMAS[kind]
@@ -137,7 +137,7 @@ def equivalent_local_input(value, kind, main_count, expected_ions, rhostar=None)
     for index, row in enumerate(new_rows, 1):
         for name, prefix in fields.items():
             value[prefix + str(index)] = float(row[name])
-    closure = close_local_input(value, kind, main_count, [dict(charge=row['z']) for row in new_ions])
+    closure = close_local_input(value, kind, main_count, [dict(charge=row['z']) for row in new_ions], rhostar)
     after = _moments([effective] if effective is not None else [])
     residuals = {name: abs(after[name] - before[name]) / max(1.0, abs(before[name])) for name in before}
     if any(error > TOLERANCE for error in residuals.values()):

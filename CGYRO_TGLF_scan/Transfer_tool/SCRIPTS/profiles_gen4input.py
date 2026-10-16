@@ -1,7 +1,8 @@
 # -*-Python-*-
 """Generate local parameter files and publish only complete successful output."""
 import os
-from OMFITlib_transfer_particles import EQUIVALENT_RULE, MAIN_ION_RULE, close_local_input
+from OMFITlib_transfer_particles import (EQUIVALENT_RULE, MAIN_ION_RULE, NEUTRALITY_RULE,
+                                        close_local_input, validate_local_neutrality)
 from OMFITlib_transfer_equivalent import equivalent_local_input, locpargen_rhostar
 from OMFITlib_gacode_installations import program_guard
 from OMFITlib_transfer_workflow import profiles_python_environment
@@ -13,6 +14,8 @@ if not os.environ.get('SHELL'):
 
 particle_report = root['OUTPUTS'].get('Particle_processing', {})
 if (particle_report.get('options', {}).get('main_ion_rule', '') != MAIN_ION_RULE
+        or particle_report.get('options', {}).get('neutrality_rule', '') != NEUTRALITY_RULE
+        or particle_report.get('source_neutrality', {}).get('rule', '') != NEUTRALITY_RULE
         or not particle_report.get('main_count', 0) or not particle_report.get('after', None)):
     raise ValueError('缺少本轮自动主离子识别记录，请从“运行 Transfer_tool”重新生成输入。')
 equivalent = particle_report['options'].get('particle_mode', 'all') == 'equivalent'
@@ -47,11 +50,14 @@ for k, rho in enumerate(rho_arr, 1):
         if equivalent:
             result = equivalent_local_input(obj, code, particle_report['main_count'], particle_report['after'], rhostar)
         else:
-            result = close_local_input(obj, code, particle_report['main_count'], particle_report['after'])
+            result = close_local_input(obj, code, particle_report['main_count'], particle_report['after'], rhostar)
         result['rho'] = float(rho)
         result['rhostar'] = rhostar
         if particle_report['options'].get('particle_mode', 'all') == 'main_only':
             result['prescribed_zeff'] = prescribe_local_zeff(obj, code, particle_report.get('prescribed_zeff', {}))
+        # Re-read actual final fields after every transform, including Zeff.
+        # A saved correction residual alone is not proof that the card is neutral.
+        result['final_neutrality'] = validate_local_neutrality(obj, code, rhostar)
         # rho describes the source radius, not a CGYRO/TGLF input parameter.
         # Keep it in the audit record; solver files must contain solver keys only.
         neutrality['input.{}_{}'.format(code, k)] = result
