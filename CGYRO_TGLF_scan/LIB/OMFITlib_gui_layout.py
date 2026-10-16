@@ -159,7 +159,8 @@ class NativeLayout:
             old = widget._project_cjk_base_style
         if old == getattr(widget, '_cgyro_layout_style', None):
             old = widget._cgyro_layout_base_style
-        name = 'CGYRO.' + self.tag + '.' + old
+        density = 'Scan.' if getattr(widget, '_cgyro_field_columns', None) is not None else ''
+        name = 'CGYRO.' + self.tag + '.' + density + old
         # Retain the named font so a later font download or size change reaches
         # styles already used by mounted and hidden tabs.
         self.style.configure(name, font=font, **options)
@@ -199,11 +200,14 @@ class NativeLayout:
                     child.configure(wraplength=self.width - 80)
             elif kind in ('TEntry', 'TCombobox'):
                 child.configure(font=self.normal)
+                columns = getattr(child, '_cgyro_field_columns', None)
                 if self.compact:
                     # Long file paths and lists scroll inside the native field.
                     # Their text must not become the window's requested width.
-                    child.configure(width=min(28, max(1, int(child.cget('width')))))
-                self._style_name(child, self.normal, padding=(4, self.gap))
+                    child.configure(width=columns if columns is not None else min(28, max(1, int(child.cget('width')))))
+                if columns is not None and child.winfo_manager() == 'pack':
+                    child.pack_configure(expand=False, fill=tk.NONE)
+                self._style_name(child, self.normal, padding=(4, 2 if columns is not None else self.gap))
                 if kind == 'TCombobox':
                     child.option_add('*' + str(child).lstrip('.') + '*Listbox.font', self.normal)
             elif kind in ('TButton', 'TCheckbutton', 'TRadiobutton'):
@@ -469,7 +473,7 @@ class NativeLayout:
         required = max(item.winfo_reqwidth() + 10 for item in items)
         columns = max(1, min(len(items), width // max(1, required)))
         if self.compact:
-            columns = min(2, columns)
+            columns = min(getattr(frame, '_cgyro_max_columns', 2), columns)
         if getattr(frame, '_cgyro_columns', None) == columns:
             return
         frame._cgyro_columns = columns

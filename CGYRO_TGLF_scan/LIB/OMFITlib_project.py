@@ -19,13 +19,15 @@ from collections import OrderedDict
 from OMFITlib_project_runtime import initialize_runtime, apply_runtime, applied_runtime, runtime_values, shared_issues
 from OMFITlib_gacode_installations import (PROGRAMS, detection_is_current, installation_issues, merge_probe,
     parse_probe, probe_script, sync_environment, valid_path)
-from OMFITlib_transfer_workflow import generation_issues, initialize_generation, tgyro_batch_settings, tglf_input_format
+from OMFITlib_transfer_workflow import (discard_legacy_outputs, generation_issues, initialize_generation,
+                                      tgyro_batch_settings, tglf_input_format)
 from OMFITlib_tglf_workbench import (PROFILE_PATH, RADII, initialize as initialize_tglf,
     fully_failed, generation_overrides, input_rows as tglf_rows, plan as tglf_plan)
 from OMFITlib_tglf_multi_data import profile_digest, profile_info, tgyro_input
 from OMFITlib_transfer_particles import particle_options
 from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters, initialize_parameters,
     numeric_source, parameter_catalog, parameter_value, scan_parameter_names, validated_overrides)
+from OMFITlib_cgyro_scan_values import ky_values, scan_axes as configured_scan_axes
 
 MODULES = {
     'transfer': ('Transfer_tool',), 'cgyro': ('CGYRO_scan',),
@@ -78,70 +80,19 @@ def cgyro_ion_mode(settings):
     return 'original' if selected == ['BASE'] else ('hdt' if selected == ['H', 'D', 'T'] else 'custom')
 
 
-def cgyro_scan_axes(root):
-    """Return 0-3 parameter axes; zero preserves every input except KY."""
+def cgyro_scan_axes(root, source=None):
+    """Resolve axes against an input; relative ranges follow each input's values."""
     node = read(root, MODULES['cgyro'])
     if node is None:
         raise ValueError('工程缺少 CGYRO_scan 模块。')
     setup, physics = node['SETTINGS']['SETUP'], node['SETTINGS']['PHYSICS']
     dimensions = int(setup.get('idimrun', 1))
-    keys = {
-        0: (),
-        1: (('Para', 'Range'),),
-        2: (('Para_x', 'Range_x'), ('Para_y', 'Range_y')),
-        3: (('Para_x', 'Range_x'), ('Para_y', 'Range_y'), ('Para_z', 'Range_z')),
-    }.get(dimensions, None)
-    if keys is None:
-        raise ValueError('参数轴数量只能是 0、1、2 或 3。')
-    group = physics.get(str(dimensions) + 'd', {})
-    axes, names = [], set()
-    for parameter_key, range_key in keys:
-        parameter = str(group.get(parameter_key, '')).strip()
-        if not re.match(r'^[A-Za-z][A-Za-z0-9_]*$', parameter) or parameter.upper() == 'KY':
-            raise ValueError('扫描参数名无效：{}'.format(parameter or '空'))
-        if parameter in names:
-            raise ValueError('扫描参数重复：' + parameter)
-        names.add(parameter)
-        values = group.get(range_key, [])
-        try:
-            values = list(values)
-        except TypeError:
-            raise ValueError('{} 的取值必须是列表。'.format(parameter))
-        if not values:
-            raise ValueError('{} 没有扫描值。'.format(parameter))
-        for value in values:
-            try:
-                number = float(value)
-            except (TypeError, ValueError, OverflowError):
-                raise ValueError('{} 包含非数值扫描点。'.format(parameter))
-            if not math.isfinite(number):
-                raise ValueError('{} 包含非有限扫描点。'.format(parameter))
-        linked = []
-        index = 2
-        while parameter_key + str(index) in group or range_key + str(index) in group:
-            pkey, rkey = parameter_key + str(index), range_key + str(index)
-            if pkey not in group or rkey not in group:
-                raise ValueError('联动参数的名称或取值缺失。')
-            name, linked_values = str(group[pkey]), list(group[rkey])
-            if not re.match(r'^[A-Za-z][A-Za-z0-9_]*$', name) or name.upper() == 'KY' or name in names:
-                raise ValueError('联动参数名无效或重复：' + name)
-            if len(linked_values) != len(values) or not all(math.isfinite(float(value)) for value in linked_values):
-                raise ValueError('联动取值必须与主参数等长且均为有限数值：' + name)
-            names.add(name)
-            linked.append(dict(name=name, values=linked_values))
-            index += 1
-        axes.append(dict(name=parameter, values=values, linked=linked))
-    ky = list(physics.get('kyarr', []))
-    if not ky:
-        raise ValueError('ky 列表不能为空。')
-    for value in ky:
-        try:
-            number = float(value)
-        except (TypeError, ValueError, OverflowError):
-            raise ValueError('ky 列表包含非数值。')
-        if not math.isfinite(number) or number <= 0:
-            raise ValueError('ky 必须是有限正数。')
-    return dimensions, axes, ky
+    if source is None:
+        settings = read(root, ('SETTINGS', 'WORKBENCH'), {})
+        rows = sync_cgyro_choices(root, settings)
+        selected = [row for row in rows if settings.get('cgyro_radii', {}).get(row['key'], False)]
+        source = read(root, (selected or rows)[0]['path'], {}) if rows else {}
+    return dimensions, configured_scan_axes(physics, dimensions, source), ky_values(physics)
 
 
 def cgyro_plan_summary(root):
@@ -450,7 +401,8 @@ def cgyro_plan_issues(root):
             source = read(root, row['path'])
             effective = {key: source[key] for key in source.keys()}
             apply_parameters(effective, physics, dimensions)
-            for axis in axes:
+            case_axes = configured_scan_axes(physics, dimensions, effective)
+            for axis in case_axes:
                 for parameter in [axis] + axis.get('linked', []):
                     if parameter['name'] not in source and parameter['name'] not in CGYRO_FIELDS:
                         raise ValueError('nr={} 的输入没有参数 {}。'.format(row['nr'], parameter['name']))
@@ -659,6 +611,9 @@ class ProjectActions:
                  remote_execute=None, root_name='root'):
         self.root, self.factory = root, factory
         self.settings = initialize(root, factory)
+        transfer = read(root, MODULES['transfer'])
+        if transfer is not None:
+            discard_legacy_outputs(transfer)
         self.readers = readers or {}
         self.resolve_server, self.workdir = resolve_server, workdir
         self.register_server = register_server

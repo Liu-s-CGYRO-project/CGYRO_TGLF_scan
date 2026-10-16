@@ -1,8 +1,8 @@
 # -*-Python-*-
 """Run the original command box 1 workflow from a single GUI action."""
-from datetime import datetime
 import copy
-from OMFITlib_transfer_workflow import generation_issues, initialize_generation, prepare_tgyro, selected_profile
+from OMFITlib_transfer_workflow import (discard_legacy_outputs, generation_issues, initialize_generation,
+                                      prepare_tgyro, selected_profile)
 from OMFITlib_transfer_particles import main_ion_label, prepare_particles, species_label
 from OMFITlib_gui_layout import fix_console_layout
 
@@ -15,6 +15,7 @@ kind, key = selected_profile(root, profile_source)
 outputs = root['OUTPUTS']
 output_names = ('Profiles_gen', 'TGYRO', 'Particle_processing')
 previous = {name: copy.deepcopy(outputs[name]) for name in output_names if name in outputs}
+old_diagnostics = outputs.get('Profiles_gen_diagnostics', None)
 old_seeds = {name: root['INPUTS'][name] for name in ('input.tgyro', 'input.tglf') if name in root['INPUTS']}
 setup = root['SETTINGS']['SETUP']
 old_resources = {name: setup.get(name, None) for name in ('p_tgyro', 'num_nodes', 'num_cores')}
@@ -22,6 +23,7 @@ old_profile = root['INPUTS'].get('input.gacode', None)
 old_transfer_profile = root['Transfer_file'].get('input.gacode', None)
 outputs['Profiles_gen'] = OMFITtree()
 outputs.pop('TGYRO', None)
+outputs.pop('Profiles_gen_diagnostics', None)
 try:
     if kind != 'input.gacode':
         print('Transfer_tool：生成 input.gacode …')
@@ -64,13 +66,13 @@ except BaseException:
             outputs[name] = previous[name]
         else:
             outputs.pop(name, None)
+    if 'Profiles_gen_diagnostics' not in outputs and old_diagnostics is not None:
+        outputs['Profiles_gen_diagnostics'] = old_diagnostics
     for branch, value in ((root['INPUTS'], old_profile), (root['Transfer_file'], old_transfer_profile)):
         if value is None:
             branch.pop('input.gacode', None)
         else:
             branch['input.gacode'] = value
     raise
-if previous:
-    history = outputs.setdefault('History', OMFITtree())
-    history[datetime.now().strftime('%Y%m%d_%H%M%S_%f')] = previous
+discard_legacy_outputs(root)
 print('Transfer_tool 完成。已生成各半径输入，可直接进入 CGYRO 扫描；“生成文件”可查看参数。')

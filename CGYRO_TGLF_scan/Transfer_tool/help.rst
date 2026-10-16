@@ -12,6 +12,12 @@ Long Description
 设置计算半径，确认自动识别的主离子，选择粒子处理方案，点击唯一的“运行 Transfer_tool”按钮。
 程序依次准备粒子、运行 TGYRO、生成各半径 input.cgyro / input.tglf。
 
+OUTPUTS/Profiles_gen 保存当前生成文件，Particle_processing 保存配套粒子记录，
+TGYRO 保存当前半径准备结果。旧版 Profiles_gen_H / D / T、simplified、
+simplified_impurity 是已停用的旧粒子方案；有当前半径输入时，在打开工程后删除这些旧分支及
+History 生成历史，后续只保留当前结果。若旧工程尚无当前半径输入，先完成一次生成再清理。
+生成失败仍恢复原输入和当前生成结果，并保留最新转换失败日志。
+
 剖面和平衡文件框显示实际选择的原始地址，地址随工程保存，不显示 OMFIT 的缓存路径。
 旧工程若未保存原始地址且无法恢复，重新选择文件一次即可；
 粒子规则、处理说明及上次结果可点“处理方案”旁的“?”查看。

@@ -5,6 +5,7 @@ import os
 import re
 from OMFITlib_cgyro_read import *
 from OMFITlib_cgyro_parameters import FIELDS as CALCULATION_FIELDS, apply_parameters, initialize_parameters, parameter_value
+from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolved_scan_axes
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -134,26 +135,23 @@ def json_scalar(value):
     return value.item() if isinstance(value, np.generic) else value
 
 
-def configured_axes(physics, dimensions):
+def configured_axes(physics, dimensions, source):
     """Return 0-3 Cartesian axes, including any legacy linked parameters."""
-    if dimensions == 0:
-        return {}, []
-    if dimensions == 1:
-        conf = physics['1d']
-        axes = [(conf['Para'], conf['Range'], 'Para', 'Range')]
-    elif dimensions in (2, 3):
-        conf = physics[str(dimensions) + 'd']
-        suffixes = ('x', 'y') if dimensions == 2 else ('x', 'y', 'z')
-        axes = [(conf['Para_' + suffix], conf['Range_' + suffix],
-                 'Para_' + suffix, 'Range_' + suffix) for suffix in suffixes]
-    else:
-        raise ValueError('scan_dimensions must be 0, 1, 2, or 3')
+    resolved = resolved_scan_axes(physics, dimensions, source)
+    conf, axes = {}, []
+    for (pkey, rkey), axis in zip(AXIS_KEYS[dimensions], resolved):
+        conf[pkey], conf[rkey] = axis['name'], axis['values']
+        axes.append((axis['name'], axis['values'], pkey, rkey))
+        for index, linked in enumerate(axis['linked'], 2):
+            conf[pkey + str(index)] = linked['name']
+            conf[rkey + str(index)] = linked['values']
     return conf, axes
 
 
 def scan_points(physics, dimensions, effnum, source):
     """Return flat point IDs, overrides, result paths and an axis manifest."""
-    conf, axes = configured_axes(physics, dimensions)
+    conf, axes = configured_axes(physics, dimensions, source)
+    scan_ky = ky_values(physics)
     points, axis_manifest, result_keys = [], [], set()
     fixed = {}
     if dimensions == 0:
@@ -211,7 +209,7 @@ def scan_points(physics, dimensions, effnum, source):
             while pkey + str(n) in conf or rkey + str(n) in conf:
                 overrides[conf[pkey + str(n)]] = conf[rkey + str(n)][index]
                 n += 1
-        for ky in physics['kyarr']:
+        for ky in scan_ky:
             if not np.isfinite(ky) or ky <= 0:
                 raise ValueError('Linear scan ky must be finite and positive')
             point = dict(overrides, KY=ky)

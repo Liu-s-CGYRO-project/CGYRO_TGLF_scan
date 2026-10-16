@@ -238,6 +238,7 @@
 ['LIB']['OMFITlib_project_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_ui.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_results'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_results.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_parameters.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_scan_values'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_scan_values.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cases.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro_selection'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro_selection.py <-:-:-> {}
@@ -341,6 +342,7 @@
 ['CGYRO_scan']['LIB']['OMFITlib_startup'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/LIB/OMFITlib_startup.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_read'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/LIB/OMFITlib_cgyro_read.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_parameters.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_cgyro_scan_values'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_scan_values.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
 ['CGYRO_scan']['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./CGYRO_scan/SettingsNamelist.txt <-:-:-> {}
@@ -444,6 +446,7 @@
 ['Transfer_tool']['LIB']['OMFITlib_plot_style'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_style.py <-:-:-> {}
 ['DOCS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['DOCS']['绘图接口'] <-:-:-> OMFITascii <-:-:-> ./DOCS/PLOTTING_API.md <-:-:-> {}
+['DOCS']['扫描取值接口'] <-:-:-> OMFITascii <-:-:-> ./DOCS/SCAN_VALUES.md <-:-:-> {}
 ['DOCS']['字体许可'] <-:-:-> OMFITascii <-:-:-> ./DOCS/FONT_LICENSE.txt <-:-:-> {}
 ['LIB']['OMFITlib_gui_fonts'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_fonts.py <-:-:-> {}
 ['LIB']['OMFITlib_gui_font_data'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_font_data.py <-:-:-> {}

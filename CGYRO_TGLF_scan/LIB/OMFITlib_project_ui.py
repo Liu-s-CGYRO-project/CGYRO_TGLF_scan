@@ -16,6 +16,7 @@ from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choi
 from OMFITlib_cgyro_results import ResultBrowser
 from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS,
     initialize_parameters, numeric_source, parameter_catalog, scan_parameter_names)
+from OMFITlib_cgyro_scan_values import AXIS_KEYS, KY_MODES, VALUE_MODES, ky_values, value_list
 from OMFITlib_project import (ERROR_NOTICE_SUFFIX, ION_CASES, LABELS, MODULES, PAGES, cgyro_input_issues,
     cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, generated_tglf_sources, location, module,
     input_digest, pending_inputs, read, runtime_issues, summary, sync_cgyro_choices, sync_cgyro_ion_cases, text_value,
@@ -486,19 +487,77 @@ class ProjectUI:
                                              self.settings['cgyro_ion_cases'], key, caption)
         return rows
 
+    def scan_field(self, widget, width):
+        """Keep short scan fields at their requested width inside native rows."""
+        if isinstance(widget, tk.Misc):
+            widget._cgyro_field_columns = width
+            widget.configure(width=width)
+            if widget.winfo_manager() == 'pack':
+                widget.pack_configure(expand=False, fill=tk.NONE)
+        return widget
+
+    def scan_value_spec(self, parent, key, values):
+        spec = parent.setdefault(key, self.actions.factory())
+        spec.setdefault('mode', 'list')
+        try:
+            current = value_list(values, '取值')
+            start, end = float(current[0]), float(current[-1])
+            count = len(current)
+        except (TypeError, ValueError, OverflowError):
+            start, end, count = 0.1, 1.0, 10
+        spec.setdefault('start', start)
+        spec.setdefault('end', end)
+        spec.setdefault('count', count)
+        factor = spec.setdefault('factor', self.actions.factory())
+        factor.setdefault('start', 1.0)
+        factor.setdefault('end', 3.0)
+        factor.setdefault('count', 3)
+        return spec
+
+    def scan_value_fields(self, spec, prefix, values_path, caption='取值列表'):
+        mode = spec.get('mode', 'list')
+        if mode == 'list':
+            self.scan_field(self.ui.Entry(values_path, caption, width=28, updateGUI=True,
+                help='可填一个实际数值、列表 [16, 32, 48, 64]，或 NumPy 表达式，如 np.linspace(16, 64, 4)。'
+                     '\n表达式在回车确认后生成实际数值；整数参数的各个取值必须是整数。'), 28)
+        elif mode == 'original':
+            self.label('保留各输入中该参数的原值。')
+        else:
+            if mode == 'factor':
+                prefix += "['factor']"
+            with self.ui.same_row():
+                frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
+                if isinstance(frame, tk.Misc):
+                    frame._cgyro_max_columns = 3
+                self.scan_field(self.ui.Entry(prefix + "['start']", '起点', width=8, updateGUI=True), 8)
+                self.scan_field(self.ui.Entry(prefix + "['end']", '终点', width=8, updateGUI=True), 8)
+                self.scan_field(self.ui.Entry(prefix + "['count']", '点数', width=7, updateGUI=True,
+                    help='包含起点和终点；点数为 1 时只取起点。'), 7)
+
     def render_cgyro_scan_settings(self, node, rows):
         base = MODULES['cgyro'] + ('SETTINGS',)
-        self.ui.Entry(location(base + ('EXPERIMENT', 'runid')), '结果名称', updateGUI=True)
-        self.ui.Entry(location(base + ('PHYSICS', 'kyarr')), 'ky 取值', updateGUI=True,
-                      help='输入列表，例如 [0.1, 0.2, 0.3]。')
-        self.ui.ComboBox(location(base + ('SETUP', 'idimrun')), OrderedDict([
-            ('只扫 ky，保持输入参数', 0), ('ky + 1 个参数', 1),
-            ('ky + 2 个参数', 2), ('ky + 3 个参数', 3)]), '扫描内容', state='readonly', updateGUI=True)
+        physics = node['SETTINGS']['PHYSICS']
+        with self.ui.same_row():
+            self.scan_field(self.ui.Entry(location(base + ('EXPERIMENT', 'runid')), '结果名称',
+                                          width=14, updateGUI=True), 14)
+            self.scan_field(self.ui.ComboBox(location(base + ('SETUP', 'idimrun')), OrderedDict([
+                ('只扫 ky', 0), ('ky + 1 个参数', 1), ('ky + 2 个参数', 2), ('ky + 3 个参数', 3)]),
+                '扫描内容', state='readonly', width=16, updateGUI=True), 16)
+        self.ui.Separator('ky 取值')
+        ky_spec = self.scan_value_spec(physics, 'ky_spec', physics.get('kyarr', []))
+        ky_prefix = location(base + ('PHYSICS', 'ky_spec'))
+        self.scan_field(self.ui.ComboBox(ky_prefix + "['mode']", KY_MODES, '取值方式', state='readonly',
+            width=14, updateGUI=True, help='列表可直接填写 np.linspace(0.1, 1.0, 10)、np.arange(0.1, 1.01, 0.1)'
+                ' 或 np.logspace(-2, 0, 9)。\n线性 / 对数范围按起点、终点和点数生成。ky 必须大于 0。'), 14)
+        self.scan_value_fields(ky_spec, ky_prefix, location(base + ('PHYSICS', 'kyarr')), 'ky 列表 / 表达式')
+        try:
+            values = ky_values(physics)
+            self.label('ky 预览：' + ', '.join('{:g}'.format(value) for value in values[:8]) +
+                       (' …（共 {} 个）'.format(len(values)) if len(values) > 8 else ''))
+        except (TypeError, ValueError, OverflowError) as exc:
+            self.label(str(exc))
         dim = int(node['SETTINGS']['SETUP']['idimrun'])
-        keys = {1: [('Para', 'Range')],
-                2: [('Para_x', 'Range_x'), ('Para_y', 'Range_y')],
-                3: [('Para_x', 'Range_x'), ('Para_y', 'Range_y'), ('Para_z', 'Range_z')],
-        }.get(dim, [])
+        keys = AXIS_KEYS.get(dim, ())
         selected = [row for row in rows if self.settings['cgyro_radii'].get(row['key'], False)]
         source = read(self.root, (selected or rows)[0]['path'], {}) if rows else {}
         options = OrderedDict((name, name) for name in CGYRO_FIELDS)
@@ -515,20 +574,27 @@ class ProjectUI:
             node['SETTINGS']['PHYSICS'].setdefault(group, {})
         for index, (pkey, rkey) in enumerate(keys, 1):
             defaults = ('BETAE_UNIT', 'S', 'RLTS_1')
-            cfg = node['SETTINGS']['PHYSICS'][group]
+            cfg = physics[group]
             cfg.setdefault(pkey, defaults[index - 1])
             cfg.setdefault(rkey, [source.get(cfg[pkey], 0.0)])
+            specs = cfg.setdefault('value_specs', self.actions.factory())
+            spec = self.scan_value_spec(specs, rkey, cfg[rkey])
+            prefix = location(base + ('PHYSICS', group, 'value_specs', rkey))
             self.ui.Separator('参数轴 ' + str(index))
-            self.ui.ComboBox(location(base + ('PHYSICS', group, pkey)), options, '参数',
-                             state='normal', width=24, updateGUI=True)
-            self.ui.Entry(location(base + ('PHYSICS', group, rkey)), '取值列表', width=28, updateGUI=True)
+            with self.ui.same_row():
+                self.scan_field(self.ui.ComboBox(location(base + ('PHYSICS', group, pkey)), options,
+                    '参数', state='search', width=16, updateGUI=True), 16)
+                self.scan_field(self.ui.ComboBox(prefix + "['mode']", VALUE_MODES, '方式',
+                    state='readonly', width=14, updateGUI=True,
+                    help='实际值范围直接生成数值；原值倍数分别乘以每个输入的原值；沿用输入只计算原值。'), 14)
+            self.scan_value_fields(spec, prefix, location(base + ('PHYSICS', group, rkey)))
             linked = 2
             while pkey + str(linked) in cfg or rkey + str(linked) in cfg:
-                self.ui.ComboBox(location(base + ('PHYSICS', group, pkey + str(linked))), options,
-                                 '联动参数', state='normal', width=24, default='', updateGUI=True)
-                self.ui.Entry(location(base + ('PHYSICS', group, rkey + str(linked))),
-                              '同步取值', width=28, default=[], updateGUI=True,
-                              help='与参数 ' + str(index) + ' 的取值逐项对应。独立组合请使用多个参数轴。')
+                self.scan_field(self.ui.ComboBox(location(base + ('PHYSICS', group, pkey + str(linked))), options,
+                    '联动参数', state='search', width=18, default='', updateGUI=True), 18)
+                self.scan_field(self.ui.Entry(location(base + ('PHYSICS', group, rkey + str(linked))),
+                    '同步取值', width=28, default=[], updateGUI=True,
+                    help='与参数 ' + str(index) + ' 的取值逐项对应。独立组合请使用多个参数轴。'), 28)
                 linked += 1
 
     def render_cgyro_run(self, node):
