@@ -190,6 +190,8 @@ def initialize_generation(node, factory=dict):
     if seed is None:
         seed = node.get('TEMPLATES', {}).get('input.tgyro', {})
     options = physics.setdefault('generation', factory())
+    if options.get('particle_mode', None) == 'main_only_recomputed':
+        options['particle_mode'] = 'main_only'
     options.pop('main_ion', None)  # Main populations are now determined by ni/ne.
     options.pop('equivalent_ion', None)  # All non-main ions contribute; no representative is selected.
     for key, value in [('minimum', seed.get('TGYRO_RMIN', 0.2)),

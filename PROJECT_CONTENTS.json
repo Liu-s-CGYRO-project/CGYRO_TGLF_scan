@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.22.0",
-  "parent_release": "1.21.1",
+  "version": "1.22.1",
+  "parent_release": "1.22.0",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -235,7 +235,7 @@
     "CGYRO_TGLF_scan/DOCS/GUI_FONTS.md": "7d4eb2500044bd1dcff653d655540e9435c30ea2fdfe7bd918fd8df0e5e1f69f",
     "CGYRO_TGLF_scan/DOCS/PLOTTING_API.md": "e6aa9013d6fa1929782deb31c2e2cac70cf05086d9e0cf38362d22317c4f4aa1",
     "CGYRO_TGLF_scan/DOCS/PLOT_FONTS_LICENSE.txt": "42fb6ad814141687fd2b0fa7aef31fb0aaf7cf0293afdc7c70968cb808aade81",
-    "CGYRO_TGLF_scan/DOCS/SCAN_VALUES.md": "4dd9f53ac25b9da7e449b465c86979ace8d776d9a2424b32dc4cbc10a9b985d2",
+    "CGYRO_TGLF_scan/DOCS/SCAN_VALUES.md": "7f48ea3f5619054ea09768565d09886cf83bf9f9b03c0d952457f60de7acc647",
     "CGYRO_TGLF_scan/GUIS/CGYRO_controls.py": "15e34268dfafe8e41b6974dacf5b2de202ae90a32614bdec91bfcda6f06bdef2",
     "CGYRO_TGLF_scan/GUIS/CGYRO_results.py": "9671c668837548f213017f478f0f6366538a03d5e2d3687123e7f35c0cb7d558",
     "CGYRO_TGLF_scan/GUIS/CGYRO_vs_CGYRO.py": "179a1f28d2b3cc334cd904e55353d2c53ec65968dd403880e8757cbe3067594d",
@@ -477,11 +477,11 @@
     "CGYRO_TGLF_scan/Transfer_tool/GUIS/vgenGUI.py": "5df03fd087b8565e7a4a17a873b16e59295662b02556d19e25b9682f008fe28d",
     "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_startup.py": "c60a1ebbe5e67fbcfa9339977d794b02a8abb0ac47353a4a0fd7d9e8a382f00a",
     "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_equivalent.py": "91a8da2d88c6eac6766ac839b19f89e7e730f61090091440a360e14379017790",
-    "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_particles.py": "91a6d87a0ee4e2252bd3543d76c53d301153ee33e3a27d6fa91a17943502f65a",
+    "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_particles.py": "4f6961a53166f94693b45ce95f1be759cac378927ae974a42ade4a9cf596045c",
     "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_plot_data.py": "f82fed3e3cbcd9d5eb237cdc5b0e324eb503226a22a507f8c7960ec0cefe4051",
     "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_plot_render.py": "8c448446de9eb20e4e826faf379771dd8945a28397a9269d45059e891ac733a1",
     "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_plot_ui.py": "1c5967d35ee0317936572aa11e5d76496f5d77441fcce830e472b33d090e7b52",
-    "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_workflow.py": "f72c4c71a8191ab59d0267564bb01426e722ada43888feedb3cc673c6a424866",
+    "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_workflow.py": "75af4854e356cdeeebea061ec715f3ae4edd49ae4a630fc30089472af980bf6b",
     "CGYRO_TGLF_scan/Transfer_tool/LIB/OMFITlib_transfer_zeff.py": "09762e7bf595059ee8769fcb58cd72aa9f1911c75625477a2bf65f957593139d",
     "CGYRO_TGLF_scan/Transfer_tool/LIB/file_2025-10-13__15_04_17__968914": "4985ae41c2217091856950b16122f1fc7900f0bf6c089af3cff9c48ffeb67d94",
     "CGYRO_TGLF_scan/Transfer_tool/PLOTS/fastion.py": "cd9787537767b158ef15dc0ba586a6ccb648da0be58c7b317c817cd4a73c29bc",
@@ -504,7 +504,7 @@
     "CGYRO_TGLF_scan/Transfer_tool/SettingsNamelist.txt": "a5e40e604f842428f31a61f76b71a1ef9494f90e36d6962d448132fe565b45be",
     "CGYRO_TGLF_scan/Transfer_tool/TEMPLATES/input.tglf": "525b1f49e6da0ba79e0380c554a97dc73cf549dfa5e98d271289bf500e3f21bd",
     "CGYRO_TGLF_scan/Transfer_tool/TEMPLATES/input.tgyro": "e5aae229e83ed353846cbdb27cf713067803604c3912408a3141b0a37cde3b8b",
-    "CGYRO_TGLF_scan/Transfer_tool/help.rst": "b3b9907608013419d1175af825b6549f571d60969029af5bd2f6ea740f259b69",
+    "CGYRO_TGLF_scan/Transfer_tool/help.rst": "49a9eda06018c0a3363122c71ba70c99f4b77047634b254ed214a3d4c09fa914",
     "CGYRO_TGLF_scan/help.rst": "e22b7c834a7d8a190eefee6318b2b14067c40a7ee1ed3814b74227e42dde7efe",
     "MainSettingsNamelist.txt": "18c52429df491c0886df36a7de01700f5ceaab2c6495a65c36aba72ab6e0dd4f",
     "OMFIT_COMPATIBILITY.md": "2b06f06986133a2f25c4a199f279505c32207751b9c122f58fbd3ef6c5b323c6",
@@ -546,7 +546,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "cb39a59e6a09a53d0e9780cf6920779168b82478fa9ac51fde70481adc5ba744"
+    "VALIDATION.md": "d20443f5e004ce91259c86ec02375db78add04c766c138bfb59fd5d58441464c"
   },
   "workbench_features": [
     "native_omfit_project_gui",
