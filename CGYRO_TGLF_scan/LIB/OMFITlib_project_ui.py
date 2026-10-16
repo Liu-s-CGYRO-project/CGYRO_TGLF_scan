@@ -27,6 +27,7 @@ STATUS = {'prepared': '输入已准备', 'submitted': '已提交', 'loaded': '�
           'submitted_or_finished': '已提交或执行返回',
           'published': '结果已归档', 'complete': '完成', 'running': '运行中',
           'failed': '失败', 'cancelled': '已中止', 'partial': '部分完成',
+          'cancel_requested': '取消中，待 Slurm 确认',
           'ready': '输入就绪', 'prepare_failed': '输入生成失败', 'preparing': '输入生成中',
           'returned': '脚本已返回', 'inputs_copied': '输入已复制', 'archived': '已保留旧数据'}
 STATUS.update(dict(awaiting_choice='等待用户选择', accepted='使用传入输入', kept_current='保留当前输入', superseded='已有新候选'))

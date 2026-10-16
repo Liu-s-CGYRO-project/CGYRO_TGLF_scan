@@ -10,7 +10,7 @@ if dimensions not in (0, 1, 2, 3):
 
 if setup['irun'] == 1:
     root['SCRIPTS']['subscan_lin.py'].run(scan_dimensions=dimensions)
-if setup['idownsync'] == 1:
+if setup['idownsync'] == 1 and not root.get('RUN_MANIFEST', {}).get('stop_requested', False):
     root['SCRIPTS']['downsync.py'].run()
 
 

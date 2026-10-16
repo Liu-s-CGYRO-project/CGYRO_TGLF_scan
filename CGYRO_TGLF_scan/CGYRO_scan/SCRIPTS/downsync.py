@@ -241,6 +241,8 @@ if icgyro == 1:
         scheduler_record = refresh_run_state(root, OMFITx)
         if scheduler_record['active']:
             raise RuntimeError('CGYRO job is still queued/running; collect after it finishes.')
+        if manifest.get('stop_requested', False) and not scheduler_record['terminal']:
+            raise RuntimeError('The stop request has no confirmed Slurm terminal state yet. Synchronize job status before collecting.')
         if scheduler_record['outcome'] == 'unknown' and not scheduler_record['queue_verified']:
             raise RuntimeError('Could not confirm the CGYRO job state; its existing record is preserved.')
         if scheduler_record['outcome'] in ('cancelled', 'failed'):

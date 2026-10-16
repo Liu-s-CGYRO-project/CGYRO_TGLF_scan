@@ -3,11 +3,12 @@ from builtins import (Exception, TypeError, ValueError, all, any, bool, dict, en
 import numpy as np
 import os
 import re
+from contextlib import nullcontext
 from OMFITlib_cgyro_read import *
 from OMFITlib_cgyro_parameters import (FIELDS as CALCULATION_FIELDS, apply_parameters, initialize_parameters,
                                       parameter_value, validate_zeff)
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolved_scan_axes
-from OMFITlib_cgyro_run_state import refresh_run_state
+from OMFITlib_cgyro_run_state import linked_kill_local, refresh_run_state, slurm_wait, stop_message
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -604,28 +605,33 @@ if setup['irun']==1:
         if scheduler == 'pbs':
             wait_cmd='hb=0; while qstat '+job_id+' >/dev/null 2>&1; do sleep 30; hb=$((hb+30)); if [ \"$hb\" -ge 600 ]; then echo \"[heartbeat] job '+job_id+' still in queue/running at $(date)\"; hb=0; fi; done; echo \"[heartbeat] job '+job_id+' finished at $(date)\"'
         else:
-            wait_cmd=('hb=0; while true; do queued=$(squeue -h -j ' + job_id + ') || exit 1; '
-                      '[ -n "$queued" ] || break; sleep 30; hb=$((hb+30)); '
-                      'if [ "$hb" -ge 600 ]; then echo "[heartbeat] job ' + job_id
-                      + ' still in queue/running at $(date)"; hb=0; fi; done; '
-                      'echo "[heartbeat] job ' + job_id + ' left the queue at $(date)"')
+            wait_cmd = '/bin/bash -c ' + shell_quote(slurm_wait(job_id, run_token))
         wait_errors = []
-        wait_code = OMFITx.remote_execute(
-            rmtserver,
-            wait_cmd,
-            rmtworkdir,
-            rmttunnel,
-            quiet=False,
-            ignoreReturnCode=True,
-            use_bang_command=False,
-            std_err=wait_errors
-        )
-        if wait_code != 0:
+        scope = linked_kill_local(root, OMFITx, job_id, run_token) if scheduler == 'slurm' else nullcontext()
+        with scope:
+            wait_code = OMFITx.remote_execute(
+                rmtserver,
+                wait_cmd,
+                rmtworkdir,
+                rmttunnel,
+                quiet=False,
+                ignoreReturnCode=True,
+                use_bang_command=False,
+                std_err=wait_errors
+            )
+        if root['RUN_MANIFEST'].get('stop_requested', False):
+            try:
+                refresh_run_state(root, OMFITx)
+            except Exception as exc:
+                root['RUN_MANIFEST']['stop_sync_error'] = str(exc)
+            print(stop_message(root['RUN_MANIFEST']))
+        elif wait_code != 0:
             root['RUN_MANIFEST']['wait_error'] = output_to_text(wait_errors)
             final_state = refresh_run_state(root, OMFITx) if scheduler == 'slurm' else None
             if final_state is None or not final_state['terminal']:
                 raise RuntimeError('Could not query CGYRO job ' + job_id + '; submission remains recorded. '
                                    + output_to_text(wait_errors))
 
-    if root['RUN_MANIFEST'].get('status', '') not in ('cancelled', 'failed'):
+    if (not root['RUN_MANIFEST'].get('stop_requested', False)
+            and root['RUN_MANIFEST'].get('status', '') not in ('cancelled', 'failed')):
         root['RUN_MANIFEST']['status'] = 'submitted_or_finished'

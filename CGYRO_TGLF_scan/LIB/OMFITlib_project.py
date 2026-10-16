@@ -29,6 +29,7 @@ from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters,
     numeric_source, parameter_catalog, parameter_value, scan_parameter_names, validated_overrides, validate_zeff)
 from OMFITlib_cgyro_scan_values import ky_values, scan_axes as configured_scan_axes
 from OMFITlib_cgyro_isotopes import isotope_input, remap_physics
+from OMFITlib_cgyro_run_state import stop_message
 
 MODULES = {
     'transfer': ('Transfer_tool',), 'cgyro': ('CGYRO_scan',),
@@ -439,7 +440,7 @@ def cgyro_input_issues(root):
 
 def collect_issues(root):
     manifest = read(root, ('CGYRO_scan', 'RUN_MANIFEST'), {})
-    if not manifest or manifest.get('status', None) not in ('submitted', 'submitted_or_finished', 'running', 'loaded', 'failed', 'cancelled'):
+    if not manifest or manifest.get('status', None) not in ('submitted', 'submitted_or_finished', 'running', 'loaded', 'failed', 'cancelled', 'cancel_requested'):
         return ['尚无已执行 / 已提交的 CGYRO 运行；仅生成输入后不能收集结果']
     if not manifest.get('points', None) or not manifest.get('workDir', None):
         return ['当前运行记录缺少扫描点或工作目录']
@@ -1224,6 +1225,12 @@ class ProjectActions:
                 physics['case_id'] = item['case_id']
                 self.call('CGYRO {}'.format(item['case_id']),
                            MODULES['cgyro'] + ('SCRIPTS', 'runCGYRO.py'))
+                manifest = node.get('RUN_MANIFEST', {})
+                if manifest.get('stop_requested', False):
+                    record.update(dict(status='cancelled', completed=completed,
+                                       stopped_case=item['case_id'], remote_status=manifest.get('status', '')))
+                    self.settings['message'] = stop_message(manifest)
+                    return completed
                 completed.append(item['case_id'])
             record.update(dict(status='complete', completed=completed))
             self.settings['message'] = '已完成 {} 个输入组合，结果已保存到 RUN_DB。'.format(len(completed))
@@ -1324,6 +1331,7 @@ class ProjectActions:
         outcome = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST', 'scheduler_sync', 'outcome'), '')
         self.settings['message'] = ('作业已取消；原记录和输出保留，可开始新运行。' if state == 'cancelled' else
                                     '作业已失败；原记录和输出保留，可收集日志或开始新运行。' if state == 'failed' else
+                                    '取消请求已送达 Slurm，正在收尾；可稍后再次同步。' if state == 'cancel_requested' else
                                     '未能确认作业终态，原记录继续保留，请查看运行记录。' if outcome == 'unknown' else
                                     '作业仍在排队或运行。' if outcome == 'active' else
                                     '作业状态已同步；已结束的运行可继续收集结果。')
