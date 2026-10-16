@@ -8,18 +8,21 @@ from builtins import abs, any, dict, enumerate, float, int, len, list, max, next
 from collections import OrderedDict
 import math
 import numpy as np
+from OMFITlib_transfer_zeff import zeff_options, zeff_profile
 
 PRESETS = OrderedDict([
     ('保留所有粒子', 'all'),
     ('慢化快离子（热化处理）', 'thermalize'),
     ('仅保留主离子和等效杂质', 'equivalent'),
     ('仅保留主离子', 'main_only'),
+    ('仅保留主离子（重算 Zeff）', 'main_only_recomputed'),
 ])
 DESCRIPTIONS = {
     'all': '保留全部离子及热 / 快类型，所有主离子按原密度比例共同校正准中性。',
     'thermalize': '同种热杂质合并；对应任一主离子的快离子独立保留，温度、环向及极向流速采用所选热杂质的值。缺少所需热离子时停止。此为热化近似，压力会改变。',
     'equivalent': '全部非主离子合成一种等效杂质，各半径分别计算 Z、密度和 MASS；保持总电荷、Zeff 贡献、总质量及压力。主离子全部保留，密度和密度梯度均满足准中性。',
-    'main_only': '保留电子和全部主离子；各半径按原主离子密度比例补齐电荷，分别沿用各主离子的温度和流速。',
+    'main_only_recomputed': '保留电子和全部主离子；各半径按原主离子密度比例补齐电荷。Zeff 按剩余粒子重算，纯 H/D/T 为 1；不保留原杂质贡献。',
+    'main_only': '只保留电子及 Z=1 主离子，保持主离子密度比例；局部归一化后主离子密度之和为 1。Zeff 沿用删除杂质前的原剖面，仅表示杂质碰撞效应，不包含杂质响应或输运。CGYRO 使用所选 Lorentz 碰撞模型和 Z_EFF_METHOD=1。',
 }
 PARTICLE_DEFAULTS = {'particle_mode': 'all', 'thermal_reference_ion': 0}
 MAIN_ION_THRESHOLD = 0.30
@@ -33,6 +36,8 @@ def particle_options(options):
     values = {key: options.get(key, default) for key, default in PARTICLE_DEFAULTS.items()}
     if values['particle_mode'] not in DESCRIPTIONS:
         raise ValueError('请选择有效的粒子处理方案。')
+    if values['particle_mode'] == 'main_only':
+        values.update(zeff_options(options))
     for key in ('thermal_reference_ion',):
         raw = float(values[key])
         if not math.isfinite(raw) or raw < 0 or int(raw) != raw:
@@ -303,6 +308,7 @@ def prepare_particles(source, options):
     mains = detect_main_ions(profile, options)
     main_indices = [ion['index'] for ion in mains]
     main_count = len(mains)
+    prescribed_zeff = zeff_profile(source, options, mains) if options['particle_mode'] == 'main_only' else None
     thermal_reference = (_thermal_reference(profile, options, before, mains)
                          if options['particle_mode'] == 'thermalize' else None)
     profile.reorder_ions(main_indices + [ion['index'] for ion in before if ion['index'] not in main_indices], verbose=False)
@@ -314,7 +320,7 @@ def prepare_particles(source, options):
     mode = options['particle_mode']
     if mode == 'thermalize':
         changes = _thermalize(profile, main_count, thermal_reference)
-    elif mode == 'main_only':
+    elif mode in ('main_only', 'main_only_recomputed'):
         for index in range(int(profile['N_ION']), main_count, -1):
             profile.del_ion(index, add_density_to_ion=1, verbose=False)
         for index in range(main_count):
@@ -366,6 +372,8 @@ def prepare_particles(source, options):
                   max_zeff_change=zeff_error,
                   max_relative_pressure_change=float(np.max(np.abs(_pressure_nt(profile) / pressure_before - 1.0))))
     report.update(changes)
+    if prescribed_zeff is not None:
+        report['prescribed_zeff'] = prescribed_zeff
     return profile, report
 
 

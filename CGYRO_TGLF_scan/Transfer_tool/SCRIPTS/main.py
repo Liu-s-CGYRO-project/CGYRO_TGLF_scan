@@ -1,6 +1,7 @@
 # -*-Python-*-
 """Run the original command box 1 workflow from a single GUI action."""
 import copy
+import numpy as np
 from OMFITlib_transfer_workflow import (discard_legacy_outputs, generation_issues, initialize_generation,
                                       prepare_tgyro, selected_profile)
 from OMFITlib_transfer_particles import main_ion_label, prepare_particles, species_label
@@ -35,6 +36,9 @@ try:
     root['INPUTS']['input.gacode'] = profile
     outputs['Profiles_gen']['input.gacode'] = profile.duplicate()
     outputs['Particle_processing'] = report
+    if report.get('prescribed_zeff', None):
+        print('主离子归一化为 ne，保留原密度比例；Zeff 沿用原剖面。'
+              'CGYRO 使用 COLLISION_MODEL={}、Z_EFF_METHOD=1。'.format(report['prescribed_zeff']['collision_model']))
     print('本轮主离子：' + '；'.join(main_ion_label(ion) for ion in report['main_ions']))
     if report.get('equivalent_stage', None) == 'local_inputs':
         print('全部非主离子将在各半径合成等效杂质（Z、密度、MASS）。')
@@ -52,6 +56,8 @@ try:
     # Keep the plotted profile paired with this completed local-input set, even
     # after the input chooser is used again or the raw input is restored below.
     outputs['Particle_processing']['plot_profile'] = profile.duplicate()
+    if report.get('prescribed_zeff', None):
+        outputs['Particle_processing']['plot_profile']['z_eff'] = np.array(report['prescribed_zeff']['values'])
     # Keep the imported (or newly generated raw) profile reusable for another preset.
     root['INPUTS']['input.gacode'] = source_profile
 except BaseException:

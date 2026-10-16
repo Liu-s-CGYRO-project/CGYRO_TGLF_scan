@@ -4,7 +4,8 @@ import numpy as np
 import os
 import re
 from OMFITlib_cgyro_read import *
-from OMFITlib_cgyro_parameters import FIELDS as CALCULATION_FIELDS, apply_parameters, initialize_parameters, parameter_value
+from OMFITlib_cgyro_parameters import (FIELDS as CALCULATION_FIELDS, apply_parameters, initialize_parameters,
+                                      parameter_value, validate_zeff)
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolved_scan_axes
 
 if not os.environ.get('SHELL'):
@@ -273,6 +274,7 @@ if not local_submit and 'server' not in server_setup and remote_server.split('@'
 remote_workdir = submit_workdir if local_submit else posixpath.join(remote_base, 'runs', run_token)
 inputs_node = root['INPUTS']
 base_input = inputs_node['input.cgyro'].duplicate()
+prescribed_zeff = float(base_input.get('Z_EFF_METHOD', 2)) == 1
 source_rho = physics.get('rho', None)
 if source_rho is None:
     source_rho = base_input.get('rho', None)
@@ -301,6 +303,7 @@ for new_dir, overrides, point_metadata in points:
     current_input = base_input.duplicate()
     for name, value in overrides.items():
         current_input[name] = parameter_value(name, value) if name in CALCULATION_FIELDS else value
+    validate_zeff(current_input, set(fixed_parameters) | set(overrides), prescribed=prescribed_zeff)
     if physics['scale_time_with_ky'] and overrides['KY'] > 1:
         current_input['DELTA_T'] = current_input['DELTA_T'] / overrides['KY']
         current_input['MAX_TIME'] = current_input['MAX_TIME'] / overrides['KY']

@@ -485,6 +485,8 @@ class ProjectUI:
                     for key, caption in cases[offset:offset + 2]:
                         self.cgyro_checkbox(self.prefix + "['cgyro_ion_cases'][{!r}]".format(key),
                                              self.settings['cgyro_ion_cases'], key, caption)
+        if any(self.settings['cgyro_ion_cases'].get(key, False) for key in ('H', 'D', 'T')):
+            self.label('H / D / T：多个 Z=1 主离子先合并为一个，再分别设置质量。')
         return rows
 
     def scan_field(self, widget, width):
@@ -697,6 +699,11 @@ class ProjectUI:
         reference = ('输入值：{}'.format(source_values[name]) if name in source_values else
                      '文件未写入，显示参考值：{}；修改后才写入运行副本。'.format(spec['reference']))
         help_text = reference + '\n修改并回车后应用到所选输入；“沿用输入”取消覆盖，使用各输入自己的值。'
+        if name == 'GAMMA_E':
+            help_text += '\nE×B 剪切率（归一化 a/cs）；与 GAMMA_P 旋转剪切分别设置。'
+        elif name in ('Z_EFF', 'Z_EFF_METHOD'):
+            help_text += '\n指定 Zeff 需要 Z_EFF_METHOD=1 且 COLLISION_MODEL=1 或 5；'
+            help_text += '方法 2 按实际离子密度与电荷计算。模型 4 不使用独立指定 Zeff。'
         with self.ui.same_row() as line:
             frame = getattr(line, 'frm_top', None)
             if isinstance(frame, tk.Misc):
@@ -706,6 +713,11 @@ class ProjectUI:
                 self.ui.ComboBox(location(path + ('value',)), OrderedDict([
                     ('0 固定 RK4', 0), ('1 自适应 Cash-Karp', 1),
                     ('2 自适应 Bogacki-Shampine', 2), ('3 自适应 Verner', 3)]), '',
+                    width=24, state='readonly', updateGUI=True, help=help_text,
+                    postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
+            elif name == 'Z_EFF_METHOD':
+                self.ui.ComboBox(location(path + ('value',)), OrderedDict([
+                    ('1 指定 Zeff', 1), ('2 按粒子组成计算', 2)]), '',
                     width=24, state='readonly', updateGUI=True, help=help_text,
                     postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
             else:

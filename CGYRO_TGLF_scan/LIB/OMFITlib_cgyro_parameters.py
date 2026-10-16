@@ -27,6 +27,8 @@ FIELDS = OrderedDict([
     ('COLLISION_MODEL', ('碰撞模型', 'model', 4, 'int', True)),
     ('NU_EE', ('电子碰撞频率', 'model', 0.1, 'float', False)),
     ('NU_EE_SCALE', ('碰撞频率系数', 'model', 1.0, 'float', False)),
+    ('Z_EFF', ('有效电荷数 Zeff', 'model', 1.0, 'float', True)),
+    ('Z_EFF_METHOD', ('Zeff 来源', 'model', 2, 'int', True)),
     ('COLLISION_FIELD_MODEL', ('碰撞场更新', 'model', 1, 'int', False)),
     ('COLLISION_MOM_RESTORE', ('碰撞动量守恒', 'model', 1, 'int', False)),
     ('COLLISION_ENE_RESTORE', ('碰撞能量守恒', 'model', 1, 'int', False)),
@@ -54,6 +56,7 @@ FIELDS = OrderedDict([
     ('S_DELTA', ('三角形变剪切', 'geometry', 0.0, 'float', False)),
     ('PX0', ('气球模角参数', 'geometry', 0.0, 'float', False)),
     ('EQUILIBRIUM_MODEL', ('平衡模型', 'geometry', 2, 'int', True)),
+    ('GAMMA_E', ('E×B 剪切', 'geometry', 0.0, 'float', False)),
     ('GAMMA_P', ('旋转剪切', 'geometry', 0.0, 'float', False)),
     ('MACH', ('旋转马赫数', 'geometry', 0.0, 'float', False)),
     ('FIELD_PRINT_FLAG', ('输出场数据', 'output', 0, 'int', False)),
@@ -178,6 +181,10 @@ def parameter_value(name, raw):
         raise ValueError('{} 必须为整数。'.format(name))
     if name == 'DELTA_T_METHOD' and value not in (0, 1, 2, 3):
         raise ValueError('DELTA_T_METHOD 请选择 0（固定 RK4）或 1–3（自适应积分）。')
+    if name == 'Z_EFF_METHOD' and value not in (1, 2):
+        raise ValueError('Z_EFF_METHOD 请选择 1（指定 Zeff）或 2（按粒子组成计算）。')
+    if name == 'Z_EFF' and value < 1:
+        raise ValueError('Z_EFF 必须大于或等于 1。')
     if spec['positive'] and value <= 0:
         raise ValueError('{} 必须大于 0。'.format(name))
     return int(value) if value.is_integer() else value
@@ -192,3 +199,16 @@ def apply_parameters(source, physics, dimensions):
         if name in FIELDS and name not in source:
             source[name] = FIELDS[name][2]  # Each scan point replaces this reference.
     return overrides
+
+
+def validate_zeff(source, overridden=(), prescribed=False):
+    """CGYRO honors a prescribed Zeff only for the two Lorentz models."""
+    method = parameter_value('Z_EFF_METHOD', source.get('Z_EFF_METHOD', 2))
+    if (prescribed or 'Z_EFF' in overridden) and method != 1:
+        raise ValueError('指定或扫描 Z_EFF 时，请先设置 Z_EFF_METHOD=1。')
+    if method == 1:
+        parameter_value('Z_EFF', source.get('Z_EFF', 1.0))
+        model = parameter_value('COLLISION_MODEL', source.get('COLLISION_MODEL', 4))
+        if model not in (1, 5):
+            raise ValueError('指定 Zeff 仅在 CGYRO COLLISION_MODEL=1 或 5 时生效；'
+                             '模型 4 等需保留显式杂质，请更改碰撞模型或使用等效杂质方案。')

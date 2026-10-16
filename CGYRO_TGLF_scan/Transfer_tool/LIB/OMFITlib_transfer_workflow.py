@@ -8,6 +8,7 @@ import shlex
 import sys
 import sysconfig
 from OMFITlib_transfer_particles import PARTICLE_DEFAULTS, particle_options
+from OMFITlib_transfer_zeff import ZEFF_DEFAULTS
 
 PROFILE_KEYS = {'input.gacode': ('input.gacode',), 'statefile': ('statefile', 'statefile.nc'),
                 'pfile': ('pfile',), 'input.profiles': ('input.profiles',)}
@@ -197,6 +198,8 @@ def initialize_generation(node, factory=dict):
                        ('coordinate', 'rho' if seed.get('TGYRO_USE_RHO', 1) else 'r/a')]:
         options.setdefault(key, value)
     for key, value in PARTICLE_DEFAULTS.items():
+        options.setdefault(key, value)
+    for key, value in ZEFF_DEFAULTS.items():
         options.setdefault(key, value)
     return options
 

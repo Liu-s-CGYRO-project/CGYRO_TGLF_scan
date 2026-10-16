@@ -238,6 +238,7 @@
 ['LIB']['OMFITlib_project_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_ui.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_results'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_results.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_parameters.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_isotopes'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_isotopes.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_scan_values'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_scan_values.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cases.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
@@ -342,6 +343,7 @@
 ['CGYRO_scan']['LIB']['OMFITlib_startup'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/LIB/OMFITlib_startup.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_read'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/LIB/OMFITlib_cgyro_read.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_parameters.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_cgyro_isotopes'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_isotopes.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_scan_values'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_scan_values.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
@@ -401,8 +403,10 @@
 ['Transfer_tool']['TEMPLATES']['input.tglf'] <-:-:-> OMFITgacode <-:-:-> ./Transfer_tool/TEMPLATES/input.tglf <-:-:-> {'GACODEtype': None}
 ['LIB']['OMFITlib_transfer_workflow'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_workflow.py <-:-:-> {}
 ['Transfer_tool']['LIB']['OMFITlib_transfer_particles'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_particles.py <-:-:-> {}
+['Transfer_tool']['LIB']['OMFITlib_transfer_zeff'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_zeff.py <-:-:-> {}
 ['Transfer_tool']['LIB']['OMFITlib_transfer_equivalent'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_equivalent.py <-:-:-> {}
 ['LIB']['OMFITlib_transfer_particles'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_particles.py <-:-:-> {}
+['LIB']['OMFITlib_transfer_zeff'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_zeff.py <-:-:-> {}
 ['Transfer_tool']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
 ['Transfer_tool']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
 ['LIB']['OMFITlib_tglf_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_workbench.py <-:-:-> {}

@@ -8,6 +8,7 @@ from OMFITlib_transfer_workflow import generation_issues, initialize_generation,
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_transfer_particles import (PRESETS, DESCRIPTIONS, detect_main_ions,
                                         main_ion_label, species_label, thermal_reference_choices)
+from OMFITlib_transfer_zeff import ZEFF_COLLISIONS
 
 # compoundGUI is reserved by OMFIT and must not be reset through defaultVars.
 defaultVars(show_run_button=True)
@@ -151,6 +152,13 @@ if last_report.get('after', None):
 if last_report.get('thermal_reference', None):
     details.append('上次热化参考：' + species_label(last_report['thermal_reference']))
 OMFITx.ComboBox(prefix + "['particle_mode']", PRESETS, '处理方案', updateGUI=True, help='\n\n'.join(details))
+if physics['generation']['particle_mode'] == 'main_only':
+    OMFITx.Label('主离子密度之和为 1；Zeff 沿用原剖面。', align='left', wraplength=840)
+    OMFITx.ComboBox(prefix + "['zeff_collision_model']", ZEFF_COLLISIONS, 'CGYRO 碰撞模型',
+                   state='readonly', updateGUI=True,
+                   help='指定 Zeff 仅在 CGYRO 模型 1 或 5 且 Z_EFF_METHOD=1 时生效；生成输入时一并设置。\n'
+                        '默认模型 4 按实际粒子组成重算 Zeff。若需模型 4，请使用等效杂质方案。\n'
+                        '此方案只保留杂质的有效碰撞贡献，不包含杂质响应、稀释或输运。')
 if not particle_issue:
     if physics['generation']['particle_mode'] == 'thermalize':
         OMFITx.ComboBox(prefix + "['thermal_reference_ion']",

@@ -26,8 +26,9 @@ from OMFITlib_tglf_workbench import (PROFILE_PATH, RADII, initialize as initiali
 from OMFITlib_tglf_multi_data import profile_digest, profile_info, tgyro_input
 from OMFITlib_transfer_particles import particle_options
 from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters, initialize_parameters,
-    numeric_source, parameter_catalog, parameter_value, scan_parameter_names, validated_overrides)
+    numeric_source, parameter_catalog, parameter_value, scan_parameter_names, validated_overrides, validate_zeff)
 from OMFITlib_cgyro_scan_values import ky_values, scan_axes as configured_scan_axes
+from OMFITlib_cgyro_isotopes import isotope_input, remap_physics
 
 MODULES = {
     'transfer': ('Transfer_tool',), 'cgyro': ('CGYRO_scan',),
@@ -345,16 +346,29 @@ def _cgyro_main_indices(root, source, source_path):
     return result
 
 
-def _isotope_input(source, isotope, main_indices):
-    value = source.duplicate() if hasattr(source, 'duplicate') else copy.deepcopy(source)
-    changed = []
-    for index in main_indices:
-        if abs(float(value.get('Z_' + str(index), 0.0)) - 1.0) <= 1e-8:
-            value['MASS_' + str(index)] = ISOTOPE_MASSES[isotope]
-            changed.append(index)
-    if not changed:
-        raise ValueError('主离子中没有 Z=1 粒子，不能建立 H/D/T 扫描。')
-    return value, changed
+def _cgyro_case_input(root, row, source, ion_case, physics, dimensions):
+    """Use the same transformed card and settings for preflight and submission."""
+    provenance = None
+    case_physics = physics
+    if ion_case in ISOTOPE_MASSES:
+        local = read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'local_inputs', row['key']), {})
+        scale = (local.get('rhostar', local.get('equivalent', {}).get('rhostar', None))
+                 if row['path'][:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen') else None)
+        scanned = scan_parameter_names(physics, dimensions)
+        overrides = validated_overrides(physics, [source], scanned)
+        global_values = [parameter['values'] for axis in configured_scan_axes(physics, dimensions, source)
+                         for parameter in [axis] + axis.get('linked', []) if parameter['name'] == 'N_GLOBAL']
+        global_curvature = (any(number > 0 for number in global_values[0]) if global_values else
+                            float(overrides.get('N_GLOBAL', source.get('N_GLOBAL', 0))) > 0)
+        value, provenance = isotope_input(source, ISOTOPE_MASSES[ion_case],
+            _cgyro_main_indices(root, source, row['path']), scale, global_curvature)
+        case_physics = remap_physics(physics, dimensions, provenance['index_map'])
+    else:
+        value = source.duplicate() if hasattr(source, 'duplicate') else copy.deepcopy(source)
+    if 'rho' in value:
+        del value['rho']
+    fixed = apply_parameters(value, case_physics, dimensions)
+    return value, case_physics, provenance, fixed
 
 
 def _original_ion_label(source, main_indices):
@@ -385,7 +399,7 @@ def cgyro_plan_issues(root):
     if not any(bool(ion_cases.get(key, False)) for key in ION_CASES):
         return ['至少选择一个主离子方案']
     try:
-        dimensions, axes, _ = cgyro_scan_axes(root)
+        dimensions = int(read(root, MODULES['cgyro'] + ('SETTINGS', 'SETUP', 'idimrun'), 1))
         selected = [row for row in rows if settings['cgyro_radii'].get(row['key'], False)]
         sources = [read(root, row['path']) for row in selected]
         physics = read(root, MODULES['cgyro'] + ('SETTINGS', 'PHYSICS'))
@@ -395,26 +409,23 @@ def cgyro_plan_issues(root):
         if rows[0]['path'][:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
             if previous is None or input_digest(chosen) != input_digest(previous):
                 raise ValueError('粒子方案或半径设置已变化，请重新运行 Transfer_tool。')
-        for row in rows:
-            if not settings['cgyro_radii'].get(row['key'], False):
-                continue
+        for row in selected:
             source = read(root, row['path'])
-            effective = {key: source[key] for key in source.keys()}
-            apply_parameters(effective, physics, dimensions)
-            case_axes = configured_scan_axes(physics, dimensions, effective)
-            for axis in case_axes:
-                for parameter in [axis] + axis.get('linked', []):
-                    if parameter['name'] not in source and parameter['name'] not in CGYRO_FIELDS:
-                        raise ValueError('nr={} 的输入没有参数 {}。'.format(row['nr'], parameter['name']))
-                    if parameter['name'] in CGYRO_FIELDS:
-                        for value in parameter['values']:
-                            parameter_value(parameter['name'], value)
-                    effective[parameter['name']] = parameter['values'][0]
-            validate_input(effective, 'cgyro')
-            mains = _cgyro_main_indices(root, source, row['path'])
-            if any(bool(ion_cases.get(key, False)) for key in ISOTOPE_MASSES) and not any(
-                    abs(float(source.get('Z_' + str(index), 0.0)) - 1.0) <= 1e-8 for index in mains):
-                raise ValueError('nr={} 的主离子中没有 Z=1 粒子。'.format(row['nr']))
+            for ion_case in ION_CASES:
+                if not ion_cases.get(ion_case, False):
+                    continue
+                effective, case_physics, _, fixed = _cgyro_case_input(root, row, source, ion_case, physics, dimensions)
+                case_axes = configured_scan_axes(case_physics, dimensions, effective)
+                scan_names = scan_parameter_names(case_physics, dimensions)
+                for axis in case_axes:
+                    for parameter in [axis] + axis.get('linked', []):
+                        if parameter['name'] not in effective and parameter['name'] not in CGYRO_FIELDS:
+                            raise ValueError('nr={} 的 {} 输入没有参数 {}。'.format(row['nr'], ion_case, parameter['name']))
+                        effective[parameter['name']] = parameter['values'][0]
+                validate_input(effective, 'cgyro')
+                validate_zeff(effective, set(fixed) | scan_names,
+                              prescribed=float(source.get('Z_EFF_METHOD', 2)) == 1)
+        ky_values(physics)
     except (KeyError, TypeError, ValueError, OverflowError) as exc:
         return [str(exc)]
     return []
@@ -841,25 +852,27 @@ class ProjectActions:
             mains = _cgyro_main_indices(self.root, source, row['path'])
             nr_key = str(row['nr'])
             radial = self.factory()
+            case_records = self.factory()
             source_ion_label = _original_ion_label(source, mains)
             for ion_case in ion_cases:
-                value = (source.duplicate() if hasattr(source, 'duplicate') else copy.deepcopy(source))
-                changed = []
-                if ion_case in ISOTOPE_MASSES:
-                    value, changed = _isotope_input(source, ion_case, mains)
-                if 'rho' in value:
-                    del value['rho']  # Metadata stays in plan/RUN_DB, never in input.cgyro.
-                fixed = apply_parameters(value, physics, dimensions)
+                value, case_physics, provenance, fixed = _cgyro_case_input(
+                    self.root, row, source, ion_case, physics, dimensions)
                 radial[ion_case] = value
+                case_records[ion_case] = dict(isotope_preparation=provenance, fixed_parameters=dict(fixed),
+                    scan_axes=configured_scan_axes(case_physics, dimensions, value))
                 plan.append(dict(nr=row['nr'], rho=row['rho'], ion_case=ion_case,
                                  ion_label=source_ion_label if ion_case == 'BASE' else ion_case,
                                  case_id=_cgyro_case_id(row, ion_case), source_key=row['key'],
-                                 source=list(row['path']), changed_main_species=changed))
+                                 source=list(row['path']),
+                                 changed_main_species=provenance['source_main_species'] if provenance else [],
+                                 isotope_preparation=provenance,
+                                 scan_axes=configured_scan_axes(case_physics, dimensions, value)))
             batch[nr_key] = radial
             record = self.factory()
             record.update(dict(source=list(row['path']), source_digest=input_digest(source),
                                rho=row['rho'], main_species=mains, cases=ion_cases,
                                fixed_parameters=dict(fixed),
+                               case_preparation=case_records,
                                original_ion_label=source_ion_label))
             records[nr_key] = record
         if not plan:
@@ -1174,12 +1187,24 @@ class ProjectActions:
         previous = dict(irun=setup.get('irun', None), idownsync=setup.get('idownsync', None))
         original_input = node['INPUTS'].get('input.cgyro', None)
         original_case = {key: physics.get(key, None) for key in ('nr', 'rho', 'mass', 'case_id')}
+        dimensions = int(setup['idimrun'])
+        group_name = str(dimensions) + 'd'
+        original_controls = {key: physics.get(key, None) for key in ('fixed_parameters', group_name)}
+        original_physics = {key: physics[key] for key in physics.keys()}
         record = self._record('CGYRO 批量扫描', status='running', combinations=copy.deepcopy(plan))
         completed = []
         try:
             setup['irun'], setup['idownsync'] = 1, 1
             for item in plan:
                 nr, ion_case = item['nr'], item['ion_case']
+                provenance = item.get('isotope_preparation', None)
+                case_physics = (remap_physics(original_physics, dimensions, provenance['index_map'])
+                                if provenance else original_physics)
+                for key in original_controls:
+                    if key in case_physics:
+                        physics[key] = case_physics[key]
+                    else:
+                        physics.pop(key, None)
                 node['INPUTS']['input.cgyro'] = node['BATCH_INPUTS'][str(nr)][ion_case].duplicate()
                 physics['nr'], physics['rho'], physics['mass'] = nr, item['rho'], ion_case
                 physics['case_id'] = item['case_id']
@@ -1196,6 +1221,11 @@ class ProjectActions:
         finally:
             setup['irun'], setup['idownsync'] = previous['irun'], previous['idownsync']
             physics.update(original_case)
+            for key, value in original_controls.items():
+                if value is None:
+                    physics.pop(key, None)
+                else:
+                    physics[key] = value
             if original_input is None:
                 node['INPUTS'].pop('input.cgyro', None)
             else:

@@ -5,6 +5,7 @@ from OMFITlib_transfer_particles import EQUIVALENT_RULE, MAIN_ION_RULE, close_lo
 from OMFITlib_transfer_equivalent import equivalent_local_input, locpargen_rhostar
 from OMFITlib_gacode_installations import program_guard
 from OMFITlib_transfer_workflow import profiles_python_environment
+from OMFITlib_transfer_zeff import prescribe_local_zeff
 
 # OMFITx.execute() reads SHELL directly.  Desktop/VNC sessions may omit it.
 if not os.environ.get('SHELL'):
@@ -18,9 +19,7 @@ equivalent = particle_report['options'].get('particle_mode', 'all') == 'equivale
 if equivalent and particle_report['options'].get('equivalent_rule', '') != EQUIVALENT_RULE:
     raise ValueError('等效杂质规则已更新，请从“运行 Transfer_tool”重新生成输入。')
 inputs = [(root['INPUTS']['input.gacode'], 'input.gacode')]
-outputs = ['input.tglf.locpargen', 'input.cgyro.locpargen']
-if equivalent:
-    outputs.append('out.locpargen')
+outputs = ['input.tglf.locpargen', 'input.cgyro.locpargen', 'out.locpargen']
 setup = root['SETTINGS']['SETUP']
 workdir = setup['workDir']
 rho_arr = root['OUTPUTS']['TGYRO']['rho'][0][1:]
@@ -43,13 +42,16 @@ for k, rho in enumerate(rho_arr, 1):
         obj = OMFITgacode(path)
         obj.keys()  # Read before the next execution cleans its working directory.
         local[code] = obj
-    rhostar = locpargen_rhostar(os.path.join(workdir, 'out.locpargen'), local['cgyro']) if equivalent else None
+    rhostar = locpargen_rhostar(os.path.join(workdir, 'out.locpargen'), local['cgyro'])
     for code, obj in local.items():
         if equivalent:
             result = equivalent_local_input(obj, code, particle_report['main_count'], particle_report['after'], rhostar)
         else:
             result = close_local_input(obj, code, particle_report['main_count'], particle_report['after'])
         result['rho'] = float(rho)
+        result['rhostar'] = rhostar
+        if particle_report['options'].get('particle_mode', 'all') == 'main_only':
+            result['prescribed_zeff'] = prescribe_local_zeff(obj, code, particle_report.get('prescribed_zeff', {}))
         # rho describes the source radius, not a CGYRO/TGLF input parameter.
         # Keep it in the audit record; solver files must contain solver keys only.
         neutrality['input.{}_{}'.format(code, k)] = result
