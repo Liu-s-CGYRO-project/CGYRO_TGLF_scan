@@ -30,6 +30,8 @@
 
 postcommand 的原始 Tcl 脚本通过 Tcl 列表引用保留，并先执行一次；字体处理复用一个控件回调，刷新不重复包裹。仅在弹出前创建 Listbox，仍使用 Tk 的显示、滚动条、选择和关闭流程。已经创建的列表在界面字体刷新时也同步更新。
 
+收起状态的 ComboBox 另使用 fit_combobox_text(widget, style_name, font)，为实际 textarea 裁切区域设置最小高度。原生 Tk 的文字绘制在 textarea 内裁切，外层 padding 只改变控件外部请求尺寸。函数在窗口私有样式的原生 padding 子布局内加入透明高度约束元素，与 textarea 同层，其余 field、箭头和文字节点保留。高度随实际字体度量变化，并用中文字宽提供后备字形的保守字面估计。透明元素在 Tk 根窗口保留和缓存，不生成或替换字形；NativeLayout 应用私有样式后也调用此函数。参见 [Tk Entry 绘制与 textarea 布局实现](https://github.com/tcltk/tk/blob/core-8-6-branch/generic/ttk/ttkEntry.c)。
+
 | 文件 / 接口 | 用途 |
 | --- | --- |
 | OMFITlib_font_manifest | 固定资源包直链、大小、摘要及文件清单，不含字体字节 |
@@ -41,6 +43,7 @@ postcommand 的原始 Tcl 脚本通过 Tcl 列表引用保留，并先执行一�
 | OMFITlib_gui_fonts.gui_font(widget, base='TkDefaultFont', **overrides) | 统一界面字号，沿用字重和斜体；显式 size 可用于标题 |
 | OMFITlib_gui_fonts.font_size(widget) / set_font_size(widget, value) | 读取或保存界面字号，自动刷新项目窗口 |
 | OMFITlib_gui_fonts.font_status(widget) | 实际字体、渲染后端、生效状态和错误信息 |
+| OMFITlib_gui_fonts.fit_combobox_text(widget, style_name, font) | 调整收起状态的文字区域最小高度，仅用于窗口私有样式 |
 | OMFITlib_gui_fonts.refresh_window_fonts(parent) | 离线导入后刷新已登记的项目窗口 |
 | OMFITlib_plot_fonts.font_rc(style) | 保留同一幅图延迟重绘与导出时的字体配置 |
 

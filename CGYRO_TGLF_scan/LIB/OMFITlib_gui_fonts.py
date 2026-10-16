@@ -4,7 +4,7 @@ The font is registered for this process only. Widget styles and font options
 are scoped to each project window; native callbacks and named Tk fonts stay
 untouched. Keep the standalone manager copy identical with build_gui_fonts.py.
 """
-from builtins import any, bool, callable, dict, getattr, hasattr, int, isinstance, max, open, sorted, str, tuple
+from builtins import any, bool, callable, dict, getattr, hasattr, int, isinstance, len, max, open, sorted, str, tuple
 import ctypes
 from ctypes.util import find_library
 import os
@@ -26,7 +26,7 @@ _library = None
 _registration_source = ''
 # Loader changes must invalidate old interpreter caches even when the original
 # font file stays identical across project releases.
-FONT_PROFILE = 'gui-metrics-v4:' + FONT_SHA256
+FONT_PROFILE = 'gui-metrics-v5:' + FONT_SHA256
 DEFAULT_SIZE = 11
 MIN_SIZE = 9
 MAX_SIZE = 18
@@ -229,6 +229,49 @@ def gui_font(widget, base='TkDefaultFont', **overrides):
     return cache[key]
 
 
+def fit_combobox_text(widget, style_name, font):
+    """Reserve height inside the closed field's actual text clipping region."""
+    style = ttk.Style(widget)
+    # A fallback CJK face may be taller than the primary Latin font metrics.
+    # Ideographic advance gives a conservative square-em floor in that case.
+    line = max(font.metrics('linespace'), font.metrics('ascent') + font.metrics('descent'),
+               (font.measure('\u56fd') * 6 + 4) // 5)
+    height = line + 2 * max(2, line // 8)
+    owner = widget._root()
+    cache = getattr(owner, '_project_cjk_field_elements', None)
+    if cache is None:
+        cache = owner._project_cjk_field_elements = {}
+    key = (style.theme_use(), height)
+    if key not in cache:
+        element = 'ProjectCJKField{}.spacer'.format(len(cache))
+        image = tk.PhotoImage(master=widget, width=1, height=height)
+        style.element_create(element, 'image', image, sticky='ns')
+        # Retain the transparent geometry image after the library is reloaded.
+        cache[key] = (element, image)
+    element = cache[key][0]
+
+    def reserve(items):
+        result = []
+        for name, options in items:
+            if name.startswith('ProjectCJKField'):
+                continue
+            options = dict(options)
+            children = options.get('children', None)
+            if children:
+                options['children'] = reserve(children)
+            result.append((name, options))
+        if any(name.rsplit('.', 1)[-1] == 'textarea' for name, options in result):
+            # A sibling in the native padding parcel raises the textarea's
+            # height too. Outer padding alone leaves that clipping area short.
+            result.insert(0, (element, {'side': 'left', 'sticky': 'ns'}))
+        return result
+
+    current = style.layout(style_name)
+    fitted = reserve(current)
+    if fitted != current:
+        style.layout(style_name, fitted)
+
+
 def _sync_combobox_popdown(widget, create=False):
     """Set the native list font and row spacing before Tk measures its window."""
     if not widget.winfo_exists():
@@ -316,6 +359,7 @@ def style_widget(widget):
             gap = max(2, font.metrics('linespace') // 6)
             widget.configure(spacing1=gap, spacing2=gap, spacing3=gap)
         if kind == 'TCombobox':
+            fit_combobox_text(widget, str(widget.cget('style')) or kind, font)
             _configure_combobox_popdown(widget, font)
 
 

@@ -150,10 +150,6 @@ class ProjectUI:
         self.ui.Button('全局图形样式', lambda: self.root['GUIS']['Plot_style'].run())
         self.ui.Button('清空全部结果…', self.clear_all_results, updateGUI=True,
                        help='清空已保存的计算结果与运行记录，保留输入和配置。点击后会确认。')
-        self.ui.Separator('流程规则')
-        self.label('CGYRO：Transfer_tool 生成半径输入后，选择输入案例与 1–3 个参数轴批量运行。\n'
-                   '已有完整 input.cgyro 也可直接载入并作为一个 nr 使用。\n'
-                   'TGLF 多剖面：导入 input.gacode → 生成局部输入 → 计算 → 结果对比。')
 
     def clear_all_results(self):
         if active_jobs(self.root):
