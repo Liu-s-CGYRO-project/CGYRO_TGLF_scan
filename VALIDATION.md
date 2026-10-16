@@ -1,10 +1,10 @@
 # 修订记录 · 工程 1.22.1
 
-Transfer_tool 统一为“仅保留主离子和 Zeff”一个选项，移除独立的重算 Zeff 方案；旧设置自动迁移，沿用原剖面 Zeff，保留 Z_EFF_METHOD=1。
+处理方案统一为“仅保留主离子和 Zeff”。Zeff 始终按删除杂质前的完整粒子密度和电荷计算（ΣniZi²/ne），不读取输入文件的 z_eff；随后保留主离子比例并归一化总密度为 1，CGYRO 写入 Z_EFF_METHOD=1。旧的重算选项自动迁移。
 
-GUI 初始化将旧 main_only_recomputed 选择迁移为 main_only；无 GUI 的脚本入口也统一归一化后再执行。删除重算分支及其说明，保留四种粒子处理方案。旧的重算输出不改写，规则不匹配时要求重新生成。主离子归一化、HDT 合并、原剖面 Zeff 写入和支持的碰撞模型均沿用 1.22.0。
+GUI 初始化和无 GUI 的脚本入口均将旧 main_only_recomputed 归一化为 main_only，不再保留单独的重算分支。Zeff 在粒子删除、重排及密度校正前，通过原始剖面对象的 calc_zeff(use_ne=True, in_place=False) 计算，包括全部原始主离子、杂质和快离子；源文件的 z_eff 字段完全不参与。规则更新为 normalized_main_composition_zeff_v2，旧规则结果要求重新生成，历史结果不改写。其后仍按 rmin/a 插值，写入 CGYRO 的 Z_EFF、Z_EFF_METHOD=1 和所选碰撞模型 1 / 5，以及 TGLF 的 ZEFF。界面、帮助、日志和记录同步注明来源为完整粒子组成。HDT 合并和归一化算法保留。
 
-仅进行 Python 3.9 AST、OMFIT 原生接口 / LIB 依赖和安装包静态校验；未运行回归、GUI、转换、绘图或计算。
+静态核对本地原生 OMFIT calc_zeff 的签名与公式；完成 Python 3.9 AST、OMFIT 接口 / LIB 依赖及安装包静态校验。未运行回归、GUI、转换、绘图、求解器或现场安装。
 
 # 修订记录 · 工程 1.22.0
 

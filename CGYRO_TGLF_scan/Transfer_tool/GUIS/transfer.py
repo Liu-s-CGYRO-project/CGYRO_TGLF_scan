@@ -153,7 +153,7 @@ if last_report.get('thermal_reference', None):
     details.append('上次热化参考：' + species_label(last_report['thermal_reference']))
 OMFITx.ComboBox(prefix + "['particle_mode']", PRESETS, '处理方案', updateGUI=True, help='\n\n'.join(details))
 if physics['generation']['particle_mode'] == 'main_only':
-    OMFITx.Label('主离子密度之和为 1；Zeff 沿用原剖面。', align='left', wraplength=840)
+    OMFITx.Label('主离子密度之和为 1；Zeff 由删除杂质前的全部离子计算。', align='left', wraplength=840)
     OMFITx.ComboBox(prefix + "['zeff_collision_model']", ZEFF_COLLISIONS, 'CGYRO 碰撞模型',
                    state='readonly', updateGUI=True,
                    help='指定 Zeff 仅在 CGYRO 模型 1 或 5 且 Z_EFF_METHOD=1 时生效；生成输入时一并设置。\n'

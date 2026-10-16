@@ -37,7 +37,7 @@ try:
     outputs['Profiles_gen']['input.gacode'] = profile.duplicate()
     outputs['Particle_processing'] = report
     if report.get('prescribed_zeff', None):
-        print('主离子归一化为 ne，保留原密度比例；Zeff 沿用原剖面。'
+        print('主离子归一化为 ne，保留原密度比例；Zeff 由删除杂质前的全部离子计算（ΣniZi²/ne）。'
               'CGYRO 使用 COLLISION_MODEL={}、Z_EFF_METHOD=1。'.format(report['prescribed_zeff']['collision_model']))
     print('本轮主离子：' + '；'.join(main_ion_label(ion) for ion in report['main_ions']))
     if report.get('equivalent_stage', None) == 'local_inputs':

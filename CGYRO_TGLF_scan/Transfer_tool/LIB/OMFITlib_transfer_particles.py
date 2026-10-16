@@ -20,7 +20,7 @@ DESCRIPTIONS = {
     'all': '保留全部离子及热 / 快类型，所有主离子按原密度比例共同校正准中性。',
     'thermalize': '同种热杂质合并；对应任一主离子的快离子独立保留，温度、环向及极向流速采用所选热杂质的值。缺少所需热离子时停止。此为热化近似，压力会改变。',
     'equivalent': '全部非主离子合成一种等效杂质，各半径分别计算 Z、密度和 MASS；保持总电荷、Zeff 贡献、总质量及压力。主离子全部保留，密度和密度梯度均满足准中性。',
-    'main_only': '只保留电子及 Z=1 主离子，保持主离子密度比例；局部归一化后主离子密度之和为 1。Zeff 沿用删除杂质前的原剖面，仅表示杂质碰撞效应，不包含杂质响应或输运。CGYRO 使用所选 Lorentz 碰撞模型和 Z_EFF_METHOD=1。',
+    'main_only': '只保留电子及 Z=1 主离子，保持主离子密度比例；局部归一化后主离子密度之和为 1。Zeff 始终由删除杂质前的全部离子密度和电荷计算（ΣniZi²/ne），不读取输入文件的 Zeff 字段。仅表示杂质碰撞效应，不包含杂质响应或输运。CGYRO 使用所选 Lorentz 碰撞模型和 Z_EFF_METHOD=1。',
 }
 PARTICLE_DEFAULTS = {'particle_mode': 'all', 'thermal_reference_ion': 0}
 MAIN_ION_THRESHOLD = 0.30
