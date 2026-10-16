@@ -6,7 +6,7 @@ import threading
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_gui_context import bind_actions
-from OMFITlib_gui_fonts import configure_window_fonts, fit_combobox_text, font_size, gui_font
+from OMFITlib_gui_fonts import configure_window_fonts, fit_field_height, font_size, gui_font
 
 
 @contextmanager
@@ -167,8 +167,8 @@ class NativeLayout:
         widget.configure(style=name)
         widget._cgyro_layout_base_style = old
         widget._cgyro_layout_style = name
-        if widget.winfo_class() == 'TCombobox':
-            fit_combobox_text(widget, name, font)
+        if widget.winfo_class() in ('TEntry', 'TCombobox'):
+            fit_field_height(widget, name, font)
 
     def _walk(self, parent):
         children = parent.winfo_children()

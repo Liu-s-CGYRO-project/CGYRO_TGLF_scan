@@ -26,7 +26,7 @@ _library = None
 _registration_source = ''
 # Loader changes must invalidate old interpreter caches even when the original
 # font file stays identical across project releases.
-FONT_PROFILE = 'gui-metrics-v5:' + FONT_SHA256
+FONT_PROFILE = 'gui-metrics-v6:' + FONT_SHA256
 DEFAULT_SIZE = 11
 MIN_SIZE = 9
 MAX_SIZE = 18
@@ -229,14 +229,17 @@ def gui_font(widget, base='TkDefaultFont', **overrides):
     return cache[key]
 
 
-def fit_combobox_text(widget, style_name, font):
-    """Reserve height inside the closed field's actual text clipping region."""
+def fit_field_height(widget, style_name, font):
+    """Give entries and comboboxes one text height, border and vertical inset."""
     style = ttk.Style(widget)
     # A fallback CJK face may be taller than the primary Latin font metrics.
     # Ideographic advance gives a conservative square-em floor in that case.
     line = max(font.metrics('linespace'), font.metrics('ascent') + font.metrics('descent'),
                (font.measure('\u56fd') * 6 + 4) // 5)
     height = line + 2 * max(2, line // 8)
+    # The textarea already includes its upper/lower safety margin. Adding
+    # outer vertical padding again made editable comboboxes needlessly tall.
+    style.configure(style_name, font=font, padding=(6, 0), borderwidth=1)
     owner = widget._root()
     cache = getattr(owner, '_project_cjk_field_elements', None)
     if cache is None:
@@ -270,6 +273,57 @@ def fit_combobox_text(widget, style_name, font):
     fitted = reserve(current)
     if fitted != current:
         style.layout(style_name, fitted)
+    _watch_field_style(widget, style_name, style.theme_use())
+
+
+def fit_combobox_text(widget, style_name, font):
+    """Compatibility entry point for older layout helpers."""
+    fit_field_height(widget, style_name, font)
+
+
+def _sync_field_style(widget):
+    state = widget._project_cjk_field_watch
+    if (str(widget.cget('style')) == state['style'] and state['profile'] == FONT_PROFILE
+            and ttk.Style(widget).theme_use() == state['theme']):
+        return
+    handler = getattr(widget.winfo_toplevel(), '_project_cjk_style_handler', style_widget)
+    handler(widget)
+
+
+def _watch_field_style(widget, style_name, theme):
+    """Reapply geometry after native validation selects valid/error styles."""
+    state = getattr(widget, '_project_cjk_field_watch', None)
+    if state is None:
+        state = widget._project_cjk_field_watch = {'timer': None}
+
+        def apply():
+            state['timer'] = None
+            try:
+                if widget.winfo_exists():
+                    # Hot reloads replace this handler without adding bindings.
+                    state['handler'](widget)
+            except tk.TclError:
+                return
+
+        def queue(event):
+            try:
+                if state['timer'] is None and widget.winfo_exists():
+                    # Native OMFIT validates a key edit with after(1, ...).
+                    state['timer'] = widget.after(5, apply)
+            except tk.TclError:
+                return
+
+        def close(event):
+            if event.widget is widget and state['timer'] is not None:
+                widget.after_cancel(state['timer'])
+                state['timer'] = None
+
+        for sequence in ('<Configure>', '<KeyPress>', '<KeyRelease>', '<Return>', '<KP_Enter>',
+                         '<Escape>', '<FocusIn>', '<FocusOut>', '<<virtualKey>>',
+                         '<<ComboboxSelected>>', '<<ThemeChanged>>'):
+            widget.bind(sequence, queue, add='+')
+        widget.bind('<Destroy>', close, add='+')
+    state.update(dict(style=style_name, theme=theme, profile=FONT_PROFILE, handler=_sync_field_style))
 
 
 def _sync_combobox_popdown(widget, create=False):
@@ -358,8 +412,9 @@ def style_widget(widget):
         if kind == 'Text':
             gap = max(2, font.metrics('linespace') // 6)
             widget.configure(spacing1=gap, spacing2=gap, spacing3=gap)
+        if kind in ('TEntry', 'TCombobox'):
+            fit_field_height(widget, str(widget.cget('style')) or kind, font)
         if kind == 'TCombobox':
-            fit_combobox_text(widget, str(widget.cget('style')) or kind, font)
             _configure_combobox_popdown(widget, font)
 
 
