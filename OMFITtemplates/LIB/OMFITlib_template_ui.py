@@ -9,7 +9,7 @@ import traceback
 import webbrowser
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
-from OMFITlib_gui_fonts import configure_window_fonts, font_size, gui_font, style_widget
+from OMFITlib_gui_fonts import configure_window_fonts, font_size, gui_font, style_checkbox, style_widget
 from OMFITlib_font_ui import open_font_manager, set_proxy
 
 from OMFITlib_template_archive import TemplateError, human_size, json_bytes, parse_json
@@ -564,6 +564,7 @@ class TemplateManager(ManagerUpdateUI):
         choices.pack(fill='x', pady=7)
         checkbox = ttk.Checkbutton(choices, text='包含所选模块的全部案例与结果，作为示例',
                                    variable=self.include_examples, style='TM.TCheckbutton')
+        style_checkbox(checkbox)
         checkbox.pack(side='left', padx=(0, 25))
         self.widgets.append((checkbox, 'normal'))
         self._label(choices, '发布到').pack(side='left', padx=(0, 8))

@@ -4,7 +4,7 @@ The font is registered for this process only. Widget styles and font options
 are scoped to each project window; native callbacks and named Tk fonts stay
 untouched. Keep the standalone manager copy identical with build_gui_fonts.py.
 """
-from builtins import any, bool, callable, dict, getattr, hasattr, int, isinstance, len, max, open, sorted, str, tuple
+from builtins import abs, any, bool, callable, dict, getattr, hasattr, int, isinstance, len, max, min, open, range, sorted, str, tuple, zip
 import ctypes
 from ctypes.util import find_library
 import os
@@ -371,6 +371,77 @@ def _configure_combobox_popdown(widget, font):
         widget.configure(postcommand=script)
         state['script'] = script
     _sync_combobox_popdown(widget)
+
+
+def _checkbox_images(master, size, disabled=False):
+    """Draw neutral indicators without a platform theme or a font glyph."""
+    edge, fill, ink = ('#a2a2a2', '#eeeeee', '#888888') if disabled else ('#707070', '#ffffff', '#202020')
+    images = []
+    for mark in ('off', 'on', 'mixed'):
+        image = tk.PhotoImage(master=master, width=size + 6, height=size)
+        image.put(edge, to=(0, 0, size, size))
+        image.put(fill, to=(1, 1, size - 1, size - 1))
+        thickness = max(2, size // 9)
+        if mark == 'mixed':
+            image.put(ink, to=(size // 4, size // 2, size * 3 // 4, size // 2 + thickness))
+        elif mark == 'on':
+            points = [(size // 5, size // 2), (size * 2 // 5, size * 3 // 4), (size * 4 // 5, size // 4)]
+            for (x0, y0), (x1, y1) in zip(points, points[1:]):
+                steps = max(abs(x1 - x0), abs(y1 - y0))
+                for step in range(steps + 1):
+                    x = x0 + (x1 - x0) * step // steps
+                    y = y0 + (y1 - y0) * step // steps
+                    image.put(ink, to=(x, y, x + thickness, y + thickness))
+        images.append(image)
+    return images
+
+
+def style_checkbox(control):
+    """Replace only this project's indicator; retain label/font/focus layout."""
+    style = ttk.Style(control)
+    original = str(control.cget('style')) or 'TCheckbutton'
+    if original == getattr(control, '_project_checkbox_style', None):
+        original = control._project_checkbox_base_style
+    font = gui_font(control, style.lookup(original, 'font') or 'TkDefaultFont')
+    size = max(14, min(26, int(font.metrics('linespace') * 0.7)))
+    key = (style.theme_use(), size)
+    name = 'ProjectChecksV1{}.'.format(size) + original
+    if (str(control.cget('style')) == name and
+            getattr(control, '_project_checkbox_appearance', None) == key):
+        return
+    root = control._root()
+    cache = getattr(root, '_project_checkbox_images', None)
+    if cache is None:
+        cache = root._project_checkbox_images = {}
+    element = 'ProjectChecksV1{}.indicator'.format(size)
+    if key not in cache:
+        off, on, mixed = _checkbox_images(root, size)
+        disabled_off, disabled_on, disabled_mixed = _checkbox_images(root, size, disabled=True)
+        style.element_create(element, 'image', off,
+            ('disabled', 'alternate', disabled_mixed), ('disabled', 'selected', disabled_on),
+            ('disabled', disabled_off), ('alternate', mixed), ('selected', on),
+            width=size + 6, sticky='w')
+        # Tk does not retain Python image objects. Keep them for the interpreter,
+        # including after a hidden tab or its original checkbox is destroyed.
+        cache[key] = (off, on, mixed, disabled_off, disabled_on, disabled_mixed)
+
+    def replace_indicator(layout):
+        result = []
+        for name, options in layout:
+            options = dict(options)
+            if 'children' in options:
+                options['children'] = replace_indicator(options['children'])
+            result.append((element if name.endswith('.indicator') else name, options))
+        return result
+
+    style.layout(name, replace_indicator(style.layout(original)))
+    control.configure(style=name)
+    control._project_checkbox_base_style = original
+    control._project_checkbox_style = name
+    control._project_checkbox_appearance = key
+    if not getattr(control, '_project_checkbox_theme_binding', None):
+        control._project_checkbox_theme_binding = control.bind(
+            '<<ThemeChanged>>', lambda event: style_checkbox(control), add='+')
 
 
 def style_widget(widget):
