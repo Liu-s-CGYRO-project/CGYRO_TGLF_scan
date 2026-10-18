@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.22.6",
-  "parent_release": "1.22.5",
+  "version": "1.22.7",
+  "parent_release": "1.22.6",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -276,9 +276,9 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_font_manifest.py": "bc01ff080c5bef434044b9edf26248bf13f1a8bb10713aa38febe2e83f64484e",
     "CGYRO_TGLF_scan/LIB/OMFITlib_font_ui.py": "819422b9aac7054a1e8e6e531a3ab5faf4dbd74831348ba2b9b39dcb84358535",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gacode_installations.py": "a558e4d108f6dece6c0c346e5a1fc4ef78931a523211eaa81986d2d9ebc037f0",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_api.py": "188cfa316827b0c75659382d01c3d4ad75e9f9889bd895f78d61d5ce1659ad53",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_api.py": "0e8730b4bd6b3cb83f2795e1b0d9c5f8bfc54ef528082d81be2ad011999b002e",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py": "f29bfeff5bf610b8191cdf83f0c5051d8a61df04c90a1fe0bc3c1e9f66f03f31",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_controls.py": "af49f4f91cda3c1aacdd68bcf69f466f973ef64084cdbf9bbe20e4bb26874852",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_controls.py": "08c165058c95ffd677c466b55d5c0eb43e481e740e56c8f71c466f00e80f91a8",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_font_data.py": "012452fc4ba53d52d43f539097cec5c9c558d521e7f328eb31b14268ed1a541e",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_fonts.py": "da61115dfed230340c98c0b41d5eccf14a7dce62602f9d0f818c7448568982e2",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "b2f6878ac16fd8f7c7b64d017e9e18167da2c5dafadb8b2cf4af0b6768909da7",
@@ -550,7 +550,7 @@
     "OMFITtemplates/tests/test_ui.py": "aa22cc248dd708a7edb4db4aaf61a6a0a94308b60b9938c1078b9f8918d057ea",
     "OMFITtemplates/tests/test_versions.py": "853de76e9bb080be275a7d738914472c660fb235627a388487bd96c2c64b1456",
     "OMFITtemplates/tests/test_zip_entry.py": "f8e5a55d9dd359b44de9675f4aff94c80fd23e376fb76ba566f8b501be2961eb",
-    "VALIDATION.md": "a808503cc6386d6d139e15101a97f4efc0e64225991660cedc757a622cff51a7"
+    "VALIDATION.md": "6e920a70f346291e0df37abe1c192b207cffc0e45dfc197464e6fb30b760e4db"
   },
   "workbench_features": [
     "native_omfit_project_gui",

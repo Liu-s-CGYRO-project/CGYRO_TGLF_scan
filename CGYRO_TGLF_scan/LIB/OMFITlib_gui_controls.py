@@ -1,6 +1,7 @@
 """Explicit two-state bindings for native OMFIT checkbuttons."""
 from builtins import isinstance, str
 import tkinter as tk
+from OMFITlib_gui_api import set_checkbox_value, style_checkbox
 
 
 def boolean_value(value):
@@ -17,11 +18,6 @@ def checkbox(ui, path, mapping, key, caption, default=False, updateGUI=False, **
     mapping[key] = value
     control = ui.CheckBox(path, caption, default=default, updateGUI=updateGUI, **kwargs)[0]
     if isinstance(control, tk.Misc):
-        # Each checkbutton needs its own variable. Tk's implicit variable can
-        # otherwise replace OMFIT's explicit state with the blue alternate state.
-        variable = tk.BooleanVar(master=control, value=value)
-        control.configure(variable=variable, onvalue=1, offvalue=0)
-        variable.set(value)
-        control.state(['!alternate', 'selected' if value else '!selected'])
-        control._omfit_boolean = variable
+        set_checkbox_value(control, value)
+        style_checkbox(control)
     return control

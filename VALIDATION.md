@@ -1,3 +1,11 @@
+# 修订记录 · 工程 1.22.7
+
+修复对比页案例、参数及其他工程复选框仍显示蓝色的问题。旧适配器只给未处于 alternate 的控件绑定独立变量，已进入中间态的框被跳过；同时原生主题决定了方框底色。本次在原生默认值初始化之后，通过同一 OMFITx 的 _absLocation / _eval / repr 读取实际数据和 False / True、useInt 或 mapFalseTrue 映射。有效值即使原控件处于 alternate 也绑定独立 BooleanVar 并清除中间态；不匹配映射的值仍保留 alternate 提示。原生树更新、postcommand、updateGUI、锁定及右键说明沿用；默认按钮执行原命令后重新读取实际值，同步私有变量。
+
+工程局部样式用 Tk PhotoImage 定义白底空框、黑色勾及横线中间态，禁用状态为灰色，不再借用主题的蓝色指示图。只替换 indicator 元素，继承原有文字、字体、焦点和布局；字号决定图标大小。图像按 Tk 解释器、主题和尺寸缓存并保留引用，切换主题时重建对应样式，重复 ThemeChanged 通知不会重复配置同一控件。原共用 checkbox helper 复用相同变量和图标接口，不重复分配变量。
+
+静态对照只读原生 OMFITx.CheckBox、_absLocation、_eval、repr、_setDefault 与默认按钮回调；参考 [Tk 8.6 checkbutton 状态说明](https://www.tcl-lang.org/man/tcl8.6/TkCmd/ttk_checkbutton.htm)、[image 元素说明](https://www.tcl-lang.org/man/tcl8.6/TkCmd/ttk_image.htm) 和 [原生类绑定源码](https://github.com/tcltk/tk/blob/core-8-6-branch/library/ttk/button.tcl)。完成 Python 3.9 AST、符号 / OMFIT 接口 / LIB 依赖、源文件与安装包内容及 CRC / 大小 / 摘要核对。按既有要求未运行回归、GUI、绘图、求解器、真实服务器或现场安装；静态校验不能替代现场显示验收。OMFIT 本体、模板管理器、字体原始资源和计算数据不修改。
+
 # 修订记录 · 工程 1.22.6
 
 输出图统一英文。新增独立的 OMFITlib_plot_labels，集中维护内置中英文显示词条；标题、坐标轴、图例、注释及表格 Text 在样式应用、延迟重绘与导出时转换，后续刻度更新通过各文本对象的 draw / get_window_extent 绑定处理。未知自定义中文片段获得图内可区分的 Label N，原文与显示标识对应关系保留在 figure._project_label_aliases；数据树、案例编号、参数键、数值和单位不修改。GUI 文案保留。新库在顶层、工程模块及三个使用绘图样式的子模块中登记。

@@ -1,9 +1,121 @@
 """Local OMFIT widget adapter: full help text without global tooltip patches."""
 from OMFITlib_gui_fonts import configure_window_fonts, gui_font, style_widget
-from builtins import callable, getattr, isinstance, list, max, min, set, str, tuple
+from builtins import abs, callable, dict, enumerate, getattr, int, isinstance, list, max, min, range, repr, set, str, tuple, zip
 import inspect
 import tkinter as tk
 from tkinter import ttk
+
+
+def set_checkbox_value(control, value):
+    """Give each native checkbox its own live variable; None means invalid."""
+    variable = getattr(control, '_omfit_boolean', None)
+    if variable is None:
+        variable = tk.BooleanVar(master=control, value=False)
+        control._omfit_boolean = variable
+    control.configure(variable=variable, onvalue=1, offvalue=0)
+    variable.set(value is True)
+    control.state(['!alternate', 'selected' if value is True else '!selected'])
+    if value is None:
+        control.state(['alternate'])
+
+
+def _checkbox_images(master, size, disabled=False):
+    """Draw neutral indicators without a platform theme or a font glyph."""
+    edge, fill, ink = ('#a2a2a2', '#eeeeee', '#888888') if disabled else ('#707070', '#ffffff', '#202020')
+    images = []
+    for mark in ('off', 'on', 'mixed'):
+        image = tk.PhotoImage(master=master, width=size + 6, height=size)
+        image.put(edge, to=(0, 0, size, size))
+        image.put(fill, to=(1, 1, size - 1, size - 1))
+        thickness = max(2, size // 9)
+        if mark == 'mixed':
+            image.put(ink, to=(size // 4, size // 2, size * 3 // 4, size // 2 + thickness))
+        elif mark == 'on':
+            points = [(size // 5, size // 2), (size * 2 // 5, size * 3 // 4), (size * 4 // 5, size // 4)]
+            for (x0, y0), (x1, y1) in zip(points, points[1:]):
+                steps = max(abs(x1 - x0), abs(y1 - y0))
+                for step in range(steps + 1):
+                    x = x0 + (x1 - x0) * step // steps
+                    y = y0 + (y1 - y0) * step // steps
+                    image.put(ink, to=(x, y, x + thickness, y + thickness))
+        images.append(image)
+    return images
+
+
+def style_checkbox(control):
+    """Replace only this project's indicator; retain label/font/focus layout."""
+    style = ttk.Style(control)
+    original = str(control.cget('style')) or 'TCheckbutton'
+    if original == getattr(control, '_project_checkbox_style', None):
+        original = control._project_checkbox_base_style
+    font = gui_font(control, style.lookup(original, 'font') or 'TkDefaultFont')
+    size = max(14, min(26, int(font.metrics('linespace') * 0.7)))
+    key = (style.theme_use(), size)
+    name = 'ProjectChecksV1{}.'.format(size) + original
+    if (str(control.cget('style')) == name and
+            getattr(control, '_project_checkbox_appearance', None) == key):
+        return
+    root = control._root()
+    cache = getattr(root, '_project_checkbox_images', None)
+    if cache is None:
+        cache = root._project_checkbox_images = {}
+    element = 'ProjectChecksV1{}.indicator'.format(size)
+    if key not in cache:
+        off, on, mixed = _checkbox_images(root, size)
+        disabled_off, disabled_on, disabled_mixed = _checkbox_images(root, size, disabled=True)
+        style.element_create(element, 'image', off,
+            ('disabled', 'alternate', disabled_mixed), ('disabled', 'selected', disabled_on),
+            ('disabled', disabled_off), ('alternate', mixed), ('selected', on),
+            width=size + 6, sticky='w')
+        # Tk does not retain Python image objects. Keep them for the interpreter,
+        # including after a hidden tab or its original checkbox is destroyed.
+        cache[key] = (off, on, mixed, disabled_off, disabled_on, disabled_mixed)
+
+    def replace_indicator(layout):
+        result = []
+        for name, options in layout:
+            options = dict(options)
+            if 'children' in options:
+                options['children'] = replace_indicator(options['children'])
+            result.append((element if name.endswith('.indicator') else name, options))
+        return result
+
+    style.layout(name, replace_indicator(style.layout(original)))
+    control.configure(style=name)
+    control._project_checkbox_base_style = original
+    control._project_checkbox_style = name
+    control._project_checkbox_appearance = key
+    if not getattr(control, '_project_checkbox_theme_binding', None):
+        control._project_checkbox_theme_binding = control.bind(
+            '<<ThemeChanged>>', lambda event: style_checkbox(control), add='+')
+
+
+def _bind_native_checkboxes(api, arguments, controls):
+    """Read the native tree after defaults, including already-alternate boxes."""
+    resolve = getattr(api, '_absLocation', None)
+    evaluate = getattr(api, '_eval', None)
+    representation = getattr(api, 'repr', repr)
+    locations = resolve(arguments['location']) if callable(resolve) and callable(evaluate) else None
+    if isinstance(locations, str):
+        locations = [locations]
+    mapping = arguments.get('mapFalseTrue', None) or ([0, 1] if arguments.get('useInt', False) else [False, True])
+
+    def synchronize():
+        for index, control in enumerate(controls):
+            if not isinstance(control, tk.Misc) or not control.winfo_exists():
+                continue
+            if locations is None:
+                value = None if control.instate(['alternate']) else control.instate(['selected'])
+            else:
+                actual = representation(evaluate(locations[index]))
+                value = False if actual == representation(mapping[0]) else True if actual == representation(mapping[1]) else None
+            set_checkbox_value(control, value)
+
+    synchronize()
+    for control in controls:
+        if isinstance(control, tk.Misc):
+            style_checkbox(control)
+    return synchronize
 
 
 def compact_reset(widget, caption=''):
@@ -113,13 +225,15 @@ class ProjectWidgets:
 
         def create(*args, **kwargs):
             parent = getattr(self._api, '_aux', {}).get('parentGUI', None)
-            help_text = kwargs.get('help', '')
+            arguments = dict(kwargs)
+            if args:
+                arguments.setdefault('location', args[0])
             # Respect native positional signatures; never rewrite entry values.
-            if not help_text:
-                try:
-                    help_text = inspect.signature(function).bind_partial(*args, **kwargs).arguments.get('help', '')
-                except (TypeError, ValueError):
-                    pass
+            try:
+                arguments.update(inspect.signature(function).bind_partial(*args, **kwargs).arguments)
+            except (TypeError, ValueError):
+                pass
+            help_text = arguments.get('help', '')
             before = set(parent.winfo_children()) if isinstance(parent, tk.Misc) else set()
             result = function(*args, **kwargs)
             added = []
@@ -141,21 +255,14 @@ class ProjectWidgets:
                 elif caption == '?' and help_text:
                     widget.configure(command=lambda w=widget, text=help_text: show_help(w, text))
             if name == 'CheckBox' and result:
-                for control in result:
-                    if isinstance(control, tk.Misc) and not control.instate(['alternate']):
-                        variable = tk.BooleanVar(master=control, value=control.instate(['selected']))
-                        control.configure(variable=variable, onvalue=True, offvalue=False)
-                        control._omfit_boolean = variable
-                # Native reset changes widget state directly; keep our private
-                # variable in step so the following click cannot invert it twice.
+                synchronize = _bind_native_checkboxes(self._api, arguments, result)
+                # Native reset changes the tree and state directly. Read its
+                # actual mapped value instead of retaining an obsolete variable.
                 for button in defaults:
                     command = tuple(button.tk.splitlist(str(button.cget('command'))))
-                    def reset(command=command, button=button, controls=result):
+                    def reset(command=command, button=button, synchronize=synchronize):
                         value = button.tk.call(*command)
-                        for control in controls:
-                            variable = getattr(control, '_omfit_boolean', None)
-                            if variable is not None and control.winfo_exists():
-                                variable.set(control.instate(['selected']))
+                        synchronize()
                         return value
                     button.configure(command=reset)
             return result
