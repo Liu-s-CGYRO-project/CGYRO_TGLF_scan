@@ -85,7 +85,8 @@ class CaseSelection(ComparisonWidgets):
         prefix = "root['SETTINGS']['PHYSICS']['CGYRO_vs_TGLF']"
         path = lambda *keys: self._dict_path(prefix, *keys)
         cg, tg = state.setdefault('CGYRO', {}), state.setdefault('TGLF', {})
-        run, _ = self._choose_cgyro(cg, lambda *k: path('CGYRO', *k))
+        run, radii = self._choose_cgyro(cg, lambda *k: path('CGYRO', *k))
+        labels = self._choice_labels(radii)
         results, rhos = self._choose_tglf(tg, lambda *k: path('TGLF', *k), select_radii=False)
         pairing_source = '{}|{}'.format(cg.get('runid', ''), tg.get('result_source', ''))
         if tg.get('_pairing_run', None) not in (None, pairing_source):
@@ -100,7 +101,7 @@ class CaseSelection(ComparisonWidgets):
             for rho in rhos:
                 flags.setdefault(str(rho), False)
             self._prune_mapping_keys(flags, [str(rho) for rho in rhos])
-            self.ui.Label('{} → 配对 TGLF 半径'.format(nr), align='left')
+            self.ui.Label('{} → 配对 TGLF 半径'.format(labels[nr][0]), align='left')
             self._render_key_checkbox_grid(lambda rho: path('TGLF', 'rho_pair_flags', key, str(rho)), rhos)
             paired_rhos.extend(rho for rho in rhos if flags.get(str(rho), None))
         self._cgyro_parameters(cg, lambda *k: path('CGYRO', *k), run, selected)
@@ -136,7 +137,8 @@ class CaseSelection(ComparisonWidgets):
         prefix = "root['SETTINGS']['PHYSICS']['CGYRO_vs_CGYRO']"
         path = lambda *keys: self._dict_path(prefix, *keys)
         state['plotcgyro'] = True
-        run, _ = self._choose_cgyro(state, path, legacy=True)
+        run, available = self._choose_cgyro(state, path, legacy=True)
+        labels = self._choice_labels(available)
         radii = state.get('nr_CGYRO', [])
         if not radii:
             return
@@ -155,7 +157,7 @@ class CaseSelection(ComparisonWidgets):
         flags_by_nr = state.setdefault('para_list_flag_by_nr', {})
         aggregate = {}
         for nr in radii:
-            self.ui.Separator('{} · 扫描参数'.format(nr))
+            self.ui.Separator('{} · 扫描参数'.format(labels[nr][0]))
             node = run.get(nr, {})
             names = stable_keys(node)
             values = by_nr.setdefault(str(nr), {})

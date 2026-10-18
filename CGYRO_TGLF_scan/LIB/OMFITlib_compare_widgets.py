@@ -16,7 +16,8 @@ from builtins import (
     zip,
 )
 import os
-from collections import OrderedDict
+import re
+from collections import Counter, OrderedDict
 import numpy as np
 from OMFITlib_compare_state import (
     dict_path,
@@ -61,9 +62,32 @@ class ComparisonWidgets:
         parts = str(name).split('+', 1)
         return (parts[0].strip(), parts[1].strip() if len(parts) == 2 else 'para2')
 
+    def _case_caption(self, value):
+        """Short display text only; never replace stored case identifiers."""
+        text = str(value)
+        match = re.fullmatch(r'nr=(.+?)__rho=([^_]+)__ion=(BASE|H|D|T)', text)
+        if match is None:
+            return text
+        nr, rho, ion = match.groups()
+        radius = 'nr=' + nr if rho == 'unknown' else 'ρ=' + rho
+        return '{} · {}'.format(radius, '原始' if ion == 'BASE' else ion)
+
     def _choice_label(self, value):
         text = str(value)
+        caption = self._case_caption(value)
+        if caption != text:
+            return caption, text
         return (text, '') if len(text) <= 18 else (text[:17] + '…', text)
+
+    def _choice_labels(self, values):
+        labels = {value: self._choice_label(value) for value in values}
+        counts = Counter(label for label, _ in labels.values())
+        for value, (label, help_text) in labels.items():
+            if counts[label] > 1 and self._case_caption(value) != str(value):
+                # Equal radii and isotopes from different source inputs still
+                # need distinct visible choices. Keep the isotope in full.
+                labels[value] = ('{} · {}'.format(str(value).split('__', 1)[0], label), help_text)
+        return labels
 
     def _parameter_entry(self, path, name, values):
         label, full_name = self._choice_label(name)
@@ -71,18 +95,20 @@ class ComparisonWidgets:
                       kwlabel={'width': 20, 'anchor': 'w'}, help=full_name or '所选扫描值；多个值可使用列表。')
 
     def _render_index_checkbox_grid(self, path_template, values, cols=2):
+        labels = self._choice_labels(values)
         for begin in range(0, len(values), cols):
             with self.ui.same_row():
                 for idx in range(begin, min(begin + cols, len(values))):
-                    label, help_text = self._choice_label(values[idx])
+                    label, help_text = labels[values[idx]]
                     self.ui.CheckBox(path_template.format(idx=idx), label,
                                      updateGUI=True, width=18, help=help_text)
 
     def _render_key_checkbox_grid(self, path_builder, values, cols=2):
+        labels = self._choice_labels(values)
         for begin in range(0, len(values), cols):
             with self.ui.same_row():
                 for key in values[begin:begin + cols]:
-                    label, help_text = self._choice_label(key)
+                    label, help_text = labels[key]
                     self.ui.CheckBox(path_builder(key), label, updateGUI=True, width=18, help=help_text)
 
     def _render_parameter_entries(self, state, flag_key, selected_key, parameters,
