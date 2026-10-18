@@ -39,6 +39,7 @@ STYLE_DEFAULTS = {
 }
 SELECTION_KEYS = (
     'nr_flag', 'nr_selected', 'nr_CGYRO', 'rho_flag', 'rho_selected',
+    'cgyro_radius_flag', 'cgyro_radius_selected',
     'para_flag', 'para_list_flag', 'selected_paras', 'selected_paras_2d',
     'rho_pair_flags', 'rho_pair_cfg', 'para_list_flag_by_nr',
     'selected_paras_by_nr', '_selector_keys',
@@ -188,7 +189,8 @@ def selection_check(root, mode=None):
         if not any(has_values(v) for selected in selections for v in selected.values()):
             errors.append('请选择 CGYRO 扫描参数及取值。')
         if mode == 'CGYRO_vs_CGYRO' and not cg.get('nr_CGYRO', None):
-            errors.append('请选择 CGYRO 半径。')
+            errors.append('请选择所选 CGYRO 半径下的离子。' if cg.get('cgyro_radius_selected', None)
+                          else '请选择 CGYRO 半径。')
         try:
             window = float(settings.get('ave_window', 0.02))
             if not math.isfinite(window) or not 0 < window <= 1:
@@ -203,7 +205,8 @@ def selection_check(root, mode=None):
             errors.append('请选择 TGLF 半径。')
         if mode == 'CGYRO_vs_TGLF':
             if not cg.get('nr_selected', None):
-                errors.append('请选择 CGYRO 半径。')
+                errors.append('请选择所选 CGYRO 半径下的离子。' if cg.get('cgyro_radius_selected', None)
+                              else '请选择 CGYRO 半径。')
             for nr in cg.get('nr_selected', []):
                 if not any(tg.get('rho_pair_flags', {}).get(str(nr), {}).values()):
                     errors.append('请为 CGYRO {} 配对 TGLF 半径。'.format(nr))
@@ -211,7 +214,8 @@ def selection_check(root, mode=None):
             for rho in tg.get('rho_selected', []):
                 cfg = cg.get('rho_pair_cfg', {}).get(str(rho), {})
                 if not cfg.get('nr_selected', None) and not any(cfg.get('nr_flag', {}).values()):
-                    errors.append('请为 TGLF {} 配对 CGYRO 半径。'.format(rho))
+                    target = 'CGYRO 半径下的离子' if cfg.get('cgyro_radius_selected', None) else 'CGYRO 半径'
+                    errors.append('请为 TGLF {} 选择{}。'.format(rho, target))
     if settings.get('divide_by_ky', None) and settings.get('divide_by_ky2', None):
         errors.append('Choose one spectrum scaling: raw, /ky, or /ky².')
     if mode == 'CGYRO_vs_CGYRO':

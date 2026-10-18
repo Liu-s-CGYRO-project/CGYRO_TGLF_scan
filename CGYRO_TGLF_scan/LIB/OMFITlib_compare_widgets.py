@@ -62,13 +62,16 @@ class ComparisonWidgets:
         parts = str(name).split('+', 1)
         return (parts[0].strip(), parts[1].strip() if len(parts) == 2 else 'para2')
 
+    def _case_parts(self, value):
+        match = re.fullmatch(r'nr=(.+?)__rho=([^_]+)__ion=(BASE|H|D|T)', str(value))
+        return None if match is None else match.groups()
+
     def _case_caption(self, value):
         """Short display text only; never replace stored case identifiers."""
-        text = str(value)
-        match = re.fullmatch(r'nr=(.+?)__rho=([^_]+)__ion=(BASE|H|D|T)', text)
-        if match is None:
-            return text
-        nr, rho, ion = match.groups()
+        parts = self._case_parts(value)
+        if parts is None:
+            return str(value)
+        nr, rho, ion = parts
         radius = 'nr=' + nr if rho == 'unknown' else 'ρ=' + rho
         return '{} · {}'.format(radius, '原始' if ion == 'BASE' else ion)
 
@@ -94,8 +97,8 @@ class ComparisonWidgets:
         self.ui.Entry(path, label, default=values, width=24, multiline=True,
                       kwlabel={'width': 20, 'anchor': 'w'}, help=full_name or '所选扫描值；多个值可使用列表。')
 
-    def _render_index_checkbox_grid(self, path_template, values, cols=2):
-        labels = self._choice_labels(values)
+    def _render_index_checkbox_grid(self, path_template, values, cols=2, labels=None):
+        labels = self._choice_labels(values) if labels is None else labels
         for begin in range(0, len(values), cols):
             with self.ui.same_row():
                 for idx in range(begin, min(begin + cols, len(values))):
@@ -103,8 +106,8 @@ class ComparisonWidgets:
                     self.ui.CheckBox(path_template.format(idx=idx), label,
                                      updateGUI=True, width=18, help=help_text)
 
-    def _render_key_checkbox_grid(self, path_builder, values, cols=2):
-        labels = self._choice_labels(values)
+    def _render_key_checkbox_grid(self, path_builder, values, cols=2, labels=None):
+        labels = self._choice_labels(values) if labels is None else labels
         for begin in range(0, len(values), cols):
             with self.ui.same_row():
                 for key in values[begin:begin + cols]:

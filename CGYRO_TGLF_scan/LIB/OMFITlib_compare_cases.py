@@ -3,10 +3,13 @@ from builtins import next, iter
 from OMFITlib_plot_sources import run_choices, source_dimension, tglf_results
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
+    any,
     dict,
+    enumerate,
     list,
     str,
 )
+from collections import Counter, OrderedDict
 from OMFITlib_compare_widgets import (
     ComparisonWidgets,
 )
@@ -19,6 +22,64 @@ from OMFITlib_compare_state import (
 
 
 class CaseSelection(ComparisonWidgets):
+    def _cgyro_radius_groups(self, cases):
+        """Group isotope result keys under their original radial input."""
+        groups = OrderedDict()
+        for index, case in enumerate(cases):
+            parts = self._case_parts(case)
+            if parts is None:
+                key, nr = 'legacy:' + str(case), ''
+                caption, _ = self._choice_label(case)
+                ion = '已有结果'
+            else:
+                nr, rho, ion = parts
+                key = 'nr={}__rho={}'.format(nr, rho)
+                caption = 'nr=' + nr if rho == 'unknown' else 'ρ=' + rho
+                ion = '原始' if ion == 'BASE' else ion
+            group = groups.setdefault(key, dict(caption=caption, nr=nr, cases=[]))
+            group['cases'].append(dict(index=index, key=case, ion=ion))
+        counts = Counter(group['caption'] for group in groups.values())
+        ion_order = {'原始': 0, 'H': 1, 'D': 2, 'T': 3}
+        for group in groups.values():
+            if counts[group['caption']] > 1 and group['nr']:
+                group['caption'] += ' · nr=' + group['nr']
+            group['cases'].sort(key=lambda case: ion_order.get(case['ion'], 4))
+        return groups
+
+    def _select_cgyro_cases(self, state, path, cases, selected_key='nr_selected'):
+        """Select radial inputs first, then the available isotope cases."""
+        flags = sync_flags(state, 'nr_flag', cases, selected_key)
+        groups = self._cgyro_radius_groups(cases)
+        keys = list(groups)
+        if 'cgyro_radius_flag' not in state and 'cgyro_radius_selected' not in state:
+            # Preserve old flat selections on the first visit to each source.
+            state['cgyro_radius_selected'] = [key for key, group in groups.items()
+                if any(flags.get(case['index'], False) for case in group['cases'])]
+        radius_flags = sync_flags(state, 'cgyro_radius_flag', keys, 'cgyro_radius_selected')
+        labels = {key: (group['caption'], '先选择半径，再选择该半径的离子；取消半径会取消其离子选择。')
+                  for key, group in groups.items()}
+        self.ui.Label('1 选择 CGYRO 半径', align='left')
+        self._render_index_checkbox_grid(path('cgyro_radius_flag') + '[{idx}]', keys, labels=labels)
+        state['cgyro_radius_selected'] = selected_items(radius_flags, keys)
+        if state['cgyro_radius_selected']:
+            self.ui.Label('2 选择所选半径的离子', align='left')
+        elif cases:
+            self.ui.Label('选择半径后，在下方选择 H / D / T。', align='left')
+        for index, key in enumerate(keys):
+            group = groups[key]
+            if not radius_flags.get(index, False):
+                for case in group['cases']:
+                    flags[case['index']] = False
+                continue
+            self.ui.Separator(group['caption'])
+            indices = {case['key']: case['index'] for case in group['cases']}
+            ion_labels = {case['key']: (case['ion'], str(case['key'])) for case in group['cases']}
+            self._render_key_checkbox_grid(lambda case: path('nr_flag', indices[case]),
+                                           list(indices), labels=ion_labels)
+        # Plot readers continue to consume exact archived case keys. A radius
+        # without an isotope selection never silently selects all its cases.
+        state[selected_key] = selected_items(flags, cases)
+
     def _choose_cgyro(self, state, path, select_radii=True, legacy=False):
         runs = self.root.get('CGYRO_scan', {}).get('RUN_DB', {})
         state.setdefault('runid', '')
@@ -32,10 +93,7 @@ class CaseSelection(ComparisonWidgets):
             self.ui.Label('请选择包含已保存线性扫描结果的运行记录。', align='left')
         selected_key = 'nr_CGYRO' if legacy else 'nr_selected'
         if select_radii:
-            sync_flags(state, 'nr_flag', radii, selected_key)
-            self.ui.Label('选择 CGYRO 输入案例', align='left')
-            self._render_index_checkbox_grid(path('nr_flag')+'[{idx}]', radii)
-            state[selected_key] = selected_items(state['nr_flag'], radii)
+            self._select_cgyro_cases(state, path, radii, selected_key)
         return runs.get(runid, {}), radii
 
     def _choose_tglf(self, state, path, target='Spectra', select_radii=True):
@@ -117,10 +175,8 @@ class CaseSelection(ComparisonWidgets):
         paired_radii = []
         for rho in tg.get('rho_selected', []):
             cfg = pairs.setdefault(str(rho), {})
-            sync_flags(cfg, 'nr_flag', radii, 'nr_selected')
             self.ui.Label('TGLF {} → 配对 CGYRO 输入案例'.format(rho), align='left')
-            self._render_index_checkbox_grid(path('CGYRO', 'rho_pair_cfg', str(rho), 'nr_flag')+'[{idx}]', radii)
-            cfg['nr_selected'] = selected_items(cfg['nr_flag'], radii)
+            self._select_cgyro_cases(cfg, lambda *keys: path('CGYRO', 'rho_pair_cfg', str(rho), *keys), radii)
             paired_radii.extend(cfg['nr_selected'])
         self._tglf_parameters(tg, path, results, tg.get('rho_selected', []))
         self._cgyro_parameters(cg, lambda *k: path('CGYRO', *k), run, list(dict.fromkeys(paired_radii)))
