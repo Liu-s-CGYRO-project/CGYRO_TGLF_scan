@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from OMFITlib_transfer_particles import species
 from OMFITlib_transfer_plot_data import (CATALOG, alpha, data_issues, equilibrium_input, get, initialize,
-    local_rows, local_values, parameter_rows, selected_profile, shear, state_input, vector)
+    local_ion_types, local_rows, local_values, parameter_rows, selected_profile, shear, state_input, vector)
 
 QE, MP = 1.6e-19, 1.67e-27
 TITLES = dict(profile='Profiles and gradients', fastion='Fast ions', normpara='Normalization and characteristic frequencies',
@@ -173,14 +173,17 @@ def plot_fastion(root):
                                  'a/Ln (fast)', 'a/LT (fast)', 'Transit frequency (kHz)')):
         axis.set_title(title)
     rows = local_rows(root) if initialize(root)['profile'] == 'generated' else []
-    if rows and not any(row['rho'] is None or int(row['input']['NS']) != len(ions) + 1 for row in rows):
+    local_types = [local_ion_types(root, row) for row in rows]
+    if rows and not any(row['rho'] is None or types is None for row, types in zip(rows, local_types)):
         radial = np.array([float(row['rho']) for row in rows])
         beta_e = local_values(rows, 'BETAE')
         beta_f, drive_f = np.zeros_like(beta_e), np.zeros_like(beta_e)
         for index, row in enumerate(rows):
             value = row['input']
-            for ion in fast:
-                suffix = str(ion['index'] + 1)
+            for ion in local_types[index]:
+                if ion['kind'] != 'fast':
+                    continue
+                suffix = str(ion['index'])
                 beta = beta_e[index] * float(value['AS_' + suffix]) * float(value['TAUS_' + suffix])
                 beta_f[index] += beta
                 drive_f[index] += beta * (float(value['RLNS_' + suffix]) + float(value['RLTS_' + suffix]))
@@ -325,14 +328,14 @@ def plot_critical(root):
 def plot_kbm_bae(root):
     data = scales(root)
     x, f, rows = data['rho'], data['fields'], data['rows']
-    ions = data['ions']
-    if any(int(row['input']['NS']) != len(ions) + 1 for row in rows):
+    local_types = [local_ion_types(root, row) for row in rows]
+    if any(types is None for types in local_types):
         raise ValueError('局部粒子已合并，无法将热 / 快离子驱动分别对应；请使用保留粒子的生成结果')
     thermal, fast = np.zeros_like(x), np.zeros_like(x)
     for index, row in enumerate(rows):
         value = row['input']
-        for ion in ions:
-            suffix = str(ion['index'] + 1)
+        for ion in local_types[index]:
+            suffix = str(ion['index'])
             pressure_gradient = float(value['AS_' + suffix]) * float(value['TAUS_' + suffix]) * (
                 float(value['RLNS_' + suffix]) + float(value['RLTS_' + suffix]))
             (fast if ion['kind'] == 'fast' else thermal)[index] += pressure_gradient

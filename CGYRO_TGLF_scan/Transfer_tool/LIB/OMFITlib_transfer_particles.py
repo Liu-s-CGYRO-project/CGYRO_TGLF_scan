@@ -14,12 +14,14 @@ PRESETS = OrderedDict([
     ('保留所有粒子', 'all'),
     ('慢化快离子（热化处理）', 'thermalize'),
     ('仅保留主离子和等效杂质', 'equivalent'),
+    ('主离子 / 等效杂质 / 等效快粒子', 'separate_fast'),
     ('仅保留主离子和 Zeff', 'main_only'),
 ])
 DESCRIPTIONS = {
     'all': '保留全部离子及热 / 快类型，所有主离子按原密度比例共同校正准中性。',
     'thermalize': '同种热杂质合并；对应任一主离子的快离子独立保留，温度、环向及极向流速采用所选热杂质的值。缺少所需热离子时停止。此为热化近似，压力会改变。',
     'equivalent': '主离子限定为平均 ni/ne > 30% 的热 H/D/T；快离子及少量氢同位素与其他非主离子一起合成等效辅助物种。各半径保持辅助组电荷、Zeff 贡献、质量及电荷密度梯度，主离子保留稀释份额。辅助温度可保留原总压力或跟随热主离子；后者会改变总压力。H/D/T 扫描再合并热主离子。',
+    'separate_fast': '电子保留；平均 ni/ne > 30% 的热 H/D/T 合成一个主离子，其余 therm 粒子（含少量 H/D/T）合成等效杂质，全部 fast 粒子合成独立等效快粒子。各组分别保持电荷、Zeff 贡献、质量密度、压力，以及电荷和压力的局部导数；快粒子保留自身压力，不采用热主离子温度。主离子保留稀释份额，H/D/T 扫描只改其质量。无密度的辅助组省略。等效快粒子使用温度描述，不拟合慢化分布或各向异性。',
     'main_only': '先对保留全部粒子的原始剖面副本做准中性校正，再计算完整组成的 Zeff（ΣniZi²/ne），不读取输入文件的 Zeff 字段。然后只保留电子及 Z=1 主离子，保持主离子比例并再次闭合电荷，局部归一化后主离子密度之和为 1。Zeff 仅表示杂质碰撞效应，不包含杂质响应或输运。CGYRO 使用所选 Lorentz 碰撞模型和 Z_EFF_METHOD=1。',
 }
 EQUIVALENT_TEMPERATURES = OrderedDict([
@@ -31,6 +33,8 @@ PARTICLE_DEFAULTS = {'particle_mode': 'all', 'thermal_reference_ion': 0,
 MAIN_ION_THRESHOLD = 0.30
 MAIN_ION_RULE = 'mean_ni_over_ne_after_source_neutrality_v2'
 EQUIVALENT_RULE = 'thermal_hdt_auxiliary_local_moments_v2'
+SEPARATE_FAST_RULE = 'merged_thermal_main_separate_impurity_fast_v1'
+LOCAL_EQUIVALENT_MODES = ('equivalent', 'separate_fast')
 NEUTRALITY_RULE = 'source_first_fixed_ne_density_gradient_curvature_v3'
 TOLERANCE = 1e-8
 ROUND_OFF = 64 * np.finfo(float).eps
@@ -69,6 +73,8 @@ def particle_options(options):
     else:
         # An inactive UI choice must not invalidate other presets' old results.
         values.pop('equivalent_temperature')
+    if values['particle_mode'] == 'separate_fast':
+        values['equivalent_rule'] = SEPARATE_FAST_RULE
     return values
 
 
@@ -166,7 +172,7 @@ def _detect_main_ions(profile, options):
     intervals = np.diff(knots) / (upper - lower)
     candidates, largest = [], 0.0
     for ion in species(profile):
-        if options['particle_mode'] == 'equivalent' and not is_thermal_hydrogen(ion):
+        if options['particle_mode'] in LOCAL_EQUIVALENT_MODES and not is_thermal_hydrogen(ion):
             # Also applies during the source-first neutrality correction: fast
             # fuel must not absorb missing charge and become thermal main fuel.
             continue
@@ -180,7 +186,7 @@ def _detect_main_ions(profile, options):
         if average - MAIN_ION_THRESHOLD > ROUND_OFF * max(1.0, abs(average)):
             candidates.append(dict(ion, mean_fraction=average))
     if not candidates:
-        group = '热 H/D/T 主离子' if options['particle_mode'] == 'equivalent' else '主离子'
+        group = '热 H/D/T 主离子' if options['particle_mode'] in LOCAL_EQUIVALENT_MODES else '主离子'
         raise ValueError('本轮半径范围内没有平均 ni/ne > 30% 的{}（候选最高 {:.6g}%）；请检查剖面、粒子类型和半径范围。'.format(group, largest * 100))
     return sorted(candidates, key=lambda ion: (-ion['mean_fraction'], ion['index']))
 
@@ -437,21 +443,21 @@ def prepare_particles(source, options):
         raise ValueError('派生量更新改变了主离子密度比例，已停止生成。')
     gradient_error = _close_profile_gradient(profile, main_count)
     zeff_error = float(np.max(np.abs(profile['z_eff'] - reference_zeff)))
-    if mode == 'equivalent' and zeff_error > TOLERANCE * max(1.0, float(np.max(reference_zeff))):
+    if mode in LOCAL_EQUIVALENT_MODES and zeff_error > TOLERANCE * max(1.0, float(np.max(reference_zeff))):
         raise ValueError('等效杂质处理未能保持 Zeff。')
     after = species(profile)
     for index, ion in enumerate(after):
         ion['is_main'] = index < main_count
         if ion['is_main']:
             ion.update(dict(source_index=mains[index]['index'], mean_fraction=mains[index]['mean_fraction']))
-        elif mode == 'equivalent':
+        elif mode in LOCAL_EQUIVALENT_MODES:
             ion['source_index'] = [original['index'] for original in before
                                    if original['index'] not in main_indices][index - main_count]
     for item in changes['kept_separate']:
         after[item['index'] - 1]['thermalized_fast'] = True
     report = dict(options=options, before=before, after=after, main_ions=mains, main_count=main_count,
                   source_neutrality=source_neutrality,
-                  equivalent_stage='local_inputs' if mode == 'equivalent' else None,
+                  equivalent_stage='local_inputs' if mode in LOCAL_EQUIVALENT_MODES else None,
                   thermal_reference=thermal_reference['species'] if thermal_reference is not None else None,
                   density_residual=density_error, gradient_residual=gradient_error,
                   main_ratio_residual=ratio_error,

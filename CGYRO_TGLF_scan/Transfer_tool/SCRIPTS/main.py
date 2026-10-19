@@ -44,7 +44,10 @@ try:
         print('主离子归一化为 ne，保留原密度比例；Zeff 由准中性校正后、删除杂质前的全部离子计算（ΣniZi²/ne）。'
               'CGYRO 使用 COLLISION_MODEL={}、Z_EFF_METHOD=1。'.format(report['prescribed_zeff']['collision_model']))
     print('本轮主离子：' + '；'.join(main_ion_label(ion) for ion in report['main_ions']))
-    if report.get('equivalent_stage', None) == 'local_inputs':
+    if report['options']['particle_mode'] == 'separate_fast':
+        print('各半径生成：电子、一个热主离子、等效热杂质和等效快粒子；无密度的辅助组省略。')
+        print('三组离子分别保留电荷、Zeff 贡献、质量密度和压力；快粒子的等效温度由本组压力确定。')
+    elif report.get('equivalent_stage', None) == 'local_inputs':
         print('热 H/D/T 主离子保留稀释份额；全部非主离子（包括快离子）将在各半径合成等效辅助物种。')
         if report['options']['equivalent_temperature'] == 'main_ion':
             print('辅助温度及温度梯度采用合并热主离子的值；保留电荷、Zeff 贡献及质量，总压力会改变。')

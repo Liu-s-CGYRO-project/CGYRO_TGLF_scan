@@ -1,9 +1,9 @@
 # -*-Python-*-
 """Generate local parameter files and publish only complete successful output."""
 import os
-from OMFITlib_transfer_particles import (EQUIVALENT_RULE, MAIN_ION_RULE, NEUTRALITY_RULE,
+from OMFITlib_transfer_particles import (EQUIVALENT_RULE, SEPARATE_FAST_RULE, MAIN_ION_RULE, NEUTRALITY_RULE,
                                         close_local_input, validate_local_neutrality)
-from OMFITlib_transfer_equivalent import equivalent_local_input, locpargen_rhostar
+from OMFITlib_transfer_equivalent import equivalent_local_input, separate_fast_local_input, locpargen_rhostar
 from OMFITlib_gacode_installations import program_guard
 from OMFITlib_transfer_workflow import profiles_python_environment
 from OMFITlib_transfer_zeff import prescribe_local_zeff
@@ -18,8 +18,9 @@ if (particle_report.get('options', {}).get('main_ion_rule', '') != MAIN_ION_RULE
         or particle_report.get('source_neutrality', {}).get('rule', '') != NEUTRALITY_RULE
         or not particle_report.get('main_count', 0) or not particle_report.get('after', None)):
     raise ValueError('缺少本轮自动主离子识别记录，请从“运行 Transfer_tool”重新生成输入。')
-equivalent = particle_report['options'].get('particle_mode', 'all') == 'equivalent'
-if equivalent and particle_report['options'].get('equivalent_rule', '') != EQUIVALENT_RULE:
+particle_mode = particle_report['options'].get('particle_mode', 'all')
+equivalent_rule = {'equivalent': EQUIVALENT_RULE, 'separate_fast': SEPARATE_FAST_RULE}.get(particle_mode, None)
+if equivalent_rule is not None and particle_report['options'].get('equivalent_rule', '') != equivalent_rule:
     raise ValueError('等效杂质规则已更新，请从“运行 Transfer_tool”重新生成输入。')
 inputs = [(root['INPUTS']['input.gacode'], 'input.gacode')]
 outputs = ['input.tglf.locpargen', 'input.cgyro.locpargen', 'out.locpargen']
@@ -47,7 +48,9 @@ for k, rho in enumerate(rho_arr, 1):
         local[code] = obj
     rhostar = locpargen_rhostar(os.path.join(workdir, 'out.locpargen'), local['cgyro'])
     for code, obj in local.items():
-        if equivalent:
+        if particle_mode == 'separate_fast':
+            result = separate_fast_local_input(obj, code, particle_report['main_count'], particle_report['after'], rhostar)
+        elif particle_mode == 'equivalent':
             # Use the frozen generation choice, never a live GUI selection that
             # may have changed while TGYRO / locpargen was running.
             result = equivalent_local_input(obj, code, particle_report['main_count'], particle_report['after'], rhostar,

@@ -1,5 +1,5 @@
 """Read-only data selection for the Transfer_tool plot catalogue."""
-from builtins import any, dict, enumerate, float, int, iter, len, list, next, range, sorted, str, sum
+from builtins import any, dict, enumerate, float, int, isinstance, iter, len, list, next, range, set, sorted, str, sum
 from collections import OrderedDict
 import math
 import re
@@ -90,6 +90,38 @@ def local_rows(root):
     return sorted(rows, key=lambda row: row['index'])
 
 
+def local_ion_types(root, row):
+    """Return native TGLF indices/types only when their ownership is known.
+
+    Grouped cards can have a different order and species count at each radius.
+    A fast ion's original profile index must not select an impurity after a merge.
+    """
+    report = get(root, ('OUTPUTS', 'Particle_processing'), {})
+    if report.get('options', {}).get('particle_mode', '') == 'separate_fast':
+        groups = report.get('local_inputs', {}).get(row['name'], {}).get('equivalent', {}).get('groups', {})
+        if set(groups.keys()) != {'main', 'impurity', 'fast'}:
+            return None
+        result = []
+        for name in ('main', 'impurity', 'fast'):
+            record = groups[name]
+            index = record.get('solver_index', None)
+            if index is None:
+                if name == 'main' or not record.get('omitted', False):
+                    return None
+                continue
+            if not isinstance(index, int) or record.get('omitted', False):
+                return None
+            result.append(dict(index=index, kind='fast' if name == 'fast' else 'therm'))
+        indices = [ion['index'] for ion in result]
+        if sorted(indices) != list(range(2, int(row['input']['NS']) + 1)):
+            return None
+        return result
+    ions = species(selected_profile(root))
+    if int(row['input']['NS']) != len(ions) + 1:
+        return None
+    return [dict(index=ion['index'] + 1, kind=ion['kind']) for ion in ions]
+
+
 def state_input(root):
     return get(root, ('INPUTS', 'statefile.nc'), get(root, ('INPUTS', 'statefile')))
 
@@ -149,7 +181,10 @@ def data_issues(root, name):
                 problems.append('ky 必须为正数')
         if name in ('pltcrit', 'kbmbae') and initialize(root)['profile'] == 'generated':
             try:
-                if any(int(row['input']['NS']) != len(ions) + 1 for row in local_rows(root)):
+                mode = get(root, ('OUTPUTS', 'Particle_processing', 'options', 'particle_mode'), '')
+                if name == 'pltcrit' and mode == 'separate_fast':
+                    problems.append('原 ITG / ETG 估算使用单个源热离子的剖面；分组合并后请使用保留粒子的生成结果进行此项估算')
+                elif any(local_ion_types(root, row) is None for row in local_rows(root)):
                     problems.append('此解析模型需要保留粒子的半径输入，不能拆分等效杂质中的热 / 快离子')
             except (KeyError, TypeError, ValueError):
                 problems.append('局部粒子数量无效')

@@ -167,7 +167,13 @@ def _generated_particle_record(root):
 def _cgyro_main_indices(root, source, source_path):
     count = int(float(source['N_SPECIES']))
     if source_path[:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
-        main_count = read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'main_count'))
+        report = read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing'), {})
+        local = report.get('local_inputs', {}).get(str(source_path[-1]), {})
+        # Some presets merge the original D/T populations before the local card
+        # is published. Never treat the next auxiliary ion as another main ion.
+        if report.get('options', {}).get('particle_mode', '') == 'separate_fast' and local.get('main_count', None) != 1:
+            raise ValueError('分离快粒子输入缺少合并主离子记录，请重新运行 Transfer_tool。')
+        main_count = local.get('main_count', report.get('main_count', None))
         try:
             main_count = int(main_count)
         except (TypeError, ValueError):
