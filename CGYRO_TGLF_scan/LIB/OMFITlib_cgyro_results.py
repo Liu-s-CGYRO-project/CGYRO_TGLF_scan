@@ -1,7 +1,8 @@
 """RUN_DB-backed CGYRO result browser for one-, two- and three-axis scans."""
 from OMFITlib_gui_fonts import configure_window_fonts, style_widget
+from OMFITlib_cgyro_archive import latest_cases
 from builtins import (Exception, TypeError, ValueError, abs, any, dict, float, int,
-                      len, list, max, min, range, sorted, str, tuple, zip)
+                      len, list, max, min, range, set, sorted, str, tuple, zip)
 from collections import OrderedDict
 import numpy as np
 import tkinter as tk
@@ -30,11 +31,14 @@ def _run_options(root):
     run_db = module.get('RUN_DB', {})
     records = OrderedDict()
     options = OrderedDict()
+    covered = set()
     for runid in _stable_keys(run_db):
         if str(runid).startswith('__'):
             continue
         run = run_db[runid]
-        for case_id in _stable_keys(run):
+        cases, aliases = latest_cases(module, runid)
+        active = set()
+        for case_id in cases:
             if str(case_id).startswith('__'):
                 continue
             case = run[case_id]
@@ -44,6 +48,7 @@ def _run_options(root):
             tasks = case.get('__TASKS__', None)
             if info is None or tasks is None:
                 continue
+            active.add(case_id)
             token = str(info.get('run_token', '')).strip() or '{}::{}'.format(runid, case_id)
             entry = dict(info)
             entry.update(dict(runid=runid, case_id=case_id, tasks=tasks,
@@ -51,6 +56,7 @@ def _run_options(root):
             records[token] = entry
             label = '{} | {} | {}'.format(runid, case_id, token[:8])
             options[label] = token
+        covered.update((str(runid), str(key)) for key, target in aliases.items() if target in active)
 
     # Pre-1.13 records remain readable, while new records use RUN_DB only.
     legacy = module.get('RUN_INDEX', {})
@@ -58,6 +64,8 @@ def _run_options(root):
         if token in records:
             continue
         entry = legacy[token]
+        if (str(entry.get('runid', '')), str(entry.get('case_id', ''))) in covered:
+            continue
         records[token] = entry
         label = '{} | {} | {}（旧记录）'.format(
             entry.get('runid', '未命名'), entry.get('case_id', '未知案例'), str(token)[:8])
@@ -101,7 +109,8 @@ def selected_record(root):
         raise ValueError('尚无已收集的 CGYRO 扫描结果。')
     token = view.get('run_token', '')
     if token not in records:
-        token = list(options.values())[-1]
+        current = str(root.get('CGYRO_scan', {}).get('RUN_MANIFEST', {}).get('run_token', ''))
+        token = current if current in records else list(options.values())[-1]
         view['run_token'] = token
     return view, token, records[token], options
 

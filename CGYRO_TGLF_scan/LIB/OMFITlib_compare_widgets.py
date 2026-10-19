@@ -1,5 +1,6 @@
 """Reusable OMFIT selectors and one native Tk legend editor."""
 from OMFITlib_gui_fonts import configure_window_fonts
+from OMFITlib_cgyro_archive import canonical_case_key, case_parts as archived_case_parts
 
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
@@ -16,7 +17,6 @@ from builtins import (
     zip,
 )
 import os
-import re
 from collections import Counter, OrderedDict
 import numpy as np
 from OMFITlib_compare_state import (
@@ -63,14 +63,13 @@ class ComparisonWidgets:
         return (parts[0].strip(), parts[1].strip() if len(parts) == 2 else 'para2')
 
     def _case_parts(self, value):
-        match = re.fullmatch(r'nr=(.+?)__rho=([^_]+)__ion=(BASE|H|D|T)', str(value))
-        return None if match is None else match.groups()
+        return archived_case_parts(value)
 
     def _case_caption(self, value):
         """Short display text only; never replace stored case identifiers."""
         parts = self._case_parts(value)
         if parts is None:
-            return str(value)
+            return canonical_case_key(value)
         nr, rho, ion = parts
         radius = 'nr=' + nr if rho == 'unknown' else 'ρ=' + rho
         return '{} · {}'.format(radius, '原始' if ion == 'BASE' else ion)
@@ -92,10 +91,12 @@ class ComparisonWidgets:
                 labels[value] = ('{} · {}'.format(str(value).split('__', 1)[0], label), help_text)
         return labels
 
-    def _parameter_entry(self, path, name, values):
+    def _parameter_entry(self, path, name, values, default_values=None):
         label, full_name = self._choice_label(name)
-        self.ui.Entry(path, label, default=values, width=24, multiline=True,
-                      kwlabel={'width': 20, 'anchor': 'w'}, help=full_name or '所选扫描值；多个值可使用列表。')
+        self.ui.Entry(path, label, default=values if default_values is None else default_values,
+                      width=24, multiline=True,
+                      kwlabel={'width': 20, 'anchor': 'w'},
+                      help=(full_name + '\n' if full_name else '') + '所选扫描值；可使用列表。重置恢复当前结果的全部取值。')
 
     def _render_index_checkbox_grid(self, path_template, values, cols=2, labels=None):
         labels = self._choice_labels(values) if labels is None else labels
@@ -131,9 +132,10 @@ class ComparisonWidgets:
                                      updateGUI=True, width=18, help=help_text)
         for idx, name in enumerate(parameters):
             if flags.get(idx, None):
+                available = self._normalize_value_list(value_keys_builder(name))
                 if name not in selected:
-                    selected[name] = self._normalize_value_list(value_keys_builder(name))
-                self._parameter_entry(entry_path_builder(name), name, selected[name])
+                    selected[name] = available.copy()
+                self._parameter_entry(entry_path_builder(name), name, selected[name], default_values=available)
             else:
                 selected.pop(name, None)
         if not parameters:
@@ -157,13 +159,14 @@ class ComparisonWidgets:
                 p1_name, p2_name = self._split_2d_param_name(name)
                 first = self._normalize_value_list(k for node in nodes for k in node.keys())
                 second = self._normalize_value_list(k2 for node in nodes for sub in node.values() for k2 in sub.keys())
-                cfg = selected.setdefault(name, {'para1_values': first, 'para2_values': second})
-                for field, title in [('para1_values', p1_name), ('para2_values', p2_name)]:
+                cfg = selected.setdefault(name, {'para1_values': first.copy(), 'para2_values': second.copy()})
+                for field, title, available in [('para1_values', p1_name, first), ('para2_values', p2_name, second)]:
                     self._parameter_entry(path_builder('TGLF', key, name, field),
-                                          '{}: {}'.format(name, title), cfg.get(field, []))
+                                          '{}: {}'.format(name, title), cfg.get(field, []), default_values=available)
             else:
-                selected.setdefault(name, self._normalize_value_list(k for node in nodes for k in node.keys()))
-                self._parameter_entry(path_builder('TGLF', key, name), name, selected[name])
+                available = self._normalize_value_list(k for node in nodes for k in node.keys())
+                selected.setdefault(name, available.copy())
+                self._parameter_entry(path_builder('TGLF', key, name), name, selected[name], default_values=available)
         if not para_list:
             self.ui.Label('所选半径没有共同的 TGLF 扫描参数。', align='left')
 

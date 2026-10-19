@@ -241,6 +241,7 @@
 ['LIB']['OMFITlib_cgyro_parameter_help'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_parameter_help.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_isotopes'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_isotopes.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_run_state'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_run_state.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_archive'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_archive.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_scan_values'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_scan_values.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cases.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
@@ -349,6 +350,7 @@
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_parameter_help'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_parameter_help.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_isotopes'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_isotopes.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_run_state'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_run_state.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_cgyro_archive'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_archive.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_scan_values'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_scan_values.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}

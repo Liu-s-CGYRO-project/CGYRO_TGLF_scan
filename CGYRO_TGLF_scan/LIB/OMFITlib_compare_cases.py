@@ -6,10 +6,12 @@ from builtins import (
     any,
     dict,
     enumerate,
+    getattr,
     list,
     str,
 )
 from collections import Counter, OrderedDict
+from OMFITlib_cgyro_archive import latest_cases, remap_case_selection, remap_pair_flags
 from OMFITlib_compare_widgets import (
     ComparisonWidgets,
 )
@@ -48,6 +50,7 @@ class CaseSelection(ComparisonWidgets):
 
     def _select_cgyro_cases(self, state, path, cases, selected_key='nr_selected'):
         """Select radial inputs first, then the available isotope cases."""
+        remap_case_selection(state, getattr(self, '_cgyro_case_aliases', {}))
         flags = sync_flags(state, 'nr_flag', cases, selected_key)
         groups = self._cgyro_radius_groups(cases)
         keys = list(groups)
@@ -88,7 +91,8 @@ class CaseSelection(ComparisonWidgets):
                          width=28, kwlabel={'width': 16, 'anchor': 'w'})
         runid = state['runid']
         activate_source(state, str(runid))
-        radii = stable_keys(runs.get(runid, {}))
+        visible, self._cgyro_case_aliases = latest_cases(self.root.get('CGYRO_scan', {}), runid)
+        radii = stable_keys(dict.fromkeys(visible))
         if not radii:
             self.ui.Label('请选择包含已保存线性扫描结果的运行记录。', align='left')
         selected_key = 'nr_CGYRO' if legacy else 'nr_selected'
@@ -150,6 +154,7 @@ class CaseSelection(ComparisonWidgets):
         if tg.get('_pairing_run', None) not in (None, pairing_source):
             tg['rho_pair_flags'] = {}
         tg['_pairing_run'] = pairing_source
+        remap_pair_flags(tg, self._cgyro_case_aliases)
         selected = cg.get('nr_selected', [])
         pairs = tg.setdefault('rho_pair_flags', {})
         paired_rhos = []
@@ -226,6 +231,7 @@ class CaseSelection(ComparisonWidgets):
                     values.pop(name, None)
                     continue
                 values.setdefault(name, self._normalize_value_list(node[name].keys()))
-                self._parameter_entry(path('selected_paras_by_nr', str(nr), name), name, values[name])
+                self._parameter_entry(path('selected_paras_by_nr', str(nr), name), name, values[name],
+                                      default_values=self._normalize_value_list(node[name].keys()))
                 aggregate.setdefault(name, []).extend(values[name])
         state['selected_paras'] = {name: self._normalize_value_list(values) for name, values in aggregate.items()}
