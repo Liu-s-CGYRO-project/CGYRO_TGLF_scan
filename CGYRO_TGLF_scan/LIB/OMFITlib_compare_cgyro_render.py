@@ -7,7 +7,8 @@ from OMFITlib_compare_core import apply_divide_by_ky, divide_title
 from OMFITlib_compare_cgyro_data import filter_single_ky, grid_scan_points
 from OMFITlib_compare_cgyro_selection import _legend_nr_prefix
 from OMFITlib_compare_style import (
-    _default_color_cycle, _sort_label_handle_pairs, apply_figure_layout, finalize_axis_legend)
+    _default_color_cycle, _sort_label_handle_pairs, apply_figure_layout, cgyro_case_caption,
+    compact_scan_value, finalize_axis_legend)
 
 FIGURE_SIZES = {'Plot 2D': (12.5, 6.5), 'Plot single ky': (13., 5.6),
                 'Plot γ/γ_ref': (9., 5.4), 'Plot eigen ball': (12.5, 6.5),
@@ -55,7 +56,7 @@ def _adjust_labels(texts, axis):
 
 
 def _label(item, ctx):
-    return '{}CGYRO_{}={}'.format(_legend_nr_prefix(ctx, item['nr']), item['para'], item['value'])
+    return '{}{}={}'.format(_legend_nr_prefix(ctx, item['nr']), item['para'], compact_scan_value(item['value']))
 
 
 def _spectra(axes, items, ctx):
@@ -164,7 +165,8 @@ def _surface(fig, axes, item, ctx):
         axis.set_xlabel(r'$k_y\rho_s$')
         axis.set_ylabel(str(item['para']))
         axis.set_zlabel(divide_title(ctx, field))
-        axis.set_title('{} vs {} ({})'.format(divide_title(ctx, field), item['para'], item['nr']))
+        axis.set_title('{} vs {} ({})'.format(divide_title(ctx, field), item['para'],
+                                            cgyro_case_caption(item['nr'], include_radius=True)))
         for name, coordinates in (('x', ky), ('y', parameter), ('z', values)):
             if ctx.get('plot_log_' + name, None):
                 if np.all(coordinates > 0):

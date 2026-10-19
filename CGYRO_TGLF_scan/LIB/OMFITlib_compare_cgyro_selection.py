@@ -9,6 +9,7 @@ from numpy import array
 from OMFITlib_compare_state import STYLE_DEFAULTS, stable_keys
 from OMFITlib_compare_core import resolve_key as _resolve_mapping_key
 from OMFITlib_compare_options import is_gamma_ratio_plot_mode, parse_float_list_text, validate_options
+from OMFITlib_compare_style import cgyro_case_caption
 
 
 def _parse_gui_value_text(text):
@@ -292,17 +293,16 @@ def _combine_nr_on_single_page(ctx):
 
 
 def _legend_nr_prefix(ctx, nr):
-    """Legend prefix used to distinguish curves when multiple nr share one page."""
-    if _combine_nr_on_single_page(ctx):
-        return f'[{nr}] '
-    return ''
+    """Use isotope names, adding rho / nr only to distinguish page cases."""
+    peers = ctx.get('nr_CGYRO', []) if _combine_nr_on_single_page(ctx) else [nr]
+    return cgyro_case_caption(nr, peers) + ' · '
 
 
 def _nr_title_text(ctx, nr):
     """Readable nr token for axis titles in split/combined modes."""
     if _combine_nr_on_single_page(ctx):
         return 'all selected nr'
-    return str(nr)
+    return cgyro_case_caption(nr, include_radius=True)
 
 
 def _iter_selected_parameter_items(ctx, nr=None):

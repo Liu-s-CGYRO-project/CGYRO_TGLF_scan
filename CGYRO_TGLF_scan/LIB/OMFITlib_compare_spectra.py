@@ -55,6 +55,7 @@ from OMFITlib_compare_style import (
     _row_align_axes_limits,
     apply_color_order_to_axes,
     apply_figure_layout,
+    cgyro_case_caption,
     finalize_axis_legend,
     style_2d_axes,
 )
@@ -194,13 +195,14 @@ def _gamma_ratio_group_key(curve, ctx):
     return (kind, '', para, str(x_name), str(fixed_tag))
 
 
-def _gamma_ratio_group_label(group_key, ref_value_used):
+def _gamma_ratio_group_label(group_key, ref_value_used, cgyro_cases=None):
     """Format one legend label for a gamma-ratio grouped curve."""
     kind, scope, para, _x_name, fixed_tag = group_key
     ref_txt = f'{float(ref_value_used):g}'
     suffix = f', {fixed_tag}' if len(str(fixed_tag)) > 0 else ''
     if kind == 'CGYRO':
-        return f'CGYRO({scope},{para}{suffix}), ref={ref_txt}'
+        caption = cgyro_case_caption(scope, cgyro_cases)
+        return f'CGYRO {caption} · {para}{suffix}, ref={ref_txt}'
     if kind == 'TGLF':
         return f'TGLF(rho={scope},{para}{suffix}), ref={ref_txt}'
     return f'{kind}({para}{suffix}), ref={ref_txt}'
@@ -250,6 +252,7 @@ def plot_gamma_ratio_compare_page(ax, ctx, curves, page_title=''):
         return
 
     groups = {}
+    cgyro_cases = [curve.get('nr', '') for curve in curves if curve.get('kind', '') == 'CGYRO']
     for curve in curves:
         gkey = _gamma_ratio_group_key(curve, ctx)
         if gkey is None:
@@ -270,7 +273,7 @@ def plot_gamma_ratio_compare_page(ax, ctx, curves, page_title=''):
             x_vals, y_vals, 'o-',
             linewidth=ctx.get('lw', 2),
             markersize=ctx.get('ms', 8),
-            label=_gamma_ratio_group_label(gkey, ref_value_used),
+            label=_gamma_ratio_group_label(gkey, ref_value_used, cgyro_cases),
         )
         has_any = True
 

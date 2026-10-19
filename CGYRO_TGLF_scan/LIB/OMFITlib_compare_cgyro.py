@@ -19,6 +19,7 @@ from OMFITlib_compare_cgyro_eigen import (
 from OMFITlib_compare_cgyro_export import export_selected_linear_spectra
 from OMFITlib_compare_cgyro_render import render_page
 from OMFITlib_compare_state import selection_check
+from OMFITlib_compare_style import cgyro_case_caption
 
 
 def collect_plot_items(root, ctx):
@@ -64,7 +65,12 @@ def group_plot_pages(items, ctx):
         else:
             key = ('All selected radii',) if _combine_nr_on_single_page(ctx) else (str(item['nr']),)
         pages.setdefault(key, []).append(item)
-    return [(' / '.join(key), values) for key, values in pages.items()]
+    labeled = []
+    for key, values in pages.items():
+        if not _combine_nr_on_single_page(ctx):
+            key = (cgyro_case_caption(key[0], include_radius=True),) + key[1:]
+        labeled.append((' / '.join(key), values))
+    return labeled
 
 
 def run_plot(root):

@@ -41,6 +41,7 @@ from OMFITlib_compare_tglf import (
 from OMFITlib_compare_state import (
     selection_check,
 )
+from OMFITlib_compare_style import cgyro_case_caption
 
 
 def collect_comparison_pages(root, ctx):
@@ -59,15 +60,18 @@ def collect_comparison_pages(root, ctx):
     runs = root.get('CGYRO_scan', {}).get('RUN_DB', {})
     for anchor, paired in pairs.items():
         cgyro = []
+        ctx['_cgyro_legend_cases'] = [anchor] if mode == 'CGYRO_vs_TGLF' else paired
         if mode == 'CGYRO_vs_TGLF':
             cgyro = collect_cgyro_curves(anchor, paired, runid, runs, selected_cg, root, ctx)
             tglf = collect_tglf_curves(paired, selected_tg, root, ctx)
-            title = '{} / {} ↔ TGLF rho={}'.format(runid, anchor, ', '.join(map(str, paired)))
+            title = '{} / {} ↔ TGLF rho={}'.format(
+                runid, cgyro_case_caption(anchor, include_radius=True), ', '.join(map(str, paired)))
         else:
             for nr in paired:
                 cgyro.extend(collect_cgyro_curves(nr, anchor, runid, runs, selected_cg, root, ctx))
             tglf = collect_tglf_curves(anchor, selected_tg, root, ctx)
-            title = 'TGLF rho={} ↔ {} / {}'.format(anchor, runid, ', '.join(map(str, paired)))
+            title = 'TGLF rho={} ↔ {} / {}'.format(anchor, runid, ', '.join(
+                cgyro_case_caption(nr, paired, include_radius=True) for nr in paired))
         yield title, cgyro, tglf
 
 

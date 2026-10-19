@@ -26,7 +26,7 @@ from OMFITlib_compare_state import (
     sync_flags,
 )
 
-LEGEND_ORDER_OPTIONS = ['Plot order', 'Natural', 'Alphabetical', 'Reverse alphabetical', 'Manual order']
+LEGEND_ORDER_OPTIONS = ['Plot order', 'Natural', 'Isotope mass', 'Alphabetical', 'Reverse alphabetical', 'Manual order']
 
 
 class ComparisonWidgets:
@@ -175,9 +175,10 @@ class ComparisonWidgets:
 
     def _render_legend_order_controls(self, path_builder, state, default_legend_order='', editor_title='图例顺序'):
         self.ui.ComboBox(path_builder('legend_order_mode'), OrderedDict(zip(
-            ['按绘图顺序', '自然排序', '字母顺序', '字母逆序', '手动指定'], LEGEND_ORDER_OPTIONS)),
+            ['按绘图顺序', '自然排序', '按质量 H → D → T', '字母顺序', '字母逆序', '手动指定'], LEGEND_ORDER_OPTIONS)),
                          '图例排序', default='Plot order', updateGUI=True, width=22,
-                         kwlabel={'width': 16, 'anchor': 'w'})
+                         kwlabel={'width': 16, 'anchor': 'w'},
+                         help='按质量：H、D、T 依次排列，同种离子内自然排序；其他或无法识别的图例排在后面。')
         if state.get('legend_order_mode', None) == 'Manual order':
             self.ui.Entry(path_builder('legend_order_text'),
                           '排序关键词', default=default_legend_order, width=24,

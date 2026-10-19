@@ -3,6 +3,7 @@
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
 from OMFITlib_plot_sources import context_results
+from OMFITlib_compare_style import cgyro_case_caption, compact_scan_value
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     Exception,
@@ -298,7 +299,8 @@ def collect_cgyro_curves(k, v, runid, run_db, cgyro_selected_paras, root, ctx):
             )
             if not len(ky):
                 continue
-            label_cg = f'CGYRO({nr_resolved}, {para}={value})'
+            case_label = cgyro_case_caption(nr_resolved, ctx.get('_cgyro_legend_cases', [nr_resolved]))
+            label_cg = 'CGYRO {} · {}={}'.format(case_label, para, compact_scan_value(value))
             curves.append({
                 'kind': 'CGYRO',
                 'label': label_cg,

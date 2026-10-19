@@ -3,20 +3,28 @@
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
 from matplotlib import rcParams
+from OMFITlib_cgyro_archive import canonical_case_key, case_parts
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     Exception,
+    TypeError,
+    ValueError,
     abs,
+    any,
     bool,
     enumerate,
     float,
     getattr,
+    iter,
     len,
     list,
     max,
     min,
+    next,
     object,
     range,
+    repr,
+    set,
     sorted,
     str,
     zip,
@@ -185,6 +193,49 @@ def _legend_manual_tokens(text):
     return [x.strip() for x in str(text).split(',') if len(x.strip()) > 0]
 
 
+def compact_scan_value(value):
+    """Trim numeric padding while retaining the float's round-trip precision."""
+    try:
+        text = repr(float(value))
+        return text[:-2] if text.endswith('.0') else text
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def cgyro_case_caption(case, peers=None, include_radius=False):
+    """Short English display name; case lookup always keeps the original key."""
+    parts = case_parts(case)
+    if parts is None:
+        return canonical_case_key(case)
+    nr, rho, ion = parts
+    related = [case_parts(peer) for peer in (peers if peers is not None else [case])]
+    caption = 'Original' if ion == 'BASE' else ion
+    show_radius = include_radius or any(part is None or part[1] != rho for part in related)
+    if show_radius:
+        scope = 'nr=' + nr if rho == 'unknown' else 'rho=' + compact_scan_value(rho)
+        caption = scope + ', ' + caption
+    if any(part is not None and part[0] != nr and part[1:] == (rho, ion) for part in related):
+        if not (show_radius and rho == 'unknown'):
+            caption += ' [nr=' + nr + ']'
+    return caption
+
+
+def _legend_mass_key(text):
+    """H/D/T order, preferring explicit case identity over legacy name tokens."""
+    text = str(text)
+    order = {'H': 0, 'D': 1, 'T': 2}
+    case = re.search(r'(?<![A-Za-z0-9])ion(?:_case)?\s*=\s*([A-Za-z]+)(?![A-Za-z0-9])', text, re.IGNORECASE)
+    if case is not None:
+        rank = order.get(case.group(1).upper(), 3)
+    else:
+        # Underscores delimit old parameter suffixes, but letters within
+        # N_THETA / TGLF must never be mistaken for isotope names.
+        header = text.split('·', 1)[0]
+        ions = set(re.findall(r'(?<![A-Za-z0-9])([HDT])(?![A-Za-z0-9])', header))
+        rank = order[next(iter(ions))] if len(ions) == 1 else 3
+    return rank, _legend_natural_key(text)
+
+
 def _sort_label_handle_pairs(labels, handles, ctx):
     """Sort (label, handle) pairs using the active legend ordering settings."""
     mode = ctx.get('legend_order_mode', 'Plot order')
@@ -197,6 +248,8 @@ def _sort_label_handle_pairs(labels, handles, ctx):
         return sorted(pairs, key=lambda x: str(x[0]).lower(), reverse=True)
     if mode == 'Natural':
         return sorted(pairs, key=lambda x: _legend_natural_key(x[0]))
+    if mode == 'Isotope mass':
+        return sorted(pairs, key=lambda x: _legend_mass_key(getattr(x[1], '_comparison_identity', x[0])))
     if mode == 'Manual order':
         keys = _legend_manual_tokens(custom_text)
 
