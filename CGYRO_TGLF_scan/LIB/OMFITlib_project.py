@@ -991,7 +991,9 @@ class ProjectActions:
                 'cancel_requested' if batch.get('stop_requested', False) and pending_runs(node) else
                 'cancelled' if batch.get('stop_requested', False) else 'partial'))
         if errors:
-            raise ValueError('部分 CGYRO 案例未归档；已提交任务与成功结果均保留。\n' + '\n'.join(errors))
+            # ASCII survives older OMFIT script serialization in error dialogs.
+            raise ValueError('Some CGYRO cases were not archived; submitted jobs and successful results are preserved.\n'
+                             + '\n'.join(errors))
         return completed
 
     def set_cgyro_ions(self, location=None):

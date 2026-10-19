@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.22.16",
-  "parent_release": "1.22.15",
+  "version": "1.22.17",
+  "parent_release": "1.22.16",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -257,7 +257,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_queue.py": "a1b18f0e62c7b2d2c2bd8e6d1fee6d7a0d353a4a29c60d9cd7ad65600daf3d32",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_results.py": "664dd3bd471527389d5bdf477eb218504b6268d5c8cb5d2571b5783c557279c9",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_retry.py": "59f15297a7255759279fc31ec4e00737200bc747f7fb3b8d32ad120ef60f75ac",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_run_state.py": "1cf4ec9f48f68b555c9ceeb1cef584433eb92601df1571dbec4362ff8c20bbef",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_run_state.py": "6e554b894f1dd12e418d8b3c802f31109f1cefa8878d649ceaaf6363601c4872",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_scan_values.py": "acf24376045f1418663244b1602b882abe6f1a0905db8cae259c81cfe9f50707",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cases.py": "937a85b97c72b0c9b3447c848f1d23bff267bfc63bd11479cd6fb1f055e71e0c",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro.py": "0a98521ffe7e6b3a6360e73b97dbcf11b217a7df18545f3ae5bf9c76f92ba43d",
@@ -295,7 +295,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_plot_sources.py": "dcf7084ed07f992ac79ca88a60a3a8463265b29cb3ff9c53ff303d933c9137d7",
     "CGYRO_TGLF_scan/LIB/OMFITlib_plot_style.py": "a312e04a0799aaf16c9a899bde57d037310f7c2e31ab40e1f8edfedc0c93dd64",
     "CGYRO_TGLF_scan/LIB/OMFITlib_plot_style_ui.py": "bfd86dc7b1f268df8a2d639761ae0e4849970d20974e7195ba8ff1b9f8542d64",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_project.py": "892f8359ab20c916a8369c97f26b222c892d2f848e1e6c82a54ff968e04e300e",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_project.py": "905afec33e61cb2d5de989f9ea6e823fa21206a17cf4bed8a23d3161c81b5cd5",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_inputs.py": "12ee325ad6d68485a0a7f732cce1a2b2ec9842035b1d75b8fb7937aed77d54bf",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_runtime.py": "d9d777622e8dc60c5664e55d39b6b2e3c5f5be820ecfc62c27f30965d22776a0",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py": "01b052c3d30ca27e476aa08035e3017247453a0426e93ac2f5813cd0be6f5a4c",

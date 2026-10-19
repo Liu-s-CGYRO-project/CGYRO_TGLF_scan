@@ -52,13 +52,49 @@ def submitted_job_id(output, scheduler):
     return match.group(1) if match is not None else ''
 
 
-def slurm_probe(job_id):
+def slurm_queue_query(job_id):
+    """Define a Bash query shared by waiting, synchronization and cancellation.
+
+    Slurm can reject a finished allocation ID after purging its live record.
+    Only that response permits a second query without an ID filter. A successful
+    listing with no matching allocation confirms absence from the current
+    queue, not successful completion: accounting and output checks still apply.
+    Other query errors must remain errors to avoid duplicate submissions.
+    """
     if not re.fullmatch(r'[0-9]+', str(job_id)):
         raise ValueError('A numeric Slurm job ID is required to synchronize this run.')
-    return '''for name in ${!SQUEUE_@} ${!SACCT_@}; do unset "$name"; done
+    return r'''cgyro_queue_rows() {
+  local job_id=JOB_ID format="$1" rows row queued_id
+  if ! rows=$(LC_ALL=C squeue --local -r -h --states=all -j "$job_id" -o "$format" 2>&1); then
+    if [[ "$rows" != *"Invalid job id specified"* ]]; then
+      printf '%s\n' "$rows" >&2; return 1
+    fi
+    # Do not suppress controller/connection failures or trust stale accounting.
+    # Query the visible queue successfully, then retain this allocation only.
+    if ! rows=$(LC_ALL=C squeue --local -r -h --states=all -o "$format" 2>&1); then
+      printf '%s\n' "$rows" >&2; return 1
+    fi
+  fi
+  while IFS= read -r row; do
+    [ -n "$row" ] || continue
+    queued_id=${row%%|*}
+    if [[ "$row" != *"|"* ]] || [[ ! "$queued_id" =~ ^[0-9]+([_+].+)?$ ]]; then
+      printf 'Unexpected squeue response: %s\n' "$row" >&2; return 1
+    fi
+    case "$queued_id" in
+      "$job_id"|"${job_id}_"*|"${job_id}+"*) printf '%s\n' "$row" ;;
+    esac
+  done <<< "$rows"
+  return 0
+}
+'''.replace('JOB_ID', str(job_id))
+
+
+def slurm_probe(job_id):
+    return slurm_queue_query(job_id) + '''for name in ${!SQUEUE_@} ${!SACCT_@}; do unset "$name"; done
 unset SLURM_CLUSTERS
 if command -v squeue >/dev/null 2>&1; then
-  if rows=$(squeue --local -r -h --states=all -j JOB_ID -o '%i|%T'); then
+  if rows=$(cgyro_queue_rows '%i|%T'); then
     printf 'CGYRO_QUEUE_OK\n'
     if [ -n "$rows" ]; then printf '%s\n' "$rows" | while IFS= read -r row; do printf 'CGYRO_QUEUE|%s\n' "$row"; done; fi
   else printf 'CGYRO_QUEUE_ERROR\n'; fi
@@ -132,7 +168,7 @@ def stop_marker(job_id, run_token):
 def slurm_cancel(job_id, run_token, workdir):
     """Cancel one verified parent allocation, then wake only its local waiter."""
     marker, stamp = stop_marker(job_id, run_token)
-    return '''set -eu
+    return slurm_queue_query(job_id) + '''set -eu
 job_id=JOB_ID
 stop_file=STOP_FILE
 stop_stamp=STOP_STAMP
@@ -141,7 +177,7 @@ expected_dir=$(pwd -P)
 # Ambient Slurm filters must not hide elements or turn cancellation into signalling.
 for name in ${!SQUEUE_@} ${!SCANCEL_@}; do unset "$name"; done
 unset SLURM_CLUSTERS
-if ! rows=$(squeue --local -r -h --states=all -j "$job_id" -o '%i|%Z'); then
+if ! rows=$(cgyro_queue_rows '%i|%Z'); then
   printf 'CGYRO_CANCEL_QUERY_ERROR\n'; exit 31
 fi
 if [ -n "$rows" ]; then
@@ -173,7 +209,7 @@ fi
 def slurm_wait(job_id, run_token):
     """Poll Slurm every 30 s, but notice an accepted stop within one second."""
     marker, stamp = stop_marker(job_id, run_token)
-    return '''for name in ${!SQUEUE_@}; do unset "$name"; done
+    return slurm_queue_query(job_id) + '''for name in ${!SQUEUE_@}; do unset "$name"; done
 unset SLURM_CLUSTERS
 stop_file=STOP_FILE
 stop_stamp=STOP_STAMP
@@ -185,7 +221,7 @@ check_stop() {
 hb=0
 while true; do
   check_stop
-  queued=$(squeue --local -h --states=all -j JOB_ID) || exit 1
+  queued=$(cgyro_queue_rows '%i|%T') || exit 1
   [ -n "$queued" ] || break
   tick=0
   while [ "$tick" -lt 30 ]; do
