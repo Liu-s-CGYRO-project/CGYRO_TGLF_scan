@@ -41,6 +41,7 @@ from OMFITlib_cgyro_isotopes import remap_physics
 from OMFITlib_cgyro_run_state import stop_message
 from OMFITlib_cgyro_queue import activate_run, pending_runs, queue_records, queue_summary, save_current
 from OMFITlib_cgyro_retry import retry_limit
+from OMFITlib_cgyro_continue import continuation_plan
 
 MODULES = {
     'transfer': ('Transfer_tool',), 'cgyro': ('CGYRO_scan',),
@@ -1048,6 +1049,28 @@ class ProjectActions:
         if issues:
             problems.append('CGYRO 输入与扫描：' + '；'.join(issues))
         self.settings['message'] = '需要修改：\n' + '\n'.join(problems) if problems else '配置检查通过'
+
+    def continue_cgyro(self, token, point_ids, additional_time):
+        """Continue frozen archived inputs, then merge only the selected points."""
+        issues = runtime_issues(self.root, 'cgyro')
+        if issues:
+            raise ValueError('；'.join(issues))
+        node = module(self.root, 'cgyro')
+        plan = continuation_plan(node, token, point_ids, additional_time)
+        setup = node['SETTINGS']['SETUP']
+        previous = {key: setup.get(key, None) for key in ('irun', 'idownsync', 'idimrun')}
+        try:
+            setup['irun'], setup['idownsync'] = 1, 1
+            setup['idimrun'] = int(plan['info'].get('scan_dimensions', plan['info']['dimensions']))
+            self.call('CGYRO 选定计算点续算', MODULES['cgyro'] + ('SCRIPTS', 'runCGYRO.py'),
+                      continuation={key: plan[key] for key in ('source_token', 'points', 'additional_time')})
+            manifest = node.get('RUN_MANIFEST', {})
+            if manifest.get('status', '') == 'published':
+                self.settings['message'] = '已续算并更新 {} 个计算点，其余结果保留。'.format(len(point_ids))
+            elif manifest.get('stop_requested', False):
+                self.settings['message'] = stop_message(manifest)
+        finally:
+            setup.update(previous)
 
     def collect(self):
         issues = collect_issues(self.root)

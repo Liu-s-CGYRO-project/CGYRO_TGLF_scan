@@ -412,7 +412,7 @@ class ProjectUI:
         if manifest or queued:
             self.guarded('同步作业状态', self.actions.sync_cgyro_run, sync_run_issues(self.root))
             self.guarded('重新收集未归档结果', self.actions.collect, collect_issues(self.root))
-        ResultBrowser(self.root, self.ui).render(title=False)
+        ResultBrowser(self.root, self.ui, continue_callback=self.actions.continue_cgyro).render(title=False)
         self.nav('对比绘图（可选）', 'plots')
 
     def render_cgyro_scan_tabs(self):

@@ -4,7 +4,7 @@ The project orchestrator calls this once per rho/isotope case. Point IDs keep
 their original array indices so failed subsets can be retried independently.
 """
 from builtins import (Exception, RuntimeError, TypeError, ValueError, all, any, bool, dict, enumerate, float,
-                      int, isinstance, len, list, max, range, set, sorted, str, tuple, zip)
+                      int, isinstance, iter, len, list, max, range, set, sorted, str, tuple, zip)
 import numpy as np
 import copy
 import hashlib
@@ -22,6 +22,8 @@ from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolv
 from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, text_output as output_to_text
 from OMFITlib_cgyro_queue import advancing_batch, pending_runs, save_current, wait_current
 from OMFITlib_cgyro_retry import confirm_submission, retry_limit
+from OMFITlib_cgyro_continue import (archived_case, continuation_plan, point_result,
+                                     prepare_point, restart_files)
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -116,7 +118,7 @@ def runtime_abs_path(path):
     return os.path.abspath(path)
 
 
-defaultVars(scan_dimensions=1, wait_for_completion=True, batch_id='')
+defaultVars(scan_dimensions=1, wait_for_completion=True, batch_id='', continuation=None)
 
 
 def json_scalar(value):
@@ -232,10 +234,15 @@ retry_limit(root)
 rmt_setup = root['SETTINGS']['REMOTE_SETUP']
 server_setup = selected_remote_config(rmt_setup)
 local_submit = cfg_str(rmt_setup, 'serverPicker', '') == 'localhost'
-caseName = physics['case_tag']
+if continuation:
+    # Re-resolve the dialog's frozen identity before reading or changing state.
+    continuation = continuation_plan(root, continuation['source_token'],
+        continuation['points'], continuation['additional_time'])
+    scan_dimensions = int(continuation['info'].get('scan_dimensions', continuation['info']['dimensions']))
+caseName = continuation['case_tag'] if continuation else physics['case_tag']
 caseRoot = root['Cases']
 previous_cases = caseRoot.get(caseName, OMFITtree())
-restart_mode = int(physics['restart_mode'])
+restart_mode = 0 if continuation else int(physics['restart_mode'])
 if restart_mode not in (0, 1):
     raise ValueError('restart_mode must be 0 or 1')
 previous_manifest = root.get('RUN_MANIFEST', {})
@@ -259,7 +266,8 @@ if restart_mode and not previous_cases:
     raise ValueError('No saved cases are available for restart')
 run_token = uuid.uuid4().hex
 base_workdir = runtime_abs_path(setup_workdir())
-case_id = str(physics.get('case_id', '') or 'nr={}__ion={}'.format(physics['nr'], physics['mass']))
+case_id = (str(continuation['source_case_id']) if continuation else
+           str(physics.get('case_id', '') or 'nr={}__ion={}'.format(physics['nr'], physics['mass'])))
 if not wait_for_completion:
     queued_batch = root.get('RUN_BATCH', {})
     if (local_submit or not batch_id or queued_batch.get('batch_id', '') != batch_id
@@ -277,23 +285,42 @@ if not local_submit and (not remote_server or not remote_base):
 if not local_submit and 'server' not in server_setup and remote_server.split('@')[-1] != cfg_str(rmt_setup, 'serverPicker'):
     raise ValueError('Selected server differs from the old endpoint; set server in the selected server configuration')
 remote_workdir = submit_workdir if local_submit else posixpath.join(remote_base, 'runs', run_token)
+runtime = {key: cfg_get(server_setup, key, None) for key in
+           ('environment', 'executable', 'nodes', 'ntasks_per_node', 'ppn', 'cpus_per_task')}
+if continuation:
+    if continuation['server'] and continuation['server'] != remote_server:
+        raise ValueError('Continuation requires the original server: ' + str(continuation['server']))
+    changed_runtime = [key for key, value in continuation['runtime'].items()
+                       if value is not None and runtime.get(key, None) != value]
+    if changed_runtime:
+        raise ValueError('Restore the original checkpoint execution configuration: ' + ', '.join(changed_runtime))
 inputs_node = root['INPUTS']
-base_input = inputs_node['input.cgyro'].duplicate()
+if continuation:
+    _, _, source_case = archived_case(root, continuation['source_token'])
+    first_result = point_result(source_case, continuation['rows'][continuation['points'][0]])
+    base_input = OMFITgacode(os.path.join(first_result.filename, 'input.cgyro')).duplicate()
+else:
+    base_input = inputs_node['input.cgyro'].duplicate()
 prescribed_zeff = float(base_input.get('Z_EFF_METHOD', 2)) == 1
-source_rho = physics.get('rho', None)
+source_rho = continuation['info'].get('rho', None) if continuation else physics.get('rho', None)
 if source_rho is None:
     source_rho = base_input.get('rho', None)
 if 'rho' in base_input:
     del base_input['rho']  # Old projects may still carry this non-solver metadata.
-initialize_parameters(physics, base_input, OMFITtree)
-fixed_parameters = apply_parameters(base_input, physics, scan_dimensions)
-base_input['NONLINEAR_FLAG'] = 0
-points, scan_axes = scan_points(physics, scan_dimensions, setup['effnum'], base_input)
+if continuation:
+    fixed_parameters = copy.deepcopy(continuation['info'].get('fixed_parameters', {}))
+    scan_axes = copy.deepcopy(continuation['info']['scan_axes'])
+    points = [(point, {}, copy.deepcopy(continuation['rows'][point])) for point in continuation['points']]
+else:
+    initialize_parameters(physics, base_input, OMFITtree)
+    fixed_parameters = apply_parameters(base_input, physics, scan_dimensions)
+    base_input['NONLINEAR_FLAG'] = 0
+    points, scan_axes = scan_points(physics, scan_dimensions, setup['effnum'], base_input)
 input_names = ['input.cgyro']
 if base_input.get('PROFILE_MODEL', 1) == 2:
     input_names += ['input.profiles', 'input.profiles.geo']
 for name in input_names[1:]:
-    if name not in inputs_node:
+    if not continuation and name not in inputs_node:
         raise ValueError('Required profile input is missing: ' + name)
 prepared_cases = OMFITtree()
 inputs = []
@@ -308,14 +335,18 @@ for new_dir, overrides, point_metadata in points:
     current_input = base_input.duplicate()
     for name, value in overrides.items():
         current_input[name] = parameter_value(name, value) if name in CALCULATION_FIELDS else value
-    validate_zeff(current_input, set(fixed_parameters) | set(overrides), prescribed=prescribed_zeff)
-    if physics['scale_time_with_ky'] and overrides['KY'] > 1:
+    if not continuation:
+        validate_zeff(current_input, set(fixed_parameters) | set(overrides), prescribed=prescribed_zeff)
+    if not continuation and physics['scale_time_with_ky'] and overrides['KY'] > 1:
         current_input['DELTA_T'] = current_input['DELTA_T'] / overrides['KY']
         current_input['MAX_TIME'] = current_input['MAX_TIME'] / overrides['KY']
     point_metadata['effective_time'] = {
         name: json_scalar(current_input[name]) for name in ('DELTA_T', 'MAX_TIME', 'PRINT_STEP') if name in current_input}
     packed_names = list(input_names)
-    if restart_mode:
+    if continuation:
+        current_input, point_metadata, packed_names = prepare_point(
+            root, continuation, new_dir, stage, OMFITgacode)
+    elif restart_mode:
         if new_dir not in previous_cases:
             raise ValueError('Restart point missing: %s; use a fresh run for new points' % new_dir)
         previous_cases[new_dir].deploy(stage)
@@ -323,14 +354,12 @@ for new_dir, overrides, point_metadata in points:
         if not os.path.isfile(old_input_path):
             raise ValueError('Restart lacks input.cgyro: ' + new_dir)
         validate_restart_input(OMFITgacode(old_input_path), current_input)
-        restart_name = 'bin.cgyro.restart'
-        if not os.path.isfile(os.path.join(stage, restart_name)):
-            raise ValueError('Restart binary missing: ' + new_dir)
-        packed_names.append(restart_name)
+        packed_names = restart_files(stage, current_input)
     os.makedirs(stage, exist_ok=True)
     current_input.deploy(os.path.join(stage, 'input.cgyro'))
     for name in input_names[1:]:
-        inputs_node[name].duplicate().deploy(os.path.join(stage, name))
+        if not continuation:
+            inputs_node[name].duplicate().deploy(os.path.join(stage, name))
     prepared = OMFITtree()
     zip_path = os.path.join(submit_workdir, new_dir + '.zip')
     checksums = {}
@@ -340,7 +369,10 @@ for new_dir, overrides, point_metadata in points:
             if not os.path.isfile(path):
                 raise ValueError('Prepared input is missing: ' + path)
             with open(path, 'rb') as handle:
-                checksums[name] = hashlib.sha256(handle.read()).hexdigest()
+                digest = hashlib.sha256()
+                for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+                    digest.update(chunk)
+                checksums[name] = digest.hexdigest()
             archive.write(path, name)
             prepared[name] = OMFITgacode(path) if name == 'input.cgyro' else OMFITpath(path)
     prepared['zip'] = OMFITpath(zip_path)
@@ -376,6 +408,15 @@ manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': max(1, s
             'numeric_parameters': {name: json_scalar(base_input[name]) for name in CALCULATION_FIELDS if name in base_input},
             'scale_time_with_ky': bool(physics['scale_time_with_ky']),
             'input_sha256': input_checksums, 'status': 'prepared', 'batch_id': batch_id}
+manifest['runtime'] = runtime
+if continuation:
+    source_info = continuation['info']
+    manifest.update(dict(runid=continuation['source_runid'], nr=source_info['source_nr'],
+                         mass=source_info['ion_case'],
+                         numeric_parameters=copy.deepcopy(source_info.get('numeric_parameters', {})),
+                         scale_time_with_ky=source_info.get('scale_time_with_ky', False),
+                         continuation={key: copy.deepcopy(continuation[key]) for key in
+                             ('source_token', 'source_runid', 'source_case_id', 'additional_time', 'points')}))
 run_manifest = OMFITtree()
 run_manifest.update(manifest)
 root['RUN_MANIFEST'] = run_manifest

@@ -122,6 +122,12 @@ def apply_figure_style(figure, style):
             for line in legend.get_lines():
                 line.set_linewidth(style['line_width'])
                 line.set_markersize(style['marker_size'])
+    for legend in figure.legends:
+        for text in legend.get_texts():
+            text.set_fontsize(style['legend_font_size'])
+        for line in legend.get_lines():
+            line.set_linewidth(style['line_width'])
+            line.set_markersize(style['marker_size'])
     figure.canvas.draw_idle()
 
 

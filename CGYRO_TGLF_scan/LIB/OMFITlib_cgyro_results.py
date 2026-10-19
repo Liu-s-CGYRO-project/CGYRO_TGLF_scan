@@ -1,12 +1,13 @@
 """RUN_DB-backed CGYRO result browser for one-, two- and three-axis scans."""
 from OMFITlib_gui_fonts import configure_window_fonts, style_widget
 from OMFITlib_cgyro_archive import latest_cases
+from OMFITlib_cgyro_continue import point_status
 from builtins import (Exception, TypeError, ValueError, abs, any, dict, float, int,
                       len, list, max, min, range, set, sorted, str, tuple, zip)
 from collections import OrderedDict
 import numpy as np
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 
 
 def _stable_keys(mapping):
@@ -209,8 +210,9 @@ def result_grid(root):
 
 
 class ResultBrowser:
-    def __init__(self, root, ui):
+    def __init__(self, root, ui, continue_callback=None):
         self.root, self.ui = root, ui
+        self.continue_callback = continue_callback
         self.prefix = "root['SETTINGS']['WORKBENCH']['cgyro_result_view']"
 
     def render(self, title=True):
@@ -251,8 +253,132 @@ class ResultBrowser:
         self.anchor = self.ui.Label('{}；{} 个已读取计算点。'.format(description, len(tasks)), align='left')
         self.ui.Button('查看当前数值表', self._show_table)
         self.ui.Button('绘制当前结果（可选）', lambda: self.root['PLOTS']['CGYRO_results'].plot())
+        self.ui.Button('ω、γ 随时间变化 / 选择 ky 续算…', self._show_points)
         self.ui.Label('数值表显示参数、ky、平均 ω/γ 与相对波动，并标出当前范围的最大 γ。',
                       align='left', wraplength=600)
+
+    def _show_points(self):
+        """Select full task coordinates, independently of the heatmap slice."""
+        _, token, entry, _ = selected_record(self.root)
+        tasks = entry.get('tasks', {})
+        if not tasks:
+            raise ValueError('所选运行没有可选择的计算点。')
+        names = [str(axis['name']) for axis in entry.get('scan_axes', []) if not axis.get('fixed', False)]
+        names = list(dict.fromkeys(names + ['KY']))
+        window = tk.Toplevel(self.anchor.winfo_toplevel())
+        configure_window_fonts(window)
+        window.title('CGYRO · 时间曲线与续算')
+        width = min(1000, window.winfo_screenwidth() - 64)
+        window.geometry('{}x{}'.format(width, min(720, window.winfo_screenheight() - 100)))
+        ttk.Label(window, text='{} | {}'.format(entry.get('runid', ''), entry.get('case_id', '')),
+                  anchor='w', wraplength=width - 40).pack(fill=tk.X, padx=10, pady=10)
+        ttk.Label(window, text='选择计算点（Ctrl / Shift 多选）。收敛状态取自求解器日志；时间曲线使用原始采样数据。',
+                  wraplength=width - 40).pack(fill=tk.X, padx=10, pady=(0, 8))
+        frame = ttk.Frame(window)
+        frame.pack(fill=tk.BOTH, expand=True, padx=10)
+        columns = ['task'] + names + ['state', 'last_time', 'checkpoint']
+        table = ttk.Treeview(frame, columns=columns, show='headings', selectmode='extended')
+        style_widget(table)
+        headings = ['计算点'] + names + ['求解器状态', '最后采样时间', '重启时间 / 状态']
+        for column, heading in zip(columns, headings):
+            table.heading(column, text=heading)
+            table.column(column, width=160 if column in ('state', 'checkpoint') else 112, anchor='center')
+        vertical = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=table.yview)
+        horizontal = ttk.Scrollbar(frame, orient=tk.HORIZONTAL, command=table.xview)
+        table.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+        table.grid(row=0, column=0, sticky='nsew')
+        vertical.grid(row=0, column=1, sticky='ns')
+        horizontal.grid(row=1, column=0, sticky='ew')
+        statuses, defaults = {}, []
+        states = {'converged': '已收敛', 'max_time': '到时未收敛', 'failed': '求解失败', 'unknown': '未确认'}
+        for point, row in tasks.items():
+            try:
+                result = _result_node(self.root, entry, row)
+                status = point_status(result)
+                times = np.asarray(result['t'], dtype=float).ravel()
+                last_time = _number_text(times[-1]) if len(times) else '—'
+            except Exception as exc:
+                status = dict(convergence='unknown', checkpoint=None, reason=str(exc))
+                last_time = '—'
+            statuses[str(point)] = status
+            tag = status['checkpoint']
+            table.insert('', 'end', iid=str(point), values=[point] + [
+                _number_text(row.get('values', {}).get(name, '—')) for name in names] + [
+                states[status['convergence']], last_time,
+                _number_text(tag['time']) if tag else '不可重启'])
+            effective = row.get('effective_time', {})
+            try:
+                defaults.append(float(effective.get('MAX_TIME', 0)))
+                if tag:
+                    defaults.append(tag['last_time'] - tag['time'] +
+                                    float(effective.get('DELTA_T', 0)) * float(effective.get('PRINT_STEP', 1)))
+            except (TypeError, ValueError):
+                pass
+        details = tk.StringVar(window, value='未选择计算点。')
+        ttk.Label(window, textvariable=details, wraplength=width - 40,
+                  anchor='w').pack(fill=tk.X, padx=10, pady=8)
+
+        def selection_changed(event=None):
+            selected = list(table.selection())
+            problems = ['{}: {}'.format(point, statuses[point]['reason']) for point in selected
+                        if statuses[point]['reason']]
+            details.set('已选 {} 个点。{}'.format(len(selected), '\n'.join(problems[:3])))
+
+        def selected_points():
+            points = list(table.selection())
+            if not points:
+                raise ValueError('请先选择至少一个计算点。')
+            return points
+
+        def draw():
+            try:
+                self.root['PLOTS']['CGYRO_results'].plot(
+                    time_traces=True, run_token=token, point_ids=selected_points())
+            except Exception as exc:
+                messagebox.showerror('时间曲线', str(exc), parent=window)
+
+        table.bind('<<TreeviewSelect>>', selection_changed)
+        selections = ttk.Frame(window)
+        selections.pack(fill=tk.X, padx=10, pady=(0, 8))
+        ttk.Button(selections, text='选择到时未收敛点', command=lambda: table.selection_set([
+            point for point, status in statuses.items() if status['convergence'] == 'max_time'])).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(selections, text='全选', command=lambda: table.selection_set(table.get_children())).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(selections, text='清空', command=lambda: table.selection_remove(table.selection())).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(selections, text='绘制 omega & gamma vs time', command=draw).pack(side=tk.LEFT)
+        if self.continue_callback is not None:
+            controls = ttk.Frame(window)
+            controls.pack(fill=tk.X, padx=10, pady=(4, 8))
+            ttk.Label(controls, text='追加计算时间 Δt (a/cs)').pack(side=tk.LEFT, padx=(0, 8))
+            duration = tk.StringVar(window, value=_number_text(max([100.] + [
+                value for value in defaults if np.isfinite(value) and value > 0])))
+            ttk.Entry(controls, textvariable=duration, width=14).pack(side=tk.LEFT, padx=(0, 10))
+
+            def resume():
+                try:
+                    points = selected_points()
+                    missing = [point for point in points if statuses[point]['checkpoint'] is None]
+                    if missing:
+                        raise ValueError('以下点缺少有效重启文件，不能从原进度续算：' + ', '.join(missing))
+                    button.configure(state='disabled')
+                    window.update_idletasks()
+                    self.continue_callback(token, points, float(duration.get()))
+                except Exception as exc:
+                    if window.winfo_exists():
+                        messagebox.showerror('CGYRO 续算', str(exc), parent=window)
+                else:
+                    if window.winfo_exists():
+                        window.destroy()  # Reload the browser after the result token changes.
+                finally:
+                    if window.winfo_exists():
+                        button.configure(state='normal')
+
+            button = ttk.Button(controls, text='从检查点续算所选点', command=resume)
+            button.pack(side=tk.LEFT)
+            ttk.Label(window, text='时长从重启时间起算，需超过旧结果末尾；调度器墙钟时限仍使用环境配置。'
+                      '缺少重启文件时不会改成从头计算。续算成功后更新选定点，其余结果保留。',
+                      wraplength=width - 40, anchor='w').pack(fill=tk.X, padx=10, pady=(0, 12))
 
     def _show_table(self):
         data = result_grid(self.root)
@@ -303,6 +429,66 @@ class ResultBrowser:
         table.tag_configure('peak', background='#fff2b2')
         ttk.Label(window, text='共 {} 行；相对波动为当前末段时间序列的标准差 / |平均值|。'.format(len(ordered)),
                   anchor='w', wraplength=width - 48).pack(fill=tk.X, padx=10, pady=(0, 10))
+
+
+def plot_time_traces(root, notebook, token, point_ids, legend_font_size=10):
+    """Plot native cumulative time samples; never average or re-zero a restart."""
+    records, _ = _run_options(root)
+    if token not in records:
+        raise ValueError('结果记录已改变，请重新打开计算点选择窗口。')
+    entry = records[token]
+    tasks = entry.get('tasks', {})
+    if not point_ids or any(point not in tasks for point in point_ids):
+        raise ValueError('请选择有效的计算点。')
+    names = [str(axis['name']) for axis in entry.get('scan_axes', []) if not axis.get('fixed', False)]
+    series = []
+    for point in point_ids:
+        row = tasks[point]
+        result = _result_node(root, entry, row)
+        times = np.asarray(result['t'], dtype=float).ravel()
+        omega = np.asarray(result['freq']['omega'][0], dtype=float).ravel()
+        gamma = np.asarray(result['freq']['gamma'][0], dtype=float).ravel()
+        if (len(times) < 1 or len(times) != len(omega) or len(times) != len(gamma)
+                or not np.all(np.isfinite(times)) or np.any(np.diff(times) <= 0)):
+            raise ValueError('{}：时间与频率采样无效或长度不一致。'.format(point))
+        if not np.any(np.isfinite(omega)) or not np.any(np.isfinite(gamma)):
+            raise ValueError('{}：没有有效的频率数据。'.format(point))
+        values = row.get('values', {})
+        label = ', '.join('{}={}'.format('ky' if name == 'KY' else name, _number_text(values[name]))
+                          for name in list(dict.fromkeys(names + ['KY'])))
+        series.append((times, omega, gamma, label))
+    # User case/run names can contain Chinese. Keep figure text derived from
+    # solver coordinates, with no opaque task ID or long archive name in legends.
+    title = 'CGYRO frequency history'
+    if entry.get('rho', None) is not None:
+        title += ' | rho=' + _number_text(entry['rho'])
+    ion = str(entry.get('ion_case', ''))
+    if ion.isascii() and ion:
+        title += ' | ' + ion
+    nb = notebook(0, 'CGYRO omega and gamma vs time')
+    legend_columns = min(1 if len(names) > 1 else 2, len(series))
+    legend_rows = (len(series) + legend_columns - 1) // legend_columns
+    legend_height = .35 + .03 * legend_font_size * legend_rows
+    figure_height = 5.2 + legend_height
+    fig, axes = nb.subplots(1, 2, figsize=(12, figure_height), label=title)
+    for times, omega, gamma, label in series:
+        marker = 'o' if len(times) == 1 else None
+        line, = axes[0].plot(times, np.where(np.isfinite(omega), omega, np.nan), label=label, marker=marker)
+        axes[1].plot(times, np.where(np.isfinite(gamma), gamma, np.nan), label=label,
+                     color=line.get_color(), marker=marker)
+    for axis, symbol in zip(axes, (r'$\omega$', r'$\gamma$')):
+        axis.set_xlabel(r'Time ($a/c_s$)')
+        axis.set_ylabel(symbol + r' ($c_s/a$)')
+        axis.set_title(symbol + ' vs time')
+        axis.grid(True, alpha=.25)
+    handles, labels = axes[0].get_legend_handles_labels()
+    # Keep a long multi-point legend inside the saved figure, with adequate rows.
+    bottom = legend_height / figure_height
+    fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(.5, bottom),
+               ncol=legend_columns, fontsize=legend_font_size)
+    fig.suptitle(title)
+    fig.tight_layout(rect=(0, bottom, 1, .94))
+    return fig
 
 
 def plot_selected(root, notebook):

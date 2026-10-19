@@ -7,6 +7,7 @@ from builtins import Exception, RuntimeError, ValueError, float, int, len, list,
 import os
 import re
 from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, text_output as output_text
+from OMFITlib_cgyro_continue import validate_continued_result
 
 
 def read_run_files(command):
@@ -160,6 +161,13 @@ def path_join(dirname, filename):
     return os.path.join(dirname, filename)
 
 
+# Native OMFIT versions omit some newer optional histories and profile inputs.
+# Preserve them for a subsequent restart without modifying OMFIT itself.
+restart_extra_files = ['bin.cgyro.restart', 'bin.cgyro.restart.old', 'run_log', 'cgyro.exit',
+                       'input.profiles', 'input.profiles.geo', 'bin.cgyro.kxky_v',
+                       'bin.cgyro.lky_flux_n', 'bin.cgyro.lky_flux_e', 'bin.cgyro.lky_flux_v',
+                       'bin.cgyro.eparb', 'bin.cgyro.hb']
+
 setup = root['SETTINGS']['SETUP']
 icgyro=setup['icgyro']
 rmtsetup=root['SETTINGS']['REMOTE_SETUP']
@@ -213,12 +221,13 @@ for itemdir in parentdir:
                 candidate=OMFITgyro([result_dir,rmtserver,rmttunnel],extra_files=['RESTART_0','RESTART_tag_0','RESTART_1','RESTART_tag_1','restart.dat'])
         else:
             if local:
-                candidate=OMFITcgyro(result_dir,extra_files=['bin.cgyro.restart','bin.cgyro.restart.old','run_log','cgyro.exit'])
+                candidate=OMFITcgyro(result_dir,extra_files=restart_extra_files)
             else:
-                candidate=OMFITcgyro([result_dir,rmtserver,rmttunnel],extra_files=['bin.cgyro.restart','bin.cgyro.restart.old','run_log','cgyro.exit'])
+                candidate=OMFITcgyro([result_dir,rmtserver,rmttunnel],extra_files=restart_extra_files)
         # Force lazy parsing before replacing a preserved node is considered successful.
         if candidate['n_time'] < 1:
             raise ValueError('Result contains no time samples')
+        validate_continued_result(candidate, manifest.get('point_table', {}).get(itemdir, {}))
         caseRoot[caseTag][itemdir] = candidate
         if itemdir in failed_cases:
             partial_cases.append(itemdir)  # Readable samples, never a completed calculation.

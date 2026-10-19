@@ -4,7 +4,7 @@ A transport retry only reads the existing submission/output. A solver retry
 creates a new attempt directory, verifies the original inputs, and retains the
 successful points' locations. These operations must never be interchanged.
 """
-from builtins import Exception, RuntimeError, ValueError, any, dict, enumerate, int, len, list, print, range, str
+from builtins import Exception, RuntimeError, ValueError, any, dict, enumerate, int, iter, len, list, print, range, str
 from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
@@ -168,7 +168,11 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
         path = os.path.join(original_local, point + '.zip')
         with zipfile.ZipFile(path) as archive:
             for name, expected in manifest['input_sha256'][point].items():
-                if hashlib.sha256(archive.read(name)).hexdigest() != expected:
+                digest = hashlib.sha256()
+                with archive.open(name) as member:
+                    for chunk in iter(lambda: member.read(1024 * 1024), b''):
+                        digest.update(chunk)
+                if digest.hexdigest() != expected:
                     raise ValueError('Original retry input changed: ' + point + '/' + name)
         inputs.append(path_reader(path))
     attempts = list(manifest.get('attempts', []))

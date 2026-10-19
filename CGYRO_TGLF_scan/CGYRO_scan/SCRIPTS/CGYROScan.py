@@ -4,7 +4,8 @@ from builtins import ValueError, dict, int, len, list, set, str
 from datetime import datetime, timezone
 from OMFITlib_cgyro_archive import canonical_case_key
 from OMFITlib_cgyro_retry import collect_current
-defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False)
+from OMFITlib_cgyro_continue import archived_case
+defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False, continuation=None)
 
 setup = root['SETTINGS']['SETUP']
 if setup['icgyro'] != 1:
@@ -15,7 +16,7 @@ if dimensions not in (0, 1, 2, 3):
 
 if setup['irun'] == 1:
     root['SCRIPTS']['subscan_lin.py'].run(scan_dimensions=dimensions,
-        wait_for_completion=wait_for_completion, batch_id=batch_id)
+        wait_for_completion=wait_for_completion, batch_id=batch_id, continuation=continuation)
 if (wait_for_completion and setup['idownsync'] == 1
         and (collect_stopped or not root.get('RUN_MANIFEST', {}).get('stop_requested', False))):
     collect_current(root, OMFITx, OMFITtree, OMFITpath, OMFITascii)
@@ -48,8 +49,19 @@ def publish_loaded_run(root):
     if (not loaded or len(loaded) != len(expected) or set(loaded) != set(expected)
             or manifest.get('failed_points', []) or manifest.get('partial_points', [])):
         raise ValueError('Only a completely collected scan can replace the previous case results')
+    continuation = manifest.get('continuation', None)
+    source_case = None
+    if continuation:
+        _, _, source_case = archived_case(root, continuation['source_token'])
+        if set(expected) != set(continuation['points']):
+            raise ValueError('Continuation point list changed; the previous case is preserved')
     case_tag = manifest['case_tag']
     fresh_output = OMFITtree()
+    if source_case is not None:
+        # Assemble the entire case away from RUN_DB; unselected points survive.
+        for key in source_case:
+            if not str(key).startswith('__'):
+                fresh_output[key] = copy.deepcopy(source_case[key])
     for point_id in manifest['loaded_points']:
         path = result_path(manifest, point_id)
         node = fresh_output
@@ -83,6 +95,8 @@ def publish_loaded_run(root):
         destination[key] = copy.deepcopy(fresh_output[parameter])
 
     task_rows = OMFITtree()
+    if source_case is not None:
+        task_rows.update(copy.deepcopy(source_case['__TASKS__']))
     for point_id in manifest['loaded_points']:
         metadata = copy.deepcopy(manifest.get('point_table', {}).get(point_id, {}))
         row = OMFITtree()
@@ -92,6 +106,7 @@ def publish_loaded_run(root):
         row.update(metadata)
         row['result_path'] = result_path(manifest, point_id)
         row['result_workDir'] = manifest.get('point_workdirs', {}).get(point_id, manifest['workDir'])
+        row['run_token'] = manifest['run_token']
         task_rows[point_id] = row
     info = OMFITtree()
     info.update(dict(run_token=manifest['run_token'], runid=run_id, case_id=case_key,
@@ -102,13 +117,20 @@ def publish_loaded_run(root):
                      fixed_parameters=copy.deepcopy(manifest.get('fixed_parameters', {})),
                      numeric_parameters=copy.deepcopy(manifest.get('numeric_parameters', {})),
                      scale_time_with_ky=manifest.get('scale_time_with_ky', False),
-                     parameters=list(fresh_output.keys()), points=len(manifest['loaded_points']),
+                     parameters=list(fresh_output.keys()), points=len(task_rows),
                      workDir=manifest['workDir'], job_id=manifest.get('job_id', None),
                      published_at=datetime.now(timezone.utc).isoformat(),
                      replaced_case_keys=list(dict.fromkeys(replaced)),
                      retry_count=manifest.get('retry_count', 0), attempts=copy.deepcopy(manifest.get('attempts', [])),
                      point_workdirs=copy.deepcopy(manifest.get('point_workdirs', {})),
+                     server=manifest['server'], runtime=copy.deepcopy(manifest.get('runtime', {})),
                      status='published'))
+    if source_case is not None:
+        continuations = copy.deepcopy(source_case['__INFO__'].get('continuations', []))
+        continuations.append(dict(continuation, run_token=manifest['run_token']))
+        info['continuations'] = continuations
+        info['point_workdirs'] = {point: row['result_workDir'] for point, row in task_rows.items()
+                                 if row.get('result_workDir', None) is not None}
     # Keep the task table with the results.  Reserved double-underscore keys are
     # hidden by the comparison selectors, while remaining directly inspectable
     # in the OMFIT data tree.
