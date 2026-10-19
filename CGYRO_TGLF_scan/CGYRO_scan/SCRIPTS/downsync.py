@@ -33,6 +33,10 @@ def unique_points(points):
     return result
 
 
+def point_result_dir(point):
+    return path_join(manifest.get('point_workdirs', {}).get(point, rmtworkdir), point)
+
+
 def job_log_tail(points):
     # Solver errors are written to out.cgyro.info, sometimes with a zero exit
     # from the launcher. Show failed points first; successful logs must not
@@ -40,7 +44,7 @@ def job_log_tail(points):
     points = unique_points(points)
     command = ''
     for point in points[:12]:
-        command += 'point=' + shell_quote(point) + '; printf "\\nPOINT: %s\\n" "$point";\n'
+        command += 'point=' + shell_quote(point_result_dir(point)) + '; printf "\\nPOINT: %s\\n" "$point";\n'
         command += ('if [ -s "$point/out.cgyro.info" ]; then\n'
                     '  printf "FILE: %s/out.cgyro.info\\n" "$point";\n'
                     '  grep -m 8 -E "^[[:space:]]*ERROR:" "$point/out.cgyro.info" || true;\nfi\n'
@@ -49,7 +53,7 @@ def job_log_tail(points):
                     '"$point/input.cgyro.gen" || true;\nfi\n')
     job_id = str(manifest.get('job_id', '') or '')
     for point in points[:2]:
-        paths = [str(point) + '/out.cgyro.info', str(point) + '/run_log']
+        paths = [point_result_dir(point) + '/out.cgyro.info', point_result_dir(point) + '/run_log']
         if re.fullmatch(r'[0-9]+', job_id) and point in parentdir:
             index = parentdir.index(point)
             paths += [job_id + '_' + str(index) + '.err', job_id + '_' + str(index) + '.out']
@@ -91,7 +95,7 @@ def failure_report(points, status='failed'):
 def probe_run_outputs(scheduler, job_id, scheduler_record=None):
     command = ''
     for point in parentdir:
-        command += 'point=' + shell_quote(point) + '; missing="";\n'
+        command += ('point=' + shell_quote(point_result_dir(point)) + '; point_id=' + shell_quote(point) + '; missing="";\n')
         command += ('for name in out.cgyro.grids out.cgyro.time; do\n'
                     '  [ -s "$point/$name" ] || missing="$missing $name";\ndone\n'
                     'if [ -s "$point/cgyro.exit" ]; then\n'
@@ -102,9 +106,16 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
                     '  if [ -n "$solver_errors" ]; then\n'
                     '    missing="$missing solver_error";\n'
                     '    printf "%s\\n" "$solver_errors" | while IFS= read -r error; do\n'
-                    '      printf "CGYRO_ERROR|%s|%s\\n" "$point" "$error";\n'
+                    '      printf "CGYRO_ERROR|%s|%s\\n" "$point_id" "$error";\n'
                     '    done;\n  fi;\nfi\n'
-                    'printf "CGYRO_POINT|%s|%s\\n" "$point" "$missing";\n')
+                    'if [ -s "$point/run_log" ]; then\n'
+                    '  fatal=$(grep -m 4 -i -E "Integration error exceeded limit|Bogus parameter|Unknown parameter|invalid input|error reading input" "$point/run_log" || true);\n'
+                    '  if [ -n "$fatal" ]; then\n'
+                    '    missing="$missing solver_error";\n'
+                    '    printf "%s\\n" "$fatal" | while IFS= read -r error; do\n'
+                    '      printf "CGYRO_ERROR|%s|%s\\n" "$point_id" "$error";\n'
+                    '    done;\n  fi;\nfi\n'
+                    'printf "CGYRO_POINT|%s|%s\\n" "$point_id" "$missing";\n')
     status, output, errors = read_run_files(command)
     manifest['output_probe'] = output
     if status != 0:
@@ -112,7 +123,7 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
     if 'CGYRO_ACTIVE' in output.splitlines():
         manifest['status'] = 'submitted'
         raise RuntimeError('CGYRO job ' + job_id + ' is still queued/running; collect after it finishes.')
-    failed, states, solver_errors = set(), [], {}
+    failed, complete, states, solver_errors = set(), set(), [], {}
     seen = []
     for line in output.splitlines():
         fields = line.split('|')
@@ -120,6 +131,8 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
             seen.append(fields[1])
             if fields[2].strip():
                 failed.add(fields[1])
+            else:
+                complete.add(fields[1])
         elif len(fields) >= 3 and fields[0] == 'CGYRO_ERROR':
             failed.add(fields[1])
             solver_errors.setdefault(fields[1], []).append('|'.join(fields[2:]))
@@ -130,7 +143,8 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
                 match = re.fullmatch(job_id + r'_([0-9]+)', fields[1])
                 if match and int(match.group(1)) < len(parentdir):
                     point = parentdir[int(match.group(1))]
-                    failed.add(point)
+                    if point not in complete:
+                        failed.add(point)
     if states:
         manifest['scheduler_status'] = '\n'.join(states)
     manifest['solver_errors'] = solver_errors
@@ -138,8 +152,9 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
         raise RuntimeError('CGYRO output probe did not return the complete task list; results have not been loaded.')
     if scheduler_record is not None:
         for point, state in scheduler_record.get('point_states', {}).items():
-            if state and state != 'COMPLETED':
+            if state and state != 'COMPLETED' and point not in complete:
                 failed.add(point)
+    manifest['complete_output_points'] = [point for point in parentdir if point in complete]
     return unique_points([point for point in parentdir if point in failed])
 
 
@@ -222,6 +237,7 @@ rmtsetup=root['SETTINGS']['REMOTE_SETUP']
 manifest = root.get('RUN_MANIFEST', None)
 if not manifest:
     raise ValueError('No run manifest. Prepare a run first; importing old result directories requires an explicit manifest.')
+manifest['load_errors'] = {}
 rmtserver = manifest['server']
 rmtworkdir = manifest['workDir']
 rmttunnel = manifest['tunnel']
@@ -248,13 +264,14 @@ if icgyro == 1:
         if scheduler_record['outcome'] in ('cancelled', 'failed'):
             terminal_status = scheduler_record['outcome']
     failed_cases = probe_run_outputs(scheduler, str(manifest.get('job_id', '') or ''), scheduler_record)
+    manifest['probe_failed_points'] = list(failed_cases)
     if failed_cases and not terminal_status:
         # Keep exception text ASCII: older OMFIT script serialization can
         # replace non-ASCII task-script messages with question marks.
         raise RuntimeError(failure_report(failed_cases))
 for itemdir in parentdir:
     print("Loading "+itemdir)
-    result_dir = path_join(rmtworkdir, itemdir)
+    result_dir = point_result_dir(itemdir)
     if local and not os.path.isdir(result_dir):
         print("Missing local result directory: "+result_dir)
         failed_cases.append(itemdir)
@@ -264,12 +281,12 @@ for itemdir in parentdir:
             if local:
                 candidate=OMFITgyro(result_dir,extra_files=['RESTART_0','RESTART_tag_0','RESTART_1','RESTART_tag_1','restart.dat'])
             else:
-                candidate=OMFITgyro([rmtworkdir+'/'+itemdir,rmtserver,rmttunnel],extra_files=['RESTART_0','RESTART_tag_0','RESTART_1','RESTART_tag_1','restart.dat'])
+                candidate=OMFITgyro([result_dir,rmtserver,rmttunnel],extra_files=['RESTART_0','RESTART_tag_0','RESTART_1','RESTART_tag_1','restart.dat'])
         else:
             if local:
                 candidate=OMFITcgyro(result_dir,extra_files=['bin.cgyro.restart','bin.cgyro.restart.old','run_log','cgyro.exit'])
             else:
-                candidate=OMFITcgyro([rmtworkdir+'/'+itemdir,rmtserver,rmttunnel],extra_files=['bin.cgyro.restart','bin.cgyro.restart.old','run_log','cgyro.exit'])
+                candidate=OMFITcgyro([result_dir,rmtserver,rmttunnel],extra_files=['bin.cgyro.restart','bin.cgyro.restart.old','run_log','cgyro.exit'])
         # Force lazy parsing before replacing a preserved node is considered successful.
         if candidate['n_time'] < 1:
             raise ValueError('Result contains no time samples')
@@ -280,6 +297,7 @@ for itemdir in parentdir:
             loaded_cases.append(itemdir)
     except Exception as exc:
         print('Failed to load ' + itemdir + ': ' + str(exc))
+        manifest['load_errors'][itemdir] = str(exc)
         failed_cases.append(itemdir)
 root['RUN_MANIFEST']['loaded_points'] = loaded_cases
 root['RUN_MANIFEST']['partial_points'] = partial_cases

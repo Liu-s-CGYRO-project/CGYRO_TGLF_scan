@@ -3,12 +3,13 @@ from builtins import (Exception, TypeError, ValueError, all, any, bool, dict, en
 import numpy as np
 import os
 import re
-from contextlib import nullcontext
 from OMFITlib_cgyro_read import *
 from OMFITlib_cgyro_parameters import (FIELDS as CALCULATION_FIELDS, apply_parameters, initialize_parameters,
                                       parameter_value, validate_zeff)
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolved_scan_axes
-from OMFITlib_cgyro_run_state import linked_kill_local, refresh_run_state, slurm_wait, stop_message
+from OMFITlib_cgyro_run_state import refresh_run_state
+from OMFITlib_cgyro_queue import advancing_batch, pending_runs, save_current, wait_current
+from OMFITlib_cgyro_retry import recover_submission, retry_limit
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -131,7 +132,7 @@ import tempfile
 import uuid
 import zipfile
 import posixpath
-defaultVars(scan_dimensions=1)
+defaultVars(scan_dimensions=1, wait_for_completion=True, batch_id='')
 
 
 def json_scalar(value):
@@ -243,6 +244,7 @@ def validate_restart_input(previous, current):
 
 physics = root['SETTINGS']['PHYSICS']
 setup = root['SETTINGS']['SETUP']
+retry_limit(root)
 rmt_setup = root['SETTINGS']['REMOTE_SETUP']
 server_setup = selected_remote_config(rmt_setup)
 local_submit = cfg_str(rmt_setup, 'serverPicker', '') == 'localhost'
@@ -253,10 +255,14 @@ restart_mode = int(physics['restart_mode'])
 if restart_mode not in (0, 1):
     raise ValueError('restart_mode must be 0 or 1')
 previous_manifest = root.get('RUN_MANIFEST', {})
+if not batch_id and pending_runs(root):
+    raise ValueError('The queued CGYRO batch still needs synchronization or collection before another run.')
+if not batch_id:
+    root['RUN_BATCH'] = OMFITtree()
 previous_status = previous_manifest.get('status', None)
 previous_failed = previous_status in ('failed', 'cancelled') or (
     previous_status == 'submitted_or_finished' and bool(previous_manifest.get('failed_points', [])))
-if previous_manifest and previous_status != 'published' and not previous_failed:
+if previous_manifest and previous_status != 'published' and not previous_failed and not advancing_batch(root, batch_id):
     # A killed local wait does not update a remote job's final status. Query the
     # saved run, rather than treating the stale local flag as a live allocation.
     refresh_run_state(root, OMFITx)
@@ -270,6 +276,12 @@ if restart_mode and not previous_cases:
 run_token = uuid.uuid4().hex
 base_workdir = runtime_abs_path(setup_workdir())
 case_id = str(physics.get('case_id', '') or 'nr={}__ion={}'.format(physics['nr'], physics['mass']))
+if not wait_for_completion:
+    queued_batch = root.get('RUN_BATCH', {})
+    if (local_submit or not batch_id or queued_batch.get('batch_id', '') != batch_id
+            or queued_batch.get('status', '') != 'submitting' or queued_batch.get('stop_requested', False)
+            or case_id not in queued_batch.get('case_ids', [])):
+        raise ValueError('Deferred waiting requires an unstopped case in this recorded remote batch.')
 relative_run_dir = os.path.join('runs', run_token)
 submit_workdir = os.path.join(base_workdir, relative_run_dir)
 os.makedirs(submit_workdir)
@@ -379,7 +391,7 @@ manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': max(1, s
             'fixed_parameters': fixed_parameters,
             'numeric_parameters': {name: json_scalar(base_input[name]) for name in CALCULATION_FIELDS if name in base_input},
             'scale_time_with_ky': bool(physics['scale_time_with_ky']),
-            'input_sha256': input_checksums, 'status': 'prepared'}
+            'input_sha256': input_checksums, 'status': 'prepared', 'batch_id': batch_id}
 run_manifest = OMFITtree()
 run_manifest.update(manifest)
 root['RUN_MANIFEST'] = run_manifest
@@ -550,6 +562,7 @@ pbs_name = path_basename(pbs_file)
 caseRoot[caseName][pbs_name]=OMFITascii(pbs_file)
 
 inputs.append(caseRoot[caseName][pbs_name])
+save_current(root, OMFITtree)
 if setup['irun']==1:
     # sub jobs
     # Submit through scheduler directly and let OMFIT wait for job completion.
@@ -572,7 +585,7 @@ if setup['irun']==1:
         submit_rule=r'(?i)submitted\s+batch\s+job\s+([0-9]+)'
         if scheduler == 'pbs':
             submit_cmd='qsub scan.pbs'
-            submit_rule=r'([0-9]{3,}(?:\.[A-Za-z0-9._-]+)?)'
+            submit_rule=r'(?m)^\s*([0-9]+(?:\.[A-Za-z0-9._-]+)?)\s*$'
         rmtserver=remote_server
         rmttunnel=remote_tunnel
         workdir=submit_workdir
@@ -583,15 +596,34 @@ if setup['irun']==1:
         submit_wrapper = shell_quote('rm -f ' + submit_log + '; ' + submit_cmd + ' > ' + submit_log
                                      + ' 2>&1; status=$?; cat ' + submit_log + '; exit "$status"')
         submit_wrapper = '/bin/bash -lc ' + submit_wrapper
-        ret_code=OMFITx.executable(root, inputs=inputs, outputs=[],  \
-                                   server=rmtserver, \
-                                   tunnel=rmttunnel, \
-                                   workdir=workdir,\
-                                   remotedir=rmtworkdir,\
-                                   executable=submit_wrapper,clean=False,std_out=submit_out,std_err=submit_err,ignoreReturnCode=True)
+        root['RUN_MANIFEST']['status'] = 'submitting'
+        root['RUN_MANIFEST']['submission_uncertain'] = True
+        save_current(root, OMFITtree)
+        try:
+            ret_code=OMFITx.executable(root, inputs=inputs, outputs=[],
+                                       server=rmtserver, tunnel=rmttunnel, workdir=workdir, remotedir=rmtworkdir,
+                                       executable=submit_wrapper, clean=False, std_out=submit_out,
+                                       std_err=submit_err, ignoreReturnCode=True)
+        except Exception as exc:
+            root['RUN_MANIFEST']['submit_error'] = str(exc)
+            ret_code = -1
         submit_combined=output_to_text(submit_out)+'\n'+output_to_text(submit_err)
+        root['RUN_MANIFEST']['submit_output'] = submit_combined
+        if (ret_code != 0 or re.search(submit_rule, submit_combined) is None) and recover_submission(root, OMFITx, OMFITtree):
+            ret_code = 0
+            recovered_id = root['RUN_MANIFEST']['job_id']
+            submit_combined += '\n' + ('Submitted batch job ' + recovered_id if scheduler == 'slurm' else recovered_id)
         if ret_code != 0:
-            root['RUN_MANIFEST']['status'] = 'failed'
+            identified = re.search(submit_rule, submit_combined)
+            if identified is not None:
+                root['RUN_MANIFEST']['job_id'] = identified.group(1)
+                root['RUN_MANIFEST']['submission_uncertain'] = False
+                root['RUN_MANIFEST']['status'] = 'submitted'
+            else:
+                root['RUN_MANIFEST']['status'] = 'failed'
+                root['RUN_MANIFEST']['submission_uncertain'] = not bool(re.search(
+                    r'(?mi)^(?:sbatch|qsub):.*(?:error|invalid|reject)', submit_combined))
+            save_current(root, OMFITtree)
             raise RuntimeError('CGYRO submission failed: ' + submit_combined)
         if re.search(submit_rule, submit_combined) is None:
             # remote_execute returns a status code, not stdout. Capture the log.
@@ -602,36 +634,11 @@ if setup['irun']==1:
         job_id=parse_scheduler_job_id(submit_combined, submit_rule)
         root['RUN_MANIFEST']['job_id'] = job_id
         root['RUN_MANIFEST']['status'] = 'submitted'
-        if scheduler == 'pbs':
-            wait_cmd='hb=0; while qstat '+job_id+' >/dev/null 2>&1; do sleep 30; hb=$((hb+30)); if [ \"$hb\" -ge 600 ]; then echo \"[heartbeat] job '+job_id+' still in queue/running at $(date)\"; hb=0; fi; done; echo \"[heartbeat] job '+job_id+' finished at $(date)\"'
-        else:
-            wait_cmd = '/bin/bash -c ' + shell_quote(slurm_wait(job_id, run_token))
-        wait_errors = []
-        scope = linked_kill_local(root, OMFITx, job_id, run_token) if scheduler == 'slurm' else nullcontext()
-        with scope:
-            wait_code = OMFITx.remote_execute(
-                rmtserver,
-                wait_cmd,
-                rmtworkdir,
-                rmttunnel,
-                quiet=False,
-                ignoreReturnCode=True,
-                use_bang_command=False,
-                std_err=wait_errors
-            )
-        if root['RUN_MANIFEST'].get('stop_requested', False):
-            try:
-                refresh_run_state(root, OMFITx)
-            except Exception as exc:
-                root['RUN_MANIFEST']['stop_sync_error'] = str(exc)
-            print(stop_message(root['RUN_MANIFEST']))
-        elif wait_code != 0:
-            root['RUN_MANIFEST']['wait_error'] = output_to_text(wait_errors)
-            final_state = refresh_run_state(root, OMFITx) if scheduler == 'slurm' else None
-            if final_state is None or not final_state['terminal']:
-                raise RuntimeError('Could not query CGYRO job ' + job_id + '; submission remains recorded. '
-                                   + output_to_text(wait_errors))
+        root['RUN_MANIFEST']['submission_uncertain'] = False
+        save_current(root, OMFITtree)
+        if wait_for_completion:
+            wait_current(root, OMFITx, OMFITtree)
 
-    if (not root['RUN_MANIFEST'].get('stop_requested', False)
+    if (wait_for_completion and not root['RUN_MANIFEST'].get('stop_requested', False)
             and root['RUN_MANIFEST'].get('status', '') not in ('cancelled', 'failed')):
         root['RUN_MANIFEST']['status'] = 'submitted_or_finished'

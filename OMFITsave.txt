@@ -243,6 +243,8 @@
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_isotopes'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_isotopes.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_run_state'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_run_state.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_archive'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_archive.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_queue'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_queue.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_retry'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_retry.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_scan_values'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_scan_values.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cases.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
@@ -279,6 +281,7 @@
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['CGYROScan_2d.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/CGYROScan_2d.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['downsync.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/downsync.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['refresh_run_status.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/refresh_run_status.py <-:-:-> {}
+['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['wait_current_run.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/wait_current_run.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['subscan_lin.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['subscan_lin_new.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_new.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['subscan_lin_ori.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_ori.py <-:-:-> {}
@@ -352,6 +355,8 @@
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_isotopes'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_isotopes.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_run_state'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_run_state.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_archive'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_archive.py <-:-:-> {}
+['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_queue'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_queue.py <-:-:-> {}
+['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_retry'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_retry.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_scan_values'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_scan_values.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py <-:-:-> {}
@@ -362,6 +367,7 @@
 ['CGYRO_TGLF_scan']['CGYRO_scan']['OUTPUTScan'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['RUN_DB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['RUN_HISTORY'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
+['CGYRO_TGLF_scan']['CGYRO_scan']['RUN_BATCH'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['BATCH_INPUTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['Cases'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['tmp.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/tmp.py.py <-:-:-> {}

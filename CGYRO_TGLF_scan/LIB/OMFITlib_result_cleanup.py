@@ -1,19 +1,20 @@
 """Explicit result-only cleanup. Never visits paths on disk or remote servers."""
 from builtins import dict, hasattr, list, str, tuple
 from OMFITlib_compare_state import MODES, SELECTION_KEYS
+from OMFITlib_cgyro_queue import queue_records
 
 RESULT_KEYS = ('scanResults', 'scanResults_spectra', 'scanResults2D', 'scanResults2D_spectra',
                'UQResults', 'UQResults_spectra', 'tgyro_output', '_scan_cache_provenance',
                '_radial_cache_provenance')
 BRANCHES = (
     ((), ('OUTPUTS',)),
-    (('CGYRO_scan',), ('OUTPUTS', 'OUTPUTScan', 'RUN_DB', 'RUN_MANIFEST')),
+    (('CGYRO_scan',), ('OUTPUTS', 'OUTPUTScan', 'RUN_DB', 'RUN_MANIFEST', 'RUN_BATCH')),
     (('TGLF_scan',), ('RUN_DB',) + RESULT_KEYS),
     (('TGLF_scan', 'TGLF'), RESULT_KEYS),
     (('TGLF_scan', 'TGYRO'), ('OUTPUTS', 'RUN_DB')),
     (('Transfer_tool', 'OUTPUTS'), ('TGYRO',)),
 )
-ACTIVE = ('running', 'submitted', 'queued', 'preparing', 'cancel_requested')
+ACTIVE = ('running', 'submitted', 'submitting', 'queued', 'preparing', 'cancel_requested')
 
 
 def node_at(root, path):
@@ -27,6 +28,8 @@ def node_at(root, path):
 
 def active_jobs(root):
     records = [('CGYRO 当前任务', node_at(root, ('CGYRO_scan', 'RUN_MANIFEST')))]
+    records.extend(('CGYRO ' + str(token), entry['manifest'])
+                   for token, entry in queue_records(node_at(root, ('CGYRO_scan',))))
     for path in (('TGLF_scan', 'RUN_DB'), ('TGLF_scan', 'TGYRO', 'RUN_DB'), ('PROJECT_STATE', 'activity')):
         records.extend((str(key), record) for key, record in node_at(root, path).items())
     for case in root.get('TGLF_CASES', {}).values():
@@ -35,6 +38,7 @@ def active_jobs(root):
             for point in record.get('points', {}).values():
                 records.extend((str(key), attempt) for attempt in point.get('attempts', {}).values())
     return [label for label, record in records if hasattr(record, 'get') and (
+        record.get('submission_uncertain', False) or
         record.get('status', None) in ACTIVE or
         (record.get('status', None) == 'submitted_or_finished' and not record.get('failed_points', None)))]
 

@@ -30,6 +30,8 @@ from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters,
 from OMFITlib_cgyro_scan_values import ky_values, scan_axes as configured_scan_axes
 from OMFITlib_cgyro_isotopes import isotope_input, remap_physics
 from OMFITlib_cgyro_run_state import stop_message
+from OMFITlib_cgyro_queue import activate_run, pending_runs, queue_records, queue_summary, save_current
+from OMFITlib_cgyro_retry import retry_limit
 
 MODULES = {
     'transfer': ('Transfer_tool',), 'cgyro': ('CGYRO_scan',),
@@ -439,6 +441,9 @@ def cgyro_input_issues(root):
 
 
 def collect_issues(root):
+    if any(entry['manifest'].get('job_id', '') and entry['manifest'].get('status', '') != 'published'
+           for _, entry in queue_records(read(root, ('CGYRO_scan',), {}))):
+        return []
     manifest = read(root, ('CGYRO_scan', 'RUN_MANIFEST'), {})
     if not manifest or manifest.get('status', None) not in ('submitted', 'submitted_or_finished', 'running', 'loaded', 'failed', 'cancelled', 'cancel_requested'):
         return ['尚无已执行 / 已提交的 CGYRO 运行；仅生成输入后不能收集结果']
@@ -448,9 +453,16 @@ def collect_issues(root):
 
 
 def sync_run_issues(root):
+    queued = [entry['manifest'] for _, entry in queue_records(read(root, ('CGYRO_scan',), {}))
+              if entry['manifest'].get('status', '') != 'published']
+    if any(row.get('scheduler', '') == 'slurm' and
+           (row.get('job_id', '') or row.get('submission_uncertain', False)) for row in queued):
+        return []
     manifest = read(root, ('CGYRO_scan', 'RUN_MANIFEST'), {})
     if not manifest or manifest.get('status', '') == 'published':
         return ['尚无需要同步状态的 CGYRO 运行']
+    if manifest.get('scheduler', '') == 'slurm' and manifest.get('submission_uncertain', False):
+        return []
     if not re.fullmatch(r'[0-9]+', str(manifest.get('job_id', '') or '')):
         return ['当前记录没有 Slurm 作业号，不能推断远程状态']
     remote = read(root, ('CGYRO_scan', 'SETTINGS', 'REMOTE_SETUP'), {})
@@ -1192,6 +1204,12 @@ class ProjectActions:
             issues += runtime_issues(self.root, 'cgyro')
         if issues:
             raise ValueError('；'.join(issues))
+        retry_limit(node)
+        if not prepare and pending_runs(node):
+            if not sync_run_issues(self.root):
+                self.sync_cgyro_run()
+            if pending_runs(node):
+                raise ValueError('上一批 CGYRO 还有活动、待收集或提交状态不明的案例，请先同步并收集结果。')
         plan = self.prepare_cgyro_batch(install_first=prepare)
         if prepare:
             return plan
@@ -1199,6 +1217,17 @@ class ProjectActions:
         physics = node['SETTINGS']['PHYSICS']
         if int(physics.get('restart_mode', 0)) == 1 and len(plan) != 1:
             raise ValueError('重启只能运行一个 nr 与一个主离子案例；批量组合请使用“新计算”。')
+        remote = node['SETTINGS']['REMOTE_SETUP']
+        scheduler = remote.get(str(remote.get('serverPicker', '') or ''), {}).get('scheduler', '')
+        queued = str(scheduler).lower() in ('slurm', 'pbs')
+        batch_id = uuid.uuid4().hex if queued else ''
+        if queued:
+            batch = self.factory()
+            batch.update(dict(batch_id=batch_id, case_ids=[item['case_id'] for item in plan],
+                              tokens=[], status='submitting', stop_requested=False))
+            node['RUN_BATCH'] = batch
+        else:
+            node['RUN_BATCH'] = self.factory()
         previous = dict(irun=setup.get('irun', None), idownsync=setup.get('idownsync', None))
         original_input = node['INPUTS'].get('input.cgyro', None)
         original_case = {key: physics.get(key, None) for key in ('nr', 'rho', 'mass', 'case_id')}
@@ -1209,7 +1238,7 @@ class ProjectActions:
         record = self._record('CGYRO 批量扫描', status='running', combinations=copy.deepcopy(plan))
         completed = []
         try:
-            setup['irun'], setup['idownsync'] = 1, 1
+            setup['irun'], setup['idownsync'] = 1, 0 if queued else 1
             for item in plan:
                 nr, ion_case = item['nr'], item['ion_case']
                 provenance = item.get('isotope_preparation', None)
@@ -1224,18 +1253,38 @@ class ProjectActions:
                 physics['nr'], physics['rho'], physics['mass'] = nr, item['rho'], ion_case
                 physics['case_id'] = item['case_id']
                 self.call('CGYRO {}'.format(item['case_id']),
-                           MODULES['cgyro'] + ('SCRIPTS', 'runCGYRO.py'))
+                           MODULES['cgyro'] + ('SCRIPTS', 'runCGYRO.py'),
+                           wait_for_completion=not queued, batch_id=batch_id)
                 manifest = node.get('RUN_MANIFEST', {})
                 if manifest.get('stop_requested', False):
                     record.update(dict(status='cancelled', completed=completed,
                                        stopped_case=item['case_id'], remote_status=manifest.get('status', '')))
                     self.settings['message'] = stop_message(manifest)
                     return completed
-                completed.append(item['case_id'])
+                if not queued:
+                    completed.append(item['case_id'])
+            if queued:
+                node['RUN_BATCH']['status'] = 'submitted'
+                completed = self._collect_cgyro_queue(automatic=True)
+                if node['RUN_BATCH'].get('stop_requested', False):
+                    record.update(dict(status='cancelled', completed=completed))
+                    self.settings['message'] = queue_summary(node) + ' 本批作业已请求结束，输出保留。'
+                    return completed
+                if len(completed) != len(plan):
+                    record.update(dict(status='partial', completed=completed))
+                    self.settings['message'] = queue_summary(node) + ' 部分案例未归档，记录和输出保留。'
+                    return completed
             record.update(dict(status='complete', completed=completed))
             self.settings['message'] = '已完成 {} 个输入组合，结果已保存到 RUN_DB。'.format(len(completed))
             return completed
         except BaseException as exc:
+            if queued:
+                manifest = node.get('RUN_MANIFEST', {})
+                if manifest.get('batch_id', '') == batch_id and manifest.get('status', '') == 'prepared':
+                    manifest['status'] = 'failed'
+                save_current(node, self.factory)
+                node['RUN_BATCH'].update(dict(status='partial', error=str(exc)))
+                completed = list(node['RUN_BATCH'].get('completed', completed))
             record.update(dict(status='cancelled' if isinstance(exc, KeyboardInterrupt) else 'failed',
                                completed=completed, error=str(exc)))
             raise
@@ -1251,6 +1300,45 @@ class ProjectActions:
                 node['INPUTS'].pop('input.cgyro', None)
             else:
                 node['INPUTS']['input.cgyro'] = original_input
+
+    def _collect_cgyro_queue(self, automatic=False):
+        node = module(self.root, 'cgyro')
+        setup, batch = node['SETTINGS']['SETUP'], node['RUN_BATCH']
+        previous = setup.get('irun', None), setup.get('idownsync', None)
+        completed, errors = [], []
+        try:
+            setup['irun'], setup['idownsync'] = 0, 0
+            for token, entry in queue_records(node):
+                manifest = entry['manifest']
+                if manifest.get('status', '') == 'published':
+                    completed.append(manifest['case_id'])
+                    continue
+                if not manifest.get('job_id', '') or manifest.get('submission_uncertain', False):
+                    errors.append(str(manifest.get('case_id', token)) + ': submission is not confirmed')
+                    continue
+                activate_run(node, token)
+                try:
+                    self.call('等待已提交的 CGYRO 案例', MODULES['cgyro'] + ('SCRIPTS', 'wait_current_run.py'))
+                    if automatic and batch.get('stop_requested', False):
+                        return completed
+                    setup['idownsync'] = 1
+                    self.call('收集并归档 CGYRO 批量结果', MODULES['cgyro'] + ('SCRIPTS', 'CGYROScan.py'),
+                              collect_stopped=not automatic)
+                    if node['RUN_MANIFEST'].get('status', '') == 'published':
+                        completed.append(node['RUN_MANIFEST']['case_id'])
+                except Exception as exc:
+                    errors.append(str(manifest.get('case_id', token)) + ': ' + str(exc))
+                finally:
+                    save_current(node, self.factory)
+        finally:
+            setup['irun'], setup['idownsync'] = previous
+            batch.update(dict(completed=completed, errors=errors,
+                status='published' if len(completed) == len(batch['case_ids']) else
+                'cancel_requested' if batch.get('stop_requested', False) and pending_runs(node) else
+                'cancelled' if batch.get('stop_requested', False) else 'partial'))
+        if errors:
+            raise ValueError('部分 CGYRO 案例未归档；已提交任务与成功结果均保留。\n' + '\n'.join(errors))
+        return completed
 
     def set_cgyro_ions(self, location=None):
         mode = self.settings.get('cgyro_ion_mode', 'original')
@@ -1312,13 +1400,18 @@ class ProjectActions:
         issues = collect_issues(self.root)
         if issues:
             raise ValueError('；'.join(issues))
-        self.call('收集 CGYRO 当前结果', MODULES['cgyro'] + ('SCRIPTS', 'downsync.py'))
+        node = module(self.root, 'cgyro')
+        if queue_records(node) and any(entry['manifest'].get('status', '') != 'published'
+                                      for _, entry in queue_records(node)):
+            completed = self._collect_cgyro_queue()
+            self.settings['message'] = queue_summary(node)
+            return completed
         node = module(self.root, 'cgyro')
         setup = node['SETTINGS']['SETUP']
         old_run, old_download = setup.get('irun', None), setup.get('idownsync', None)
         try:
-            setup['irun'], setup['idownsync'] = 0, 0
-            return self.call('归档已收集的 CGYRO 结果', MODULES['cgyro'] + ('SCRIPTS', 'CGYROScan.py'))
+            setup['irun'], setup['idownsync'] = 0, 1
+            return self.call('收集并归档 CGYRO 结果', MODULES['cgyro'] + ('SCRIPTS', 'CGYROScan.py'), collect_stopped=True)
         finally:
             setup['irun'], setup['idownsync'] = old_run, old_download
 
@@ -1327,6 +1420,10 @@ class ProjectActions:
         if issues:
             raise ValueError('；'.join(issues))
         self.call('同步 CGYRO 作业状态', MODULES['cgyro'] + ('SCRIPTS', 'refresh_run_status.py'))
+        node = module(self.root, 'cgyro')
+        if queue_records(node):
+            self.settings['message'] = queue_summary(node) + ' 各案例的服务器状态已同步。'
+            return
         state = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST', 'status'), '')
         outcome = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST', 'scheduler_sync', 'outcome'), '')
         self.settings['message'] = ('作业已取消；原记录和输出保留，可开始新运行。' if state == 'cancelled' else

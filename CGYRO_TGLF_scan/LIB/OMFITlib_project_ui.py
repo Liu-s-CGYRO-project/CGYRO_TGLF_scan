@@ -14,6 +14,7 @@ from OMFITlib_transfer_workflow import generation_issues, initialize_generation,
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
 from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choices, installation_issues
 from OMFITlib_cgyro_results import ResultBrowser
+from OMFITlib_cgyro_queue import queue_records, queue_summary
 from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS,
     initialize_parameters, numeric_source, parameter_catalog, scan_parameter_names)
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, KY_MODES, VALUE_MODES, ky_values, value_list
@@ -23,7 +24,7 @@ from OMFITlib_project import (ERROR_NOTICE_SUFFIX, ION_CASES, LABELS, MODULES, P
     input_digest, pending_inputs, read, runtime_issues, summary, sync_cgyro_choices, sync_cgyro_ion_cases, text_value,
     sync_run_issues, tglf_input_issues, transfer_generated_rows, transfer_parameter_value, transfer_sources)
 
-STATUS = {'prepared': '输入已准备', 'submitted': '已提交', 'loaded': '结果已读取',
+STATUS = {'prepared': '输入已准备', 'submitted': '已提交', 'submitting': '正在提交', 'loaded': '结果已读取',
           'submitted_or_finished': '已提交或执行返回',
           'published': '结果已归档', 'complete': '完成', 'running': '运行中',
           'failed': '失败', 'cancelled': '已中止', 'partial': '部分完成',
@@ -392,11 +393,23 @@ class ProjectUI:
         self.render_cgyro_parameters(node, rows)
         self.ui.Tab('结果与记录')
         manifest = node.get('RUN_MANIFEST', {})
-        if manifest:
+        queued = queue_records(node)
+        if queued:
+            self.label(queue_summary(node))
+            for _, entry in queued[:8]:
+                row = entry['manifest']
+                radius = 'nr=' + str(row.get('nr', '')) if row.get('rho', None) is None else 'rho={:g}'.format(float(row['rho']))
+                self.label('{} · {} · 作业 {} · {}'.format(radius, row.get('mass', ''), row.get('job_id', '待确认'),
+                    STATUS.get(row.get('status', ''), row.get('status', '')))
+                    + (' · 重试{}'.format(row['retry_count']) if row.get('retry_count', 0) else ''))
+            if len(queued) > 8:
+                self.label('其余 {} 个案例的记录保存在 RUN_HISTORY。'.format(len(queued) - 8))
+        elif manifest:
             self.label('最近运行：{} · {}'.format(manifest.get('case_id', ''),
                 STATUS.get(manifest.get('status', ''), manifest.get('status', ''))))
             if manifest.get('job_id', None):
                 self.label('作业：' + str(manifest['job_id']))
+        if manifest or queued:
             self.guarded('同步作业状态', self.actions.sync_cgyro_run, sync_run_issues(self.root))
             self.guarded('重新收集未归档结果', self.actions.collect, collect_issues(self.root))
         ResultBrowser(self.root, self.ui).render(title=False)
@@ -615,7 +628,15 @@ class ProjectUI:
         self.label('服务器：{}\n队列：{} · 每任务 {} 节点 × {} MPI'.format(
             remote.get('serverPicker', '未配置'), config.get('queue', '未配置'),
             config.get('nodes', '—'), config.get('ntasks_per_node', '—')))
+        if config.get('scheduler', '') in ('slurm', 'pbs'):
+            self.label('所有半径 / 离子先提交排队，再等待并收集；实际并行由队列资源决定。')
+            if config.get('scheduler', '') == 'slurm':
+                self.label('每案例并发上限 {} 点，H/D/T 三个案例可合计到三倍上限。'.format(config.get('array_parallel', '—')))
         issues = problems + runtime_issues(self.root, 'cgyro')
+        if config.get('scheduler', '') in ('slurm', 'pbs'):
+            self.ui.Entry(location(MODULES['cgyro'] + ('SETTINGS', 'SETUP', 'failed_point_retries')),
+                          '失败点重试次数', default=2, width=8,
+                          help='0–3 次，默认 2。仅补跑可重试的失败点，成功点保留；取消、输入错误、积分报错、内存不足和超时不自动重算。')
         self.guarded('运行所选扫描', self.actions.run_cgyro, issues)
         self.nav('修改运行环境', 'run')
         if issues:

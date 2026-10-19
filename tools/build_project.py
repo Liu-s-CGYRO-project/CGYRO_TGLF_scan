@@ -127,7 +127,8 @@ def build(output):
     validate_gui_fonts()
     validate_plot_fonts()
     rows = parse_tree((ROOT / 'OMFITsave.txt').read_bytes())
-    selected = {'OMFITsave.txt', 'MainSettingsNamelist.txt', 'VALIDATION.md', 'OMFIT_COMPATIBILITY.md'}
+    # Historical validation records stay in the repository, outside installers.
+    selected = {'OMFITsave.txt', 'MainSettingsNamelist.txt', 'OMFIT_COMPATIBILITY.md'}
     directories = set()
     for row in rows:
         if not row.ref:
@@ -176,7 +177,7 @@ def build(output):
                 info.create_system = 3
                 info.external_attr = (0o100755 if name.endswith('.sh') else 0o100644) << 16
                 info.compress_type = zipfile.ZIP_DEFLATED
-                archive.writestr(info, (ROOT / name).read_bytes())
+                archive.writestr(info, (ROOT / name).read_bytes(), compresslevel=9)
             for name in sorted(directories):
                 archive.writestr(name.rstrip('/') + '/', b'')
         if temporary.stat().st_size >= 1000000:

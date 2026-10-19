@@ -194,6 +194,7 @@
     "effnum": 5,
     "irun": 1,
     "idownsync": 1,
+    "failed_point_retries": 2,
     "remote_cgyro_script": "",
     "remote_cgyro_launcher": "",
     "remote_slurm_template_dir": "",

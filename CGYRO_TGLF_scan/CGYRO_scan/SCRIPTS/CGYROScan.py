@@ -3,6 +3,8 @@ import copy
 from builtins import ValueError, dict, int, len, list, set, str
 from datetime import datetime, timezone
 from OMFITlib_cgyro_archive import canonical_case_key
+from OMFITlib_cgyro_retry import collect_current
+defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False)
 
 setup = root['SETTINGS']['SETUP']
 if setup['icgyro'] != 1:
@@ -12,9 +14,11 @@ if dimensions not in (0, 1, 2, 3):
     raise ValueError('CGYRO parameter-axis count must be 0, 1, 2, or 3')
 
 if setup['irun'] == 1:
-    root['SCRIPTS']['subscan_lin.py'].run(scan_dimensions=dimensions)
-if setup['idownsync'] == 1 and not root.get('RUN_MANIFEST', {}).get('stop_requested', False):
-    root['SCRIPTS']['downsync.py'].run()
+    root['SCRIPTS']['subscan_lin.py'].run(scan_dimensions=dimensions,
+        wait_for_completion=wait_for_completion, batch_id=batch_id)
+if (wait_for_completion and setup['idownsync'] == 1
+        and (collect_stopped or not root.get('RUN_MANIFEST', {}).get('stop_requested', False))):
+    collect_current(root, OMFITx, OMFITtree, OMFITpath, OMFITascii)
 
 
 def result_path(manifest, point_id):
@@ -87,6 +91,7 @@ def publish_loaded_run(root):
                         ion_case=manifest['mass'], status='loaded'))
         row.update(metadata)
         row['result_path'] = result_path(manifest, point_id)
+        row['result_workDir'] = manifest.get('point_workdirs', {}).get(point_id, manifest['workDir'])
         task_rows[point_id] = row
     info = OMFITtree()
     info.update(dict(run_token=manifest['run_token'], runid=run_id, case_id=case_key,
@@ -101,6 +106,8 @@ def publish_loaded_run(root):
                      workDir=manifest['workDir'], job_id=manifest.get('job_id', None),
                      published_at=datetime.now(timezone.utc).isoformat(),
                      replaced_case_keys=list(dict.fromkeys(replaced)),
+                     retry_count=manifest.get('retry_count', 0), attempts=copy.deepcopy(manifest.get('attempts', [])),
+                     point_workdirs=copy.deepcopy(manifest.get('point_workdirs', {})),
                      status='published'))
     # Keep the task table with the results.  Reserved double-underscore keys are
     # hidden by the comparison selectors, while remaining directly inspectable
@@ -128,4 +135,5 @@ def publish_loaded_run(root):
     history['manifest'] = archived_manifest
 
 
-publish_loaded_run(root)
+if wait_for_completion:
+    publish_loaded_run(root)

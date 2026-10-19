@@ -1,6 +1,6 @@
 """Synchronize Slurm state and explicitly stop the current CGYRO scan."""
 from builtins import (Exception, RuntimeError, ValueError, any, bool, dict, enumerate,
-                      getattr, int, isinstance, len, list, print, set, str, tuple)
+                      getattr, int, isinstance, len, list, print, range, set, str, tuple, zip)
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import re
@@ -55,7 +55,7 @@ else printf 'CGYRO_ACCOUNT_MISSING\n'; fi
 '''.replace('JOB_ID', str(job_id))
 
 
-def parse_probe(output, job_id, points):
+def parse_probe(output, job_id, points, task_indices=None):
     markers, queued, accounts, raw_states = set(), {}, {}, []
     unknown_queue_row = False
     identity = re.compile(re.escape(str(job_id)) + r'(?:_([0-9]+))?')
@@ -80,8 +80,8 @@ def parse_probe(output, job_id, points):
             raw_states.append(line)
     active = unknown_queue_row or any(state not in TERMINAL for state in queued.values())
     root_state = accounts.get(str(job_id), '')
-    child_states = {str(index): accounts.get(str(job_id) + '_' + str(index), '')
-                    for index, _ in enumerate(points)}
+    indices = list(range(len(points))) if task_indices is None else list(task_indices)
+    child_states = {str(index): accounts.get(str(job_id) + '_' + str(index), '') for index in indices}
     all_children_done = bool(points) and all_terminal(child_states.values())
     terminal = ('CGYRO_ACCOUNT_OK' in markers and bool(accounts)
                 and not any(state not in TERMINAL for state in accounts.values())
@@ -92,7 +92,7 @@ def parse_probe(output, job_id, points):
                'completed' if terminal else 'unknown')
     return dict(outcome=outcome, terminal=terminal, active=active,
                 queue_verified='CGYRO_QUEUE_OK' in markers, accounting_verified='CGYRO_ACCOUNT_OK' in markers,
-                point_states={point: child_states[str(index)] or root_state for index, point in enumerate(points)},
+                point_states={point: child_states[str(index)] or root_state for point, index in zip(points, indices)},
                 scheduler_status='\n'.join(raw_states), raw=output)
 
 
@@ -244,7 +244,7 @@ def stop_run(root, ui, expected_job_id, expected_run_token):
 
 
 @contextmanager
-def linked_kill_local(run_root, ui, job_id, run_token):
+def linked_kill_local(run_root, ui, job_id, run_token, stop_callback=None):
     """Rebind only this wait dialog's existing Kill local; do not patch OMFIT.
 
     Native OMFIT places its command-details Text and button row in one panel.
@@ -276,7 +276,7 @@ def linked_kill_local(run_root, ui, job_id, run_token):
     wait_manifest = run_root.get('RUN_MANIFEST', {})
 
     def attach(button):
-        if linked:
+        if button in linked:
             return
         try:
             if str(button.cget('text')).strip() != 'Kill local':
@@ -293,7 +293,10 @@ def linked_kill_local(run_root, ui, job_id, run_token):
             def stop():
                 try:
                     button.configure(state='disabled')
-                    stop_run(run_root, ui, job_id, run_token)
+                    if stop_callback is None:
+                        stop_run(run_root, ui, job_id, run_token)
+                    else:
+                        stop_callback()
                     print(stop_message(wait_manifest))
                     # The marker may already have ended the wait during the query.
                     if button.winfo_exists():
@@ -306,7 +309,7 @@ def linked_kill_local(run_root, ui, job_id, run_token):
                         button.configure(state='normal')
 
             button.configure(command=stop)
-            linked.update(dict(button=button, original=original))
+            linked[button] = original
         except tk.TclError:
             return  # A window can be destroyed while a nested request returns.
 
@@ -315,11 +318,10 @@ def linked_kill_local(run_root, ui, job_id, run_token):
         yield
     finally:
         handlers.pop(stamp, None)
-        button = linked.get('button', None)
-        if button is not None:
+        for button, original in list(linked.items()):
             try:
                 if button.winfo_exists():
-                    button.configure(command=linked['original'])
+                    button.configure(command=original)
             except tk.TclError:
                 pass
 
@@ -338,7 +340,9 @@ def refresh_run_state(root, ui):
                              ignoreReturnCode=True, use_bang_command=False, std_out=output, std_err=errors)
     if code != 0:
         raise RuntimeError('Could not synchronize the previous CGYRO job; its record is unchanged. ' + text_output(errors))
-    result = parse_probe(text_output(output), job_id, list(manifest.get('points', [])))
+    all_points = list(manifest.get('points', []))
+    active = list(manifest.get('active_points', all_points))
+    result = parse_probe(text_output(output), job_id, active, [all_points.index(point) for point in active])
     manifest['scheduler_status'] = result['scheduler_status']
     manifest['scheduler_sync'] = dict(result, checked_at=datetime.now(timezone.utc).isoformat(),
                                       errors=text_output(errors))
@@ -348,6 +352,6 @@ def refresh_run_state(root, ui):
     elif result['outcome'] in ('cancelled', 'failed'):
         manifest['status'] = result['outcome']
         manifest['terminal_reason'] = 'slurm_' + result['outcome']
-    elif result['outcome'] == 'completed' and manifest.get('status', '') != 'loaded':
+    elif result['outcome'] == 'completed' and manifest.get('status', '') not in ('loaded', 'failed'):
         manifest['status'] = 'submitted_or_finished'
     return result

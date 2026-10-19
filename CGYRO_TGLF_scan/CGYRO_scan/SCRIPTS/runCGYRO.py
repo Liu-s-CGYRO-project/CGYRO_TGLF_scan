@@ -1,4 +1,5 @@
 # Validate the selected endpoint, then run the unified 1D/2D/3D collector.
+defaultVars(wait_for_completion=True, batch_id='')
 rmt_setup=root['SETTINGS']['REMOTE_SETUP']
 setup=root['SETTINGS']['SETUP']
 
@@ -41,4 +42,4 @@ if setup['icgyro'] == 0 and 'input.gyro' not in root['INPUTS']:
 idimrun = int(setup['idimrun'])
 if idimrun not in (0, 1, 2, 3):
     config_error('CGYRO parameter-axis count must be 0, 1, 2, or 3')
-root['SCRIPTS']['CGYROScan.py'].run()
+root['SCRIPTS']['CGYROScan.py'].run(wait_for_completion=wait_for_completion, batch_id=batch_id)
