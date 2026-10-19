@@ -2,6 +2,7 @@
 """Run the original command box 1 workflow from a single GUI action."""
 import copy
 import numpy as np
+from builtins import abs, max
 from OMFITlib_transfer_workflow import (discard_legacy_outputs, generation_issues, initialize_generation,
                                       prepare_tgyro, selected_profile)
 from OMFITlib_transfer_particles import main_ion_label, prepare_particles, species_label
@@ -44,7 +45,11 @@ try:
               'CGYRO 使用 COLLISION_MODEL={}、Z_EFF_METHOD=1。'.format(report['prescribed_zeff']['collision_model']))
     print('本轮主离子：' + '；'.join(main_ion_label(ion) for ion in report['main_ions']))
     if report.get('equivalent_stage', None) == 'local_inputs':
-        print('全部非主离子将在各半径合成等效杂质（Z、密度、MASS）。')
+        print('热 H/D/T 主离子保留稀释份额；全部非主离子（包括快离子）将在各半径合成等效辅助物种。')
+        if report['options']['equivalent_temperature'] == 'main_ion':
+            print('辅助温度及温度梯度采用合并热主离子的值；保留电荷、Zeff 贡献及质量，总压力会改变。')
+        else:
+            print('辅助温度及温度梯度由原辅助组总压力和压力梯度确定。')
     else:
         print('粒子处理后：' + '；'.join(species_label(ion) for ion in report['after']))
     if report.get('thermal_reference', None):
@@ -56,6 +61,10 @@ try:
     root['SCRIPTS']['tgyro_tglf.py'].run()
     print('Transfer_tool：生成各半径的 input.cgyro / input.tglf …')
     root['SCRIPTS']['profiles_gen4input.py'].run()
+    if report.get('equivalent_stage', None) == 'local_inputs':
+        local_records = outputs['Particle_processing']['local_inputs']
+        changes = [abs(item['equivalent']['total_pressure_change']['relative']) for item in local_records.values()]
+        print('局部等效处理：总压力最大相对变化 {:.2%}；各半径参数、来源及压力变化已记录。'.format(max(changes, default=0.0)))
     # Keep the plotted profile paired with this completed local-input set, even
     # after the input chooser is used again or the raw input is restored below.
     outputs['Particle_processing']['plot_profile'] = profile.duplicate()

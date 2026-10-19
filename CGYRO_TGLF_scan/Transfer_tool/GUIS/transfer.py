@@ -6,7 +6,7 @@ from collections import OrderedDict
 from builtins import dict, getattr, isinstance, len, list, next, str, tuple
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, PROFILE_KEYS
 from OMFITlib_gui_layout import finish_gui_layout
-from OMFITlib_transfer_particles import (PRESETS, DESCRIPTIONS, detect_main_ions,
+from OMFITlib_transfer_particles import (PRESETS, DESCRIPTIONS, EQUIVALENT_TEMPERATURES, detect_main_ions,
                                         main_ion_label, species_label, thermal_reference_choices)
 from OMFITlib_transfer_zeff import ZEFF_COLLISIONS
 
@@ -133,7 +133,7 @@ except (KeyError, TypeError, ValueError, OverflowError) as exc:
     OMFITx.Label('主离子识别：' + particle_issue, align='left', wraplength=840)
 details = [
     '先在原始完整剖面副本上固定电子密度、校正准中性，再识别主离子及执行粒子方案。',
-    '主离子：准中性校正后，所选半径区间内平均 ni/ne > 30%，全部保留。',
+    '主离子：准中性校正后，所选半径区间内平均 ni/ne > 30%，全部保留；等效方案还要求为 therm 类型、Z=1、质量为 H/D/T。',
     '处理后和局部插值后再次检查密度、密度梯度；CGYRO 同步密度曲率。Zeff 不参与电荷闭合。',
     DESCRIPTIONS.get(physics['generation']['particle_mode'], '请选择粒子方案。'),
     '原始剖面保留；处理结果及记录保存到 OUTPUTS/Particle_processing。',
@@ -150,13 +150,27 @@ if last_report.get('after', None):
             source_check['density_residual_before'], source_check['density_residual'], source_check['gradient_residual']))
     details.append('上次剖面组成：\n' + '\n'.join(species_label(ion) for ion in last_report['after']))
     if last_report.get('equivalent_stage', None) == 'local_inputs':
-        details.append('各半径等效杂质的 Z、密度、MASS 和来源记录在 OUTPUTS/Particle_processing/local_inputs。')
-    details.append('上次残差：密度 {:.2g}，梯度 {:.2g}；总压力最大相对变化 {:.2%}。'.format(
+        details.append('各半径辅助物种的 Z、密度、MASS、温度、梯度、来源与局部压力变化记录在 OUTPUTS/Particle_processing/local_inputs。')
+    details.append('上次完整剖面阶段：密度残差 {:.2g}，梯度残差 {:.2g}；压力最大相对变化 {:.2%}（不含后续局部等效处理）。'.format(
         last_report.get('density_residual', 0.0), last_report.get('gradient_residual', 0.0),
         last_report.get('max_relative_pressure_change', 0.0)))
 if last_report.get('thermal_reference', None):
     details.append('上次热化参考：' + species_label(last_report['thermal_reference']))
 OMFITx.ComboBox(prefix + "['particle_mode']", PRESETS, '处理方案', updateGUI=True, help='\n\n'.join(details))
+if physics['generation']['particle_mode'] == 'equivalent':
+    OMFITx.ComboBox(prefix + "['equivalent_temperature']", EQUIVALENT_TEMPERATURES, '辅助温度',
+                   state='readonly', updateGUI=True,
+                   help='保留原总压力：辅助温度及温度梯度由原辅助组压力及压力梯度决定（默认）。\n'
+                        '温度随热主离子：Tz=sum(ni*Ti)/sum(ni)，温度梯度由热主离子总压力梯度减去总密度梯度得到；CGYRO 同步温度曲率。\n'
+                        '两种方式均保留辅助组电荷、Zeff 贡献、质量和电荷密度梯度；主离子保留稀释后的密度份额。\n'
+                        '热主离子为 therm 类型、Z=1、H/D/T 质量且区间平均 ni/ne > 30% 的粒子；快 D/T 和少量 H/D/T 归辅助组。\n'
+                        '随热主离子方案会改变总压力，不保留快粒子原来的高温响应；局部压力导数随之更新，原平衡几何保持输入值。\n'
+                        'Transfer 保留原热主离子种类；H/D/T 扫描再将其合成一个主离子，只改变质量。切换后需重新运行 Transfer_tool。')
+    text = ('辅助物种采用合并热主离子的温度和温度梯度；总压力会改变。'
+            if physics['generation']['equivalent_temperature'] == 'main_ion'
+            else '辅助物种保留原辅助组的总压力和压力梯度。')
+    OMFITx.Label(text, align='left', wraplength=840)
+    OMFITx.Label('保留主离子稀释份额；快离子和少量 H/D/T 归入辅助组。', align='left', wraplength=840)
 if physics['generation']['particle_mode'] == 'main_only':
     OMFITx.Label('先校正完整剖面准中性并计算 Zeff，再保留主离子、归一化密度之和为 1。', align='left', wraplength=840)
     OMFITx.ComboBox(prefix + "['zeff_collision_model']", ZEFF_COLLISIONS, 'CGYRO 碰撞模型',

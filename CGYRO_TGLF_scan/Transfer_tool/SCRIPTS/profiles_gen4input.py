@@ -48,7 +48,10 @@ for k, rho in enumerate(rho_arr, 1):
     rhostar = locpargen_rhostar(os.path.join(workdir, 'out.locpargen'), local['cgyro'])
     for code, obj in local.items():
         if equivalent:
-            result = equivalent_local_input(obj, code, particle_report['main_count'], particle_report['after'], rhostar)
+            # Use the frozen generation choice, never a live GUI selection that
+            # may have changed while TGYRO / locpargen was running.
+            result = equivalent_local_input(obj, code, particle_report['main_count'], particle_report['after'], rhostar,
+                                            temperature_mode=particle_report['options']['equivalent_temperature'])
         else:
             result = close_local_input(obj, code, particle_report['main_count'], particle_report['after'], rhostar)
         result['rho'] = float(rho)

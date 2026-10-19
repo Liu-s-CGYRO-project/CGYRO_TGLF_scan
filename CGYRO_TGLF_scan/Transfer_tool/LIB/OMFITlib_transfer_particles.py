@@ -19,13 +19,18 @@ PRESETS = OrderedDict([
 DESCRIPTIONS = {
     'all': '保留全部离子及热 / 快类型，所有主离子按原密度比例共同校正准中性。',
     'thermalize': '同种热杂质合并；对应任一主离子的快离子独立保留，温度、环向及极向流速采用所选热杂质的值。缺少所需热离子时停止。此为热化近似，压力会改变。',
-    'equivalent': '全部非主离子合成一种等效杂质，各半径分别计算 Z、密度和 MASS；保持总电荷、Zeff 贡献、总质量及压力。主离子全部保留，密度和密度梯度均满足准中性。',
+    'equivalent': '主离子限定为平均 ni/ne > 30% 的热 H/D/T；快离子及少量氢同位素与其他非主离子一起合成等效辅助物种。各半径保持辅助组电荷、Zeff 贡献、质量及电荷密度梯度，主离子保留稀释份额。辅助温度可保留原总压力或跟随热主离子；后者会改变总压力。H/D/T 扫描再合并热主离子。',
     'main_only': '先对保留全部粒子的原始剖面副本做准中性校正，再计算完整组成的 Zeff（ΣniZi²/ne），不读取输入文件的 Zeff 字段。然后只保留电子及 Z=1 主离子，保持主离子比例并再次闭合电荷，局部归一化后主离子密度之和为 1。Zeff 仅表示杂质碰撞效应，不包含杂质响应或输运。CGYRO 使用所选 Lorentz 碰撞模型和 Z_EFF_METHOD=1。',
 }
-PARTICLE_DEFAULTS = {'particle_mode': 'all', 'thermal_reference_ion': 0}
+EQUIVALENT_TEMPERATURES = OrderedDict([
+    ('保留原总压力', 'pressure'),
+    ('温度随热主离子', 'main_ion'),
+])
+PARTICLE_DEFAULTS = {'particle_mode': 'all', 'thermal_reference_ion': 0,
+                     'equivalent_temperature': 'pressure'}
 MAIN_ION_THRESHOLD = 0.30
 MAIN_ION_RULE = 'mean_ni_over_ne_after_source_neutrality_v2'
-EQUIVALENT_RULE = 'all_nonmain_local_charge_zeff_mass_pressure_v1'
+EQUIVALENT_RULE = 'thermal_hdt_auxiliary_local_moments_v2'
 NEUTRALITY_RULE = 'source_first_fixed_ne_density_gradient_curvature_v3'
 TOLERANCE = 1e-8
 ROUND_OFF = 64 * np.finfo(float).eps
@@ -59,6 +64,11 @@ def particle_options(options):
                   neutrality_rule=NEUTRALITY_RULE))
     if values['particle_mode'] == 'equivalent':
         values['equivalent_rule'] = EQUIVALENT_RULE
+        if values['equivalent_temperature'] not in EQUIVALENT_TEMPERATURES.values():
+            raise ValueError('请选择有效的等效辅助物种温度方案。')
+    else:
+        # An inactive UI choice must not invalidate other presets' old results.
+        values.pop('equivalent_temperature')
     return values
 
 
@@ -83,6 +93,17 @@ def species_label(ion):
     return '{}：{} · Z={:g}，A={:g} · {}'.format(
         ion['index'], ion['name'], ion['charge'], ion['mass'],
         '原快离子（独立热化）' if ion.get('thermalized_fast', False) else ('快离子' if ion['kind'] == 'fast' else '热离子'))
+
+
+def is_thermal_hydrogen(ion):
+    """Use source type/Z/mass, not names or a guessed temperature threshold.
+
+    input.gacode masses are in atomic mass units (not local CGYRO m/m_D).
+    Accept integer and physical H/D/T masses; trace fuel is excluded later by
+    the existing abundance threshold, so it remains in the auxiliary group.
+    """
+    return (ion['kind'] == 'therm' and math.isclose(ion['charge'], 1.0, rel_tol=0, abs_tol=1e-8)
+            and any(abs(ion['mass'] - mass) < 0.05 for mass in (1, 2, 3)))
 
 
 def thermal_reference_choices(profile, main_ions):
@@ -145,6 +166,10 @@ def _detect_main_ions(profile, options):
     intervals = np.diff(knots) / (upper - lower)
     candidates, largest = [], 0.0
     for ion in species(profile):
+        if options['particle_mode'] == 'equivalent' and not is_thermal_hydrogen(ion):
+            # Also applies during the source-first neutrality correction: fast
+            # fuel must not absorb missing charge and become thermal main fuel.
+            continue
         fraction = _array(profile, 'ni_' + str(ion['index']), ne.shape, nonnegative=True) / ne
         if not np.all(np.isfinite(fraction)):
             raise ValueError('离子 ni/ne 不是有限数值。')
@@ -155,7 +180,8 @@ def _detect_main_ions(profile, options):
         if average - MAIN_ION_THRESHOLD > ROUND_OFF * max(1.0, abs(average)):
             candidates.append(dict(ion, mean_fraction=average))
     if not candidates:
-        raise ValueError('本轮半径范围内没有平均 ni/ne > 30% 的主离子（最高 {:.6g}%）；请检查剖面和半径范围。'.format(largest * 100))
+        group = '热 H/D/T 主离子' if options['particle_mode'] == 'equivalent' else '主离子'
+        raise ValueError('本轮半径范围内没有平均 ni/ne > 30% 的{}（候选最高 {:.6g}%）；请检查剖面、粒子类型和半径范围。'.format(group, largest * 100))
     return sorted(candidates, key=lambda ion: (-ion['mean_fraction'], ion['index']))
 
 

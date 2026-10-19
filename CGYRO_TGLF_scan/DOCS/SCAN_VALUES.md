@@ -62,6 +62,29 @@ H/D/T 案例先合并已识别的全部 Z=1 主离子，再将合并后的质量
 
 新版 Transfer_tool 记录原生 locpargen 的 rhos/a，按 expro 的有效曲率定义还原并合并密度和压力二阶导数。旧等效杂质记录中的 rhostar 也可复用。旧输入缺少该尺度时，仅允许 GLOBAL_FLAG=0 的局部扫描，未使用的曲率字段保留加权值；全局扫描会要求重新生成输入，不猜测尺度。N_GLOBAL 只控制全局输出分辨率，不能据此判断是否启用全局剖面变化。
 
+## 热主离子与等效辅助物种
+
+在“输入准备与转换 → Transfer_tool 运行”选择“仅保留主离子和等效杂质”，再选择“辅助温度 → 温度随热主离子”，即使用热燃料稀释模型。重新生成半径输入后，在 CGYRO 扫描中选择 H / D / T，得到“电子 + 一种热主离子 + 一种等效辅助物种”。Transfer 生成阶段仍保留热 D / T 各自的参数，BASE 也保留这些热主离子；它们在 H/D/T 案例准备时合并。
+
+等效方案的主离子需同时满足：源 `input.gacode` 中类型为 `therm`、电荷为 1、质量接近 H/D/T（原子质量单位 1/2/3，允许与整数相差小于 0.05），且所选半径区间平均 `ni/ne > 30%`。不按名称或温度猜测快离子。原始副本的准中性补偿也使用这一候选规则；所有粒子先保留，校正后再识别最终主离子。因此快 D/T、少量 H/D/T、Be、Ni、He 等都进入辅助组，不会加入热主离子密度。没有符合条件的热主离子时停止，不能把高密度快离子当作回退。其他粒子处理方案保留原识别规则。
+
+每个局部半径按辅助组计算 `C1=sum(Zj*nj)`、`C2=sum(Zj**2*nj)`，设 `Zz=C2/C1`、`nz=C1**2/C2`、`mz=sum(nj*mj)/nz`。辅助密度梯度为 `gnz=sum(Zj*nj*gnj)/C1`；这些 Z、质量在每次局部计算内视为常数。热主离子保留校正后的稀释份额，**不补成 ni/ne=1**。Zeff 由完整组成计算，不使用源文件的独立 z_eff 字段。
+
+辅助温度有两种约定：
+
+| 界面选项 | 温度与温度梯度 | 压力处理 |
+| --- | --- | --- |
+| 保留原总压力（默认） | `Tz=sum(nj*Tj)/nz`；`gTz=sum(nj*Tj*(gnj+gTj))/sum(nj*Tj)-gnz` | 保留辅助组压力及其梯度 |
+| 温度随热主离子 | `Tz=Tm=sum(ni*Ti)/sum(ni)`；`gTz=gTm` | 保留电荷、Zeff 贡献、质量和电荷密度梯度；总压力随新温度改变 |
+
+热主离子温度不同时，`gnm=sum(ni*gni)/sum(ni)`、`gTm=sum(ni*Ti*(gni+gTi))/sum(ni*Ti)-gnm`。该定义与 H/D/T 合并共用同一物理约定；不能简单平均温度梯度。CGYRO 还原原生有效曲率后保留辅助组电荷密度二阶导数，温度随热主离子时采用合并热主离子的温度二阶导数，随后恢复有效曲率。最后复查密度、密度梯度与二阶密度准中性，同步已存在的 SBETA / P_PRIME_LOC；电子量、原平衡几何和碰撞模型沿用输入。此为局部等效模型，不是对热化后平衡的重新求解。
+
+H/D/T 扫描只改变合并热主离子的质量 0.5/1/1.5，辅助组采用同一套参数；显式设置其他扫描轴或固定参数时仍按用户设置执行。快粒子原来的高温及其完整动力学响应不保留，辅助物种仍有普通热压力。
+
+设置保存在 `PHYSICS/generation/equivalent_temperature`（`pressure` / `main_ion`），生成时冻结进 `OUTPUTS/Particle_processing/options`。局部记录 `local_inputs/input.cgyro_N/equivalent`（TGLF 同理）包含 `sources`、`thermal_main_reference`、最终 `parameters`、守恒项及残差、辅助组前后矩和 `total_pressure_change`。完整剖面图仍表示局部合成前的组成，最终等效物种以局部输入和这些记录为准。切换约定或从旧等效规则升级后需要重新运行 Transfer_tool，不改写历史结果。
+
+程序接口为 `equivalent_local_input(value, kind, main_count, expected_ions, rhostar=None, temperature_mode='pressure')`。`expected_ions` 使用本轮完整的粒子来源记录，不能仅传入电荷列表；温度选项从冻结记录传入，不从运行中的 GUI 重读。上述合并公式是模型约定；字段归一化遵循 [GACODE 参数定义](https://gacode.io/cgyro/cgyro_list.html#cgyro-dlnndr)，曲率遵循下述 expro 源码约定。
+
 ## 完整粒子组成的 Zeff 与剪切
 
 Transfer_tool 先在原始完整剖面的副本上做准中性校正，固定 ne 和非主离子密度，由初步识别的主离子按原比例承担电荷补偿，同时闭合密度梯度。此时不删除、合并、重排或热化任何粒子；原始载入文件不覆盖。然后在校正后的完整剖面上识别方案主离子，GUI 预览使用同一路径。“仅保留主离子和 Zeff”由此完整组成按 `sum(ni*Zi**2)/ne` 计算并保存 Zeff，不读取输入文件现成的 `z_eff`。再删除非主离子，将 Z=1 主离子的总密度补齐为 ne，并保持其相对比例，因此局部输入中的主离子密度和为 1。保留的 Zeff 按 rmin/a 使用与 expro 一致的自然三次样条，生成每个半径的 ZEFF / Z_EFF；不将其混入纯主离子剖面的电荷闭合。原始完整剖面的准中性记录、网格、计算公式、实际局部 Zeff 和模型均有独立记录。

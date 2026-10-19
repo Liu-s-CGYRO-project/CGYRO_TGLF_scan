@@ -1,4 +1,4 @@
-"""Replace all non-main ions by local charge/Zeff/mass/pressure moments.
+"""Replace non-main ions by an auxiliary species with an explicit thermal model.
 
 Native input.gacode cannot store a radially varying species charge or mass.
 Work on the generated local cards, after locpargen's integer-charge writer.
@@ -7,7 +7,8 @@ Each card retains its own density, temperature, mass and gradient units.
 from builtins import abs, any, dict, enumerate, float, int, len, list, max, range, str, zip
 import math
 import numpy as np
-from OMFITlib_transfer_particles import EQUIVALENT_RULE, TOLERANCE, close_local_input
+from OMFITlib_transfer_particles import (EQUIVALENT_RULE, EQUIVALENT_TEMPERATURES, TOLERANCE,
+                                        close_local_input, is_thermal_hydrogen)
 
 
 SCHEMAS = {
@@ -40,6 +41,17 @@ def locpargen_rhostar(path, cgyro):
     return result
 
 
+def _raw_curvatures(rows, rhostar):
+    """Undo CGYRO's effective gradient terms before summing physical moments."""
+    if rhostar is None or not math.isfinite(rhostar) or rhostar <= 0:
+        raise ValueError('等效杂质缺少原生 locpargen 的曲率归一化。')
+    gn = np.array([row['gn'] for row in rows])
+    gt = np.array([row['gt'] for row in rows])
+    sn = np.array([row['sn'] for row in rows]) - (1.5 * gt**2 + gn**2 - gn * gt) * rhostar
+    st = np.array([row['st'] for row in rows]) - gt**2 * rhostar
+    return sn, st
+
+
 def _curvatures(rows, charge_weights, pressure_weights, gn, gt, rhostar):
     """Preserve the local charge and pressure second derivatives.
 
@@ -48,12 +60,9 @@ def _curvatures(rows, charge_weights, pressure_weights, gn, gt, rhostar):
     Undo those terms, sum the physical moments, then apply the same convention.
     Z and MASS of the pseudo-species are constant within each local calculation.
     """
-    if rhostar is None or not math.isfinite(rhostar) or rhostar <= 0:
-        raise ValueError('等效杂质缺少原生 locpargen 的曲率归一化。')
+    raw_sn, raw_st = _raw_curvatures(rows, rhostar)
     gni = np.array([row['gn'] for row in rows])
     gti = np.array([row['gt'] for row in rows])
-    raw_sn = np.array([row['sn'] for row in rows]) - (1.5 * gti**2 + gni**2 - gni * gti) * rhostar
-    raw_st = np.array([row['st'] for row in rows]) - gti**2 * rhostar
     sn = float(np.dot(charge_weights, raw_sn))
     sp = float(np.dot(pressure_weights, raw_sn + raw_st - 2 * gni * gti * rhostar))
     st = sp - sn + 2 * gn * gt * rhostar
@@ -68,18 +77,48 @@ def _moments(rows):
     t = np.array([row['t'] for row in rows])
     gn = np.array([row['gn'] for row in rows])
     gt = np.array([row['gt'] for row in rows])
-    return dict(charge=float(np.dot(n, z)), zeff_numerator=float(np.dot(n, z**2)),
+    result = dict(charge=float(np.dot(n, z)), zeff_numerator=float(np.dot(n, z**2)),
                 mass=float(np.dot(n, mass)), pressure=float(np.dot(n, t)),
                 charge_gradient=float(np.dot(n * z, gn)),
                 pressure_gradient=float(np.dot(n * t, gn + gt)))
+    if any(not math.isfinite(number) for number in result.values()):
+        raise ValueError('局部粒子电荷、质量、压力或梯度矩溢出。')
+    return result
 
 
-def equivalent_local_input(value, kind, main_count, expected_ions, rhostar=None):
+def _main_temperature(mains, kind, rhostar):
+    """Temperature of the merged thermal fuel, consistent with H/D/T scans.
+
+    T_m = sum(n_i*T_i)/sum(n_i). Its logarithmic gradient is the total
+    pressure gradient minus the total density gradient, not a mean of gT_i.
+    The same product rule determines T_m'' when CGYRO curvatures are active.
+    """
+    n = np.array([row['n'] for row in mains])
+    p = n * np.array([row['t'] for row in mains])
+    density, pressure = float(np.sum(n)), float(np.sum(p))
+    if not math.isfinite(density) or not math.isfinite(pressure) or density <= 0 or pressure <= 0:
+        raise ValueError('热主离子总密度和热压力必须为有限正数。')
+    wn, wp = n / density, p / pressure
+    gn = float(np.dot(wn, [row['gn'] for row in mains]))
+    gt = float(np.dot(wp, [row['gn'] + row['gt'] for row in mains])) - gn
+    result = dict(n=density, t=pressure / density, gn=gn, gt=gt)
+    if kind == 'cgyro':
+        result.update(_curvatures(mains, wn, wp, gn, gt, rhostar))
+    if any(not math.isfinite(number) for number in result.values()):
+        raise ValueError('热主离子合并温度或导数溢出。')
+    return result
+
+
+def equivalent_local_input(value, kind, main_count, expected_ions, rhostar=None, temperature_mode='pressure'):
     """Mutate a newly generated card, returning per-radius auditable provenance."""
-    # First enforce native-interpolation closure; preserve these main populations.
-    closure = close_local_input(value, kind, main_count, expected_ions, rhostar)
     if kind not in SCHEMAS:
         raise ValueError('不支持的局部输入类型。')
+    if temperature_mode not in EQUIVALENT_TEMPERATURES.values():
+        raise ValueError('请选择有效的等效辅助物种温度方案。')
+    if any(not is_thermal_hydrogen(ion) for ion in expected_ions[:main_count]):
+        raise ValueError('等效方案的主离子必须为热 H/D/T，请重新生成输入。')
+    # First enforce native-interpolation closure; preserve these main populations.
+    closure = close_local_input(value, kind, main_count, expected_ions, rhostar)
     count_key, fields = SCHEMAS[kind]
     count = int(value[count_key])
     rows = [{name: float(value[prefix + str(index)]) for name, prefix in fields.items()}
@@ -92,15 +131,15 @@ def equivalent_local_input(value, kind, main_count, expected_ions, rhostar=None)
     electron = [row for row in rows if row['z'] < 0][0]
     mains, impurities = ions[:main_count], ions[main_count:]
     before = _moments(impurities)
+    total_pressure_before = _moments(rows)['pressure']
+    reference = _main_temperature(mains, kind, rhostar) if temperature_mode == 'main_ion' else None
     record = dict(rule=EQUIVALENT_RULE, sources=[dict(ion, local=dict(row))
                   for ion, row in zip(expected_ions[main_count:], impurities)],
                   before=before, parameters=None, stage='local_input',
+                  temperature_mode=temperature_mode, thermal_main_reference=reference,
                   mass_units='deuterium_reference_mass', density_units='local_reference_density',
                   temperature_units='local_reference_temperature',
                   gradient_units='native_local_normalization', rhostar=rhostar)
-    if not impurities:
-        closure['equivalent'] = record
-        return closure
     charge, charge2 = before['charge'], before['zeff_numerator']
     effective = None
     if charge > 0:
@@ -111,12 +150,22 @@ def equivalent_local_input(value, kind, main_count, expected_ions, rhostar=None)
         t = before['pressure'] / n
         gn = before['charge_gradient'] / charge
         gt = before['pressure_gradient'] / before['pressure'] - gn
+        if reference is not None:
+            t, gt = reference['t'], reference['gt']
         effective = dict(z=z, n=n, mass=mass, t=t, gn=gn, gt=gt)
         weights_q = np.array([row['n'] * row['z'] for row in impurities]) / charge
         weights_p = np.array([row['n'] * row['t'] for row in impurities]) / before['pressure']
         weights_m = np.array([row['n'] * row['mass'] for row in impurities]) / before['mass']
         if kind == 'cgyro':
-            effective.update(_curvatures(impurities, weights_q, weights_p, gn, gt, rhostar))
+            if reference is None:
+                effective.update(_curvatures(impurities, weights_q, weights_p, gn, gt, rhostar))
+            else:
+                # Preserve auxiliary charge n''; its T'' now follows thermal
+                # fuel. Copying the old effective sn would break charge closure
+                # because sn contains gT-dependent corrections.
+                raw_sn, _ = _raw_curvatures(impurities, rhostar)
+                effective['sn'] = float(np.dot(weights_q, raw_sn)) + (1.5 * gt**2 + gn**2 - gn * gt) * rhostar
+                effective['st'] = reference['st']
         else:
             # Native locpargen uses a common rotation; the mass weighting also
             # preserves the momentum moment if the populations differ.
@@ -124,7 +173,6 @@ def equivalent_local_input(value, kind, main_count, expected_ions, rhostar=None)
             effective['dv'] = float(np.dot(weights_m, [row['dv'] for row in impurities]))
         if any(not math.isfinite(number) for number in effective.values()):
             raise ValueError('等效杂质参数溢出，已停止生成。')
-        record['parameters'] = dict(effective)
     else:
         record['note'] = '此半径的非主离子密度全部为零，不新增空杂质。'
     new_ions = mains + ([effective] if effective is not None else [])
@@ -138,10 +186,22 @@ def equivalent_local_input(value, kind, main_count, expected_ions, rhostar=None)
         for name, prefix in fields.items():
             value[prefix + str(index)] = float(row[name])
     closure = close_local_input(value, kind, main_count, [dict(charge=row['z']) for row in new_ions], rhostar)
-    after = _moments([effective] if effective is not None else [])
-    residuals = {name: abs(after[name] - before[name]) / max(1.0, abs(before[name])) for name in before}
+    # Inspect final fields after closure and pressure-derivative synchronization.
+    final_rows = [{name: float(value[prefix + str(index)]) for name, prefix in fields.items()}
+                  for index in range(1, int(value[count_key]) + 1)]
+    final_auxiliary = [row for row in final_rows if row['z'] > 0][main_count:]
+    after = _moments(final_auxiliary)
+    # Thermalizing the auxiliary group intentionally changes pressure. Do not
+    # mistake that model choice for a failed conservation check or hide it.
+    conserved = list(before) if reference is None else ['charge', 'zeff_numerator', 'mass', 'charge_gradient']
+    residuals = {name: abs(after[name] - before[name]) / max(1.0, abs(before[name])) for name in conserved}
     if any(error > TOLERANCE for error in residuals.values()):
-        raise ValueError('等效杂质未满足电荷、Zeff、质量、压力或梯度约束，已停止生成。')
-    record.update(dict(after=after, residuals=residuals, output_ion_count=len(new_ions)))
+        raise ValueError('等效辅助物种未满足所选方案的守恒约束，已停止生成。')
+    total_pressure_after = _moments(final_rows)['pressure']
+    pressure_change = dict(before=total_pressure_before, after=total_pressure_after,
+                           relative=total_pressure_after / total_pressure_before - 1.0)
+    record.update(dict(after=after, residuals=residuals, conserved_moments=conserved,
+                       parameters=dict(final_auxiliary[0]) if final_auxiliary else None,
+                       total_pressure_change=pressure_change, output_ion_count=len(new_ions)))
     closure['equivalent'] = record
     return closure
