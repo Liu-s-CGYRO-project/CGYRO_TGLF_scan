@@ -21,7 +21,7 @@ DESCRIPTIONS = {
     'all': '保留全部离子及热 / 快类型，所有主离子按原密度比例共同校正准中性。',
     'thermalize': '同种热杂质合并；对应任一主离子的快离子独立保留，温度、环向及极向流速采用所选热杂质的值。缺少所需热离子时停止。此为热化近似，压力会改变。',
     'equivalent': '主离子限定为平均 ni/ne > 30% 的热 H/D/T；快离子及少量氢同位素与其他非主离子一起合成等效辅助物种。各半径保持辅助组电荷、Zeff 贡献、质量及电荷密度梯度，主离子保留稀释份额。辅助温度可保留原总压力或跟随热主离子；后者会改变总压力。H/D/T 扫描再合并热主离子。',
-    'separate_fast': '电子保留；平均 ni/ne > 30% 的热 H/D/T 合成一个主离子，其余 therm 粒子（含少量 H/D/T）合成等效杂质，全部 fast 粒子合成独立等效快粒子。各组分别保持电荷、Zeff 贡献、质量密度、压力，以及电荷和压力的局部导数；快粒子保留自身压力，不采用热主离子温度。主离子保留稀释份额，H/D/T 扫描只改其质量。无密度的辅助组省略。等效快粒子使用温度描述，不拟合慢化分布或各向异性。',
+    'separate_fast': '电子保留；平均 ni/ne > 30% 的热 H/D/T 合成一个主离子，其余 therm 粒子（含少量 H/D/T）合成等效热杂质，全部 fast 粒子合成独立等效快粒子。适用于原热杂质可近似与主离子热平衡的情形：热杂质温度及温度梯度随合并主离子，密度梯度保持其自身电荷密度梯度；各组保留电荷、Zeff 贡献和质量密度。快粒子独立保留本组压力及压力梯度。热杂质压力不再严格保持，记录总压力和总压力梯度差额，不通过其他物种或电子比压补偿。主离子保留稀释份额，H/D/T 扫描只改其质量。无密度的辅助组省略。等效快粒子使用温度描述，不拟合慢化分布或各向异性。',
     'main_only': '先对保留全部粒子的原始剖面副本做准中性校正，再计算完整组成的 Zeff（ΣniZi²/ne），不读取输入文件的 Zeff 字段。然后只保留电子及 Z=1 主离子，保持主离子比例并再次闭合电荷，局部归一化后主离子密度之和为 1。Zeff 仅表示杂质碰撞效应，不包含杂质响应或输运。CGYRO 使用所选 Lorentz 碰撞模型和 Z_EFF_METHOD=1。',
 }
 EQUIVALENT_TEMPERATURES = OrderedDict([
@@ -33,7 +33,7 @@ PARTICLE_DEFAULTS = {'particle_mode': 'all', 'thermal_reference_ion': 0,
 MAIN_ION_THRESHOLD = 0.30
 MAIN_ION_RULE = 'mean_ni_over_ne_after_source_neutrality_v2'
 EQUIVALENT_RULE = 'thermal_hdt_auxiliary_local_moments_v2'
-SEPARATE_FAST_RULE = 'merged_thermal_main_separate_impurity_fast_v1'
+SEPARATE_FAST_RULE = 'merged_thermal_main_thermal_impurity_fast_pressure_v2'
 LOCAL_EQUIVALENT_MODES = ('equivalent', 'separate_fast')
 NEUTRALITY_RULE = 'source_first_fixed_ne_density_gradient_curvature_v3'
 TOLERANCE = 1e-8

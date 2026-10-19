@@ -9,6 +9,7 @@ from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_transfer_particles import (PRESETS, DESCRIPTIONS, EQUIVALENT_TEMPERATURES, detect_main_ions,
                                         main_ion_label, species_label, thermal_reference_choices)
 from OMFITlib_transfer_zeff import ZEFF_COLLISIONS
+from OMFITlib_transfer_equivalent import pressure_audit_lines
 
 # compoundGUI is reserved by OMFIT and must not be reset through defaultVars.
 defaultVars(show_run_button=True)
@@ -153,6 +154,12 @@ if last_report.get('after', None):
         details.append('各半径辅助物种的 Z、密度、MASS、温度、梯度、来源与局部压力变化记录在 OUTPUTS/Particle_processing/local_inputs。')
         if last_report['options']['particle_mode'] == 'separate_fast':
             details.append('分组记录位于各局部输入的 equivalent/groups：main 为合并主离子，impurity 为热杂质，fast 为快粒子；solver_index 给出最终物种编号。')
+            audit = pressure_audit_lines(last_report.get('local_inputs', {}))
+            if audit:
+                details.append('上次局部输入简化前后（完整组成已先校正准中性）：P=ΣnT，G=ΣnT(gn+gT)，均采用该输入原生归一化。'
+                               '变化比例为差值/原值绝对值；原值为零时不定义比例。\n' + '\n'.join(audit))
+            else:
+                details.append('旧分组记录尚无总压力梯度检查；更新同温规则后需重新运行 Transfer_tool。')
     details.append('上次完整剖面阶段：密度残差 {:.2g}，梯度残差 {:.2g}；压力最大相对变化 {:.2%}（不含后续局部等效处理）。'.format(
         last_report.get('density_residual', 0.0), last_report.get('gradient_residual', 0.0),
         last_report.get('max_relative_pressure_change', 0.0)))
@@ -174,8 +181,9 @@ if physics['generation']['particle_mode'] == 'equivalent':
     OMFITx.Label(text, align='left', wraplength=840)
     OMFITx.Label('保留主离子稀释份额；快离子和少量 H/D/T 归入辅助组。', align='left', wraplength=840)
 if physics['generation']['particle_mode'] == 'separate_fast':
-    OMFITx.Label('电子 + 一个热主离子 + 等效杂质 + 等效快粒子', align='left', wraplength=840)
-    OMFITx.Label('各组分别保留原压力；H/D/T 扫描只改变热主离子的质量。', align='left', wraplength=840)
+    OMFITx.Label('电子 + 一个热主离子 + 等效热杂质 + 等效快粒子', align='left', wraplength=840)
+    OMFITx.Label('热杂质温度及温度梯度随主离子；快粒子独立保留压力及压力梯度。', align='left', wraplength=840)
+    OMFITx.Label('热杂质密度梯度由其电荷密度梯度确定；压力及梯度差额见方案帮助。', align='left', wraplength=840)
 if physics['generation']['particle_mode'] == 'main_only':
     OMFITx.Label('先校正完整剖面准中性并计算 Zeff，再保留主离子、归一化密度之和为 1。', align='left', wraplength=840)
     OMFITx.ComboBox(prefix + "['zeff_collision_model']", ZEFF_COLLISIONS, 'CGYRO 碰撞模型',

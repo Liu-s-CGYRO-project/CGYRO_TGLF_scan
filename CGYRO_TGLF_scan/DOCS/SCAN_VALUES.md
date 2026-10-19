@@ -87,37 +87,49 @@ H/D/T 扫描只改变合并热主离子的质量 0.5/1/1.5，辅助组采用同�
 
 ## 主离子、等效杂质与等效快粒子
 
-在“输入准备与转换 → Transfer_tool 运行 → 处理方案”选择 **“主离子 / 等效杂质 / 等效快粒子”**，重新运行 Transfer_tool。程序先对完整源剖面的副本做准中性处理，再在每个半径生成“电子 + 一种热主离子 + 一种等效杂质 + 一种等效快粒子”。这是独立方案，原先把所有非主离子合成一个辅助物种的方案仍可选。
+在“输入准备与转换 → Transfer_tool 运行 → 处理方案”选择 **“主离子 / 等效杂质 / 等效快粒子”**，重新运行 Transfer_tool。程序先对完整源剖面的副本做准中性处理，再在每个半径生成“电子 + 一种热主离子 + 一种等效热杂质 + 一种等效快粒子”。从 1.22.19 起，此方案假设热杂质与主离子近似热平衡，采用同温处理；快粒子独立保留压力。原先把所有非主离子合成一个辅助物种的方案仍可选。
 
 | 组别 | 来源 | 处理 |
 | --- | --- | --- |
 | 电子 | 原电子 | 密度、温度及梯度保留 |
 | 主离子 | 按上述规则识别的热 H/D/T | 全部合为一个，保留校正后的总密度份额和总热压力 |
-| 等效杂质 | 其余 `therm` 离子，包括低于主离子阈值的少量 H/D/T | 单独合成一个等效物种 |
+| 等效热杂质 | 其余 `therm` 离子，包括低于主离子阈值的少量 H/D/T | 保留电荷、Zeff 贡献和质量密度，温度及温度梯度随主离子 |
 | 等效快粒子 | 全部 `fast` 离子，包括快 D/T | 单独合成一个等效物种，保留本组压力 |
 
 按源文件的 `therm` / `fast` 标记分组，不根据名字或温度猜测。没有杂质或快粒子，或某个半径对应组的密度全部为零时，省略该辅助组；不添加零密度占位物种。主离子必须存在。空组可能使不同半径的物种总数不同，实际编号以该半径的记录为准。
 
-三组离子各自计算 `C1=sum(nj*Zj)`、`C2=sum(nj*Zj**2)`、`P=sum(nj*Tj)`，并采用：
+三组离子各自计算 `C1=sum(nj*Zj)`、`C2=sum(nj*Zj**2)`，先确定：
 
 ```text
 Zeq = C2 / C1
 neq = C1**2 / C2
 Meq = sum(nj*Mj) / neq
-Teq = P / neq
 gne = sum(nj*Zj*gnj) / C1
-gTe = sum(nj*Tj*(gnj+gTj)) / P - gne
 ```
 
-因此各组分别保持电荷密度、Zeff 贡献、质量密度、压力，以及电荷和压力的一阶局部导数。主离子均为 Z=1，因此合并密度就是密度之和，温度为密度加权值；不把主离子补成 `ni/ne=1`。BASE 使用密度加权的主离子质量。H/D/T 扫描只把该主离子的质量改为 0.5/1/1.5（氘质量归一化），等效杂质和等效快粒子保持一致；用户显式设置的其他扫描轴或固定参数照常生效。
+因此各组分别保持电荷密度、Zeff 贡献、质量密度和电荷密度梯度。温度采用不同约定：
 
-本方案始终分别保留各组压力，不使用“温度随热主离子”选项。快粒子等效温度由其本组的总压力和等效密度确定，可明显高于热主离子温度。Zeff 由准中性校正后的完整粒子组成计算，不使用源文件独立的 `z_eff` 值。CGYRO 还原有效曲率后分别保留各组电荷密度和压力的二阶导数，再恢复有效曲率；TGLF 的平行流速及流速剪切按质量密度加权。最后从实际写入字段复核组矩、密度及梯度准中性，CGYRO 同时复核曲率准中性；已有 SBETA / P_PRIME_LOC 同步压力导数。
+| 组别 | 温度 | 温度梯度 |
+| --- | --- | --- |
+| 主离子 | `Ti=sum(nj*Tj)/sum(nj)`，只使用热主离子 | `gTi=sum(nj*Tj*(gnj+gTj))/sum(nj*Tj)-gni` |
+| 等效热杂质 | `TZ=Ti` | `gTZ=gTi`；密度梯度仍使用杂质组自己的 `gne` |
+| 等效快粒子 | `Tf=sum(nj*Tj)/nf`，只使用快粒子组 | `gTf=sum(nj*Tj*(gnj+gTj))/sum(nj*Tj)-gnf` |
+
+主离子均为 Z=1，合并密度就是密度之和；不把主离子补成 `ni/ne=1`。温度梯度由合并温度的乘积 / 商求导规则确定，不直接平均各物种的温度梯度。BASE 使用密度加权的主离子质量。H/D/T 扫描只把该主离子的质量改为 0.5/1/1.5（氘质量归一化），等效杂质和等效快粒子保持一致；用户显式设置的其他扫描轴或固定参数照常生效。快粒子不并入热主离子，也不设为热主离子温度。
+
+热主离子和快粒子分别保持本组压力及压力梯度。热杂质同温后 `PZ_new=nZ*Ti`，`delta_PZ=nZ*Ti-sum(nj*Tj)`，压力梯度也一般改变，**不再要求热杂质或总压力矩守恒**。电子参数、电子 BETAE_UNIT / BETAE、热主离子温度和快粒子压力不用于补偿差额。Zeff 由准中性校正后的完整粒子组成计算，不使用源文件独立的 `z_eff` 值。
+
+CGYRO 还原有效曲率后，三组均保持自身电荷密度二阶导数；主离子和快粒子还保持压力二阶导数。热杂质温度二阶导数随合并主离子，但不保留原杂质压力二阶导数。恢复有效曲率时使用新的温度梯度，不能直接复用旧有效 SDLNNDR。TGLF 的平行流速及流速剪切仍按质量密度加权。最后从实际写入字段复核各组相应守恒项及温度约束，检查密度、密度梯度和 CGYRO 密度曲率准中性；已有 SBETA / P_PRIME_LOC 按改变后的粒子参数同步。这是更新派生压力导数，不是恢复旧压力或重新求解平衡。
+
+生成后控制台和“处理方案”旁的帮助逐半径列出 `P=sum(n*T)`、`G=sum(n*T*(gn+gT))` 的前后值、带符号差值与变化比例。比较基准是已经完成准中性校正、尚未合并的完整局部组成；P 和 G 使用该输入的原生归一化，G 表示相应长度归一化下的负压力径向导数。比例为 `(after-before)/abs(before)`；原值为零或比例无法有限表示时记为 `None`，仍保留实际差值，不伪造零变化。所有总变化必须等于热杂质组贡献的变化，否则停止生成。程序不设任意物理可接受阈值，也不自动补偿；若偏差不可忽略，应分别保留轻 / 重杂质（可用“保留所有粒子”），而不是强求单个杂质满足所有压力约束。
 
 CGYRO 的顺序为主离子、等效杂质（若有）、等效快粒子（若有）、电子；TGLF 为电子、主离子、等效杂质、等效快粒子。分数电荷和质量在 locpargen 完成后写入局部输入，避免原生完整剖面文件的整数电荷写出限制。原始完整剖面和已归档计算结果保留。
 
-设置为 `PHYSICS/generation/particle_mode='separate_fast'`，规则为 `merged_thermal_main_separate_impurity_fast_v1`。来源及最终参数保存在 `OUTPUTS/Particle_processing/local_inputs/input.cgyro_N/equivalent/groups`（TGLF 同理），三个键为 `main`、`impurity`、`fast`；每组有 `sources`、`before`、`after`、`parameters`、`residuals`、`omitted` 和最终 `solver_index`。局部输入自身的 `main_count=1` 用于 H/D/T 扫描，不能使用完整剖面阶段原有的主离子数量。程序接口为 `separate_fast_local_input(value, kind, main_count, expected_ions, rhostar=None)`。
+设置为 `PHYSICS/generation/particle_mode='separate_fast'`，规则更新为 `merged_thermal_main_thermal_impurity_fast_pressure_v2`；1.22.18 的旧生成结果需重新运行 Transfer_tool，不改写历史归档。来源及最终参数保存在 `OUTPUTS/Particle_processing/local_inputs/input.cgyro_N/equivalent/groups`（TGLF 同理），三个键为 `main`、`impurity`、`fast`；每组有 `sources`、`before`、`after`、`parameters`、`conserved_moments`、`residuals`、`temperature_residuals`、`pressure_change`、`pressure_gradient_change`、`omitted` 和最终 `solver_index`。热杂质守恒清单不包含压力及其导数。上层 `equivalent` 保存 `thermal_main_reference`、`total_pressure_change`、`total_pressure_gradient_change`、`pressure_budget_residuals` 和 `electron_beta`。局部输入自身的 `main_count=1` 用于 H/D/T 扫描，不能使用完整剖面阶段原有的主离子数量。程序接口仍为 `separate_fast_local_input(value, kind, main_count, expected_ions, rhostar=None)`。
 
 完整剖面图仍显示局部合成前的源粒子，局部快粒子压力和 KBM / BAE 热快驱动分组使用记录中的最终编号。原 ITG / ETG 解析估算依赖单个源热离子的剖面，不适用于此合并方案，界面会提示使用保留粒子的生成结果。等效物种仍是由温度描述的近似，保留上述矩不等于保留完整的慢化能谱、各向异性或各源物种独立响应。局部 Z、MASS 视为常量，不对相邻半径的等效 Z、MASS 作剖面求导。字段单位遵循 [input.gacode 定义](https://gacode.io/input_gacode.html)、[CGYRO 参数](https://gacode.io/cgyro/cgyro_list.html)及 [TGLF 参数](https://www.gacode.io/tglf/tglf_list.html)。
+
+热杂质同温是使用者选定的热平衡近似，不适用于所有原始剖面。[Brioschi 等，2025，§3.1](https://iris.cnr.it/retrieve/d03da7f0-3d8d-4167-a48c-6cffec546ace/Brioschi_2025_Nucl._Fusion_65_026054.pdf)对其分组的低 Z 和中高 Z 杂质也采用与主离子热化的假设；该文只支持此建模约定，不证明本程序单个等效杂质没有误差，也不作为本程序快粒子保压公式的数值验证。
 
 ## 完整粒子组成的 Zeff 与剪切
 

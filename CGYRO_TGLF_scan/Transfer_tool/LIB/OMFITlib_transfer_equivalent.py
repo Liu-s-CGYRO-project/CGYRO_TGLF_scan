@@ -246,13 +246,48 @@ def _group_moments(rows, kind, rhostar):
     return result
 
 
+def _moment_change(before, after):
+    """Record a signed change without inventing a percentage at a zero baseline."""
+    delta = after - before
+    if not math.isfinite(delta):
+        raise ValueError('粒子处理前后的压力或压力梯度差值溢出。')
+    relative = delta / abs(before) if before != 0 else None
+    if relative is not None and not math.isfinite(relative):
+        relative = None
+    return dict(before=before, after=after, delta=delta, relative=relative,
+                relative_definition='(after-before)/abs(before)')
+
+
+def pressure_audit_lines(local_inputs):
+    """Readable per-radius pressure audit shared by the console and GUI help.
+
+    Prefer CGYRO records to avoid listing both solver normalizations twice.
+    Old records without the gradient audit remain readable but cannot supply it.
+    """
+    records = [(name, item['equivalent']) for name, item in local_inputs.items()
+               if item.get('equivalent', {}).get('total_pressure_gradient_change', None) is not None]
+    cgyro = [(name, item) for name, item in records if str(name).startswith('input.cgyro_')]
+    lines = []
+    for name, record in cgyro or records:
+        parts = []
+        for key, label in (('total_pressure_change', 'P'), ('total_pressure_gradient_change', 'G')):
+            change = record[key]
+            relative = change['relative']
+            percent = '{:+.3%}'.format(relative) if relative is not None else '比例未定义'
+            parts.append('{} {:.6g} → {:.6g}，Δ={:+.6g}（{}）'.format(
+                label, change['before'], change['after'], change['delta'], percent))
+        lines.append(str(name) + '：' + '；'.join(parts))
+    return lines
+
+
 def separate_fast_local_input(value, kind, main_count, expected_ions, rhostar=None):
     """Generate electron + merged thermal fuel + impurity + fast populations.
 
     The source profile is already neutral. Repeat closure after locpargen's
     interpolation, then keep the three positive-charge groups disjoint. Native
-    cards have no therm/fast flag: retain the group identity in provenance and
-    the fast group's pressure in its own TEMP/TAUS, not in a thermalized group.
+    cards have no therm/fast flag: retain the group identity in provenance.
+    Thermal impurities follow the merged fuel temperature and its derivatives;
+    only that group's pressure may change. Fast pressure remains independent.
     """
     if kind not in SCHEMAS:
         raise ValueError('不支持的局部输入类型。')
@@ -264,6 +299,9 @@ def separate_fast_local_input(value, kind, main_count, expected_ions, rhostar=No
     rows = _local_rows(value, kind)
     ions = [row for row in rows if row['z'] > 0]
     electron = [row for row in rows if row['z'] < 0][0]
+    reference = _main_temperature(ions[:main_count], kind, rhostar)
+    beta_key = 'BETAE_UNIT' if kind == 'cgyro' else 'BETAE'
+    beta_before = value.get(beta_key, None)
     grouped = {'main': [], 'impurity': [], 'fast': []}
     for index, (ion, row) in enumerate(zip(expected_ions, ions)):
         group = 'main' if index < main_count else 'fast' if ion['kind'] == 'fast' else 'impurity'
@@ -272,7 +310,10 @@ def separate_fast_local_input(value, kind, main_count, expected_ions, rhostar=No
     for group, sources in grouped.items():
         group_rows = [source['local'] for source in sources]
         before = _group_moments(group_rows, kind, rhostar)
-        effective = _equivalent_species(group_rows, before, kind, rhostar)
+        # Only the thermal impurity group changes thermal model. Its density
+        # derivative still comes from its own charge moment, not the fuel's.
+        effective = _equivalent_species(group_rows, before, kind, rhostar,
+                                         reference=reference if group == 'impurity' else None)
         if group == 'main' and effective is None:
             raise ValueError('此半径的热主离子密度为零，无法生成合并主离子。')
         solver_index = None
@@ -284,22 +325,53 @@ def separate_fast_local_input(value, kind, main_count, expected_ions, rhostar=No
     # Exactly one main ion remains. This count belongs to this final card,
     # independently of the original profile's number of abundant D/T species.
     closure, final_rows = _write_local_species(value, kind, new_ions, electron, 1, rhostar)
+    final_electron = final_rows[-1] if kind == 'cgyro' else final_rows[0]
+    if final_electron != electron or value.get(beta_key, None) != beta_before:
+        raise ValueError('粒子分组合并不应修改电子参数或电子比压，已停止生成。')
     for group, record in groups.items():
         index = record['solver_index']
         final = [final_rows[index - 1]] if index is not None else []
         after = _group_moments(final, kind, rhostar)
         before = record['before']
-        residuals = {name: abs(after[name] - number) / max(1.0, abs(number)) for name, number in before.items()}
+        # Thermal equilibrium intentionally changes impurity pressure. Preserve
+        # its charge derivatives, but do not misreport its pressure as conserved.
+        changed = ('pressure', 'pressure_gradient', 'pressure_curvature') if group == 'impurity' else ()
+        conserved = [name for name in before if name not in changed]
+        residuals = {name: abs(after[name] - before[name]) / max(1.0, abs(before[name])) for name in conserved}
         if any(error > TOLERANCE for error in residuals.values()):
-            raise ValueError('粒子分组 {} 未保持电荷、Zeff、质量、压力及导数矩，已停止生成。'.format(group))
-        record.update(dict(after=after, residuals=residuals, conserved_moments=list(before),
+            raise ValueError('粒子分组 {} 未满足该组的守恒约束，已停止生成。'.format(group))
+        temperature_residuals = {}
+        if final and group in ('main', 'impurity'):
+            # Matching the same T profile also matches T'' in global CGYRO.
+            fields = ('t', 'gt', 'st') if kind == 'cgyro' else ('t', 'gt')
+            temperature_residuals = {name: abs(final[0][name] - reference[name]) / max(1.0, abs(reference[name]))
+                                     for name in fields}
+            if any(error > TOLERANCE for error in temperature_residuals.values()):
+                raise ValueError('热杂质和主离子的温度及其导数未满足同温约定，已停止生成。')
+        record.update(dict(after=after, residuals=residuals, conserved_moments=conserved,
+                           temperature_residuals=temperature_residuals,
+                           pressure_change=_moment_change(before['pressure'], after['pressure']),
+                           pressure_gradient_change=_moment_change(before['pressure_gradient'], after['pressure_gradient']),
                            parameters=dict(final[0]) if final else None))
-    before_pressure, after_pressure = _moments(rows)['pressure'], _moments(final_rows)['pressure']
+    before_total, after_total = _moments(rows), _moments(final_rows)
+    pressure_change = _moment_change(before_total['pressure'], after_total['pressure'])
+    gradient_change = _moment_change(before_total['pressure_gradient'], after_total['pressure_gradient'])
+    # Every total-pressure change must be attributable to the impurity model,
+    # rather than a hidden adjustment to main ions, fast pressure, or beta_e.
+    budget_residuals = {}
+    for name, change in (('pressure', pressure_change), ('pressure_gradient', gradient_change)):
+        impurity = groups['impurity']
+        expected = impurity['after'][name] - impurity['before'][name]
+        budget_residuals[name] = abs(change['delta'] - expected) / max(1.0, abs(before_total[name]), abs(expected))
+    if any(error > TOLERANCE for error in budget_residuals.values()):
+        raise ValueError('总压力或梯度变化超出热杂质同温处理的差额，已停止生成。')
     closure['equivalent'] = dict(rule=SEPARATE_FAST_RULE, groups=groups, stage='local_input',
         source_main_count=main_count, output_main_count=1, output_ion_count=len(new_ions),
-        source_neutrality=source_closure, rhostar=rhostar, temperature_mode='group_pressure',
+        source_neutrality=source_closure, rhostar=rhostar, temperature_mode='thermal_impurity_main_ion_fast_pressure',
+        thermal_main_reference=reference, pressure_budget_residuals=budget_residuals,
+        electron_beta=dict(parameter=beta_key, before=beta_before, after=value.get(beta_key, None)),
         mass_units='deuterium_reference_mass', density_units='local_reference_density',
         temperature_units='local_reference_temperature', gradient_units='native_local_normalization',
-        total_pressure_change=dict(before=before_pressure, after=after_pressure,
-                                   relative=after_pressure / before_pressure - 1.0))
+        pressure_definition='sum(n*T)', pressure_gradient_definition='sum(n*T*(gn+gt))',
+        total_pressure_change=pressure_change, total_pressure_gradient_change=gradient_change)
     return closure

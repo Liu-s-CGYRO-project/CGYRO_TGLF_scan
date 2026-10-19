@@ -6,6 +6,7 @@ from builtins import abs, max
 from OMFITlib_transfer_workflow import (discard_legacy_outputs, generation_issues, initialize_generation,
                                       prepare_tgyro, selected_profile)
 from OMFITlib_transfer_particles import main_ion_label, prepare_particles, species_label
+from OMFITlib_transfer_equivalent import pressure_audit_lines
 from OMFITlib_gui_layout import fix_console_layout
 
 fix_console_layout()
@@ -46,7 +47,8 @@ try:
     print('本轮主离子：' + '；'.join(main_ion_label(ion) for ion in report['main_ions']))
     if report['options']['particle_mode'] == 'separate_fast':
         print('各半径生成：电子、一个热主离子、等效热杂质和等效快粒子；无密度的辅助组省略。')
-        print('三组离子分别保留电荷、Zeff 贡献、质量密度和压力；快粒子的等效温度由本组压力确定。')
+        print('热杂质温度及温度梯度随合并主离子，密度梯度保持自身电荷密度梯度；快粒子独立保留压力及压力梯度。')
+        print('同温假设会改变热杂质压力，不调整主离子温度、快粒子压力或电子比压补偿。')
     elif report.get('equivalent_stage', None) == 'local_inputs':
         print('热 H/D/T 主离子保留稀释份额；全部非主离子（包括快离子）将在各半径合成等效辅助物种。')
         if report['options']['equivalent_temperature'] == 'main_ion':
@@ -66,8 +68,14 @@ try:
     root['SCRIPTS']['profiles_gen4input.py'].run()
     if report.get('equivalent_stage', None) == 'local_inputs':
         local_records = outputs['Particle_processing']['local_inputs']
-        changes = [abs(item['equivalent']['total_pressure_change']['relative']) for item in local_records.values()]
-        print('局部等效处理：总压力最大相对变化 {:.2%}；各半径参数、来源及压力变化已记录。'.format(max(changes, default=0.0)))
+        if report['options']['particle_mode'] == 'separate_fast':
+            print('同温处理前后检查：P=ΣnT，G=ΣnT(gn+gT)，采用局部输入原生归一化；差额仅来自热杂质。')
+            for line in pressure_audit_lines(local_records):
+                print(line)
+            print('各组及总量的前后值与差额均已记录。若偏差不可接受，请分别保留轻 / 重杂质；不自动补偿。')
+        else:
+            changes = [abs(item['equivalent']['total_pressure_change']['relative']) for item in local_records.values()]
+            print('局部等效处理：总压力最大相对变化 {:.2%}；各半径参数、来源及压力变化已记录。'.format(max(changes, default=0.0)))
     # Keep the plotted profile paired with this completed local-input set, even
     # after the input chooser is used again or the raw input is restored below.
     outputs['Particle_processing']['plot_profile'] = profile.duplicate()
