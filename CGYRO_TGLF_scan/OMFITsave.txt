@@ -235,6 +235,8 @@
 ['GUIS']['CGYRO_controls'] <-:-:-> OMFITpythonGUI <-:-:-> ./GUIS/CGYRO_controls.py <-:-:-> {}
 ['LIB'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['LIB']['OMFITlib_project'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project.py <-:-:-> {}
+['LIB']['OMFITlib_project_inputs'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_inputs.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_plan'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_plan.py <-:-:-> {}
 ['LIB']['OMFITlib_project_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_ui.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_results'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_results.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_parameters.py <-:-:-> {}

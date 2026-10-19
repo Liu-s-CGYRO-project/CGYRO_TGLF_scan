@@ -138,6 +138,12 @@ def validate_result(result):
 
 
 def run_selected(root, runner, action='all', factory=dict, progress=None):
+    """Validate the selection, prepare immutable inputs, then resume missing points.
+
+    Each attempt owns its input, result and diagnostics. The enclosing run and
+    point statuses describe the latest outcome; earlier errors stay in attempts
+    instead of remaining visible as errors after a successful resumption.
+    """
     settings, cases = initialize(root, factory)
     if shared_issues(root):
         raise ValueError('；'.join(shared_issues(root)))
@@ -184,6 +190,7 @@ def run_selected(root, runner, action='all', factory=dict, progress=None):
                     run.update(dict(status='prepare_failed', error=str(exc)))
                     raise
             if action != 'prepare':
+                run['status'] = 'running'
                 for point_id, point in run['points'].items():
                     if point['status'] == 'complete':
                         continue
@@ -194,12 +201,15 @@ def run_selected(root, runner, action='all', factory=dict, progress=None):
                     try:
                         runner.calculate(run, point, point_id, settings=settings)
                         point['status'] = 'complete'
+                        point.pop('error', None)
                     except Exception as exc:
                         point.update(dict(status='failed', error=str(exc)))
                         if not settings['continue_on_error']:
                             run['status'] = 'partial'
                             raise
                 run['status'] = 'complete' if all(p['status'] == 'complete' for p in run['points'].values()) else 'partial'
+                if run['status'] == 'complete':
+                    run.pop('error', None)
                 if run['status'] == 'partial':
                     total_failed += 1
         except KeyboardInterrupt:

@@ -24,6 +24,18 @@ from OMFITlib_compare_state import (
 
 
 class CaseSelection(ComparisonWidgets):
+    def _activate_pairing(self, owner, cgyro, tglf, field):
+        """A radius pairing belongs to both runs, even when rho labels match.
+
+        Each workflow stores pairings under its secondary model's selection
+        state. Source snapshots preserve that state, while this guard prevents
+        a different run of the other model from inheriting its pairings.
+        """
+        source = '{}|{}'.format(cgyro.get('runid', ''), tglf.get('result_source', ''))
+        if owner.get('_pairing_run', None) not in (None, source):
+            owner[field] = {}
+        owner['_pairing_run'] = source
+
     def _cgyro_radius_groups(self, cases):
         """Group isotope result keys under their original radial input."""
         groups = OrderedDict()
@@ -150,10 +162,7 @@ class CaseSelection(ComparisonWidgets):
         run, radii = self._choose_cgyro(cg, lambda *k: path('CGYRO', *k))
         labels = self._choice_labels(radii)
         results, rhos = self._choose_tglf(tg, lambda *k: path('TGLF', *k), select_radii=False)
-        pairing_source = '{}|{}'.format(cg.get('runid', ''), tg.get('result_source', ''))
-        if tg.get('_pairing_run', None) not in (None, pairing_source):
-            tg['rho_pair_flags'] = {}
-        tg['_pairing_run'] = pairing_source
+        self._activate_pairing(tg, cg, tg, 'rho_pair_flags')
         remap_pair_flags(tg, self._cgyro_case_aliases)
         selected = cg.get('nr_selected', [])
         pairs = tg.setdefault('rho_pair_flags', {})
@@ -176,6 +185,7 @@ class CaseSelection(ComparisonWidgets):
         cg, tg = state.setdefault('CGYRO', {}), state.setdefault('TGLF', {})
         results, _ = self._choose_tglf(tg, lambda *k: path('TGLF', *k))
         run, radii = self._choose_cgyro(cg, lambda *k: path('CGYRO', *k), select_radii=False)
+        self._activate_pairing(cg, cg, tg, 'rho_pair_cfg')
         pairs = cg.setdefault('rho_pair_cfg', {})
         paired_radii = []
         for rho in tg.get('rho_selected', []):

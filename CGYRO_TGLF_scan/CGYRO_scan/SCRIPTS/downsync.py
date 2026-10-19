@@ -1,19 +1,12 @@
-# this script is used to downsync those results after the calculation running is finished.
-# we will have two kinds of loading method, determined by iloadmthd
-from builtins import Exception, RuntimeError, ValueError, float, int, isinstance, len, list, set, str, tuple
+"""Collect only manifest-owned points, preserving partial and prior results.
+
+Probe completion before parsing outputs. The retry controller consumes probe
+failures separately from transport/reader errors and decides whether to rerun.
+"""
+from builtins import Exception, RuntimeError, ValueError, float, int, len, list, set, str
 import os
 import re
-from OMFITlib_cgyro_run_state import refresh_run_state
-
-
-def shell_quote(value):
-    return "'" + str(value).replace("'", "'\"'\"'") + "'"
-
-
-def output_text(value):
-    if isinstance(value, (list, tuple)):
-        return '\n'.join(output_text(item) for item in value)
-    return '' if value is None else str(value)
+from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, text_output as output_text
 
 
 def read_run_files(command):
@@ -158,22 +151,6 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
     return unique_points([point for point in parentdir if point in failed])
 
 
-def cfg_get(node, key, default=None):
-    try:
-        if key in node.keys():
-            return node[key]
-    except Exception:
-        pass
-    return default
-
-
-def cfg_str(node, key, default=''):
-    value = cfg_get(node, key, default)
-    if value is None:
-        return default
-    return str(value)
-
-
 def path_join(dirname, filename):
     dirname = str(dirname)
     if dirname.endswith('/') or dirname.endswith('\\'):
@@ -183,55 +160,7 @@ def path_join(dirname, filename):
     return os.path.join(dirname, filename)
 
 
-def runtime_abs_path(path):
-    path = str(path)
-    if path.startswith('/') or (len(path) > 2 and path[1] == ':' and path[2] in ['/', '\\']):
-        return path
-    return os.path.abspath(path)
-
-
-def looks_like_result_dir(path):
-    if not os.path.isdir(path):
-        return False
-    markers = [
-        'input.cgyro',
-        'out.cgyro.info',
-        'out.cgyro.freq',
-        'out.cgyro.time',
-        'run_log',
-    ]
-    for marker in markers:
-        if os.path.exists(path_join(path, marker)):
-            return True
-    return False
-
-
-def discover_local_result_dirs(workdir):
-    workdir = runtime_abs_path(workdir)
-    if not os.path.isdir(workdir):
-        return []
-    result_dirs = []
-    for name in sorted(os.listdir(workdir)):
-        if name.startswith('.') or name == '__pycache__':
-            continue
-        full_path = path_join(workdir, name)
-        if looks_like_result_dir(full_path):
-            result_dirs.append(name)
-    return result_dirs
-
-
-setup=root['SETTINGS']['SETUP']
-# iloadmthd=setup['iloadmthd'] # 0(default): OMFITcgyro, 1: OMFITgacode
-# outputs={'bin.cgyro.aparb':OMFITgacode,'bin.cgyro.phib':OMFITgacode,'bin.cgyro.bparb':OMFITgacode,\
-#                   'bin.cgyro.geo':OMFITgacode,'bin.cgyro.kxky_phi':OMFITgacode,'bin.cgyro.ky_flux':OMFITgacode,\
-#                   'bin.cgyro.restart':OMFITgacode,'bin.cgyro.restart.old':OMFITgacode,\
-#                   'input.cgyro':OMFITgacode,'input.cgyro.gen':OMFITgacode,\
-#                   'out.cgyro.freq':OMFITgacode,'out.cgyro.info':OMFITgacode,'out.cgyro.time':OMFITgacode,'out.cgyro.timing':OMFITgacode,\
-#                   'out.cgyro.egrid':OMFITgacode,'out.cgyro.equilibrium':OMFITgacode,'out.cgyro.grids':OMFITgacode,\
-#                   'out.cgyro.hosts':OMFITgacode,'out.cgyro.memory':OMFITgacode,'out.cgyro.mpi':OMFITgacode,\
-#                   'out.cgyro.prec':OMFITgacode,'out.cgyro.version':OMFITgacode,\
-#                   'out.cgyro.tag':OMFITgacode,'run_log':OMFITgacode
-#                  }
+setup = root['SETTINGS']['SETUP']
 icgyro=setup['icgyro']
 rmtsetup=root['SETTINGS']['REMOTE_SETUP']
 manifest = root.get('RUN_MANIFEST', None)

@@ -1,19 +1,26 @@
-"""Submit independent cases before waiting; retain every scheduler record."""
+"""Keep batch snapshots while one case occupies the live OMFIT branches.
+
+RUN_MANIFEST and Cases are the active view. RUN_HISTORY holds independent
+snapshots indexed by RUN_BATCH.tokens; switching that view must not mutate
+another case or lose its submitted job ID.
+"""
 from builtins import Exception, RuntimeError, ValueError, dict, len, list, print, range, str
 from contextlib import nullcontext
 from copy import deepcopy
-import re
 import time
-from OMFITlib_cgyro_run_state import linked_kill_local, refresh_run_state, slurm_wait, stop_message, stop_run
+from OMFITlib_cgyro_run_state import (linked_kill_local, pbs_wait, quote as shell_quote,
+                                    refresh_run_state, slurm_wait, stop_message, stop_run)
 
 
 def queue_records(root):
+    """Return only this batch's known snapshots in submission order."""
     history = root.get('RUN_HISTORY', {})
     return [(token, history[token]) for token in root.get('RUN_BATCH', {}).get('tokens', [])
             if token in history and history[token].get('manifest', None)]
 
 
 def save_current(root, factory=dict):
+    """Checkpoint the active case; drop duplicate payloads only after publish."""
     manifest = root.get('RUN_MANIFEST', {})
     batch = root.get('RUN_BATCH', {})
     if not batch.get('batch_id', '') or manifest.get('batch_id', '') != batch['batch_id']:
@@ -32,6 +39,7 @@ def save_current(root, factory=dict):
 
 
 def activate_run(root, token):
+    """Restore a batch snapshot before waiting, retrying, or collecting it."""
     entry = root['RUN_HISTORY'][token]
     if entry['manifest'].get('batch_id', '') != root['RUN_BATCH'].get('batch_id', ''):
         raise ValueError('The saved run belongs to another queue batch.')
@@ -80,6 +88,7 @@ def refresh_queue(root, ui, factory=dict, recover=None):
             if not manifest.get('job_id', '') and manifest.get('status', '') == 'failed':
                 continue  # A definite rejection did not create a server job.
             refresh_run_state(record_root, ui)
+            manifest.pop('sync_error', None)
         except Exception as exc:
             manifest['sync_error'] = str(exc)
             errors.append(str(manifest.get('case_id', token)) + ': ' + str(exc))
@@ -131,8 +140,8 @@ def wait_current(root, ui, factory=dict):
     job_id, token = str(manifest.get('job_id', '') or ''), str(manifest['run_token'])
     if scheduler == 'slurm':
         command = slurm_wait(job_id, token)
-    elif scheduler == 'pbs' and re.fullmatch(r'[0-9]+(?:\.[A-Za-z0-9._-]+)?', job_id):
-        command = ('while qstat ' + job_id + ' >/dev/null 2>&1; do sleep 30; done')
+    elif scheduler == 'pbs':
+        command = pbs_wait(job_id)
     else:
         raise ValueError('A recorded Slurm/PBS job is required before waiting.')
     batch = root.get('RUN_BATCH', {})
@@ -154,6 +163,8 @@ def wait_current(root, ui, factory=dict):
             if attempt < 2:
                 time.sleep(attempt + 1)
     manifest['wait_completed'] = code == 0
+    if code == 0:
+        manifest.pop('wait_error', None)
     if manifest.get('stop_requested', False):
         try:
             refresh_run_state(root, ui)
@@ -168,7 +179,3 @@ def wait_current(root, ui, factory=dict):
     if not manifest.get('stop_requested', False) and manifest.get('status', '') not in ('cancelled', 'failed'):
         manifest['status'] = 'submitted_or_finished'
     save_current(root, factory)
-
-
-def shell_quote(value):
-    return "'" + str(value).replace("'", "'\"'\"'") + "'"

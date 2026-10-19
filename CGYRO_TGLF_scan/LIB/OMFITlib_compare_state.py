@@ -42,7 +42,7 @@ SELECTION_KEYS = (
     'cgyro_radius_flag', 'cgyro_radius_selected',
     'para_flag', 'para_list_flag', 'selected_paras', 'selected_paras_2d',
     'rho_pair_flags', 'rho_pair_cfg', 'para_list_flag_by_nr',
-    'selected_paras_by_nr', '_selector_keys',
+    'selected_paras_by_nr', '_selector_keys', '_pairing_run',
 )
 
 
@@ -114,6 +114,8 @@ def selected_items(flags, items):
 def activate_source(state, source):
     """Switch only selection state, retaining a small snapshot per run/source.
 
+    Pairing identity travels with its flags, so restoring a source does not
+    incorrectly validate those flags against another model's current run.
     Plot styling and user-edited scientific settings remain outside these snapshots.
     The first visit adopts legacy saved selections instead of erasing them.
     """

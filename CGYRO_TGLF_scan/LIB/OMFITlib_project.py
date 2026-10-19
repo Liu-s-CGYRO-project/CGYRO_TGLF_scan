@@ -1,14 +1,23 @@
 """Project navigation, explicit input handoffs and run prerequisites.
 
+Input primitives live in project_inputs; CGYRO source/scan preflight lives in
+cgyro_plan. This module keeps the public facade and explicit action boundary.
 Reading the dashboard never submits jobs, inspects large result arrays, or
-replaces inputs. All mutations below are explicit button actions.
+replaces inputs. Selection migration is handled by the planning helpers.
 """
 from OMFITlib_plot_sources import run_choices
+# Keep these imports as compatibility exports for existing GUIs and saved scripts.
+# New helpers depend on data/parameters only, never back on this action layer.
+from OMFITlib_project_inputs import (read, text_value, location, input_digest,
+    transfer_parameter_value, pending_inputs, input_difference, validate_input, transfer_upstream_digest)
+from OMFITlib_cgyro_plan import (ISOTOPE_MASSES, ION_CASES, sync_cgyro_ion_cases,
+    cgyro_ion_mode, cgyro_scan_axes, cgyro_plan_summary, cgyro_sources, sync_cgyro_choices,
+    cgyro_plan_issues, cgyro_input_issues, _cgyro_case_id, _cgyro_main_indices,
+    _cgyro_case_input, _original_ion_label, _cgyro_radius_number, _generated_particle_record)
 from builtins import abs, all, any, bool, dict, enumerate, float, int, isinstance, iter, len, list, next, ord, range, set, sorted, str, sum, tuple
 import ast
 import copy
 from datetime import datetime, timezone
-import hashlib
 import json
 import math
 import os
@@ -25,10 +34,10 @@ from OMFITlib_tglf_workbench import (PROFILE_PATH, RADII, initialize as initiali
     fully_failed, generation_overrides, input_rows as tglf_rows, plan as tglf_plan)
 from OMFITlib_tglf_multi_data import profile_digest, profile_info, tgyro_input
 from OMFITlib_transfer_particles import particle_options
-from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters, initialize_parameters,
-    numeric_source, parameter_catalog, parameter_value, scan_parameter_names, validated_overrides, validate_zeff)
-from OMFITlib_cgyro_scan_values import ky_values, scan_axes as configured_scan_axes
-from OMFITlib_cgyro_isotopes import isotope_input, remap_physics
+from OMFITlib_cgyro_parameters import (initialize_parameters,
+    numeric_source, parameter_catalog)
+from OMFITlib_cgyro_scan_values import scan_axes as configured_scan_axes
+from OMFITlib_cgyro_isotopes import remap_physics
 from OMFITlib_cgyro_run_state import stop_message
 from OMFITlib_cgyro_queue import activate_run, pending_runs, queue_records, queue_summary, save_current
 from OMFITlib_cgyro_retry import retry_limit
@@ -48,149 +57,12 @@ PAGES = OrderedDict([
 DEFAULTS = {'page': 'overview', 'runtime_module': 'cgyro', 'transfer_source': '',
             'cgyro_file': '', 'tglf_file': '', 'cgyro_source_mode': 'generated', 'cgyro_scan_page': 'input',
             'message': ''}
-ISOTOPE_MASSES = OrderedDict([('H', 0.5), ('D', 1.0), ('T', 1.5)])
-ION_CASES = OrderedDict([('BASE', '原始'), ('H', 'H'), ('D', 'D'), ('T', 'T')])
 ERROR_NOTICE_SUFFIX = '，详情见“操作历史”。'
 
 
 def error_notice(title, cancelled=False):
     title = (str(title).splitlines() or ['操作'])[0][:80]
     return title + ('：已中止' if cancelled else '：失败') + ERROR_NOTICE_SUFFIX
-
-
-def sync_cgyro_ion_cases(settings, factory=dict):
-    """Create the unified original/H/D/T case selector and migrate old settings."""
-    cases = settings.get('cgyro_ion_cases', None)
-    if not hasattr(cases, 'keys'):
-        cases = factory()
-        settings['cgyro_ion_cases'] = cases
-    if not cases:
-        legacy_mode = settings.get('cgyro_scan_mode', 'isotope')
-        legacy = settings.get('cgyro_isotopes', {})
-        cases['BASE'] = legacy_mode == 'radius'
-        for isotope in ISOTOPE_MASSES:
-            cases[isotope] = legacy_mode != 'radius' and bool(legacy.get(isotope, True))
-    for key in ION_CASES:
-        cases.setdefault(key, False)
-    for key in list(cases.keys()):
-        if key not in ION_CASES:
-            cases.pop(key)
-    return cases
-
-
-def cgyro_ion_mode(settings):
-    cases = sync_cgyro_ion_cases(settings)
-    selected = [key for key in ION_CASES if cases.get(key, False)]
-    return 'original' if selected == ['BASE'] else ('hdt' if selected == ['H', 'D', 'T'] else 'custom')
-
-
-def cgyro_scan_axes(root, source=None):
-    """Resolve axes against an input; relative ranges follow each input's values."""
-    node = read(root, MODULES['cgyro'])
-    if node is None:
-        raise ValueError('工程缺少 CGYRO_scan 模块。')
-    setup, physics = node['SETTINGS']['SETUP'], node['SETTINGS']['PHYSICS']
-    dimensions = int(setup.get('idimrun', 1))
-    if source is None:
-        settings = read(root, ('SETTINGS', 'WORKBENCH'), {})
-        rows = sync_cgyro_choices(root, settings)
-        selected = [row for row in rows if settings.get('cgyro_radii', {}).get(row['key'], False)]
-        source = read(root, (selected or rows)[0]['path'], {}) if rows else {}
-    return dimensions, configured_scan_axes(physics, dimensions, source), ky_values(physics)
-
-
-def cgyro_plan_summary(root):
-    """Count input cases and flat scan tasks without opening result objects."""
-    settings = read(root, ('SETTINGS', 'WORKBENCH'), {})
-    rows = sync_cgyro_choices(root, settings)
-    selected = [row for row in rows if bool(settings.get('cgyro_radii', {}).get(row['key'], False))]
-    ion_cases = sum(1 for key in ION_CASES
-                    if bool(sync_cgyro_ion_cases(settings).get(key, False)))
-    dimensions, axes, ky = cgyro_scan_axes(root)
-    points_per_case = len(ky)
-    for axis in axes:
-        points_per_case *= len(axis['values'])
-    cases = len(selected) * ion_cases
-    return dict(dimensions=dimensions, axes=axes, ky=len(ky), cases=cases,
-                points_per_case=points_per_case, total_points=cases * points_per_case)
-
-
-def _cgyro_case_id(row, ion_case):
-    rho = 'unknown' if row.get('rho', None) is None else '{:.8g}'.format(float(row['rho']))
-    return 'nr={}__rho={}__ion={}'.format(row['nr'], rho, ion_case)
-
-
-def read(node, path, default=None):
-    try:
-        for key in path:
-            node = node[key]
-        return node
-    except (KeyError, TypeError, AttributeError):
-        return default
-
-
-def text_value(node, key):
-    try:
-        value = node.get(key, None)
-        return '' if value is None else str(value).strip()
-    except Exception:
-        return ''  # An invalid OMFITexpression is reported as unresolved.
-
-
-def location(path):
-    return 'root' + ''.join('[{!r}]'.format(key) for key in path)
-
-
-def input_digest(value):
-    def plain(item):
-        if hasattr(item, 'keys'):
-            return {str(key): plain(item[key]) for key in item.keys()}
-        if hasattr(item, 'tolist'):
-            return plain(item.tolist())
-        if isinstance(item, (list, tuple)):
-            return [plain(part) for part in item]
-        return item
-    payload = json.dumps(plain(value), sort_keys=True, ensure_ascii=True, allow_nan=False)
-    return hashlib.sha256(payload.encode()).hexdigest()
-
-
-def transfer_parameter_value(code, name, raw, original):
-    """Parse a scalar input value without evaluating expressions."""
-    text = str(raw).strip()
-    if hasattr(original, 'tolist'):
-        original = original.tolist()
-    if isinstance(original, bool):
-        booleans = {'true': True, '.true.': True, '.t.': True, '1': True,
-                    'false': False, '.false.': False, '.f.': False, '0': False}
-        if text.lower() not in booleans:
-            raise ValueError(name + ' 请填写 true / false 或 1 / 0。')
-        return booleans[text.lower()]
-    if isinstance(original, str):
-        value = ast.literal_eval(text) if text.startswith(('\"', "'")) else text
-        if not isinstance(value, str) or any(char in value for char in '\n\r'):
-            raise ValueError(name + ' 请填写单行文本。')
-        return value
-    if not isinstance(original, (int, float)):
-        raise ValueError(name + ' 不是可直接编辑的标量参数。')
-    text = text.replace('D', 'e').replace('d', 'e')
-    if code == 'cgyro':
-        return parameter_value(name, text)
-    try:
-        number = float(text)
-    except (TypeError, ValueError, OverflowError):
-        raise ValueError(name + ' 请填写有效数值。')
-    if not math.isfinite(number):
-        raise ValueError(name + ' 必须为有限数值。')
-    if (name in ('NS', 'NKY', 'NMODES', 'NBASIS_MIN', 'NBASIS_MAX', 'SAT_RULE')
-            or name.endswith(('_FLAG', '_MODEL', '_METHOD'))) and not number.is_integer():
-        raise ValueError(name + ' 必须为整数。')
-    return int(number) if number.is_integer() else number
-
-
-def pending_inputs(root, destination=None):
-    return {key: value for key, value in read(root, ('PROJECT_STATE', 'activity'), {}).items()
-            if value.get('status', None) == 'awaiting_choice' and
-            (destination is None or value.get('destination', 'tglf') == destination)}
 
 
 def tglf_input_issues(root):
@@ -204,240 +76,6 @@ def tglf_input_issues(root):
     except (TypeError, ValueError) as exc:
         return [str(exc)]
     return []
-
-
-def input_difference(current, incoming):
-    rows = []
-    for key in sorted(set(current.keys()) | set(incoming.keys()), key=str):
-        before, after = key in current, key in incoming
-        if before and after and input_digest(current[key]) == input_digest(incoming[key]):
-            continue
-        rows.append((str(key), '变化' if before and after else ('新增' if after else '移除'),
-                     str(current[key]) if before else '—', str(incoming[key]) if after else '—'))
-    return rows
-
-
-def validate_input(value, kind):
-    required = ('N_SPECIES', 'N_RADIAL', 'N_THETA', 'Q', 'RMIN', 'RMAJ') if kind == 'cgyro' else ('NS', 'KY')
-    missing = [key for key in required if key not in value.keys()]
-    if missing:
-        raise ValueError('input.{} 缺少：{}'.format(kind, ', '.join(missing)))
-    for key in (('N_SPECIES', 'N_RADIAL', 'N_THETA') if kind == 'cgyro' else ('NS',)):
-        number = float(value[key])
-        if not math.isfinite(number) or number < 1 or int(number) != number:
-            raise ValueError(key + ' 必须为正整数')
-    input_digest(value)
-
-
-def transfer_upstream_digest(root):
-    values = {}
-    for path in [('Transfer_file', 'input.gacode'), ('Transfer_file', 'input.tglf'),
-                 ('INPUTS', 'input.gacode'), ('INPUTS', 'input.tglf'), ('INPUTS', 'input.tgyro'),
-                 ('OUTPUTS', 'Profiles_gen', 'input.gacode'),
-                 ('SETTINGS', 'PHYSICS', 'generation')]:
-        value = read(root, ('Transfer_tool',) + path)
-        if value is not None:
-            values['/'.join(path)] = input_digest(value)
-    return input_digest(values)
-
-
-def _cgyro_radius_number(name, fallback):
-    try:
-        value = int(str(name).rsplit('_', 1)[1])
-        return value if value > 0 else fallback
-    except (IndexError, TypeError, ValueError):
-        return fallback
-
-
-def cgyro_sources(root):
-    """Return the complete radial CGYRO input set, in Transfer_tool order."""
-    settings = read(root, ('SETTINGS', 'WORKBENCH'), {})
-    mode = settings.get('cgyro_source_mode', 'generated')
-    generated = read(root, ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'), {})
-    imported = read(root, ('Transfer_tool', 'Transfer_file'), {})
-    branch, prefix = ({}, ())
-    if mode == 'current':
-        branch, prefix = read(root, MODULES['cgyro'] + ('INPUTS',), {}), MODULES['cgyro'] + ('INPUTS',)
-    elif mode == 'imported' and 'input.cgyro' in imported:
-        branch, prefix = imported, ('Transfer_tool', 'Transfer_file')
-    elif mode == 'imported':
-        return []
-    elif any(str(key).startswith('input.cgyro_') for key in generated.keys()):
-        branch, prefix = generated, ('Transfer_tool', 'OUTPUTS', 'Profiles_gen')
-    elif 'input.cgyro' in imported:
-        branch, prefix = imported, ('Transfer_tool', 'Transfer_file')
-    else:
-        inputs = read(root, ('Transfer_tool', 'INPUTS'), {})
-        if 'input.cgyro' in inputs:
-            branch, prefix = inputs, ('Transfer_tool', 'INPUTS')
-    rows = []
-    keys = [key for key in branch.keys()
-            if str(key) == 'input.cgyro' or str(key).startswith('input.cgyro_')]
-    keys = sorted(keys, key=lambda key: (_cgyro_radius_number(key, 1), str(key)))
-    for fallback, key in enumerate(keys, 1):
-        value = branch[key]
-        nr = _cgyro_radius_number(key, fallback)
-        if mode == 'current' and str(key) == 'input.cgyro':
-            stored = read(root, MODULES['cgyro'] + ('SETTINGS', 'PHYSICS'), {})
-            try:
-                nr = int(stored.get('nr', nr))
-            except (TypeError, ValueError):
-                pass
-            if nr < 1:
-                nr = fallback
-        try:
-            rho_value = (read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'local_inputs',
-                                    str(key), 'rho'))
-                         if prefix == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen') else None)
-            if rho_value is None:
-                rho_value = value.get('rho', None)  # Read legacy metadata before sanitizing the run copy.
-            if mode == 'current' and str(key) == 'input.cgyro' and rho_value is None:
-                rho_value = stored.get('rho', None)
-            rho = float(rho_value)
-            if not math.isfinite(rho):
-                rho = None
-        except (AttributeError, TypeError, ValueError, OverflowError):
-            rho = None
-        rows.append(dict(key=str(key), nr=nr, rho=rho, path=prefix + (key,)))
-    return rows
-
-
-def sync_cgyro_choices(root, settings, factory=dict):
-    sync_cgyro_ion_cases(settings, factory)
-    radii = settings.setdefault('cgyro_radii', factory())
-    rows = cgyro_sources(root)
-    available = [row['key'] for row in rows]
-    for key in available:
-        radii.setdefault(key, True)
-    for key in list(radii.keys()):
-        if key not in available:
-            radii.pop(key)
-    return rows
-
-
-def _generated_particle_record(root):
-    physics = read(root, ('Transfer_tool', 'SETTINGS', 'PHYSICS'), {})
-    previous = read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'options'))
-    if previous is None:
-        return None, None
-    return particle_options(physics.get('generation', {})), previous
-
-
-def _cgyro_main_indices(root, source, source_path):
-    count = int(float(source['N_SPECIES']))
-    if source_path[:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
-        main_count = read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'main_count'))
-        try:
-            main_count = int(main_count)
-        except (TypeError, ValueError):
-            raise ValueError('Transfer_tool 结果缺少主离子记录，请重新运行。')
-        if main_count < 1 or main_count >= count:
-            raise ValueError('Transfer_tool 主离子记录无效，请重新运行。')
-        return list(range(1, main_count + 1))
-    electron_density = 1.0
-    for index in range(1, count + 1):
-        if float(source.get('Z_' + str(index), 0.0)) < 0:
-            electron_density = float(source.get('DENS_' + str(index), 1.0))
-            break
-    if electron_density <= 0:
-        raise ValueError('input.cgyro 的电子密度必须为正数。')
-    result = [index for index in range(1, count + 1)
-              if float(source.get('Z_' + str(index), 0.0)) > 0 and
-              float(source.get('DENS_' + str(index), 0.0)) / electron_density > 0.30]
-    if not result:
-        raise ValueError('input.cgyro 中没有密度占电子密度 30% 以上的主离子。')
-    return result
-
-
-def _cgyro_case_input(root, row, source, ion_case, physics, dimensions):
-    """Use the same transformed card and settings for preflight and submission."""
-    provenance = None
-    case_physics = physics
-    if ion_case in ISOTOPE_MASSES:
-        local = read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'local_inputs', row['key']), {})
-        scale = (local.get('rhostar', local.get('equivalent', {}).get('rhostar', None))
-                 if row['path'][:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen') else None)
-        scanned = scan_parameter_names(physics, dimensions)
-        overrides = validated_overrides(physics, [source], scanned)
-        global_values = [parameter['values'] for axis in configured_scan_axes(physics, dimensions, source)
-                         for parameter in [axis] + axis.get('linked', []) if parameter['name'] == 'GLOBAL_FLAG']
-        global_curvature = (any(number > 0 for number in global_values[0]) if global_values else
-                            float(overrides.get('GLOBAL_FLAG', source.get('GLOBAL_FLAG', 0))) > 0)
-        value, provenance = isotope_input(source, ISOTOPE_MASSES[ion_case],
-            _cgyro_main_indices(root, source, row['path']), scale, global_curvature)
-        case_physics = remap_physics(physics, dimensions, provenance['index_map'])
-    else:
-        value = source.duplicate() if hasattr(source, 'duplicate') else copy.deepcopy(source)
-    if 'rho' in value:
-        del value['rho']
-    fixed = apply_parameters(value, case_physics, dimensions)
-    return value, case_physics, provenance, fixed
-
-
-def _original_ion_label(source, main_indices):
-    labels = []
-    known = ((0.5, 'H'), (1.0, 'D'), (1.5, 'T'))
-    for index in main_indices:
-        if abs(float(source.get('Z_' + str(index), 0.0)) - 1.0) > 1e-8:
-            continue
-        mass = float(source.get('MASS_' + str(index), 0.0))
-        label = next((name for value, name in known if abs(mass - value) <= 0.08), None)
-        label = label or 'M{:g}'.format(mass)
-        if label not in labels:
-            labels.append(label)
-    return '+'.join(labels) if labels else 'BASE'
-
-
-def cgyro_plan_issues(root):
-    settings = read(root, ('SETTINGS', 'WORKBENCH'), {})
-    runid = text_value(read(root, MODULES['cgyro'] + ('SETTINGS', 'EXPERIMENT'), {}), 'runid')
-    if not runid:
-        return ['请填写结果集名称']
-    rows = sync_cgyro_choices(root, settings)
-    if not rows:
-        return ['请生成半径输入、导入文件或选择 CGYRO 当前输入']
-    if not any(bool(settings['cgyro_radii'].get(row['key'], False)) for row in rows):
-        return ['至少选择一个 nr']
-    ion_cases = sync_cgyro_ion_cases(settings)
-    if not any(bool(ion_cases.get(key, False)) for key in ION_CASES):
-        return ['至少选择一个主离子方案']
-    try:
-        dimensions = int(read(root, MODULES['cgyro'] + ('SETTINGS', 'SETUP', 'idimrun'), 1))
-        selected = [row for row in rows if settings['cgyro_radii'].get(row['key'], False)]
-        sources = [read(root, row['path']) for row in selected]
-        physics = read(root, MODULES['cgyro'] + ('SETTINGS', 'PHYSICS'))
-        initialize_parameters(physics, sources[0])
-        validated_overrides(physics, sources, scan_parameter_names(physics, dimensions))
-        chosen, previous = _generated_particle_record(root)
-        if rows[0]['path'][:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
-            if previous is None or input_digest(chosen) != input_digest(previous):
-                raise ValueError('粒子方案或半径设置已变化，请重新运行 Transfer_tool。')
-        for row in selected:
-            source = read(root, row['path'])
-            for ion_case in ION_CASES:
-                if not ion_cases.get(ion_case, False):
-                    continue
-                effective, case_physics, _, fixed = _cgyro_case_input(root, row, source, ion_case, physics, dimensions)
-                case_axes = configured_scan_axes(case_physics, dimensions, effective)
-                scan_names = scan_parameter_names(case_physics, dimensions)
-                for axis in case_axes:
-                    for parameter in [axis] + axis.get('linked', []):
-                        if parameter['name'] not in effective and parameter['name'] not in CGYRO_FIELDS:
-                            raise ValueError('nr={} 的 {} 输入没有参数 {}。'.format(row['nr'], ion_case, parameter['name']))
-                        effective[parameter['name']] = parameter['values'][0]
-                validate_input(effective, 'cgyro')
-                validate_zeff(effective, set(fixed) | scan_names,
-                              prescribed=float(source.get('Z_EFF_METHOD', 2)) == 1)
-        ky_values(physics)
-    except (KeyError, TypeError, ValueError, OverflowError) as exc:
-        return [str(exc)]
-    return []
-
-
-def cgyro_input_issues(root):
-    if pending_inputs(root, 'transfer'):
-        return ['请先处理 Transfer tool 的 TGLF 输入覆盖选择']
-    return cgyro_plan_issues(root)
 
 
 def collect_issues(root):
@@ -645,6 +283,11 @@ def summary(root):
 
 
 class ProjectActions:
+    """UI action boundary: validate, prepare copies, mutate, then record outcome.
+
+    The injected factory/readers/executor are native OMFIT services. Library
+    helpers must not capture a global root: callbacks can outlive a GUI render.
+    """
     def __init__(self, root, factory=dict, readers=None, resolve_server=None, workdir=None, register_server=None,
                  remote_execute=None, root_name='root'):
         self.root, self.factory = root, factory
@@ -907,19 +550,22 @@ class ProjectActions:
         node = module(self.root, 'cgyro')
         first = plan[0]
         active = batch[str(first['nr'])][first['ion_case']]
-        node['BATCH_INPUTS'] = batch
-        if install_first:
-            node['INPUTS']['input.cgyro'] = active.duplicate() if hasattr(active, 'duplicate') else copy.deepcopy(active)
-        self._record('准备 CGYRO 批量输入', status='ready', combinations=len(plan),
-                     batch_digest=input_digest(batch))
-        pipeline = self.root.setdefault('PROJECT_STATE', self.factory()).setdefault('pipeline', self.factory())
         marker = self.factory()
+        # Resolve metadata against the original sources before installing the
+        # first isotope copy (especially when source_mode is 'current').
         scan = cgyro_plan_summary(self.root)
         marker.update(dict(status='ready', inputs=records,
                            upstream_digest=transfer_upstream_digest(self.root),
                            batch_digest=input_digest(batch), combinations=len(plan),
                            scan_axes=copy.deepcopy(scan['axes']),
                            points_per_case=scan['points_per_case'], total_points=scan['total_points']))
+        active_copy = (active.duplicate() if hasattr(active, 'duplicate') else copy.deepcopy(active)) if install_first else None
+        node['BATCH_INPUTS'] = batch
+        if install_first:
+            node['INPUTS']['input.cgyro'] = active_copy
+        self._record('准备 CGYRO 批量输入', status='ready', combinations=len(plan),
+                     batch_digest=marker['batch_digest'])
+        pipeline = self.root.setdefault('PROJECT_STATE', self.factory()).setdefault('pipeline', self.factory())
         pipeline['cgyro'] = marker
         self.settings['message'] = 'CGYRO 已准备 {} 个组合。'.format(len(plan))
         return plan
@@ -1230,7 +876,10 @@ class ProjectActions:
             node['RUN_BATCH'] = self.factory()
         previous = dict(irun=setup.get('irun', None), idownsync=setup.get('idownsync', None))
         original_input = node['INPUTS'].get('input.cgyro', None)
-        original_case = {key: physics.get(key, None) for key in ('nr', 'rho', 'mass', 'case_id')}
+        case_keys = ('nr', 'rho', 'mass', 'case_id')
+        # Missing is different from a saved None in native settings. Restore
+        # membership as well as values after a failed/cancelled batch.
+        original_case = {key: physics[key] for key in case_keys if key in physics}
         dimensions = int(setup['idimrun'])
         group_name = str(dimensions) + 'd'
         original_controls = {key: physics.get(key, None) for key in ('fixed_parameters', group_name)}
@@ -1290,7 +939,11 @@ class ProjectActions:
             raise
         finally:
             setup['irun'], setup['idownsync'] = previous['irun'], previous['idownsync']
-            physics.update(original_case)
+            for key in case_keys:
+                if key in original_case:
+                    physics[key] = original_case[key]
+                else:
+                    physics.pop(key, None)
             for key, value in original_controls.items():
                 if value is None:
                     physics.pop(key, None)

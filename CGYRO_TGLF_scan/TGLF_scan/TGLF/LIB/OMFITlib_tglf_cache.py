@@ -4,6 +4,7 @@ SETUP.solver_sha256 is an optional, operator-recorded digest of the actual
 solver binary. Without it we keep provenance for inspection but never reuse a
 result. A mutable path or environment command is not a binary identity.
 """
+from builtins import bool, dict, float, int, isinstance, len, list, sorted, str, tuple, type
 import hashlib
 import json
 import math
@@ -73,8 +74,30 @@ def matches(previous, current):
                 and previous.get("solver_sha256", None) == current.get("solver_sha256", None))
 
 
+def flux_data(result):
+    """Return a usable legacy flux row set, or report the saved point failure.
+
+    The batch runner returns either an OMFIT TGLF result or a diagnostic mapping
+    with ``_load_error``. Both the radial and parameter scans must distinguish
+    these outcomes before adding a point to their public result branches.
+    """
+    if result is None:
+        raise ValueError('No result returned')
+    if result.get('_load_error', None):
+        raise ValueError(result['_load_error'])
+    data = result['gbflux']['data']
+    if not len(data) or data[0][0] != 'elec':
+        raise ValueError('TGLF flux output is missing the electron row')
+    return data
+
+
 def prepare(results, spectra, key, records, current, factory=dict):
-    """Discard stale or unproven derived data before running any new points."""
+    """Invalidate result pairs together; only proven identical inputs may resume.
+
+    Metadata stays outside numeric result keys consumed by legacy plotters.
+    A matching digest does not imply all points exist: callers must check both
+    the flux and spectrum records before deciding a point can be skipped.
+    """
     if not matches(records.get(key, None), current):
         results[key] = factory()
         spectra[key] = factory()

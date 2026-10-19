@@ -38,7 +38,7 @@ from OMFITlib_compare_core import (
 )
 from OMFITlib_compare_core import (
     _maybe_abs_ky,
-    _tail_frequency_stats,
+    cgyro_frequency_stats,
     _to_float_scalar,
     cgyro_tglf_error,
     normalize_if_needed,
@@ -64,18 +64,7 @@ def collect_cgyro_series(root, ctx, runid, nr, para, value):
     for key in stable_keys(linear):
         try:
             data = linear[key]
-            ntime = int(data['n_time'])
-            window = float(ctx.get('ave_window', .02))
-            if not 0 < window <= 1 or ntime <= 0:
-                raise ValueError('Invalid averaging window or sample count')
-            count = max(2, int(ntime * window))
-            omega = np.asarray(data['freq']['omega'][0], dtype=float)
-            gamma = np.asarray(data['freq']['gamma'][0], dtype=float)
-            if len(omega) != len(gamma) or len(omega) != ntime:
-                raise ValueError('Frequency samples disagree with n_time')
-            stats = _tail_frequency_stats(omega[-count:], gamma[-count:])
-            if stats is None:
-                raise ValueError('Empty or non-finite frequency samples')
+            stats = cgyro_frequency_stats(data, ctx.get('ave_window', .02))
             ky, om, ga = normalize_if_needed(data, float(data['kyrhos']), stats[0][0], stats[1][0], ctx.get('normalize_main_ion', False))
             ky = float(_maybe_abs_ky(ky, ctx))
             if not np.all(np.isfinite([ky, om, ga])):

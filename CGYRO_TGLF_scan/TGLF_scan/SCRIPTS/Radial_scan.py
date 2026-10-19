@@ -1,5 +1,8 @@
 # -*-Python-*-
 # Created by thomek at 15 Jun 2016  09:47
+"""Archive each successful radius even if a later radius fails or is stopped."""
+from builtins import enumerate, len, str
+import copy
 flx = root.setdefault('Experimental_fluxes', OMFITcollection())
 spec = root.setdefault('Experimental_spectra', OMFITcollection())
 rho_scan = root['SETTINGS']['PHYSICS']['rho_scan']
@@ -24,15 +27,31 @@ if len(input_tglf) == 0:
     print('All results already calculated.')
     OMFITx.End()
 results = OMFITtree()
-root['TGLF']['SCRIPTS']['runTGLFbatch'].run(inputTGLF=input_tglf, runIDs=rho_scan, results=results, enforce_constraints=False)
+batch_error = None
+try:
+    root['TGLF']['SCRIPTS']['runTGLFbatch'].run(
+        inputTGLF=input_tglf, runIDs=rho_scan, results=results,
+        enforce_constraints=False, continue_on_error=True)
+except BaseException as exc:
+    batch_error = exc
+failures = []
+# Collection is independent of submission status: a failed batch can still
+# contain usable radii. Publish each result/provenance pair only after validation.
 for k, rho in enumerate(rho_scan):
     try:
-        if results[rho]['gbflux']['data'][0][0] == 'elec':
-            flx[rho] = results[rho]['gbflux']
-            spec[rho] = results[rho]
-            records[rho] = current[rho]
+        point = results.get(rho, None)
+        cache['flux_data'](point)
+        flx[rho] = point['gbflux']
+        spec[rho] = point
+        records[rho] = current[rho]
     except Exception as _excp:
-        printe('TGLF radial scan failed for radius=%s' % rho)
+        failures.append(rho)
+        printe('TGLF radial scan failed for radius=%s: %s' % (rho, str(_excp)))
 
 flx.sort()
 spec.sort()
+if batch_error is not None:
+    raise batch_error
+if failures:
+    raise RuntimeError('TGLF radial scan: {} / {} radii failed; completed results were retained'.format(
+        len(failures), len(rho_scan)))

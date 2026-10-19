@@ -183,10 +183,36 @@ def _tail_frequency_stats(omega_samples, gamma_samples):
     for values in (omega, gamma):
         avg = float(np.mean(values))
         spread = float(np.std(values))
+        if not np.isfinite(avg) or not np.isfinite(spread):
+            return None
         near_zero = abs(avg) <= np.finfo(float).eps * max(1.0, float(np.max(np.abs(values))))
         relative = (0.0 if spread == 0 else float('inf')) if near_zero else spread / abs(avg)
         result.append((avg, spread, relative))
     return result
+
+
+def cgyro_frequency_stats(data, window):
+    """One saved-sample contract for self-comparison, cross-model and eigenmodes.
+
+    Read mode zero, validate the recorded time count, and take the requested
+    tail with a minimum of two samples when available. Return (mean, population
+    std, relative fluctuation) for omega and gamma, before any display scaling.
+    Invalid samples must be reported by the caller, never silently truncated.
+    """
+    raw_count, window = float(data['n_time']), float(window)
+    if (not np.isfinite(raw_count) or not raw_count.is_integer()
+            or raw_count <= 0 or not 0 < window <= 1):
+        raise ValueError('Invalid sample count or averaging fraction')
+    ntime = int(raw_count)
+    omega = np.asarray(data['freq']['omega'][0], dtype=float).ravel()
+    gamma = np.asarray(data['freq']['gamma'][0], dtype=float).ravel()
+    if len(omega) != ntime or len(gamma) != ntime:
+        raise ValueError('Frequency samples disagree with n_time')
+    count = max(2, int(ntime * window))
+    stats = _tail_frequency_stats(omega[-count:], gamma[-count:])
+    if stats is None:
+        raise ValueError('Empty or non-finite frequency statistics in the averaging window')
+    return stats
 
 
 def normalize_if_needed(datadir, ky_val, omega_val, gamma_val, normalize_main_ion):

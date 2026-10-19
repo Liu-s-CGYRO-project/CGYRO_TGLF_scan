@@ -1,6 +1,6 @@
 # -*-Python-*-
 """Submit bounded TGLF batches using the applied project queue and environment."""
-from builtins import dict, enumerate, float, int, len, list, min, range, sorted, str
+from builtins import dict, enumerate, float, int, len, list, min, range, set, sorted, str
 import copy
 import glob
 import os
@@ -21,6 +21,14 @@ if results is None:
 runIDs = list(range(len(inputTGLF))) if runIDs is None else list(runIDs)
 if len(runIDs) != len(inputTGLF):
     raise ValueError('TGLF runIDs do not match inputs')
+try:
+    unique_ids = len(set(runIDs)) == len(runIDs)
+except TypeError:
+    raise ValueError('TGLF runIDs must be valid mapping keys')
+if not unique_ids:
+    # Every solver point needs one result slot. Reject collisions before any
+    # submission; otherwise a later point silently overwrites an earlier one.
+    raise ValueError('TGLF runIDs must be unique')
 if not inputTGLF:
     OMFITx.End()
 parallel = root['SETTINGS']['PHYSICS'].get('parallelScan', 3) if parallel is None else parallel

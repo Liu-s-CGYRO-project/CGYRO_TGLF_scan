@@ -1,7 +1,7 @@
 """Read CGYRO spectra once and prepare numeric scan data without making figures."""
 from builtins import IndexError, KeyError, TypeError, ValueError, any, float, hasattr, int, len, list, max, str, tuple
 import numpy as np
-from OMFITlib_compare_core import _tail_frequency_stats, apply_divide_by_ky, normalize_if_needed, resolve_key
+from OMFITlib_compare_core import cgyro_frequency_stats, apply_divide_by_ky, normalize_if_needed, resolve_key
 from OMFITlib_compare_cgyro_selection import maybe_abs_ky, maybe_abs_ky_list, parse_float_list_text
 from OMFITlib_compare_state import stable_keys
 
@@ -31,20 +31,8 @@ def _empty_series_arrays():
 
 
 def frequency_stats(data, window):
-    """Validate saved sample counts before applying the shared tail statistic."""
-    ntime = int(data['n_time'])
-    window = float(window)
-    if ntime <= 0 or not 0 < window <= 1:
-        raise ValueError('Invalid sample count or averaging fraction')
-    omega = np.asarray(data['freq']['omega'][0], dtype=float).ravel()
-    gamma = np.asarray(data['freq']['gamma'][0], dtype=float).ravel()
-    if len(omega) != ntime or len(gamma) != ntime:
-        raise ValueError('Frequency samples disagree with n_time')
-    count = max(2, int(ntime * window))
-    stats = _tail_frequency_stats(omega[-count:], gamma[-count:])
-    if stats is None:
-        raise ValueError('Empty or non-finite frequency samples in the averaging window')
-    return stats
+    """Keep the existing script API while sharing cross-model validation."""
+    return cgyro_frequency_stats(data, window)
 
 
 def compute_freq_stats(datadir, ave_window):

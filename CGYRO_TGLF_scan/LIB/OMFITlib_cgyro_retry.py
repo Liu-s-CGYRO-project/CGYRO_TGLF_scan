@@ -1,4 +1,9 @@
-"""Bounded failed-point retries in new directories, using the original inputs."""
+"""Recover submission acknowledgements and retry eligible failed points.
+
+A transport retry only reads the existing submission/output. A solver retry
+creates a new attempt directory, verifies the original inputs, and retains the
+successful points' locations. These operations must never be interchanged.
+"""
 from builtins import Exception, RuntimeError, ValueError, any, dict, enumerate, int, len, list, print, range, str
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -10,6 +15,10 @@ import time
 import uuid
 import zipfile
 from OMFITlib_cgyro_queue import save_current, shell_quote, wait_current
+from OMFITlib_cgyro_run_state import submitted_job_id, text_output
+
+
+NON_RETRYABLE_STATES = {'CANCELLED', 'TIMEOUT', 'OUT_OF_MEMORY', 'DEADLINE'}
 
 
 def retry_limit(root):
@@ -29,29 +38,67 @@ def network_error(error):
 def recover_submission(root, ui, factory=dict):
     """Read the transaction log before considering another scheduler submission."""
     manifest = root['RUN_MANIFEST']
-    rule = (r'(?i)submitted\s+batch\s+job\s+([0-9]+)' if manifest.get('scheduler', '') == 'slurm'
-            else r'(?m)^\s*([0-9]+(?:\.[A-Za-z0-9._-]+)?)\s*$')
-    match = re.search(rule, str(manifest.get('submit_output', '')))
-    if match is not None:
-        manifest.update(dict(job_id=match.group(1), status='submitted', submission_uncertain=False))
-        save_current(root, factory)
-        return True
-    for attempt in range(3):
-        output, errors = [], []
-        try:
-            code = ui.remote_execute(manifest['server'], 'cat -- .cgyro_submit.out',
-                manifest['workDir'], manifest.get('tunnel', ''), quiet=True, ignoreReturnCode=True,
-                use_bang_command=False, std_out=output, std_err=errors)
-            match = re.search(rule, '\n'.join(str(item) for item in output)) if code == 0 else None
-            if match is not None:
-                manifest.update(dict(job_id=match.group(1), status='submitted', submission_uncertain=False))
-                save_current(root, factory)
-                return True
-        except Exception as exc:
-            manifest['submission_probe_error'] = str(exc)
-        if attempt < 2:
-            time.sleep(1)
-    return False
+    scheduler = manifest.get('scheduler', '')
+    job_id = submitted_job_id(manifest.get('submit_output', ''), scheduler)
+    if not job_id:
+        for attempt in range(3):
+            output, errors = [], []
+            try:
+                code = ui.remote_execute(manifest['server'], 'cat -- .cgyro_submit.out',
+                    manifest['workDir'], manifest.get('tunnel', ''), quiet=True, ignoreReturnCode=True,
+                    use_bang_command=False, std_out=output, std_err=errors)
+                if code == 0:
+                    # Retain a recovered rejection too, so a known refusal does
+                    # not leave the run permanently marked "submission uncertain".
+                    recovered = text_output(output)
+                    captured = str(manifest.get('submit_output', ''))
+                    if recovered and recovered not in captured:
+                        manifest['submit_output'] = captured + '\n' + recovered
+                    job_id = submitted_job_id(output, scheduler)
+                    if job_id:
+                        break
+            except Exception as exc:
+                manifest['submission_probe_error'] = str(exc)
+            if attempt < 2:
+                time.sleep(1)
+    if not job_id:
+        if re.search(r'(?mi)^(?:sbatch|qsub):.*(?:error|invalid|reject)', manifest.get('submit_output', '')):
+            manifest.update(dict(status='failed', submission_uncertain=False))
+            save_current(root, factory)
+        return False
+    manifest.update(dict(job_id=job_id, status='submitted', submission_uncertain=False))
+    manifest.pop('submission_probe_error', None)
+    save_current(root, factory)
+    return True
+
+
+def confirm_submission(root, ui, factory, return_code, output, errors):
+    """Finish one attempted submission without ever issuing another one.
+
+    The caller records submitting/uncertain before entering the executor. Captured
+    stdout remains usable even when the executor raises after the server accepted
+    the job. A missing reply stays protected until its saved log confirms it.
+    """
+    manifest = root['RUN_MANIFEST']
+    manifest['submit_output'] = text_output([output, errors])
+    if recover_submission(root, ui, factory):
+        return manifest['job_id']
+    save_current(root, factory)
+    reason = ('CGYRO submission was rejected; inspect ' if not manifest.get('submission_uncertain', True)
+              else 'CGYRO submission is unconfirmed; inspect ')
+    raise RuntimeError(reason + manifest['workDir']
+                       + '/.cgyro_submit.out before submitting again (return code '
+                       + str(return_code) + ').\n' + manifest.get('submit_output', '')
+                       + '\n' + manifest.get('submit_error', ''))
+
+
+def point_scheduler_states(manifest):
+    """Keep each point's latest known state across partial retry attempts."""
+    states = {}
+    for attempt in manifest.get('attempts', []):
+        states.update(attempt.get('scheduler_sync', {}).get('point_states', {}))
+    states.update(manifest.get('scheduler_sync', {}).get('point_states', {}))
+    return states
 
 
 def retryable_points(root):
@@ -68,14 +115,20 @@ def retryable_points(root):
         return []
     if not manifest.get('input_sha256', {}) or any(re.fullmatch(r'p[0-9]{6,}', str(point)) is None for point in manifest['points']):
         return []  # Old unindexed/imported runs cannot be reconstructed safely.
-    if any(text in str(manifest.get('failure_log', '')).lower() for text in (
+    solver = manifest.get('solver_errors', {})
+    # Current probes attribute fatal errors to individual points. Keep the
+    # conservative whole-run guard only for older records lacking that map;
+    # one invalid point must not suppress recovery of an unrelated NODE_FAIL.
+    if not solver and any(text in str(manifest.get('failure_log', '')).lower() for text in (
             'integration error exceeded limit', 'bogus parameter', 'unknown parameter', 'invalid input', 'error reading input')):
         return []
-    blocked = ('CANCELLED', 'TIMEOUT', 'OUT_OF_MEMORY', 'DEADLINE')
-    states, solver = sync.get('point_states', {}), manifest.get('solver_errors', {})
+    # The latest scheduler record contains only active_points. Without the
+    # earlier attempts, an excluded TIMEOUT could appear eligible after a
+    # different NODE_FAIL point has been retried.
+    states = point_scheduler_states(manifest)
     failed = manifest.get('probe_failed_points', [])
     return [point for point in manifest['points'] if point in failed and not solver.get(point, [])
-            and states.get(point, '') not in blocked]
+            and states.get(point, '') not in NON_RETRYABLE_STATES]
 
 
 def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
@@ -140,17 +193,10 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
             tunnel=manifest.get('tunnel', ''), workdir=local, remotedir=remote,
             executable='/bin/bash -lc ' + shell_quote(wrapper), clean=False,
             std_out=output, std_err=errors, ignoreReturnCode=True)
-        manifest['submit_output'] = '\n'.join(str(item) for item in output + errors)
     except Exception as exc:
         manifest['submit_error'] = str(exc)
         code = -1
-    # Even after a dropped SSH connection, the remote log can prove acceptance.
-    if not recover_submission(root, ui, factory):
-        if re.search(r'(?mi)^(?:sbatch|qsub):.*(?:error|invalid|reject)', manifest.get('submit_output', '')):
-            manifest.update(dict(status='failed', submission_uncertain=False))
-        save_current(root, factory)
-        raise RuntimeError('Retry submission is unconfirmed; do not resubmit blindly. Inspect '
-                           + remote + '/.cgyro_submit.out (return code ' + str(code) + ').')
+    confirm_submission(root, ui, factory, code, output, errors)
     manifest['failed_points'], manifest['partial_points'] = [], []
     save_current(root, factory)
 

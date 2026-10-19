@@ -1,15 +1,27 @@
-from builtins import (Exception, TypeError, ValueError, all, any, bool, dict, enumerate, float,
+"""Prepare immutable point inputs, submit one case, then optionally wait.
+
+The project orchestrator calls this once per rho/isotope case. Point IDs keep
+their original array indices so failed subsets can be retried independently.
+"""
+from builtins import (Exception, RuntimeError, TypeError, ValueError, all, any, bool, dict, enumerate, float,
                       int, isinstance, len, list, max, range, set, sorted, str, tuple, zip)
 import numpy as np
+import copy
+import hashlib
+import itertools
+import json
 import os
+import posixpath
 import re
-from OMFITlib_cgyro_read import *
+import uuid
+import zipfile
+from OMFITlib_cgyro_read import num2str_xj
 from OMFITlib_cgyro_parameters import (FIELDS as CALCULATION_FIELDS, apply_parameters, initialize_parameters,
                                       parameter_value, validate_zeff)
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolved_scan_axes
-from OMFITlib_cgyro_run_state import refresh_run_state
+from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, text_output as output_to_text
 from OMFITlib_cgyro_queue import advancing_batch, pending_runs, save_current, wait_current
-from OMFITlib_cgyro_retry import recover_submission, retry_limit
+from OMFITlib_cgyro_retry import confirm_submission, retry_limit
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -29,10 +41,6 @@ def cfg_str(node, key, default=''):
     if value is None:
         return default
     return str(value)
-
-
-def shell_quote(value):
-    return "'" + str(value).replace("'", "'\"'\"'") + "'"
 
 
 def config_error(message):
@@ -66,21 +74,6 @@ def required_cfg_int(node, key):
 
 
 
-def output_to_text(value):
-    """Convert OMFIT command output containers into plain text."""
-    if value is None:
-        return ''
-    if isinstance(value, (list, tuple)):
-        return '\n'.join([output_to_text(item) for item in value])
-    return str(value)
-
-
-def parse_scheduler_job_id(text, rule):
-    """Extract scheduler job id from sbatch/qsub output."""
-    match = re.search(rule, output_to_text(text))
-    if match is None:
-        config_error("Could not find scheduler jobID in submit output: %s" % output_to_text(text))
-    return match.group(1)
 def script_fragment(value):
     lines = str(value).replace('\r\n', '\n').replace('\r', '\n').split('\n')
     while lines and lines[0].strip() == '':
@@ -123,15 +116,6 @@ def runtime_abs_path(path):
     return os.path.abspath(path)
 
 
-# One engine prepares 1-3 parameter axes, with immutable per-run paths.
-import copy
-import hashlib
-import itertools
-import json
-import tempfile
-import uuid
-import zipfile
-import posixpath
 defaultVars(scan_dimensions=1, wait_for_completion=True, batch_id='')
 
 
@@ -411,7 +395,6 @@ if cpus_per_task < 1:
 root['RUN_MANIFEST']['scheduler'] = scheduler
 root['RUN_MANIFEST']['cpus_per_task'] = cpus_per_task
 pbs_file=os.path.join(submit_workdir, 'scan.pbs')
-username=os.environ.get('USER', 'localhost') if local_submit else remote_server.split('@')[0]
 ps_name='cgyro'
 dirlist_num=len(dir_list)
 if local_submit:
@@ -427,7 +410,6 @@ if local_submit:
     r'pwd'+'\n'+ \
     environment
 else:
-#    r'#SBATCH --workdir=./'+'\n' +\
     if scheduler == 'slurm':
         num_nodes=required_cfg_int(server_setup, 'nodes')
         ntasks_per_node=required_cfg_int(server_setup, 'ntasks_per_node')
@@ -495,27 +477,7 @@ run_case() (
 )
 """
 
-###########
-#bash_content= \
-#'dir_list=('+' '.join(dir_list)+')' +'\n'+ \
-#r'for i in ${dir_list[@]}; ' +'\n'+  \
-#'do '  +'\n'+  \
-#r'  while [[ $( ps -u '+username+r' |grep '+ps_name+r' | wc -l ) -gt '+str(setup['num_cores']-1)+' ]]; do ' +'\n' + \
-#r'    sleep 10s' +'\n' +\
-#r'  done ' +'\n'+ \
-#r'  if [ -d ${i} ]; then  ' +'\n'+\
-#r'    echo "${i} exist. Do not unzip this case"   ' +'\n'+\
-#r'  cd $i' +'\n'+\
-#r'  else'   +'\n'+\
-#r'    unzip ${i}.zip -d $i'+'\n'+\
-#r'    cd $i' +'\n'+\
-#r'    cp input.cgyro* input.cgyro.tmp && mv input.cgyro.tmp input.cgyro;'+'\n'+\
-#r'  fi'+'\n'+\
-#r'  '+executable+' > run_log & ' +'\n'+ \
-#r'  sleep 5s' +'\n'+ \
-#r"  cd .." +'\n'+ \
-#r'done' +'\n'
-
+# Slurm owns array concurrency. PBS waits for this script's child PIDs only.
 if local_submit:
     bash_content= \
     r'dir_list=('+' '.join(dir_list)+')' +'\n'+ \
@@ -529,34 +491,32 @@ else:
         r'current_dir=${dir_list[$SLURM_ARRAY_TASK_ID]}' +'\n'+ \
         r'run_case "${current_dir}"'+'\n'
     else:
-        bash_content= \
-        r'dir_list=('+' '.join(dir_list)+')' +'\n'+ \
-        r'for current_dir in ${dir_list[@]}; do'+'\n'+\
-        r'  while [[ $( ps -u '+username+r' |grep '+ps_name+r' | wc -l ) -gt '+str(required_cfg_int(server_setup, 'n')-1)+' ]]; do'+'\n'+\
-        r'    sleep 2s'+'\n'+\
-        r'  done'+'\n'+\
-        r'  run_case "${current_dir}" &'+'\n'+\
-        r'done'+'\n'+\
-        r'while [[ $( ps -u '+username+r' |grep '+ps_name+r' | wc -l ) -gt 0 ]]; do'+'\n'+\
-        r'  sleep 5s'+'\n'+\
-        r'done'+'\n'+\
-        r'rm ${JOBID_FILE}'+'\n'
+        parallel = required_cfg_int(server_setup, 'n')
+        if parallel < 1:
+            config_error('PBS concurrent point count n must be positive')
+        # Counting process names can miss a child before launch or match a
+        # different isotope allocation. Wait for every owned child explicitly.
+        bash_content = ('dir_list=(' + ' '.join(dir_list) + ')\n'
+                        + 'parallel=' + str(parallel) + '\n' + r"""
+pids=()
+result=0
+for current_dir in "${dir_list[@]}"; do
+  run_case "$current_dir" &
+  pids+=("$!")
+  if [ "${#pids[@]}" -ge "$parallel" ]; then
+    wait "${pids[0]}" || result=1
+    pids=("${pids[@]:1}")
+  fi
+done
+for pid in "${pids[@]}"; do
+  wait "$pid" || result=1
+done
+rm -- "$JOBID_FILE"
+exit "$result"
+""")
 
 
-
-
-#bash_tail= \
-#r'while [[ $( ps -u '+username+r' |grep '+ps_name+r' | wc -l ) -gt 0 ]]; do ' +'\n' + \
-#r'  sleep 5s' +'\n'+ \
-#r'done ' +'\n'+ \
-#r'rm ${JOBID_FILE}' +'\n'
-
-
-
-##############################################
-##############################################
 with open(pbs_file,'w') as f1:
-    #f1.write(bash_head+'\n'+bash_content+'\n'+bash_tail)
     f1.write(bash_head+'\n'+bash_helpers+'\n'+bash_content)
 pbs_name = path_basename(pbs_file)
 caseRoot[caseName][pbs_name]=OMFITascii(pbs_file)
@@ -582,10 +542,8 @@ if setup['irun']==1:
             raise RuntimeError('CGYRO local execution failed: ' + output_to_text(submit_out + submit_err))
     else:
         submit_cmd='sbatch scan.pbs'
-        submit_rule=r'(?i)submitted\s+batch\s+job\s+([0-9]+)'
         if scheduler == 'pbs':
             submit_cmd='qsub scan.pbs'
-            submit_rule=r'(?m)^\s*([0-9]+(?:\.[A-Za-z0-9._-]+)?)\s*$'
         rmtserver=remote_server
         rmttunnel=remote_tunnel
         workdir=submit_workdir
@@ -607,35 +565,7 @@ if setup['irun']==1:
         except Exception as exc:
             root['RUN_MANIFEST']['submit_error'] = str(exc)
             ret_code = -1
-        submit_combined=output_to_text(submit_out)+'\n'+output_to_text(submit_err)
-        root['RUN_MANIFEST']['submit_output'] = submit_combined
-        if (ret_code != 0 or re.search(submit_rule, submit_combined) is None) and recover_submission(root, OMFITx, OMFITtree):
-            ret_code = 0
-            recovered_id = root['RUN_MANIFEST']['job_id']
-            submit_combined += '\n' + ('Submitted batch job ' + recovered_id if scheduler == 'slurm' else recovered_id)
-        if ret_code != 0:
-            identified = re.search(submit_rule, submit_combined)
-            if identified is not None:
-                root['RUN_MANIFEST']['job_id'] = identified.group(1)
-                root['RUN_MANIFEST']['submission_uncertain'] = False
-                root['RUN_MANIFEST']['status'] = 'submitted'
-            else:
-                root['RUN_MANIFEST']['status'] = 'failed'
-                root['RUN_MANIFEST']['submission_uncertain'] = not bool(re.search(
-                    r'(?mi)^(?:sbatch|qsub):.*(?:error|invalid|reject)', submit_combined))
-            save_current(root, OMFITtree)
-            raise RuntimeError('CGYRO submission failed: ' + submit_combined)
-        if re.search(submit_rule, submit_combined) is None:
-            # remote_execute returns a status code, not stdout. Capture the log.
-            recovered = []
-            OMFITx.remote_execute(rmtserver, 'cat ' + submit_log, rmtworkdir, rmttunnel,
-                                 std_out=recovered, quiet=True, ignoreReturnCode=False, use_bang_command=False)
-            submit_combined += '\n' + output_to_text(recovered)
-        job_id=parse_scheduler_job_id(submit_combined, submit_rule)
-        root['RUN_MANIFEST']['job_id'] = job_id
-        root['RUN_MANIFEST']['status'] = 'submitted'
-        root['RUN_MANIFEST']['submission_uncertain'] = False
-        save_current(root, OMFITtree)
+        confirm_submission(root, OMFITx, OMFITtree, ret_code, submit_out, submit_err)
         if wait_for_completion:
             wait_current(root, OMFITx, OMFITtree)
 

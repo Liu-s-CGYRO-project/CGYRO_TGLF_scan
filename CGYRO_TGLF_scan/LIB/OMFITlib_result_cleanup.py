@@ -4,11 +4,16 @@ from OMFITlib_compare_state import MODES, SELECTION_KEYS
 from OMFITlib_cgyro_queue import queue_records
 
 RESULT_KEYS = ('scanResults', 'scanResults_spectra', 'scanResults2D', 'scanResults2D_spectra',
-               'UQResults', 'UQResults_spectra', 'tgyro_output', '_scan_cache_provenance',
+               'UQResults', 'UQResults_spectra', 'Experimental_fluxes', 'Experimental_spectra',
+               'tgyro_output', '_scan_cache_provenance',
                '_radial_cache_provenance')
 BRANCHES = (
     ((), ('OUTPUTS',)),
-    (('CGYRO_scan',), ('OUTPUTS', 'OUTPUTScan', 'RUN_DB', 'RUN_MANIFEST', 'RUN_BATCH')),
+    # Cases and history can retain downloaded payloads after RUN_DB is cleared;
+    # RUN_INDEX is also a legacy browser source. Clear the complete result set
+    # together, while INPUTS and prepared BATCH_INPUTS remain available.
+    (('CGYRO_scan',), ('OUTPUTS', 'OUTPUTScan', 'RUN_DB', 'RUN_MANIFEST', 'RUN_BATCH',
+                     'RUN_HISTORY', 'RUN_INDEX', 'Cases', '_PLOT_CACHE')),
     (('TGLF_scan',), ('RUN_DB',) + RESULT_KEYS),
     (('TGLF_scan', 'TGLF'), RESULT_KEYS),
     (('TGLF_scan', 'TGYRO'), ('OUTPUTS', 'RUN_DB')),

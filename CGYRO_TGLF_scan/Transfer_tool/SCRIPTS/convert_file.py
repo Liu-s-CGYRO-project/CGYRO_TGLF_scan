@@ -1,6 +1,13 @@
 #-*-Python-*-
-# Created by liujy at 09 Apr 2025  16:26
+"""Convert local cards, committing the destination only after validation.
 
+Profile-derived fields use the original three-point derivative and natural
+cubic spline conventions. Their shared grid contract rejects malformed or
+out-of-domain inputs before a partially converted card can be published.
+"""
+# Created by liujy at 09 Apr 2025 16:26
+
+from builtins import abs, bool, float, int, isinstance, len, max, min, range, str
 import numpy as np
 import scipy.linalg
 from OMFITlib_transfer_workflow import tglf_input_format
@@ -141,7 +148,7 @@ def _build_convert_tglf_to_cgyro(CGYRO,TGLF,inputgacode):
     gamma_e_loc = cub_spline1(rmin_exp,gamma_e_exp,expro_n_exp,rmin)
     gamma_p_loc = cub_spline1(rmin_exp,gamma_p_exp,expro_n_exp,rmin)
     mach_loc = cub_spline1(rmin_exp,mach_exp,expro_n_exp,rmin)
-    expro_cs = sqrt(1.622*10**(-12)*(1000*expro_te)/(2.0*mp))
+    expro_cs = np.sqrt(1.622*10**(-12)*(1000*expro_te)/(2.0*mp))
 
 
     cs_loc = cub_spline1(rmin_exp,expro_cs,expro_n_exp,rmin)
@@ -155,6 +162,30 @@ def _build_convert_tglf_to_cgyro(CGYRO,TGLF,inputgacode):
     CGYRO['COLLISION_MODEL'] = 4
     CGYRO['N_FIELD'] = 2
 
+
+
+def _cgyro_conversion_zeff(source, charge_density, charge_square_density):
+    """Keep prescribed impurity collisions when explicit impurities were removed.
+
+    CGYRO method 2 (the solver default) retains the legacy composition formula.
+    Method 1 follows Z_EFF instead, with the same finite, >=1 scalar contract
+    used by the project parameter editor. Collision models are not changed here.
+    """
+    try:
+        method = float(source.get('Z_EFF_METHOD', 2))
+        if method not in (1, 2):
+            raise ValueError('Z_EFF_METHOD must be 1 or 2')
+        if method == 1:
+            zeff = float(source.get('Z_EFF', 1.0))
+        else:
+            if not np.isfinite(charge_density) or charge_density <= 0:
+                raise ValueError('Composition Zeff needs positive finite ion charge density')
+            zeff = float(charge_square_density / charge_density)
+    except (TypeError, OverflowError):
+        raise ValueError('CGYRO Zeff parameters must be numeric scalars')
+    if not np.isfinite(zeff) or zeff < 1:
+        raise ValueError('Z_EFF must be finite and at least 1')
+    return zeff
 
 
 def convert_cgyro_to_tglf(CGYRO,TGLF):
@@ -209,8 +240,7 @@ def convert_cgyro_to_tglf(CGYRO,TGLF):
             Zeff_Numerator = Zeff_Numerator + TGLF['ZS_'+str(i+1)]**2*TGLF['AS_'+str(i+1)]
         beta_star_loc = beta_star_loc + TGLF['AS_'+str(i+1)]*TGLF['TAUS_'+str(i+1)]*(TGLF['RLNS_'+str(i+1)]+TGLF['RLTS_'+str(i+1)])
     beta_star_loc = beta_star_loc * TGLF['BETAE']
-    Zeff = Zeff_Numerator/Zeff_Denominator
-    TGLF['ZEFF'] = Zeff
+    TGLF['ZEFF'] = _cgyro_conversion_zeff(CGYRO, Zeff_Denominator, Zeff_Numerator)
     P_PRIME_LOC=(abs(TGLF['Q_LOC'])/TGLF['RMIN_LOC'])*(-beta_star_loc/(8*np.pi))
     TGLF['P_PRIME_LOC'] = P_PRIME_LOC
 
@@ -445,7 +475,26 @@ def convert_outtglf_to_cgyro(CGYRO, TGLF, inputgacode):
     _commit_cgyro_conversion(CGYRO, TGLF, inputgacode, _build_convert_outtglf_to_cgyro)
 
 
+def _radial_samples(x, y, n, minimum):
+    """Return finite one-dimensional samples on a strictly increasing grid."""
+    try:
+        count = float(n)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError('Profile sample count must be an integer')
+    if not np.isfinite(count) or not count.is_integer() or count < minimum:
+        raise ValueError('Profile interpolation requires at least {} samples'.format(minimum))
+    n = int(count)
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+    if x.ndim != 1 or y.ndim != 1 or len(x) != n or len(y) != n:
+        raise ValueError('Profile grid and values must agree with the sample count')
+    if not np.all(np.isfinite(x)) or not np.all(np.isfinite(y)) or np.any(np.diff(x) <= 0):
+        raise ValueError('Profile samples must be finite on a strictly increasing radial grid')
+    return x, y, n
+
+
 def bound_deriv(f,r,n):
+    """Three-point Lagrange derivative, one-sided at the two endpoints."""
+    r, f, n = _radial_samples(r, f, n, minimum=3)
     df = np.zeros(n)
     for i in range(n):
         if i == 0:
@@ -477,47 +526,45 @@ def bound_deriv(f,r,n):
 
 
 def cub_spline1(x,y,n,xi):
-   h = np.zeros(n-1)
-   zl = np.zeros(n-1)
-   zu = np.zeros(n-1)
-   z = np.zeros(n)
-   c = np.zeros(n)
-   b = np.zeros(n-1)
-   d = np.zeros(n-1)
-   if xi > x[-1]:
-      print ('ERROR: (cub_spline1) Data above upper bound')
-      print ('xi(ni) > x(n)',xi,x[-1])
-   elif xi < x[0]:
-      print ('ERROR: (cub_spline1) Data below lower bound')
-      print ('xi(1) < x(1)',xi,x[0])
-   for i in range(n-1):
-      h[i]  = x[i+1]-x[i]
-      zl[i] = h[i]
-      zu[i] = h[i]
-   zl[-1] = 0
-   zu[0]  = 0
-   z[0] = 1
-   c[0] = 0
-   for i in range(1,n-1):
-      z[i] = 2*(h[i-1]+h[i])
-      c[i] = 3*((y[i+1]-y[i])/h[i]-(y[i]-y[i-1])/h[i-1])
-   z[-1] = 1
-   c[-1] = 0
-   zl,z,zu,zu2,ipiv,info = scipy.linalg.lapack.dgttrf(zl,z,zu)
-   c,info = scipy.linalg.lapack.dgttrs(zl,z,zu,zu2,ipiv,c)
-   c[-1] = 0
-   for i in range(n-1):
-      b[i] = (y[i+1]-y[i])/h[i]-h[i]*(2*c[i]+c[i+1])/3
-      d[i] = (c[i+1]-c[i])/(3*h[i])
-   i  = 0
-   ii = 1
-   while ii <= 1:
-      if xi <= x[i+1]:
-         yi = y[i]+(xi-x[i])*(b[i]+(xi-x[i])*(c[i]+(xi-x[i])*d[i]))
-         ii = ii+1
-      else:
-         i = i+1
-   return yi
+    """Natural cubic interpolation inside the source grid; never extrapolate."""
+    x, y, n = _radial_samples(x, y, n, minimum=2)
+    xi = float(xi)
+    if not np.isfinite(xi) or xi < x[0] or xi > x[-1]:
+        raise ValueError('Requested radius {} is outside the profile grid [{}, {}]'.format(xi, x[0], x[-1]))
+    h = np.zeros(n - 1)
+    zl = np.zeros(n - 1)
+    zu = np.zeros(n - 1)
+    z = np.zeros(n)
+    c = np.zeros(n)
+    b = np.zeros(n - 1)
+    d = np.zeros(n - 1)
+    for i in range(n - 1):
+        h[i] = x[i + 1] - x[i]
+        zl[i] = h[i]
+        zu[i] = h[i]
+    # Identity endpoint rows impose the original natural boundary conditions.
+    zl[-1], zu[0] = 0, 0
+    z[0], z[-1] = 1, 1
+    c[0], c[-1] = 0, 0
+    for i in range(1, n - 1):
+        z[i] = 2 * (h[i - 1] + h[i])
+        c[i] = 3 * ((y[i + 1] - y[i]) / h[i] - (y[i] - y[i - 1]) / h[i - 1])
+    zl, z, zu, zu2, ipiv, info = scipy.linalg.lapack.dgttrf(zl, z, zu)
+    if info != 0:
+        raise ValueError('Natural cubic spline factorization failed: {}'.format(info))
+    c, info = scipy.linalg.lapack.dgttrs(zl, z, zu, zu2, ipiv, c)
+    if info != 0 or not np.all(np.isfinite(c)):
+        raise ValueError('Natural cubic spline solution failed: {}'.format(info))
+    c[-1] = 0
+    for i in range(n - 1):
+        b[i] = (y[i + 1] - y[i]) / h[i] - h[i] * (2 * c[i] + c[i + 1]) / 3
+        d[i] = (c[i + 1] - c[i]) / (3 * h[i])
+    # The left interval at an exact knot matches the legacy forward search.
+    i = max(0, min(n - 2, int(np.searchsorted(x, xi, side='left')) - 1))
+    yi = y[i] + (xi - x[i]) * (b[i] + (xi - x[i]) * (c[i] + (xi - x[i]) * d[i]))
+    if not np.isfinite(yi):
+        raise ValueError('Natural cubic interpolation produced a non-finite value')
+    return yi
 
 convert_to_tglf = root['SETTINGS']['PHYSICS']['Transfer to tglf']
 convert_to_cgyro = root['SETTINGS']['PHYSICS']['Transfer to cgyro']

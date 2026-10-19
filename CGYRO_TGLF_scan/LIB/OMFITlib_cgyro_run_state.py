@@ -1,4 +1,8 @@
-"""Synchronize Slurm state and explicitly stop the current CGYRO scan."""
+"""Scheduler I/O and cancellation for one recorded CGYRO attempt.
+
+This layer never submits work. Queue orchestration selects the saved manifest;
+all queries and cancellation use that manifest's endpoint and job identity.
+"""
 from builtins import (Exception, RuntimeError, ValueError, any, bool, dict, enumerate,
                       getattr, int, isinstance, len, list, print, range, set, str, tuple, zip)
 from contextlib import contextmanager
@@ -7,6 +11,11 @@ import re
 
 TERMINAL = {'COMPLETED', 'CANCELLED', 'FAILED', 'TIMEOUT', 'OUT_OF_MEMORY',
             'NODE_FAIL', 'BOOT_FAIL', 'DEADLINE', 'PREEMPTED', 'REVOKED'}
+
+JOB_ID_RULES = {
+    'slurm': r'(?i)submitted\s+batch\s+job\s+([0-9]+)',
+    'pbs': r'(?m)^\s*([0-9]+(?:\.[A-Za-z0-9._-]+)?)\s*$',
+}
 
 
 def saved_slurm_run(root):
@@ -35,6 +44,14 @@ def quote(value):
     return "'" + str(value).replace("'", "'\"'\"'") + "'"
 
 
+def submitted_job_id(output, scheduler):
+    """Accept only the scheduler's submission reply, never incidental numbers."""
+    if scheduler not in JOB_ID_RULES:
+        raise ValueError('A Slurm/PBS scheduler is required to confirm submission.')
+    match = re.search(JOB_ID_RULES[scheduler], text_output(output))
+    return match.group(1) if match is not None else ''
+
+
 def slurm_probe(job_id):
     if not re.fullmatch(r'[0-9]+', str(job_id)):
         raise ValueError('A numeric Slurm job ID is required to synchronize this run.')
@@ -56,6 +73,7 @@ else printf 'CGYRO_ACCOUNT_MISSING\n'; fi
 
 
 def parse_probe(output, job_id, points, task_indices=None):
+    """Map a retry subset using original array indices, not subset positions."""
     markers, queued, accounts, raw_states = set(), {}, {}, []
     unknown_queue_row = False
     identity = re.compile(re.escape(str(job_id)) + r'(?:_([0-9]+))?')
@@ -81,9 +99,13 @@ def parse_probe(output, job_id, points, task_indices=None):
     active = unknown_queue_row or any(state not in TERMINAL for state in queued.values())
     root_state = accounts.get(str(job_id), '')
     indices = list(range(len(points))) if task_indices is None else list(task_indices)
+    if len(indices) != len(points) or len(set(indices)) != len(indices):
+        raise ValueError('Scheduler task indices must match the distinct active points.')
     child_states = {str(index): accounts.get(str(job_id) + '_' + str(index), '') for index in indices}
     all_children_done = bool(points) and all_terminal(child_states.values())
-    terminal = ('CGYRO_ACCOUNT_OK' in markers and bool(accounts)
+    # Accounting can lag a requeue. A failed queue query is not proof that the
+    # allocation stopped, even when an older accounting row says COMPLETED.
+    terminal = ('CGYRO_QUEUE_OK' in markers and 'CGYRO_ACCOUNT_OK' in markers and bool(accounts)
                 and not any(state not in TERMINAL for state in accounts.values())
                 and (root_state in TERMINAL or all_children_done) and not active)
     states = list(accounts.values())
@@ -178,6 +200,25 @@ while true; do
 done
 echo "[heartbeat] job JOB_ID left the queue at $(date)"
 '''.replace('JOB_ID', str(job_id)).replace('STOP_FILE', quote(marker)).replace('STOP_STAMP', quote(stamp))
+
+
+def pbs_wait(job_id):
+    """Do not confuse an unavailable PBS server with a finished allocation."""
+    if not re.fullmatch(r'[0-9]+(?:\.[A-Za-z0-9._-]+)?', str(job_id)):
+        raise ValueError('A recorded PBS job ID is required before waiting.')
+    return '''while true; do
+  if state=$(LC_ALL=C qstat -f JOB_ID 2>&1); then
+    if printf '%s\\n' "$state" | grep -Eq 'job_state[[:space:]]*=[[:space:]]*[CF]([[:space:]]|$)'; then
+      break
+    fi
+  elif printf '%s\\n' "$state" | grep -Eiq 'unknown[[:space:]]+job[[:space:]]+id'; then
+    break
+  else
+    printf '%s\\n' "$state" >&2; exit 1
+  fi
+  sleep 30
+done
+'''.replace('JOB_ID', str(job_id))
 
 
 def stop_message(manifest):

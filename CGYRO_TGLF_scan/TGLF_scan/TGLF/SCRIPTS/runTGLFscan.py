@@ -1,5 +1,8 @@
 # -*-Python-*-
 # Created by meneghini at 2013/03/08 18:01
+"""Compute one scan axis and retain completed points if the batch fails."""
+from builtins import enumerate, float, isinstance, len, list, range, repr, sorted, str
+import copy
 
 defaultVars(
     param=root['SETTINGS']['PHYSICS']['scanParameter'],
@@ -64,16 +67,32 @@ if len(scratch['input.tglf.scan']) == 0:
     print('All TGLF results already exist')
     OMFITx.End()
 
-# parallel run
+# A batch may fail after returning some good points (or be interrupted during a
+# later wave). Archive those points before propagating the original exception.
+# They remain available for inspection and, with proven provenance, resumption.
 tmp = OMFITtree()
-root['SCRIPTS']['runTGLFbatch'].run(inputTGLF=scratch['input.tglf.scan'], results=tmp, enforce_constraints=True)
+batch_error = None
+try:
+    root['SCRIPTS']['runTGLFbatch'].run(
+        inputTGLF=scratch['input.tglf.scan'], results=tmp,
+        enforce_constraints=True, continue_on_error=True)
+except BaseException as exc:
+    batch_error = exc
 
-# assemble results
+failures = []
 for k, value in enumerate(valuesToRun):
     try:
-        if tmp[k]['gbflux']['data'][0][0] == 'elec':
-            results[param][value] = tmp[k]['gbflux']['data']
-            results_spectra[param][value] = tmp[k]
+        point = tmp.get(k, None)
+        data = cache['flux_data'](point)
+        results[param][value] = data
+        results_spectra[param][value] = point
     except Exception as _excp:
+        failures.append(value)
         printe('TGLF scan failed for %s=%f : %s' % (param, value, repr(_excp)))
 results[param].sort(key=float)
+results_spectra[param].sort(key=float)
+if batch_error is not None:
+    raise batch_error
+if failures:
+    raise RuntimeError('TGLF scan {}: {} / {} points failed; completed results were retained'.format(
+        param, len(failures), len(valuesToRun)))

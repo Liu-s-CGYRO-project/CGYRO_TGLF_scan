@@ -1,5 +1,8 @@
 # -*-Python-*-
 # Created by meneghini at 2015/03/28 13:56
+"""Build a 2D scan from independently archived 1D rows."""
+from builtins import enumerate, float, isinstance, len, list, range, set, sorted, str
+import copy
 
 defaultVars(
     param=root['SETTINGS']['PHYSICS']['scanParameter'],
@@ -67,17 +70,22 @@ for i, value in enumerate(parameterRange2):
     if value in results['%s+%s' % (param2, param)]:
         scratch['tmp1Dscan'][param] = copy.deepcopy(results[param2 + '+' + param][value])
         scratch['tmp1Dscan_spectra'][param] = copy.deepcopy(results_spectra[param2 + '+' + param][value])
-    root['SCRIPTS']['runTGLFscan'].run(
-        inputTGLF=tmpTGLF,
-        results=scratch['tmp1Dscan'],
-        results_spectra=scratch['tmp1Dscan_spectra'],
-        include_starting_param=include_starting_param,
-        param=param,
-        parameterRange=parameterRange,
-        cache_records=row_records.setdefault(value, {}),
-    )
-    print(param2 + '+' + param, param in scratch['tmp1Dscan'])
-    results[param2 + '+' + param][value] = scratch['tmp1Dscan'].pop(param)
-    results_spectra[param2 + '+' + param][value] = scratch['tmp1Dscan_spectra'].pop(param)
+    try:
+        root['SCRIPTS']['runTGLFscan'].run(
+            inputTGLF=tmpTGLF,
+            results=scratch['tmp1Dscan'],
+            results_spectra=scratch['tmp1Dscan_spectra'],
+            include_starting_param=include_starting_param,
+            param=param,
+            parameterRange=parameterRange,
+            cache_records=row_records.setdefault(value, {}),
+        )
+    finally:
+        # The inner scan archives successful points before raising. Transfer
+        # that partial row out of scratch even on failure or cancellation.
+        if param in scratch['tmp1Dscan']:
+            results[cache_key][value] = scratch['tmp1Dscan'].pop(param)
+        if param in scratch['tmp1Dscan_spectra']:
+            results_spectra[cache_key][value] = scratch['tmp1Dscan_spectra'].pop(param)
 results[param2 + '+' + param].sort(key=float)
 results_spectra[param2 + '+' + param].sort(key=float)
