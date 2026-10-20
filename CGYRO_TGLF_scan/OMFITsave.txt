@@ -469,6 +469,7 @@
 ['DOCS']['绘图接口'] <-:-:-> OMFITascii <-:-:-> ./DOCS/PLOTTING_API.md <-:-:-> {}
 ['DOCS']['扫描取值接口'] <-:-:-> OMFITascii <-:-:-> ./DOCS/SCAN_VALUES.md <-:-:-> {}
 ['DOCS']['首次部署与迁移'] <-:-:-> OMFITascii <-:-:-> ./DOCS/FIRST_DEPLOY.md <-:-:-> {}
+['DOCS']['中止与续算'] <-:-:-> OMFITascii <-:-:-> ./DOCS/CANCEL_RESUME.md <-:-:-> {}
 ['DOCS']['字体许可'] <-:-:-> OMFITascii <-:-:-> ./DOCS/FONT_LICENSE.txt <-:-:-> {}
 ['LIB']['OMFITlib_gui_fonts'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_fonts.py <-:-:-> {}
 ['LIB']['OMFITlib_gui_font_data'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_font_data.py <-:-:-> {}

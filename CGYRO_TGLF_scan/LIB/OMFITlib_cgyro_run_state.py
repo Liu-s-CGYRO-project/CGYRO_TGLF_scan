@@ -258,13 +258,17 @@ done
 
 
 def stop_message(manifest):
+    if manifest.get('collection_status', '') in ('partial', 'empty'):
+        return '本次结果已收集：完整点 {}，部分结果点 {}，无结果跳过 {}。可选择未完成点继续计算。'.format(
+            len(manifest.get('loaded_points', [])), len(manifest.get('partial_points', [])),
+            len(manifest.get('skipped_points', [])))
     state = manifest.get('status', '')
     if state == 'cancelled':
-        return '本次扫描已中止，后续组合不再提交；已有输出保留。'
+        return '本次扫描已中止，正在自动收集已有输出；无结果的点将跳过。'
     if state == 'failed':
         return '当前作业已结束，后续组合不再提交；已有输出和日志保留。'
     if manifest.get('scheduler_sync', {}).get('outcome', '') == 'completed':
-        return '当前作业已完成，后续组合不再提交；可手动收集当前结果。'
+        return '当前作业已完成，后续组合不再提交；正在收集当前结果。'
     if manifest.get('cancellation', {}).get('accepted', False):
         return '取消请求已送达 Slurm，本地等待与后续提交停止；作业收尾状态可通过“同步作业状态”查看。'
     return '后续组合不再提交；远程作业终态尚未确认，请同步作业状态。'
@@ -374,6 +378,7 @@ def linked_kill_local(run_root, ui, job_id, run_token, stop_callback=None):
                         stop_run(run_root, ui, job_id, run_token)
                     else:
                         stop_callback()
+                    wait_manifest['auto_collect_requested'] = True
                     print(stop_message(wait_manifest))
                     # The marker may already have ended the wait during the query.
                     if button.winfo_exists():

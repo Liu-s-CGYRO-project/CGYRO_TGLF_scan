@@ -210,21 +210,20 @@ def collect_current(root, ui, factory, path_reader, ascii_reader):
     while True:
         try:
             root['SCRIPTS']['downsync.py'].run()
-            return
         except Exception as exc:
             manifest = root['RUN_MANIFEST']
-            if manifest.get('stop_requested', False) or root.get('RUN_BATCH', {}).get('stop_requested', False):
-                raise
             # A download/query failure gets another read; it never launches a solver.
             if collection_retries < 2 and (network_error(exc) or manifest.get('load_errors', {})):
                 collection_retries += 1
                 time.sleep(collection_retries)
                 continue
-            points = retryable_points(root)
-            if not points:
-                raise
-            print('CGYRO retry {} / {}: {} failed points; successful points are retained.'.format(
-                int(manifest.get('retry_count', 0)) + 1, retry_limit(root), len(points)))
-            submit_retry(root, ui, factory, path_reader, ascii_reader, points)
-            wait_current(root, ui, factory)
-            collection_retries = 0
+            raise
+        manifest = root['RUN_MANIFEST']
+        points = retryable_points(root)
+        if not points:
+            return
+        print('CGYRO retry {} / {}: {} failed points; successful points are retained.'.format(
+            int(manifest.get('retry_count', 0)) + 1, retry_limit(root), len(points)))
+        submit_retry(root, ui, factory, path_reader, ascii_reader, points)
+        wait_current(root, ui, factory)
+        collection_retries = 0

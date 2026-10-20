@@ -12,6 +12,11 @@ from OMFITlib_cgyro_run_state import (linked_kill_local, pbs_wait, quote as shel
                                     refresh_run_state, slurm_wait, stop_message, stop_run)
 
 
+def collection_done(manifest):
+    """Collection can finish after cancellation without a complete solver run."""
+    return manifest.get('status', '') == 'published' or manifest.get('collection_status', '') in ('partial', 'empty')
+
+
 def queue_records(root):
     """Return only this batch's known snapshots in submission order."""
     history = root.get('RUN_HISTORY', {})
@@ -52,7 +57,7 @@ def pending_runs(root):
     """Finished but uncollected jobs still protect their results from replacement."""
     return [manifest for _, entry in queue_records(root) for manifest in [entry['manifest']]
             if manifest.get('submission_uncertain', False) or
-            manifest.get('status', '') not in ('published', 'failed', 'cancelled')]
+            (not collection_done(manifest) and manifest.get('status', '') not in ('failed', 'cancelled'))]
 
 
 def advancing_batch(root, batch_id):
@@ -68,8 +73,10 @@ def queue_summary(root):
     rows = [entry['manifest'] for _, entry in queue_records(root)]
     batch = root.get('RUN_BATCH', {})
     done = len([row for row in rows if row.get('status', '') == 'published'])
+    partial = len([row for row in rows if row.get('collection_status', '') == 'partial'])
+    empty = len([row for row in rows if row.get('collection_status', '') == 'empty'])
     total = len(batch.get('case_ids', rows))
-    return '批量案例：已归档 {} / {}；已记录 {} 个运行。'.format(done, total, len(rows))
+    return '批量案例：完整 {} / {}；部分结果 {}；无结果跳过 {}。'.format(done, total, partial, empty)
 
 
 def refresh_queue(root, ui, factory=dict, recover=None):
@@ -78,7 +85,7 @@ def refresh_queue(root, ui, factory=dict, recover=None):
     errors = []
     for token, entry in queue_records(root):
         manifest = entry['manifest']
-        if manifest.get('status', '') == 'published':
+        if collection_done(manifest):
             continue
         try:
             record_root = dict(RUN_MANIFEST=manifest, SETTINGS=root['SETTINGS'])
@@ -125,16 +132,43 @@ def stop_queue(root, ui, job_id, run_token, factory=dict):
     if errors:
         raise RuntimeError('Some batch jobs could not be stopped. Retry Kill local.\n' + '\n'.join(errors))
     stop_run(root, ui, job_id, run_token)
+    batch['auto_collect_requested'] = True
     save_current(root, factory)
+
+
+def wait_for_stop(root, ui):
+    """Wait briefly for Slurm cleanup/accounting; never infer a terminal state."""
+    manifest = root['RUN_MANIFEST']
+    manifest['auto_collect_requested'] = True
+    errors = 0
+    for attempt in range(20):
+        try:
+            result = refresh_run_state(root, ui)
+            errors = 0
+            if result['terminal']:
+                manifest.pop('stop_sync_error', None)
+                return
+        except Exception as exc:
+            errors += 1
+            manifest['stop_sync_error'] = str(exc)
+            if errors >= 3:
+                raise
+        if attempt < 19:
+            time.sleep(2)
+    raise RuntimeError('Slurm cancellation is still settling; automatic collection is pending. '
+                       'The run is preserved. Synchronize and collect again after it reaches a terminal state.')
 
 
 def wait_current(root, ui, factory=dict):
     manifest = root['RUN_MANIFEST']
-    if manifest.get('status', '') == 'published':
+    if collection_done(manifest):
         return
     if manifest.get('stop_requested', False):
-        if manifest.get('scheduler', '') == 'slurm':
-            refresh_run_state(root, ui)
+        try:
+            if manifest.get('scheduler', '') == 'slurm':
+                wait_for_stop(root, ui)
+        finally:
+            save_current(root, factory)
         return
     scheduler = manifest.get('scheduler', '')
     job_id, token = str(manifest.get('job_id', '') or ''), str(manifest['run_token'])
@@ -167,9 +201,9 @@ def wait_current(root, ui, factory=dict):
         manifest.pop('wait_error', None)
     if manifest.get('stop_requested', False):
         try:
-            refresh_run_state(root, ui)
-        except Exception as exc:
-            manifest['stop_sync_error'] = str(exc)
+            wait_for_stop(root, ui)
+        finally:
+            save_current(root, factory)
         print(stop_message(manifest))
     elif code != 0:
         manifest['wait_error'] = str(errors)

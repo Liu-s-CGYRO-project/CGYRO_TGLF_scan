@@ -20,10 +20,9 @@ from OMFITlib_cgyro_parameters import (FIELDS as CALCULATION_FIELDS, apply_param
                                       parameter_value, validate_zeff)
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolved_scan_axes
 from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, text_output as output_to_text
-from OMFITlib_cgyro_queue import advancing_batch, pending_runs, save_current, wait_current
+from OMFITlib_cgyro_queue import advancing_batch, collection_done, pending_runs, save_current, wait_current
 from OMFITlib_cgyro_retry import confirm_submission, retry_limit
-from OMFITlib_cgyro_continue import (archived_case, continuation_plan, point_result,
-                                     prepare_point, restart_files)
+from OMFITlib_cgyro_continue import continuation_plan, prepare_point, restart_files
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -253,13 +252,13 @@ if not batch_id:
 previous_status = previous_manifest.get('status', None)
 previous_failed = previous_status in ('failed', 'cancelled') or (
     previous_status == 'submitted_or_finished' and bool(previous_manifest.get('failed_points', [])))
-if previous_manifest and previous_status != 'published' and not previous_failed and not advancing_batch(root, batch_id):
+if previous_manifest and not collection_done(previous_manifest) and not previous_failed and not advancing_batch(root, batch_id):
     # A killed local wait does not update a remote job's final status. Query the
     # saved run, rather than treating the stale local flag as a live allocation.
     refresh_run_state(root, OMFITx)
     previous_status = previous_manifest.get('status', None)
     previous_failed = previous_status in ('failed', 'cancelled')
-    if previous_status != 'published' and not previous_failed:
+    if not collection_done(previous_manifest) and not previous_failed:
         raise ValueError('The previous CGYRO run is still active, needs collection, or has an unconfirmed scheduler state. '
                          'Synchronize its job status or collect its results before starting another run.')
 if restart_mode and not previous_cases:
@@ -296,9 +295,11 @@ if continuation:
         raise ValueError('Restore the original checkpoint execution configuration: ' + ', '.join(changed_runtime))
 inputs_node = root['INPUTS']
 if continuation:
-    _, _, source_case = archived_case(root, continuation['source_token'])
-    first_result = point_result(source_case, continuation['rows'][continuation['points'][0]])
-    base_input = OMFITgacode(os.path.join(first_result.filename, 'input.cgyro')).duplicate()
+    first_point = continuation['points'][0]
+    first_stage = os.path.join(submit_workdir, 'staging', first_point)
+    os.makedirs(os.path.dirname(first_stage), exist_ok=True)
+    first_prepared = prepare_point(root, continuation, first_point, first_stage, OMFITgacode)
+    base_input = first_prepared[0].duplicate()
 else:
     base_input = inputs_node['input.cgyro'].duplicate()
 prescribed_zeff = float(base_input.get('Z_EFF_METHOD', 2)) == 1
@@ -344,8 +345,11 @@ for new_dir, overrides, point_metadata in points:
         name: json_scalar(current_input[name]) for name in ('DELTA_T', 'MAX_TIME', 'PRINT_STEP') if name in current_input}
     packed_names = list(input_names)
     if continuation:
-        current_input, point_metadata, packed_names = prepare_point(
-            root, continuation, new_dir, stage, OMFITgacode)
+        if new_dir == first_point:
+            current_input, point_metadata, packed_names = first_prepared
+        else:
+            current_input, point_metadata, packed_names = prepare_point(
+                root, continuation, new_dir, stage, OMFITgacode)
     elif restart_mode:
         if new_dir not in previous_cases:
             raise ValueError('Restart point missing: %s; use a fresh run for new points' % new_dir)
@@ -416,7 +420,8 @@ if continuation:
                          numeric_parameters=copy.deepcopy(source_info.get('numeric_parameters', {})),
                          scale_time_with_ky=source_info.get('scale_time_with_ky', False),
                          continuation={key: copy.deepcopy(continuation[key]) for key in
-                             ('source_token', 'source_runid', 'source_case_id', 'additional_time', 'points')}))
+                             ('source_token', 'source_runid', 'source_case_id', 'additional_time', 'points',
+                              'stopped_run', 'source_points')}))
 run_manifest = OMFITtree()
 run_manifest.update(manifest)
 root['RUN_MANIFEST'] = run_manifest

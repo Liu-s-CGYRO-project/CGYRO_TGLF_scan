@@ -1,10 +1,11 @@
 # Run and collect a 1D, 2D, or 3D CGYRO parameter scan.
 import copy
-from builtins import ValueError, dict, int, len, list, set, str
+from builtins import ValueError, any, dict, int, len, list, set, str
 from datetime import datetime, timezone
-from OMFITlib_cgyro_archive import canonical_case_key, combine_cases, matching_cases, store_scan
+from OMFITlib_cgyro_archive import canonical_case_key, combine_cases, matching_cases, scan_key, store_scan
 from OMFITlib_cgyro_retry import collect_current
-from OMFITlib_cgyro_continue import archived_case
+from OMFITlib_cgyro_continue import continuation_case, point_result
+from OMFITlib_cgyro_queue import save_current
 defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False, continuation=None)
 
 setup = root['SETTINGS']['SETUP']
@@ -17,8 +18,9 @@ if dimensions not in (0, 1, 2, 3):
 if setup['irun'] == 1:
     root['SCRIPTS']['subscan_lin.py'].run(scan_dimensions=dimensions,
         wait_for_completion=wait_for_completion, batch_id=batch_id, continuation=continuation)
-if (wait_for_completion and setup['idownsync'] == 1
-        and (collect_stopped or not root.get('RUN_MANIFEST', {}).get('stop_requested', False))):
+if (wait_for_completion and (setup['idownsync'] == 1 or root.get('RUN_MANIFEST', {}).get('auto_collect_requested', False))
+        and (collect_stopped or root.get('RUN_MANIFEST', {}).get('auto_collect_requested', False)
+             or not root.get('RUN_MANIFEST', {}).get('stop_requested', False))):
     collect_current(root, OMFITx, OMFITtree, OMFITpath, OMFITascii)
 
 
@@ -29,6 +31,7 @@ def result_path(manifest, point_id):
         path = list(table[point_id]['result_path'])
         if len(path) != 2 * int(manifest['dimensions']) + 2 or path[-2] != 'lin':
             raise ValueError('Invalid point index for ' + point_id)
+        path[0] = scan_key(manifest, path[0])
         return path
     parts = point_id.split('~')
     expected = 2 * int(manifest['dimensions']) + 2
@@ -37,32 +40,64 @@ def result_path(manifest, point_id):
     return parts[:-2] + ['lin', parts[-1]]
 
 
+def remember_collection(root):
+    manifest = root['RUN_MANIFEST']
+    history = root.setdefault('RUN_HISTORY', OMFITtree()).setdefault(manifest['run_token'], OMFITtree())
+    saved = copy.deepcopy(manifest)
+    if manifest.get('status', '') == 'published':
+        saved.pop('point_table', None)
+    else:
+        history['cases'] = copy.deepcopy(root['Cases'][manifest['case_tag']])
+    history['manifest'] = saved
+    save_current(root, OMFITtree)
+
+
 def publish_loaded_run(root):
     manifest = root.get('RUN_MANIFEST', None)
-    if not manifest or manifest.get('status', None) != 'loaded':
-        print('No fully loaded run to publish; preserved results are unchanged.')
+    if not manifest or manifest.get('collection_status', '') != 'ready' and manifest.get('status', '') != 'loaded':
         return
+    if manifest.get('load_errors', {}):
+        raise ValueError('Result download/read errors remain; collect again before archiving.')
     if int(manifest['dimensions']) not in (1, 2, 3):
         raise ValueError('Unsupported run manifest dimension')
     loaded = list(manifest.get('loaded_points', []))
+    partial = list(manifest.get('partial_points', []))
+    readable = list(dict.fromkeys(loaded + partial))
     expected = list(manifest.get('points', loaded))
-    if (not loaded or len(loaded) != len(expected) or set(loaded) != set(expected)
-            or manifest.get('failed_points', []) or manifest.get('partial_points', [])):
-        raise ValueError('Only a completely collected scan can replace the previous results for these axes')
+    if not readable:
+        manifest['collection_status'] = 'empty'
+        remember_collection(root)
+        print('Collection finished: no readable results; {} empty/incomplete points skipped. Previous results are unchanged.'.format(len(expected)))
+        return
+    complete = set(loaded) == set(expected) and not manifest.get('failed_points', []) and not partial
     continuation = manifest.get('continuation', None)
     source_case = None
     if continuation:
-        _, _, source_case = archived_case(root, continuation['source_token'])
+        try:
+            source_case = continuation_case(root, continuation['source_token'])
+        except ValueError:
+            if not continuation.get('stopped_run', False):
+                raise
         if set(expected) != set(continuation['points']):
             raise ValueError('Continuation point list changed; the previous case is preserved')
+        if continuation.get('stopped_run', False):
+            finished = {point for point, row in (source_case or {}).get('__TASKS__', {}).items()
+                        if row.get('status', '') == 'loaded' and not row.get('resume_pending', False)}
+            complete = complete and set(continuation['source_points']) <= (finished | set(loaded))
     case_tag = manifest['case_tag']
     fresh_output = OMFITtree()
     if source_case is not None:
-        # archived_case returns this scan only; unselected points survive.
-        for key in source_case:
-            if not str(key).startswith('__'):
-                fresh_output[key] = copy.deepcopy(source_case[key])
-    for point_id in manifest['loaded_points']:
+        # Rebuild native scaffolding even when a stopped run's view is a plain
+        # metadata blueprint; each retained result receives a native parent.
+        for row in source_case['__TASKS__'].values():
+            path = row['result_path']
+            node = fresh_output
+            for key in path[:-1]:
+                if key not in node:
+                    node[key] = OMFITtree()
+                node = node[key]
+            node[path[-1]] = copy.deepcopy(point_result(source_case, row))
+    for point_id in readable:
         path = result_path(manifest, point_id)
         node = fresh_output
         for key in path[:-1]:
@@ -72,6 +107,15 @@ def publish_loaded_run(root):
         node[path[-1]] = copy.deepcopy(root['Cases'][case_tag][point_id])
 
     run_id = str(manifest['runid'])
+    if not complete:
+        base = run_id + ' [partial ' + str(manifest['run_token'])[:8] + ']'
+        run_id, number = base, 1
+        db = root.get('RUN_DB', {})
+        while run_id in db and not any(case.get('__INFO__', {}).get('run_token', '') == manifest['run_token']
+                                       for case in db[run_id].values()):
+            number += 1
+            run_id = base + ' [' + str(number) + ']'
+        manifest['partial_runid'] = run_id
     legacy = 'case_id' not in manifest
     base_case_key = ('nr=' + str(manifest['nr']) if legacy else str(manifest['case_id']))
     case_key = canonical_case_key(base_case_key, {'rho': manifest.get('rho', None), 'ion_case': manifest['mass']})
@@ -89,17 +133,20 @@ def publish_loaded_run(root):
     task_rows = OMFITtree()
     if source_case is not None:
         task_rows.update(copy.deepcopy(source_case['__TASKS__']))
-    for point_id in manifest['loaded_points']:
+    for point_id in readable:
         metadata = copy.deepcopy(manifest.get('point_table', {}).get(point_id, {}))
         row = OMFITtree()
+        row.update(metadata)
         row.update(dict(task_id=point_id, runid=run_id, case_id=case_key,
                         source_nr=manifest['nr'], rho=manifest.get('rho', None),
-                        ion_case=manifest['mass'], status='loaded'))
-        row.update(metadata)
+                        ion_case=manifest['mass'], status='partial' if point_id in partial else 'loaded'))
         row['result_path'] = result_path(manifest, point_id)
         row['result_workDir'] = manifest.get('point_workdirs', {}).get(point_id, manifest['workDir'])
         row['run_token'] = manifest['run_token']
+        row['resume_pending'] = point_id in partial
         task_rows[point_id] = row
+    for row in task_rows.values():
+        row.update(dict(runid=run_id, case_id=case_key))
     info = OMFITtree()
     info.update(dict(run_token=manifest['run_token'], runid=run_id, case_id=case_key,
                      source_nr=manifest['nr'], rho=manifest.get('rho', None),
@@ -116,6 +163,9 @@ def publish_loaded_run(root):
                      retry_count=manifest.get('retry_count', 0), attempts=copy.deepcopy(manifest.get('attempts', [])),
                      point_workdirs=copy.deepcopy(manifest.get('point_workdirs', {})),
                      server=manifest['server'], runtime=copy.deepcopy(manifest.get('runtime', {})),
+                     source_runid=manifest['runid'], collection_status='complete' if complete else 'partial',
+                     planned_points=list(continuation.get('source_points', expected) if continuation else expected),
+                     skipped_points=list(manifest.get('skipped_points', [])),
                      status='published'))
     if source_case is not None:
         continuations = copy.deepcopy(source_case['__INFO__'].get('continuations', []))
@@ -139,13 +189,13 @@ def publish_loaded_run(root):
     # OUTPUTScan is the latest scan only; RUN_DB contains all retained axes.
     root['OUTPUTScan'] = fresh_output
     root['RUN_MANIFEST']['case_id'] = case_key
-    root['RUN_MANIFEST']['status'] = 'published'
-    if 'RUN_HISTORY' not in root:
-        root['RUN_HISTORY'] = OMFITtree()
-    history = root['RUN_HISTORY'].setdefault(manifest['run_token'], OMFITtree())
-    archived_manifest = copy.deepcopy(root['RUN_MANIFEST'])
-    archived_manifest.pop('point_table', None)
-    history['manifest'] = archived_manifest
+    manifest['collection_status'] = 'complete' if complete else 'partial'
+    if complete:
+        manifest['status'] = 'published'
+    remember_collection(root)
+    print('Collected {} complete and {} partial points; {} points skipped. {}'.format(
+        len(loaded), len(partial), len(manifest.get('skipped_points', [])),
+        'Full scan archived.' if complete else 'Partial results archived separately; previous full scans are preserved.'))
 
 
 if wait_for_completion:

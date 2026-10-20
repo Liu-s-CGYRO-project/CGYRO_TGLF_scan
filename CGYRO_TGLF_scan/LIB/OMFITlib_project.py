@@ -39,7 +39,7 @@ from OMFITlib_cgyro_parameters import (initialize_parameters,
 from OMFITlib_cgyro_scan_values import scan_axes as configured_scan_axes
 from OMFITlib_cgyro_isotopes import remap_physics
 from OMFITlib_cgyro_run_state import stop_message
-from OMFITlib_cgyro_queue import activate_run, pending_runs, queue_records, queue_summary, save_current
+from OMFITlib_cgyro_queue import activate_run, collection_done, pending_runs, queue_records, queue_summary, save_current
 from OMFITlib_cgyro_retry import retry_limit
 from OMFITlib_cgyro_continue import continuation_plan
 
@@ -911,20 +911,24 @@ class ProjectActions:
                                        stopped_case=item['case_id'], remote_status=manifest.get('status', '')))
                     self.settings['message'] = stop_message(manifest)
                     return completed
-                if not queued:
+                if not queued and manifest.get('status', '') == 'published':
                     completed.append(item['case_id'])
             if queued:
                 node['RUN_BATCH']['status'] = 'submitted'
                 completed = self._collect_cgyro_queue(automatic=True)
                 if node['RUN_BATCH'].get('stop_requested', False):
                     record.update(dict(status='cancelled', completed=completed))
-                    self.settings['message'] = queue_summary(node) + ' 本批作业已请求结束，输出保留。'
+                    self.settings['message'] = queue_summary(node) + ' 取消后已自动收集，可从结果记录选择未完成点继续计算。'
                     return completed
                 if len(completed) != len(plan):
                     record.update(dict(status='partial', completed=completed))
-                    self.settings['message'] = queue_summary(node) + ' 部分案例未归档，记录和输出保留。'
+                    self.settings['message'] = queue_summary(node) + ' 未完成案例的原输入和已有输出保留。'
                     return completed
             record.update(dict(status='complete', completed=completed))
+            if len(completed) != len(plan):
+                record['status'] = 'partial'
+                self.settings['message'] = '已有结果已保留，未完成的计算点可从结果记录继续计算。'
+                return completed
             self.settings['message'] = '已完成 {} 个输入组合，结果已保存到 RUN_DB。'.format(len(completed))
             return completed
         except BaseException as exc:
@@ -967,17 +971,17 @@ class ProjectActions:
                 if manifest.get('status', '') == 'published':
                     completed.append(manifest['case_id'])
                     continue
+                if automatic and collection_done(manifest):
+                    continue
                 if not manifest.get('job_id', '') or manifest.get('submission_uncertain', False):
                     errors.append(str(manifest.get('case_id', token)) + ': submission is not confirmed')
                     continue
                 activate_run(node, token)
                 try:
                     self.call('等待已提交的 CGYRO 案例', MODULES['cgyro'] + ('SCRIPTS', 'wait_current_run.py'))
-                    if automatic and batch.get('stop_requested', False):
-                        return completed
                     setup['idownsync'] = 1
                     self.call('收集并归档 CGYRO 批量结果', MODULES['cgyro'] + ('SCRIPTS', 'CGYROScan.py'),
-                              collect_stopped=not automatic)
+                              collect_stopped=True)
                     if node['RUN_MANIFEST'].get('status', '') == 'published':
                         completed.append(node['RUN_MANIFEST']['case_id'])
                 except Exception as exc:
@@ -988,7 +992,7 @@ class ProjectActions:
             setup['irun'], setup['idownsync'] = previous
             batch.update(dict(completed=completed, errors=errors,
                 status='published' if len(completed) == len(batch['case_ids']) else
-                'cancel_requested' if batch.get('stop_requested', False) and pending_runs(node) else
+                'cancel_requested' if batch.get('stop_requested', False) and (pending_runs(node) or errors) else
                 'cancelled' if batch.get('stop_requested', False) else 'partial'))
         if errors:
             # ASCII survives older OMFIT script serialization in error dialogs.
@@ -1069,6 +1073,8 @@ class ProjectActions:
             manifest = node.get('RUN_MANIFEST', {})
             if manifest.get('status', '') == 'published':
                 self.settings['message'] = '已续算并更新 {} 个计算点，其余结果保留。'.format(len(point_ids))
+            elif collection_done(manifest):
+                self.settings['message'] = stop_message(manifest)
             elif manifest.get('stop_requested', False):
                 self.settings['message'] = stop_message(manifest)
         finally:

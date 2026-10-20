@@ -3,7 +3,7 @@
 Probe completion before parsing outputs. The retry controller consumes probe
 failures separately from transport/reader errors and decides whether to rerun.
 """
-from builtins import Exception, RuntimeError, ValueError, float, int, len, list, set, str
+from builtins import Exception, RuntimeError, ValueError, any, float, int, len, list, set, str
 import os
 import re
 from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, text_output as output_text
@@ -92,6 +92,8 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
         command += ('point=' + shell_quote(point_result_dir(point)) + '; point_id=' + shell_quote(point) + '; missing="";\n')
         command += ('for name in out.cgyro.grids out.cgyro.time; do\n'
                     '  [ -s "$point/$name" ] || missing="$missing $name";\ndone\n'
+                    'if [ ! -s "$point/out.cgyro.freq" ] && [ ! -s "$point/bin.cgyro.freq" ]; then\n'
+                    '  missing="$missing frequency"; fi\n'
                     'if [ -s "$point/cgyro.exit" ]; then\n'
                     '  code=$(cat -- "$point/cgyro.exit"); [ "$code" = 0 ] || missing="$missing exit=$code";\n'
                     'else missing="$missing no_exit_record"; fi\n'
@@ -117,7 +119,7 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
     if 'CGYRO_ACTIVE' in output.splitlines():
         manifest['status'] = 'submitted'
         raise RuntimeError('CGYRO job ' + job_id + ' is still queued/running; collect after it finishes.')
-    failed, complete, states, solver_errors = set(), set(), [], {}
+    failed, complete, states, solver_errors, absent = set(), set(), [], {}, {}
     seen = []
     for line in output.splitlines():
         fields = line.split('|')
@@ -125,6 +127,9 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
             seen.append(fields[1])
             if fields[2].strip():
                 failed.add(fields[1])
+                missing = fields[2].strip()
+                if any(name in missing.split() for name in ('out.cgyro.grids', 'out.cgyro.time', 'frequency')):
+                    absent[fields[1]] = missing
             else:
                 complete.add(fields[1])
         elif len(fields) >= 3 and fields[0] == 'CGYRO_ERROR':
@@ -142,6 +147,7 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
     if states:
         manifest['scheduler_status'] = '\n'.join(states)
     manifest['solver_errors'] = solver_errors
+    manifest['missing_outputs'] = absent
     if set(seen) != set(parentdir):
         raise RuntimeError('CGYRO output probe did not return the complete task list; results have not been loaded.')
     if scheduler_record is not None:
@@ -175,6 +181,8 @@ manifest = root.get('RUN_MANIFEST', None)
 if not manifest:
     raise ValueError('No run manifest. Prepare a run first; importing old result directories requires an explicit manifest.')
 manifest['load_errors'] = {}
+manifest['skipped_reasons'] = {}
+manifest['collection_status'] = 'collecting'
 rmtserver = manifest['server']
 rmtworkdir = manifest['workDir']
 rmttunnel = manifest['tunnel']
@@ -185,6 +193,7 @@ caseRoot = root['Cases']
 parentdir = list(manifest['points'])
 loaded_cases = []
 partial_cases = []
+skipped_cases = []
 terminal_status = ''
 if icgyro == 1:
     scheduler = str(manifest.get('scheduler', '') or rmtsetup.get(
@@ -202,16 +211,21 @@ if icgyro == 1:
             terminal_status = scheduler_record['outcome']
     failed_cases = probe_run_outputs(scheduler, str(manifest.get('job_id', '') or ''), scheduler_record)
     manifest['probe_failed_points'] = list(failed_cases)
-    if failed_cases and not terminal_status:
-        # Keep exception text ASCII: older OMFIT script serialization can
-        # replace non-ASCII task-script messages with question marks.
-        raise RuntimeError(failure_report(failed_cases))
 for itemdir in parentdir:
+    missing = manifest.get('missing_outputs', {}).get(itemdir, '')
+    if missing:
+        # Input-only directories are normal for tasks cancelled in the queue.
+        skipped_cases.append(itemdir)
+        manifest['skipped_reasons'][itemdir] = missing
+        print('Skipping ' + itemdir + ': no usable output (' + missing + ')')
+        continue
     print("Loading "+itemdir)
     result_dir = point_result_dir(itemdir)
     if local and not os.path.isdir(result_dir):
         print("Missing local result directory: "+result_dir)
         failed_cases.append(itemdir)
+        skipped_cases.append(itemdir)
+        manifest['skipped_reasons'][itemdir] = 'Missing result directory'
         continue
     try:
         if icgyro==0:
@@ -226,8 +240,19 @@ for itemdir in parentdir:
                 candidate=OMFITcgyro([result_dir,rmtserver,rmttunnel],extra_files=restart_extra_files)
         # Force lazy parsing before replacing a preserved node is considered successful.
         if candidate['n_time'] < 1:
-            raise ValueError('Result contains no time samples')
-        validate_continued_result(candidate, manifest.get('point_table', {}).get(itemdir, {}))
+            skipped_cases.append(itemdir)
+            failed_cases.append(itemdir)
+            manifest['skipped_reasons'][itemdir] = 'No time samples'
+            continue
+        try:
+            validate_continued_result(candidate, manifest.get('point_table', {}).get(itemdir, {}))
+        except ValueError as exc:
+            if not manifest.get('stop_requested', False):
+                raise
+            skipped_cases.append(itemdir)
+            failed_cases.append(itemdir)
+            manifest['skipped_reasons'][itemdir] = str(exc)
+            continue
         caseRoot[caseTag][itemdir] = candidate
         if itemdir in failed_cases:
             partial_cases.append(itemdir)  # Readable samples, never a completed calculation.
@@ -239,14 +264,20 @@ for itemdir in parentdir:
         failed_cases.append(itemdir)
 root['RUN_MANIFEST']['loaded_points'] = loaded_cases
 root['RUN_MANIFEST']['partial_points'] = partial_cases
+root['RUN_MANIFEST']['skipped_points'] = unique_points(skipped_cases)
 root['RUN_MANIFEST']['failed_points'] = unique_points(failed_cases)
+root['RUN_MANIFEST']['collection_status'] = 'ready'
 if terminal_status == 'cancelled':
     report = failure_report(failed_cases, status='cancelled')
     print('CGYRO job was cancelled. Preserved complete points: {}; readable partial points: {}. '
-          'The run is not published as a completed calculation; a fresh run is allowed.'.format(
+          'Available results will be archived separately; empty points are skipped.'.format(
               len(loaded_cases), len(partial_cases)))
     print(report)
 elif failed_cases:
-    raise RuntimeError(failure_report(failed_cases) + '\nPrevious archived results are preserved.')
+    print(failure_report(failed_cases) + '\nPrevious archived results are preserved.')
 else:
     root['RUN_MANIFEST']['status'] = 'loaded'
+if manifest['load_errors']:
+    # Missing files were handled above. Transport/reader corruption remains an
+    # error; retry a read without treating it as an empty solver calculation.
+    raise RuntimeError('CGYRO result download/read failed: ' + str(manifest['load_errors']))

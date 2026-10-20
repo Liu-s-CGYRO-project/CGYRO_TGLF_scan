@@ -5,13 +5,138 @@ to a restart. Planning and staging do not change the successful result case.
 CGYRO rewinds its history to out.cgyro.tag and MAX_TIME adds a new time segment.
 """
 from builtins import (AttributeError, OSError, TypeError, ValueError, any, dict, float, int, len,
-                      list, max, range, set, sorted, str, zip)
+                      isinstance, iter, list, max, range, set, sorted, str, type, zip)
 import copy
 import hashlib
 import math
 import os
 import re
-from OMFITlib_cgyro_archive import case_scans, scan_branch
+import shutil
+import zipfile
+from OMFITlib_cgyro_archive import case_scans, scan_branch, scan_key
+
+
+def saved_run(module, token):
+    current = module.get('RUN_MANIFEST', {})
+    if str(current.get('run_token', '')) == str(token):
+        return current, module.get('Cases', {}).get(current['case_tag'], {})
+    entry = module.get('RUN_HISTORY', {}).get(str(token), {})
+    return entry.get('manifest', {}), entry.get('cases', {})
+
+
+def stopped_context(module, token):
+    """Join a stopped run's frozen point table with its continuation ancestry."""
+    manifest, _ = saved_run(module, token)
+    if manifest.get('collection_status', '') not in ('partial', 'empty'):
+        return None
+    records, seen, current = [], set(), str(token)
+    while current:
+        if current in seen:
+            raise ValueError('Circular continuation history')
+        seen.add(current)
+        record, cases = saved_run(module, current)
+        if not record:
+            raise ValueError('Missing frozen continuation history: ' + current)
+        records.append((record, cases))
+        current = str(record.get('continuation', {}).get('source_token', '') or '')
+    rows, sources, results, readable, unfinished = {}, {}, {}, {}, set()
+    for record, cases in reversed(records):
+        complete_points = set(record.get('loaded_points', []))
+        unfinished.difference_update(complete_points)
+        unfinished.update(set(record.get('points', [])) - complete_points)
+        try:
+            _, _, archived = archived_case(module, record['run_token'])
+        except ValueError:
+            archived = None
+        if archived is not None:
+            for point, row in archived['__TASKS__'].items():
+                rows[point] = copy.deepcopy(dict(row))
+                readable[point] = copy.deepcopy(dict(row))
+                results[point] = point_result(archived, row)
+        for point, row in record.get('point_table', {}).items():
+            rows[point] = copy.deepcopy(dict(row))
+            sources[point] = (record, cases)
+            node = cases.get(point, None)
+            if (point in list(record.get('loaded_points', [])) + list(record.get('partial_points', []))
+                    and node is not None and any(base.__name__ == 'OMFITcgyro' for base in type(node).__mro__)):
+                readable[point] = copy.deepcopy(dict(row))
+                readable[point].update(dict(status='partial' if point in record.get('partial_points', []) else 'loaded',
+                    run_token=record['run_token'], runid=record['runid'], case_id=record['case_id'],
+                    source_nr=record['nr'], rho=record.get('rho', None), ion_case=record['mass'],
+                    result_workDir=record.get('point_workdirs', {}).get(point, record['workDir'])))
+                results[point] = node
+    try:
+        _, _, case = archived_case(module, token)
+    except ValueError:
+        case = None
+    if case is not None:
+        # An unchanged point may have been inherited from an earlier segment.
+        for point, row in case['__TASKS__'].items():
+            rows.setdefault(point, copy.deepcopy(dict(row)))
+    info = copy.deepcopy(dict(case['__INFO__'] if case is not None else manifest))
+    info.update(dict(source_nr=manifest['nr'], ion_case=manifest['mass'],
+                     runid=manifest['runid'], points=len(rows)))
+    view = dict(__INFO__=info, __TASKS__=readable)
+    for point, result in results.items():
+        readable[point]['resume_pending'] = point in unfinished
+        path = list(readable[point]['result_path'])
+        path[0] = scan_key(info, path[0])
+        readable[point]['result_path'] = path
+        node = view
+        for key in path[:-1]:
+            node = node.setdefault(key, {})
+        node[path[-1]] = result
+    return dict(manifest=manifest, info=info, case=case, view=view, rows=rows, sources=sources,
+                results=results, unfinished=unfinished)
+
+
+def continuation_case(module, token):
+    context = stopped_context(module, token)
+    if context is not None:
+        return context['view']
+    return archived_case(module, token)[2]
+
+
+def resume_source(module, token, point, context=None):
+    """Choose a verified checkpoint or original input, never current GUI data."""
+    context = stopped_context(module, token) if context is None else context
+    if context is None:
+        _, _, case = archived_case(module, token)
+        result = point_result(case, case['__TASKS__'][point])
+        checkpoint_tag(result.filename)
+        return dict(mode='checkpoint', directory=result.filename)
+    if point in context['results']:
+        result = context['results'][point]
+        checkpoint_tag(result.filename)  # Existing samples never silently restart from zero.
+        return dict(mode='checkpoint', directory=result.filename)
+    if point not in context['sources']:
+        raise ValueError('No original input provenance for ' + point)
+    record, cases = context['sources'][point]
+    node = cases.get(point, None)
+    if node is not None and any(base.__name__ == 'OMFITcgyro' for base in type(node).__mro__):
+        checkpoint_tag(node.filename)
+        return dict(mode='checkpoint', directory=node.filename)
+    original = record.get('source_local_workDir', record.get('local_workDir', ''))
+    path = os.path.join(str(original), point + '.zip')
+    if isinstance(node, dict):
+        retained = node.get('zip', None)
+        if retained is not None and os.path.isfile(retained.filename):
+            path = retained.filename
+    if not os.path.isfile(path):
+        raise ValueError('Original prepared input ZIP is missing: ' + path)
+    hashes = record.get('input_sha256', {}).get(point, {})
+    if not hashes:
+        raise ValueError('Original input checksums are missing: ' + point)
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+    if {'bin.cgyro.restart', 'out.cgyro.tag', 'out.cgyro.time'} <= names:
+        mode = 'checkpoint_zip'
+    else:
+        reason = str(record.get('skipped_reasons', {}).get(point, ''))
+        if 'out.cgyro.time' not in reason and reason != 'No time samples':
+            raise ValueError('The point has incomplete output, not a confirmed unstarted input: ' + point)
+        mode = 'fresh'
+    return dict(mode=mode, zip=path, sha256=copy.deepcopy(dict(hashes)))
 
 
 def archived_case(module, token):
@@ -114,22 +239,33 @@ def continuation_plan(module, token, point_ids, additional_time):
     duration = float(additional_time)
     if not math.isfinite(duration) or duration <= 0:
         raise ValueError('Additional simulation time must be finite and positive')
-    runid, case_id, case = archived_case(module, token)
-    tasks = case.get('__TASKS__', {})
+    stopped = stopped_context(module, token)
+    if stopped is None:
+        runid, case_id, case = archived_case(module, token)
+        tasks, info = case.get('__TASKS__', {}), case['__INFO__']
+    else:
+        tasks, info = stopped['rows'], stopped['info']
+        runid, case_id = stopped['manifest']['runid'], stopped['manifest']['case_id']
     selected = list(point_ids)
     if not selected or len(set(selected)) != len(selected):
         raise ValueError('Select at least one distinct calculation point')
     for point_id in selected:
         if point_id not in tasks or not re.fullmatch(r'p[0-9]{6,}', str(point_id)):
             raise ValueError('Unindexed calculation point: ' + str(point_id))
-        checkpoint_tag(point_result(case, tasks[point_id]).filename)
-    info = copy.deepcopy(dict(case['__INFO__']))
+    sources = {point: resume_source(module, token, point, stopped) for point in selected}
+    rows = {point: copy.deepcopy(dict(tasks[point])) for point in selected}
+    if stopped is not None:
+        for point in selected:
+            if sources[point]['mode'] == 'checkpoint' and point in stopped['view']['__TASKS__']:
+                rows[point] = copy.deepcopy(dict(stopped['view']['__TASKS__'][point]))
+    info = copy.deepcopy(dict(info))
     previous = module.get('RUN_HISTORY', {}).get(str(token), {}).get('manifest', {})
     if not previous and str(module.get('RUN_MANIFEST', {}).get('run_token', '')) == str(token):
         previous = module['RUN_MANIFEST']
     return dict(source_token=str(token), source_runid=runid, source_case_id=case_id,
                 additional_time=duration, info=info, points=selected,
-                rows={point: copy.deepcopy(dict(tasks[point])) for point in selected},
+                rows=rows,
+                sources=sources, stopped_run=stopped is not None, source_points=list(tasks),
                 runtime=copy.deepcopy(dict(info.get('runtime', previous.get('runtime', {})))),
                 server=info.get('server', previous.get('server', '')),
                 case_tag=previous.get('case_tag', 'linear'))
@@ -169,16 +305,43 @@ def restart_files(directory, source):
 
 def prepare_point(module, plan, point_id, stage, reader):
     """Copy to a new run directory and change only the segment duration."""
-    _, _, case = archived_case(module, plan['source_token'])
     row = plan['rows'][point_id]
-    result = point_result(case, row)
-    result.deploy(stage)  # stage must not exist: OMFIT otherwise appends a basename.
-    tag = checkpoint_tag(stage)
+    origin = plan['sources'][point_id]
+    if origin['mode'] == 'checkpoint':
+        # The collected directory is immutable. Copy it to a new staging path,
+        # preserving optional histories and leaving the original run intact.
+        shutil.copytree(origin['directory'], stage)
+    else:
+        os.makedirs(stage)
+        with zipfile.ZipFile(origin['zip']) as archive:
+            if set(archive.namelist()) != set(origin['sha256']):
+                raise ValueError('Original input archive member list changed: ' + point_id)
+            for name, expected in origin['sha256'].items():
+                if not name or name in ('.', '..') or '/' in name or '\\' in name:
+                    raise ValueError('Invalid original input archive member: ' + name)
+                digest = hashlib.sha256()
+                with archive.open(name) as source_file, open(os.path.join(stage, name), 'wb') as target_file:
+                    for chunk in iter(lambda: source_file.read(1024 * 1024), b''):
+                        digest.update(chunk)
+                        target_file.write(chunk)
+                if digest.hexdigest() != expected:
+                    raise ValueError('Original prepared input changed: ' + point_id + '/' + name)
     source = reader(os.path.join(stage, 'input.cgyro'))
     for name, value in row.get('values', {}).items():
+        if name in ('DELTA_T', 'MAX_TIME', 'PRINT_STEP'):
+            value = row.get('effective_time', {}).get(name, value)
         if name not in source or not math.isclose(float(source[name]), float(value), rel_tol=1e-9, abs_tol=1e-12):
             raise ValueError('Archived input disagrees with task {}: {}'.format(point_id, name))
     duration = plan['additional_time']
+    if origin['mode'] == 'fresh':
+        current = source.duplicate()
+        current['MAX_TIME'] = float(source['MAX_TIME']) + duration
+        current.deploy(os.path.join(stage, 'input.cgyro'))
+        metadata = copy.deepcopy(row)
+        metadata['effective_time'] = {name: float(current[name]) for name in ('DELTA_T', 'MAX_TIME', 'PRINT_STEP')}
+        metadata['continuation'] = dict(source_token=plan['source_token'], mode='fresh', additional_time=duration)
+        return current, metadata, [name for name in origin['sha256'] if name.startswith('input.')]
+    tag = checkpoint_tag(stage)
     delta_t = float(source.get('DELTA_T', 0))
     print_step = int(source.get('PRINT_STEP', 0))
     # Require progress beyond the previous saved tail as well as one new sample.
@@ -207,7 +370,7 @@ def prepare_point(module, plan, point_id, stage, reader):
 def validate_continued_result(result, metadata):
     """Reject a no-progress collection, preserving the previous published case."""
     restart = metadata.get('continuation', {})
-    if not restart:
+    if not restart or not restart.get('checkpoint', None):
         return
     tag = restart['checkpoint']
     expected = restart.get('history_sha256', {})
