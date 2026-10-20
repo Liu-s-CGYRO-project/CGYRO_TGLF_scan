@@ -1,13 +1,17 @@
 """Stage template files and patch an existing OMFIT tree without project I/O."""
 from builtins import all, any, bool, bytes, dict, float, getattr, hasattr, id, int, isinstance, iter, len, list, object, open, repr, reversed, set, sorted, str, tuple, type, zip
 import hashlib
+from datetime import datetime, timezone
 from pathlib import Path
 import shutil
 import tempfile
 import weakref
+import uuid
 
 from OMFITlib_template_archive import CODE_BRANCHES, SETTINGS_BRANCHES, TemplateError, tree_bytes
 from OMFITlib_template_service import Template, check_cancel
+from OMFITlib_template_migration import (ArchiveIndex, GROUP, LEGACY, Layout,
+                                        branch, kind, rebind, relocated_expression, structure)
 
 CODE = CODE_BRANCHES | {'help', 'license', 'README'}
 MISSING = object()
@@ -179,21 +183,175 @@ class Prepared:
 class LivePlan:
     def __init__(self, omfit, prepared, factory):
         self.omfit, self.prepared = omfit, prepared
+        self.factory = factory
         try:
             self.incoming = factory(str(prepared.entry), quiet=True, developerMode=False)
         except Exception as exc:
             raise TemplateError('无法载入模板树，尚未更新当前工程：' + str(exc)) from exc
         self.operations, self.guards, self.gui_paths = [], [], {}
+        self.relocations, self.scaffold = {}, None
+        self.bare_output_source = MISSING
+        self.archive_index = ArchiveIndex()
+        # An independent old module is moved as an object, never deep-copied.
+        # The incoming wrapper exists only off-tree until the transaction starts.
+        if GROUP in prepared.release['roots'] and raw(omfit, GROUP) is MISSING:
+            for name in LEGACY:
+                old = raw(omfit, name)
+                if old is not MISSING:
+                    if not module(old) or not module(lookup(self.incoming, (GROUP, name))):
+                        raise TemplateError('旧模块与模板结构不一致：' + name)
+                    self.relocations[name] = old
+            if ('CGYRO_scan' not in self.relocations and self._supports_archive_index()
+                    and (branch(raw(omfit, 'OUTPUTScan')) or kind(raw(omfit, 'OUTPUTScan'), 'OMFITcgyro'))
+                    and not module(raw(omfit, 'OUTPUTScan'))):
+                self.bare_output_source = raw(omfit, 'OUTPUTScan')
+            if self.relocations or self.bare_output_source is not MISSING:
+                self.scaffold = raw(self.incoming, GROUP)
+                self.scaffold.filename = ''
+        elif GROUP in prepared.release['roots']:
+            duplicates = [name for name in LEGACY if raw(omfit, name) is not MISSING]
+            if duplicates:
+                raise TemplateError('总模块与独立旧模块同时存在，不能确定结果归属：' + '、'.join(duplicates)
+                                    + '。请保留旧工程，并先明确需要迁入的那套模块。')
         self.added_modules = [name for name in prepared.release['roots'] if raw(omfit, name) is MISSING]
         for name in prepared.release['roots']:
             new, old = raw(self.incoming, name), raw(omfit, name)
             if not module(new) or (old is not MISSING and not module(old)):
                 raise TemplateError('模板与当前工程的模块类型不一致：' + name)
-            self._module((name,), old, new)
+            if name == GROUP and self.scaffold is not None:
+                for child, previous in self.relocations.items():
+                    self._module((GROUP, child), previous, raw(new, child))
+            else:
+                self._module((name,), old, new)
+        if self.prepared.data_policy == 'keep':
+            self._archives()
+        if self.bare_output_source is not MISSING:
+            if self.prepared.data_policy != 'keep':
+                raise TemplateError('迁移顶层 OUTPUTScan 需要选择“保留当前案例 / 结果”')
+            self._operation(('OUTPUTScan',), self.bare_output_source, MISSING, data=True)
+        if self.relocations:
+            self._expressions()
         self.applied = False
 
+    def _before(self, path):
+        if len(path) > 1 and path[0] == GROUP and path[1] in self.relocations:
+            return path[1:]
+        return path
+
+    def _lookup(self, path):
+        return lookup(self.omfit, self._before(path))
+
+    def _supports_archive_index(self):
+        release = self.prepared.release
+        if (GROUP not in release['roots'] or release.get('id', '') != 'cgyro-tglf'
+                or release.get('author', '') != 'tdxy-liu'):
+            return False
+        try:
+            version = tuple(int(part) for part in release['version'].split('.'))
+        except ValueError:
+            return False
+        return version >= (1, 22, 20)
+
+    def _archives(self):
+        if not self._supports_archive_index():
+            return
+        for name, method in (('CGYRO_scan', self.archive_index.cgyro), ('TGLF_scan', self.archive_index.tglf)):
+            path = (GROUP, name)
+            node = self._lookup(path)
+            if node is MISSING and name == 'CGYRO_scan' and self.bare_output_source is not MISSING:
+                node = {'OUTPUTScan': self.bare_output_source}
+            if node is MISSING:
+                continue
+            sources, issues = len(self.archive_index.sources), len(self.archive_index.issues)
+            try:
+                replacements = method(node)
+            except Exception as exc:
+                raise TemplateError('无法安全识别旧扫描归档，当前工程未修改：' + str(exc)) from exc
+            for key, value in (replacements or {}).items():
+                self._operation(path + (key,), raw(node, key), value, data=True)
+            for row in self.archive_index.sources[sources:] + self.archive_index.issues[issues:]:
+                row['module'] = name
+        if (self.relocations or self.bare_output_source is not MISSING or self.archive_index.sources or
+                self.archive_index.issues and any(isinstance(op['new'], Layout) for op in self.operations)):
+            path = (GROUP, 'MIGRATION_LOG')
+            old = self._lookup(path)
+            # One persistent report is sufficient to recover every original
+            # name; previous reports are kept when another migration is needed.
+            records = {} if old is MISSING else {key: value for key, value in dict.items(old)}
+            records[uuid.uuid4().hex] = dict(format='omfit-archive-migration-v1',
+                created=datetime.now(timezone.utc).isoformat(), release=self.prepared.release['version'],
+                module_mapping={name: [GROUP, name] for name in self.relocations},
+                standalone_output=self.bare_output_source is not MISSING,
+                sources=self.archive_index.sources, unresolved=self.archive_index.issues)
+            parent = self.scaffold if self.scaffold is not None else lookup(self.omfit, (GROUP,))
+            self.operations.append(dict(path=path, parent=parent, old=raw(parent, 'MIGRATION_LOG'),
+                new=Layout(records), stamp=None, data=True, staged=self.scaffold is not None))
+
+    def _expressions(self):
+        mapping = {name: (GROUP, name) for name in self.relocations}
+        owned = {op['path'] for op in self.operations}
+        def visit(node, path):
+            if path in owned:
+                return
+            if any(base.__name__ == 'OMFITexpression' for base in type(node).__mro__):
+                new = relocated_expression(node, mapping)
+                if new is not node:
+                    self._operation(path, node, new)
+            elif branch(node) or (path[-1] in SETTINGS_BRANCHES and isinstance(node, dict)):
+                materialize(node, path)
+                for key in keys(node):
+                    if key not in CODE:
+                        visit(raw(node, key), path + (key,))
+        for name, node in self.relocations.items():
+            visit(node, (GROUP, name))
+        for name in keys(self.omfit):
+            node = raw(self.omfit, name)
+            if name not in self.prepared.release['roots'] and name not in self.relocations and module(node):
+                visit(node, (name,))
+        for op in self.operations:
+            if not op['data']:
+                op['new'] = relocated_expression(op['new'], mapping)
+
+    def _idle(self):
+        # Moving a module while an execution window still holds its old root
+        # would make its eventual collector write to the wrong project layout.
+        if self.scaffold is None:
+            return
+        node = self.relocations.get('CGYRO_scan', {})
+        manifests = [raw(node, 'RUN_MANIFEST', {})]
+        for record in manifests:
+            if isinstance(record, dict) and raw(record, 'status', '') in (
+                    'prepared', 'submitted', 'submitted_or_finished', 'running', 'loaded', 'cancel_requested'):
+                raise TemplateError('旧工程仍有未收集的 CGYRO 运行，请先结束并归档，再迁移模块')
+
+    def _move(self):
+        self.omfit[GROUP] = self.scaffold
+        for name, node in self.relocations.items():
+            del self.omfit[name]
+            self.scaffold[name] = node
+
+    def _restore_roots(self):
+        for name, node in self.relocations.items():
+            self.omfit[name] = node
+        if raw(self.omfit, GROUP) is self.scaffold:
+            del self.omfit[GROUP]
+        if self.bare_output_source is not MISSING and raw(self.omfit, 'OUTPUTScan') is self.bare_output_source:
+            self.omfit['OUTPUTScan'] = rebind(self.bare_output_source)
+
     def _operation(self, path, old, new, data=False):
-        parent = lookup(self.omfit, path[:-1])
+        parent = self._lookup(path[:-1])
+        staged = parent is MISSING and self.scaffold is not None and path[0] == GROUP
+        if staged:
+            parent = lookup(self.scaffold, path[1:-1])
+            if not isinstance(parent, dict):
+                raise TemplateError('新模块缺少迁移目标：' + location(path))
+            old = raw(parent, path[-1])
+        for op in self.operations:
+            if op['path'] == path:
+                if op['parent'] is not parent or op['old'] is not old:
+                    raise TemplateError('更新规划出现重复节点冲突：' + location(path))
+                op.update(dict(new=new, data=data, stamp=None if data else stamp(old)))
+                return
         try:
             if old is new or (not data and same_content(old, new)):
                 return
@@ -201,7 +359,7 @@ class LivePlan:
         except Exception as exc:
             raise TemplateError('无法比较更新节点 ' + location(path) + '：' + str(exc)) from exc
         self.operations.append(dict(path=path, parent=parent, old=old, new=new,
-                                    stamp=fingerprint, data=data))
+                                    stamp=fingerprint, data=data, staged=staged))
 
     def _tree(self, path, old, new, keep=False, merge_settings=False):
         if not merge_settings and (file_node(old) or file_node(new)):
@@ -254,6 +412,9 @@ class LivePlan:
                     visit(child, path + (key,))
         for name in self.prepared.release['roots']:
             visit(raw(self.omfit, name), (name,))
+        if raw(self.omfit, GROUP) is MISSING:
+            for name, node in self.relocations.items():
+                visit(node, (GROUP, name))
         return self.gui_paths
 
     def _module(self, path, old, new):
@@ -291,7 +452,12 @@ class LivePlan:
 
     def report(self):
         scope = {op['path'][0] for op in self.operations}
+        if self.scaffold is not None:
+            scope.add(GROUP)
         return dict(mode='live', release=self.prepared.release,
+                    module_mapping={name: [GROUP, name] for name in self.relocations},
+                    standalone_output=self.bare_output_source is not MISSING,
+                    archive_sources=list(self.archive_index.sources), archive_issues=list(self.archive_index.issues),
                     data_policy=self.prepared.data_policy, settings_policy=self.prepared.settings_policy,
                     updated_modules=[name for name in self.prepared.release['roots']
                                      if name in scope and name not in self.added_modules],
@@ -299,25 +465,50 @@ class LivePlan:
                     changes=[dict(path=location(op['path']), bytes=None if op['data'] else
                                   payload_size(op['old'] if op['new'] is MISSING else op['new']),
                         action='add' if op['old'] is MISSING else 'delete' if op['new'] is MISSING else 'replace')
-                             for op in self.operations])
+                             for op in self.operations] +
+                    [dict(path=location((name,)) + ' → ' + location((GROUP, name)), bytes=None, action='move')
+                     for name in self.relocations])
 
     def _check(self, undo=False):
+        if self.scaffold is not None:
+            expected = self.scaffold if undo else MISSING
+            if raw(self.omfit, GROUP) is not expected:
+                raise TemplateError('工程根模块已改变，请重新预览')
+            for name, node in self.relocations.items():
+                if (lookup(self.omfit, (GROUP, name)) if undo else raw(self.omfit, name)) is not node:
+                    raise TemplateError('待迁移模块已改变：' + name)
+                if undo and raw(self.omfit, name) is not MISSING:
+                    raise TemplateError('旧模块位置已被占用，不能撤销：' + name)
+            if undo and structure(self.scaffold) != self.scaffold_stamp:
+                raise TemplateError('迁移后工程数据或设置已改变，不能撤销；原结果保留在当前工程')
+        if not undo:
+            self._idle()
+            self.archive_index.check()
+        find = lookup if undo else lambda tree, path: self._lookup(path)
         for path, node, old_keys in self.guards:
-            if lookup(self.omfit, path) is not node:
+            if find(self.omfit, path) is not node:
                 raise TemplateError('工程结构已改变，请重新预览：' + location(path))
             if not undo and tuple(keys(node)) != old_keys:
                 raise TemplateError('预览后节点已改变，请重新预览：' + location(path))
         for op in self.operations:
             expected = op['new'] if undo else op['old']
-            if lookup(self.omfit, op['path'][:-1]) is not op['parent'] or lookup(self.omfit, op['path']) is not expected:
+            parent = op['parent'] if op.get('staged', False) and not undo else find(self.omfit, op['path'][:-1])
+            actual = raw(parent, op['path'][-1]) if isinstance(parent, dict) else MISSING
+            if parent is not op['parent'] or actual is not expected:
                 raise TemplateError('待更新节点已改变，请重新预览：' + location(op['path']))
             if not op['data'] and stamp(expected) != op['stamp']:
                 raise TemplateError('代码或设置已修改，不能覆盖：' + location(op['path']))
+            if undo and op.get('layout_stamp', None) is not None and structure(expected) != op['layout_stamp']:
+                raise TemplateError('迁移后的扫描索引已改变，不能撤销：' + location(op['path']))
 
     def _put(self, op, value):
         if value is MISSING:
             del op['parent'][op['path'][-1]]
         else:
+            if isinstance(value, Layout):
+                value = value.build(self.factory)
+            elif op['data']:
+                value = rebind(value)
             op['parent'][op['path'][-1]] = value
 
     def apply(self, refresh):
@@ -326,6 +517,8 @@ class LivePlan:
         self._check()
         completed = []
         try:
+            if self.scaffold is not None:
+                self._move()
             for op in self.operations:
                 completed.append(op)
                 self._put(op, op['new'])
@@ -337,6 +530,8 @@ class LivePlan:
                 if op['old'] is MISSING and raw(op['parent'], op['path'][-1]) is MISSING:
                     continue
                 self._put(op, op['old'])
+            if self.scaffold is not None:
+                self._restore_roots()
             try:
                 refresh(self, True)
             except Exception:
@@ -344,6 +539,10 @@ class LivePlan:
             raise TemplateError('更新失败，已恢复原节点：' + str(exc)) from exc
         for op in self.operations:
             op['stamp'] = None if op['data'] else stamp(op['new'])
+            if op['data']:
+                op['layout_stamp'] = structure(op['new'])
+        if self.scaffold is not None:
+            self.scaffold_stamp = structure(self.scaffold)
         self.applied = True
 
     def undo(self, refresh):
@@ -355,8 +554,12 @@ class LivePlan:
             for op in reversed(self.operations):
                 completed.append(op)
                 self._put(op, op['old'])
+            if self.scaffold is not None:
+                self._restore_roots()
             refresh(self, True)
         except Exception:
+            if self.scaffold is not None and raw(self.omfit, GROUP) is MISSING:
+                self._move()
             for op in reversed(completed):
                 self._put(op, op['new'])
             refresh(self, False)

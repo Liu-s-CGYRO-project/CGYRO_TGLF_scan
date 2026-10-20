@@ -1266,12 +1266,12 @@ class TemplateManager(ManagerUpdateUI):
 
     def _planned(self, plan):
         self.plan = plan
-        labels = {'add': '新增', 'replace': '更新', 'delete': '删除'}
+        labels = {'add': '新增', 'replace': '更新', 'delete': '删除', 'move': '迁入'}
         for change in plan['changes'][:1500]:
             self.change_table.insert('', 'end', values=(labels[change['action']], change['path'],
                                      human_size(change['bytes']) if change.get('bytes') is not None else '—'))
         counts = {action: sum(c['action'] == action for c in plan['changes']) for action in labels}
-        self.plan_info.set('新增 {add} · 更新 {replace} · 删除 {delete} 个节点；直接在当前会话生效。'.format(**counts)
+        self.plan_info.set('新增 {add} · 更新 {replace} · 删除 {delete} · 迁入 {move}；直接在当前会话生效。'.format(**counts)
             if plan.get('mode') == 'live' else '新增 {add} · 更新 {replace} · 删除 {delete}；保留 {keep} 个文件，预计输出约 {size}。{tail}'.format(
             **counts, keep=plan['preserved_files'], size=human_size(plan['output_bytes_estimate']),
             tail='列表显示前 1500 项，可导出完整清单。' if len(plan['changes']) > 1500 else ''))
@@ -1281,7 +1281,20 @@ class TemplateManager(ManagerUpdateUI):
                 scope.append(label + '：' + '、'.join(plan[key]))
         if scope:
             self.plan_info.set('；'.join(scope) + '\n' + self.plan_info.get())
-        if not plan['changes']:
+        if plan.get('module_mapping', {}):
+            self.plan_info.set(self.plan_info.get() + '\n独立旧模块迁入 CGYRO_TGLF_scan：' + '、'.join(plan['module_mapping']))
+        if plan.get('standalone_output', False):
+            self.plan_info.set(self.plan_info.get() + '\n识别到顶层 OUTPUTScan，结果迁入 CGYRO_scan 的归档。')
+        if plan.get('archive_sources', []) or plan.get('archive_issues', []):
+            detail = '\n旧归档重新分类 {} 组；{} 处无法确定，保留原始节点并写入迁移报告。'.format(
+                len(plan.get('archive_sources', [])), len(plan.get('archive_issues', [])))
+            self.plan_info.set(self.plan_info.get() + detail)
+            for source in plan.get('archive_sources', [])[:1500]:
+                self.change_table.insert('', 'end', values=('归类', source['module'] + '：' + str(source['source'])
+                    + ' → ' + str(source['target']), str(source['points']) + ' 点'))
+            for issue in plan.get('archive_issues', []):
+                self.change_table.insert('', 'end', values=('待核对', str(issue['path']) + '：' + issue['reason'], '保留原始数据'))
+        if not plan['changes'] and not plan.get('archive_issues', []):
             self.plan_info.set('当前内容与所选模板一致，无需更新。')
         self.status.set('预览完成：{} / {} / {}'.format(plan['release']['author'], plan['release']['id'], plan['release']['version']))
         self._set_busy(False)

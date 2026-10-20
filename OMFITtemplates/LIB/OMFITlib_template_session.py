@@ -46,7 +46,8 @@ class OMFITSession:
         # Rebind native GUI controllers to their replacement script nodes, then
         # redraw their existing TopLevels. The project and its module roots stay.
         for gui, path, previous in plan.windows:
-            node = lookup(self.omfit, path)
+            before = getattr(plan, '_before', None)
+            node = lookup(self.omfit, before(path) if restoring and before is not None else path)
             if not gui.top.winfo_exists():
                 if restoring and id(gui) in plan.closed_windows and node is not MISSING:
                     node.run()

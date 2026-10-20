@@ -14,6 +14,9 @@ def record_summary(record, run_id):
             moment = None
     if moment is None:
         when = '时间未知'
+        source = record.get('migration_source', [])
+        if source and str(source[0]).startswith('scanResults'):
+            when = '旧版谱' if str(source[0]).endswith('_spectra') else '旧版通量'
     else:
         if moment.tzinfo is None:
             moment = moment.replace(tzinfo=timezone.utc)

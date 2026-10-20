@@ -209,10 +209,15 @@ def cgyro_case_caption(case, peers=None, include_radius=False):
         return canonical_case_key(case)
     nr, rho, ion = parts
     related = [case_parts(peer) for peer in (peers if peers is not None else [case])]
-    caption = 'Original' if ion == 'BASE' else ion
-    show_radius = include_radius or any(part is None or part[1] != rho for part in related)
+    caption = 'Original' if ion == 'BASE' else 'Unidentified' if ion == 'UNKNOWN' else ion
+    show_radius = include_radius or any(part is None or part[1] != rho or
+                                       (rho == 'unknown' and part[0] != nr) for part in related)
     if show_radius:
         scope = 'nr=' + nr if rho == 'unknown' else 'rho=' + compact_scan_value(rho)
+        if rho == 'unknown' and nr.startswith('RMIN='):
+            scope = nr
+        elif rho == 'unknown' and nr.startswith('legacy-output-'):
+            scope = 'Legacy ' + nr.rsplit('-', 1)[-1]
         caption = scope + ', ' + caption
     if any(part is not None and part[0] != nr and part[1:] == (rho, ion) for part in related):
         if not (show_radius and rho == 'unknown'):

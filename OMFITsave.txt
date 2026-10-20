@@ -446,6 +446,7 @@
 ['OMFITtemplates']['TESTS']['test_incremental.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_incremental.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py <-:-:-> {}
 ['OMFITtemplates']['LIB']['OMFITlib_template_live'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_live.py <-:-:-> {}
+['OMFITtemplates']['LIB']['OMFITlib_template_migration'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_migration.py <-:-:-> {}
 ['OMFITtemplates']['TESTS']['test_live.py'] <-:-:-> OMFITascii <-:-:-> ./OMFITtemplates/tests/test_live.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_project_runtime'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_project_runtime.py <-:-:-> {}

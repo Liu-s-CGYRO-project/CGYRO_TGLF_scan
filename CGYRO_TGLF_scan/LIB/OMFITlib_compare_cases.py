@@ -49,7 +49,11 @@ class CaseSelection(ComparisonWidgets):
                 nr, rho, ion = parts
                 key = 'nr={}__rho={}'.format(nr, rho)
                 caption = 'nr=' + nr if rho == 'unknown' else 'ρ=' + rho
-                ion = '原始' if ion == 'BASE' else ion
+                if rho == 'unknown' and nr.startswith('RMIN='):
+                    caption = nr
+                elif rho == 'unknown' and nr.startswith('legacy-output-'):
+                    caption = '未标识旧结果 ' + nr.rsplit('-', 1)[-1]
+                ion = '原始' if ion == 'BASE' else '未标识' if ion == 'UNKNOWN' else ion
             group = groups.setdefault(key, dict(caption=caption, nr=nr, cases=[]))
             group['cases'].append(dict(index=index, key=case, ion=ion))
         counts = Counter(group['caption'] for group in groups.values())

@@ -1,3 +1,20 @@
+工程 1.22.23 / 管理器 1.10.18：在 OMFIT Command box 下载并打开管理器，再预览和更新当前工程。独立 CGYRO_scan / TGLF_scan / Transfer_tool 自动迁入总模块，保留输入、结果和设置；旧归档按结果集、半径、离子和独立扫描参数重新索引。只有 OUTPUTScan、没有 RUN_DB / 点表的旧数据也支持，从原输入核对身份；缺少 rho 时明确标注 RMIN 或未标识旧结果，不冒用当前设置。重复扫描保留为单独历史版本，不能确定的原节点保留并列入报告。代码包小于 1 MB；只做静态及安装包校验，未执行实际迁移、测试或 GUI。
+
+## 在 OMFIT Command box 首次部署
+
+在旧工程的 Command box 中执行以下四行，先下载、校验并打开模板管理器：
+
+```python
+import urllib.request as u
+p = u.build_opener(u.ProxyHandler({'https': 'http://47.102.120.146:18889'}))
+b = p.open('https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/latest/download/omfit-manager-bootstrap.py', timeout=30).read(131072)
+exec(compile(b, 'omfit-manager-bootstrap.py', 'exec'), {'OMFIT': OMFIT})
+```
+
+选择最新 CGYRO / TGLF 工程版本 → 拉取并使用 → 保留当前案例和设置 → 预览变更 → 更新当前工程。预览会列出模块迁入、归档重新分类及待核对的节点；完成后照常保存 OMFIT 工程。管理器脚本只安装管理模块，工程替换在预览后由用户执行。
+
+完整说明见 [首次部署与迁移](CGYRO_TGLF_scan/DOCS/FIRST_DEPLOY.md)。正在运行或尚未收集的旧 CGYRO 作业需要先完成收集，之后再迁移模块。下面保留已保存 ZIP 的终端部署方式。
+
 工程 1.22.22：新增首次部署脚本 omfit-deploy.py，可用两条终端命令下载并迁移已保存的旧工程 ZIP。自动识别已有总模块，或将独立 CGYRO_scan / TGLF_scan / Transfer_tool 迁入新总模块，保留输入、结果、运行历史和设置，另存新 ZIP 及报告。脚本绑定配套包大小与 SHA-256，直接下载 Release 附件，无需 GitHub API 查询、gh、pip 或 Tk；支持预览、离线迁移和全新工程。管理器保持 1.10.17，代码包小于 1 MB；仅做静态与安装包校验，未执行迁移、安装、测试或 GUI。
 
 ## 两条命令首次部署
