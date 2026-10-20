@@ -1,0 +1,153 @@
+"""Install missing CGYRO archive readers, then compact the open OMFIT project.
+
+Run from the OMFIT Command box. This uses the manager's transactional update
+with keep/keep policies, not OMFIT.load() or replacement of the user's project.
+All downloads are fixed release assets verified by size and SHA-256.
+"""
+from builtins import (Exception, OSError, RuntimeError, ValueError, all, any, dict, getattr,
+                      globals, isinstance, len, list, print, range, set, str, sum, type)
+import hashlib
+from http.client import IncompleteRead, RemoteDisconnected
+import json
+from pathlib import Path, PurePosixPath
+import stat
+import tempfile
+import time
+from urllib import error, request
+import zipfile
+
+TOOL_VERSION = '1.0.0'
+PROJECT_VERSION = '1.22.31'
+REPOSITORY = 'Liu-s-CGYRO-project/CGYRO_TGLF_scan'
+DEFAULT_PROXY = 'http://47.102.120.146:18889'
+PACKAGES = {
+    'code': dict(name='CGYRO_TGLF_scan_code_only_1.22.31.zip', bytes=996878,
+                 sha256='0afe5571d55158eff719ad135dd8f7b3388c44d3a80edf00c55abae3f178b064'),
+    'template': dict(name='tdxy-liu__cgyro-tglf__1.22.31.omfittpl.zip', bytes=999546,
+                     sha256='54fbd75ecceeaa3997534ae2856f6ae4b1c61b23ebbe9c5b03c56c3b56864a10'),
+}
+REQUIRED = {
+    (): ('OMFITlib_cgyro_storage', 'OMFITlib_cgyro_checkpoint', 'OMFITlib_cgyro_continue',
+         'OMFITlib_cgyro_results', 'OMFITlib_compare_cgyro_data', 'OMFITlib_compare_series',
+         'OMFITlib_compare_status'),
+    ('CGYRO_scan',): ('OMFITlib_cgyro_storage', 'OMFITlib_cgyro_checkpoint',
+                    'OMFITlib_cgyro_continue', 'OMFITlib_cgyro_queue'),
+}
+
+
+class HTTPSRedirect(request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not newurl.startswith('https://'):
+            raise ValueError('Archive tool download redirected away from HTTPS')
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def ready(omfit):
+    project = omfit.get('CGYRO_TGLF_scan', {})
+    for path, names in REQUIRED.items():
+        node = project
+        for key in path:
+            node = node.get(key, {})
+        libraries = node.get('LIB', {})
+        if not all(name in libraries for name in names):
+            return False
+    return True
+
+
+def download(kind, destination, proxy):
+    package = PACKAGES[kind]
+    url = ('https://github.com/' + REPOSITORY + '/releases/download/omfit/tdxy-liu/cgyro-tglf/'
+           + PROJECT_VERSION + '/' + package['name'])
+    opener = request.build_opener(request.ProxyHandler({} if not proxy else {'http': proxy, 'https': proxy}), HTTPSRedirect())
+    for attempt in range(3):
+        try:
+            print('Downloading verified ' + package['name'] + ' ...')
+            with opener.open(request.Request(url, headers={'User-Agent': 'OMFIT-CGYRO-compaction'}), timeout=30) as response:
+                data = response.read(package['bytes'] + 1)
+            if len(data) != package['bytes'] or hashlib.sha256(data).hexdigest() != package['sha256']:
+                raise ValueError('Package size/SHA-256 mismatch; current project unchanged')
+            destination.write_bytes(data)
+            break
+        except (OSError, error.URLError, IncompleteRead, RemoteDisconnected):
+            if attempt == 2:
+                raise
+            time.sleep(attempt + 1)
+    with zipfile.ZipFile(destination) as archive:
+        seen, expanded = set(), 0
+        for entry in archive.infolist():
+            parts = PurePosixPath(entry.filename)
+            if (parts.is_absolute() or entry.filename in seen or '\\' in entry.filename
+                    or ':' in entry.filename or any(part in ('', '.', '..') for part in parts.parts)
+                    or stat.S_ISLNK(entry.external_attr >> 16)):
+                raise ValueError('Unsafe package member')
+            expanded += entry.file_size
+            seen.add(entry.filename)
+        if expanded > 16 * 1024 * 1024 or archive.testzip() is not None:
+            raise ValueError('Package expansion/CRC check failed')
+    return destination
+
+
+def install_readers(omfit, proxy):
+    from omfit_classes.omfit_base import OMFITtree
+    from omfit_classes import OMFITx
+
+    directory = Path(tempfile.mkdtemp(prefix='omfit-cgyro-compact-')).resolve()
+    code = download('code', directory / PACKAGES['code']['name'], proxy)
+    template = download('template', directory / PACKAGES['template']['name'], proxy)
+    # A separate code-only tree supplies a verified updater even when the live
+    # project has no manager or has incomplete LIB registrations. This is
+    # code-only staging, not a load of a result ZIP over the user's OMFIT.
+    incoming = OMFITtree(str(code), quiet=True, developerMode=False)
+    manager = incoming['OMFITtemplates']
+    context = dict(root=manager)
+    live = manager['LIB']['OMFITlib_template_live'].importCode(_relLoc=context)
+    session_api = manager['LIB']['OMFITlib_template_session'].importCode(_relLoc=context)
+    prepared = live.Prepared(str(template), data_policy='keep', settings_policy='keep')
+    # The installed manager and its current window stay under their existing
+    # owner; only the scientific project's complete code is updated here.
+    prepared.release['roots'] = ['CGYRO_TGLF_scan']
+    session = session_api.OMFITSession(omfit, tree_factory=OMFITtree, gui_api=OMFITx)
+    plan = session.preview_live(prepared)
+    # Add/replace the official readers without removing extra local scripts.
+    # Use this session's sentinel: separate native imports have distinct ones.
+    plan.operations = [op for op in plan.operations if op['data'] or op['new'] is not session_api.MISSING]
+    print('Installing matching project readers with existing inputs, settings and results preserved ...')
+    session.apply_live(plan)
+    # Compaction changes the data representation. An old-code-only undo after
+    # that change could leave indexes without readers, so do not offer it.
+    state = getattr(omfit, '_template_live_state', {})
+    if state.get('undo', None) is plan:
+        state['undo'] = None
+    if not ready(omfit):
+        raise RuntimeError('Code update did not register all required readers; compaction has not started')
+    print('Project readers ready: ' + PROJECT_VERSION)
+
+
+def compact(omfit, proxy=DEFAULT_PROXY):
+    from omfit_classes.omfit_base import OMFITtree
+
+    if not isinstance(omfit, dict):
+        raise ValueError('Run this script in the OMFIT Command box')
+    if not any(key in omfit for key in ('CGYRO_TGLF_scan', 'CGYRO_scan', 'OUTPUTScan')):
+        raise ValueError('No CGYRO project or legacy result branch found; project unchanged')
+    if not ready(omfit):
+        print('Missing project archive libraries detected; preparing a complete compatible update.')
+        install_readers(omfit, proxy)
+    node = omfit['CGYRO_TGLF_scan']['CGYRO_scan']
+    api = node['LIB']['OMFITlib_cgyro_storage'].importCode(_relLoc=dict(root=node))
+    print('Checking checkpoints and hashing/copying retained result files. Large projects can take several minutes ...')
+    report = api.compact_storage(node, OMFITtree)
+    report['unreferenced_results'] = api.prune_storage(node)
+    report['physical_results'] = len(node['RESULT_STORE'])
+    sizes = node['RESULT_STORAGE'].get('bytes', {})
+    report['physical_bytes'] = sum(sizes.get(key, 0) for key in node['RESULT_STORE'])
+    print('CGYRO compaction completed: ' + json.dumps(report, sort_keys=True))
+    print('Checkpoint details: CGYRO_scan / RESULT_STORAGE / checkpoints')
+    print('Use OMFIT Save As to save a NEW ZIP. Existing ZIPs and server files have not been deleted.')
+    return report
+
+
+if 'OMFIT' in globals():
+    _cgyro_compact_report = compact(globals()['OMFIT'], globals().get('COMPACT_PROXY', DEFAULT_PROXY))
+elif __name__ == '__main__':
+    raise RuntimeError('Execute this script inside the OMFIT Command box; see COMMAND_BOX_COMPACTION.md')
