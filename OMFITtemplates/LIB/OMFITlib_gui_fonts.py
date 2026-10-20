@@ -15,7 +15,7 @@ import warnings
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_gui_font_data import FONT_FILENAME, FONT_SHA256, FONT_FAMILY
-from OMFITlib_font_ui import ensure_fonts
+from OMFITlib_font_download_ui import ensure_fonts
 from OMFITlib_font_cache import cache_directory, cached_fonts
 
 

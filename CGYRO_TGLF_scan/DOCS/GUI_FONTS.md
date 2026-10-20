@@ -39,7 +39,7 @@ OMFIT 原生校验会切换 valid / error 等样式。控件局部事件监听�
 | OMFITlib_font_manifest | 固定资源包直链、大小、摘要及文件清单，不含字体字节 |
 | OMFITlib_font_cache.ensure_cached_fonts(kind, progress=None, cancel=None) | 界面无关的下载和缓存，kind 为 gui 或 plot |
 | OMFITlib_font_cache.import_font_pack(path, progress=None, cancel=None) | 校验并导入离线包 |
-| OMFITlib_font_ui.ensure_fonts(kind, parent=None) | 缓存命中直接返回；需要下载时在工作线程处理，Tk 显示进度 |
+| OMFITlib_font_download_ui.ensure_fonts(kind, parent=None)（font_ui 保留兼容导出） | 缓存命中直接返回；需要下载时在工作线程处理，Tk 显示进度 |
 | OMFITlib_font_ui.open_font_manager(parent=None) | 重试下载、离线导入、GUI 字号和实际渲染状态 |
 | OMFITlib_gui_fonts.configure_window_fonts(window) | 只设置项目窗口的字体，不更改 Tk 全局命名字体 |
 | OMFITlib_gui_fonts.gui_font(widget, base='TkDefaultFont', **overrides) | 统一界面字号，沿用字重和斜体；显式 size 可用于标题 |
@@ -50,7 +50,13 @@ OMFIT 原生校验会切换 valid / error 等样式。控件局部事件监听�
 | OMFITlib_gui_fonts.refresh_window_fonts(parent) | 离线导入后刷新已登记的项目窗口 |
 | OMFITlib_plot_fonts.font_rc(style) | 保留同一幅图延迟重绘与导出时的字体配置 |
 
-新子模块接入 GUI 字体时，登记 gui_fonts、gui_font_data、font_ui、font_cache、font_manifest 五个 LIB；绘图另登记 plot_fonts、plot_font_assets、plot_font_data 和 plot_labels。顶层工程和各子模块的 OMFITsave.txt 都已登记。输出图全部采用英文及 Liberation Sans，不再读取中文绘图字体设置或要求 Matplotlib 3.6；GUI 的中文字体设置保持原有用途。
+新子模块接入 GUI 字体时，登记 gui_fonts、gui_font_data、font_download_ui、font_ui、font_cache、font_manifest 六个 LIB；绘图另登记 plot_fonts、plot_font_assets、plot_font_data 和 plot_labels。顶层工程和各子模块的 OMFITsave.txt 都已登记。输出图全部采用英文及 Liberation Sans，不再读取中文绘图字体设置或要求 Matplotlib 3.6；GUI 的中文字体设置保持原有用途。
+
+## OMFIT 回调加载
+
+字体下载进度和 ensure_fonts 位于 font_download_ui，依赖字体缓存，不依赖 gui_fonts 或字体设置窗口。gui_fonts 直接使用这层下载接口；font_ui 在文件顶部导入 gui_fonts，构建“字体管理”的界面和字号动作，保留 ensure_fonts、set_proxy 的旧导出。
+
+OMFIT 在脚本结束后移除其 LIB 导入器和模块缓存，Tk 回调不能再临时导入 OMFITlib_*。下载、离线导入、状态刷新和字号应用均使用加载时保留的函数引用。构建时检查共享字体库一致、依赖无循环、没有延迟导入，并验证各消费模块的 LIB 登记。此检查不启动 GUI 或实际下载字体。
 
 ## 重建
 

@@ -20,15 +20,48 @@ def _font_constants(path):
     return {node.targets[0].id: ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)}
 
 
+def validate_font_imports(library, names):
+    """Inspect the font dependency graph without importing any Tk/UI library."""
+    graph = {}
+    for name in names:
+        path = library / (name + '.py')
+        tree = ast.parse(path.read_text(encoding='utf-8'), filename=str(path), feature_version=(3, 9))
+        graph[name] = set()
+        for node in ast.walk(tree):
+            imported = ([node.module] if isinstance(node, ast.ImportFrom) and node.module else
+                        [item.name for item in node.names] if isinstance(node, ast.Import) else [])
+            for dependency in imported:
+                if not dependency.startswith('OMFITlib_'):
+                    continue
+                if node not in tree.body:
+                    raise TemplateError('{}:{}：字体回调依赖必须在文件顶部导入 {}'.format(name, node.lineno, dependency))
+                if dependency in names:
+                    graph[name].add(dependency)
+    visited = set()
+
+    def visit(name, active):
+        if name in active:
+            raise TemplateError('字体库循环依赖：' + ' → '.join(active + [name]))
+        if name not in visited:
+            for dependency in sorted(graph[name]):
+                visit(dependency, active + [name])
+            visited.add(name)
+
+    for name in names:
+        visit(name, [])
+
+
 def validate_gui_fonts():
     """Check cache-loader parity and pinned metadata without acquiring fonts."""
     first, second = ROOT / 'CGYRO_TGLF_scan', ROOT / 'OMFITtemplates'
-    names = ['LIB/' + name + '.py' for name in ('OMFITlib_gui_fonts', 'OMFITlib_gui_font_data',
-             'OMFITlib_font_cache', 'OMFITlib_font_ui', 'OMFITlib_font_manifest')]
+    modules = ('OMFITlib_gui_fonts', 'OMFITlib_gui_font_data', 'OMFITlib_font_cache',
+               'OMFITlib_font_download_ui', 'OMFITlib_font_ui', 'OMFITlib_font_manifest')
+    names = ['LIB/' + name + '.py' for name in modules]
     names.append('DOCS/FONT_LICENSE.txt')
     for name in names:
         if (first / name).read_bytes() != (second / name).read_bytes():
             raise TemplateError('独立模块字体加载器不一致：' + name)
+    validate_font_imports(first / 'LIB', modules + ('OMFITlib_plot_font_assets', 'OMFITlib_plot_font_data', 'OMFITlib_plot_fonts'))
     values = _font_constants(first / 'LIB/OMFITlib_font_manifest.py')
     identity = _font_constants(first / 'LIB/OMFITlib_gui_font_data.py')
     if identity['FONT_SHA256'] != '2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b':

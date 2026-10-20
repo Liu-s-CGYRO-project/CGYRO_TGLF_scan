@@ -1,3 +1,11 @@
+# 修订记录 · 工程 1.22.25 / 管理器 1.10.20
+
+字体管理在 open_font_manager 和 _refresh_gui 中延迟导入 gui_fonts，而 OMFIT 已在界面脚本结束时移除专用 LIB 导入器和模块缓存，导致点击按钮报 ModuleNotFoundError。拆出不依赖 gui_fonts 的 font_download_ui，保留下载进度、取消、重试、离线导入和 ensure_fonts 原逻辑；gui_fonts 与绘图字体资产直接依赖下载层，font_ui 顶部导入字体 API，消除循环和回调导入。旧 ensure_fonts / set_proxy 导出保留。
+
+工程和独立管理器使用相同实现；根清单和所有消费模块登记新下载库。构建增加字体库依赖图、循环与延迟导入检查。字体文件、许可、固定资源标识、缓存位置、绘图设置和物理输入不变。
+
+完成 Python 3.9 AST / 符号、原生 OMFIT 导入器源码、清单依赖、安装包字节 / CRC / SHA-256 和小于 1 MB 的校验。按照维护约定未执行测试、GUI、实际安装或字体下载、求解器或服务器任务；尚未在用户环境中验证按钮操作。OMFIT 本体未修改。
+
 # 修订记录 · 工程 1.22.24 / 管理器 1.10.19
 
 修复 ArchiveIndex.retain 把“Jet / nr=1”等源路径标签直接用于 OMFITtree 键，导致未知旧结果的保留路径反而使整个更新回退。新键按 `%`、`/` 顺序转义并检查目标重名；不覆盖已有保留项，原路径与实际保留位置写入 MIGRATION_LOG。

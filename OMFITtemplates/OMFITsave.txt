@@ -38,6 +38,7 @@
 ['LIB']['OMFITlib_gui_font_data'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_font_data.py <-:-:-> {}
 ['LIB']['OMFITlib_font_cache'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_font_cache.py <-:-:-> {}
 ['LIB']['OMFITlib_font_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_font_ui.py <-:-:-> {}
+['LIB']['OMFITlib_font_download_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_font_download_ui.py <-:-:-> {}
 ['LIB']['OMFITlib_font_manifest'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_font_manifest.py <-:-:-> {}
 ['DOCS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['DOCS']['字体许可'] <-:-:-> OMFITascii <-:-:-> ./DOCS/FONT_LICENSE.txt <-:-:-> {}

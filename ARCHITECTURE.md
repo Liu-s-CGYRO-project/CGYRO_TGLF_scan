@@ -18,6 +18,7 @@
 | Transfer 粒子处理 | `Transfer_tool/LIB/OMFITlib_transfer_particles.py`、`OMFITlib_transfer_equivalent.py`、`OMFITlib_transfer_zeff.py` | 原始副本准中性 → 完整组成 Zeff → 粒子方案 → 局部输入复查 |
 | 对比选择、配对、绘图 | `LIB/OMFITlib_compare_state.py`、`OMFITlib_compare_cases.py`、`OMFITlib_compare_*` | 选择状态、结果读取、曲线构造、渲染分开；图中文字为英文 |
 | GUI 外观 | `LIB/OMFITlib_gui_api.py`、`OMFITlib_gui_controls.py`、`OMFITlib_gui_fonts.py` | 控件适配、字体和尺寸；业务代码不单独重设主题 |
+| 字体下载和设置窗口 | `LIB/OMFITlib_font_download_ui.py`、`OMFITlib_font_ui.py` | 下载层不依赖字体设置；设置窗口顶部导入 gui_fonts，回调只使用保留的引用；管理器副本保持一致 |
 | 模板更新 | `OMFITtemplates/LIB/OMFITlib_template_*` | 下载与校验、更新预览、应用与回退；独立于科学计算 |
 | 打包与静态兼容检查 | `tools/build_project.py`、`tools/check_omfit_api.py` | 从已登记引用构建代码包，校验 API、依赖、字体标识和包大小 |
 | Command box / 旧归档迁移 | tools/bootstrap_manager.py、build_bootstrap.py、OMFITtemplates/LIB/OMFITlib_template_migration.py | 只安装管理模块；LivePlan 事务移动旧模块，元数据重分类，保留原载荷与来源报告 |

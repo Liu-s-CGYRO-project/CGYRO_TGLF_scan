@@ -3,7 +3,7 @@ from builtins import RuntimeError, all, callable, getattr, id, set, str
 import threading
 from matplotlib import font_manager
 from OMFITlib_plot_font_data import FONT_ASSETS
-from OMFITlib_font_ui import ensure_fonts
+from OMFITlib_font_download_ui import ensure_fonts
 
 
 _lock = threading.RLock()
