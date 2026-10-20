@@ -231,6 +231,7 @@ class LivePlan:
             self._operation(('OUTPUTScan',), self.bare_output_source, MISSING, data=True)
         if self.relocations:
             self._expressions()
+        self._check_layouts()
         self.applied = False
 
     def _before(self, path):
@@ -469,6 +470,14 @@ class LivePlan:
                     [dict(path=location((name,)) + ' → ' + location((GROUP, name)), bytes=None, action='move')
                      for name in self.relocations])
 
+    def _check_layouts(self):
+        for op in self.operations:
+            if isinstance(op['new'], Layout):
+                try:
+                    op['new'].check(op['path'])
+                except ValueError as exc:
+                    raise TemplateError('旧归档键名检查失败，当前工程未修改：' + str(exc)) from exc
+
     def _check(self, undo=False):
         if self.scaffold is not None:
             expected = self.scaffold if undo else MISSING
@@ -484,6 +493,7 @@ class LivePlan:
         if not undo:
             self._idle()
             self.archive_index.check()
+            self._check_layouts()
         find = lookup if undo else lambda tree, path: self._lookup(path)
         for path, node, old_keys in self.guards:
             if find(self.omfit, path) is not node:

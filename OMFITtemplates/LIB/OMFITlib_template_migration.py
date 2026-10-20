@@ -55,6 +55,26 @@ class Layout:
     def __init__(self, value):
         self.value = value
 
+    def check(self, path=()):
+        """Check new tree keys without constructing or reparenting payloads."""
+        def visit(value, here):
+            if isinstance(value, Reference):
+                return  # The retained object keeps its existing internal keys.
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    target = child.value if isinstance(child, Reference) else child
+                    tree = kind(target, 'OMFITtree') or isinstance(child, dict)
+                    # Match native OMFITtree.__setitem__: a slash is forbidden
+                    # when the child is another tree, not in ordinary strings
+                    # such as result directories stored as metadata values.
+                    if kind(key, 'OMFITexpression') or (tree and isinstance(key, (str, tuple)) and '/' in key):
+                        raise ValueError('旧归档含不兼容的树键：' + repr(here + (key,)))
+                    visit(child, here + (key,))
+            elif isinstance(value, (tuple, list)):
+                for number, child in enumerate(value):
+                    visit(child, here + (number,))
+        visit(self.value, tuple(path))
+
     def build(self, factory):
         def convert(value):
             if isinstance(value, Reference):
@@ -138,16 +158,24 @@ class ArchiveIndex:
             if (hashlib.sha256(data).hexdigest() if data is not None else None) != expected:
                 raise ValueError('归类使用的原始 input.cgyro 已改变，请重新预览：' + name)
 
-    def issue(self, path, error):
-        self.issues.append(dict(path=[str(part) for part in path], reason=str(error)))
+    def issue(self, path, error, retained=None):
+        row = dict(path=[str(part) for part in path], reason=str(error))
+        if retained is not None:
+            row['target'] = ['LEGACY_UNCLASSIFIED', retained]
+        self.issues.append(row)
 
     @staticmethod
     def retain(pending, label, value):
+        # Labels describe paths; native OMFITtree keys cannot contain '/'.
+        # Escape '%' first so the spelling remains reversible. Existing keys
+        # are reserved below, including literal percent-encoded old names.
+        label = str(label).replace('%', '%25').replace('/', '%2F')
         key, number = label, 1
         while key in pending:
             number += 1
             key = label + ' [' + str(number) + ']'
         pending[key] = Reference(value)
+        return key
 
     @staticmethod
     def number(value):
@@ -214,7 +242,10 @@ class ArchiveIndex:
                 raise ValueError('Conflicting archived rho')
         rho = archived_rho if archived_rho is not None else rho
         rho = 'unknown' if rho in (None, 'unknown') else '{:.8g}'.format(self.number(rho))
-        return 'nr={}__rho={}__ion={}'.format(nr, rho, saved_ion), nr, rho, saved_ion
+        identity = 'nr={}__rho={}__ion={}'.format(nr, rho, saved_ion)
+        if '/' in identity:
+            raise ValueError('Archived case identity contains a slash')
+        return identity, nr, rho, saved_ion
 
     def output_case(self, module, output):
         """Bind a latest-output cache only when the saved point paths prove it."""
@@ -399,8 +430,8 @@ class ArchiveIndex:
                     if info['radial_source'] == 'unidentified' or info['ion_case'] == 'UNKNOWN':
                         self.issue(['OUTPUTScan', source], '已归为未标识旧结果；不使用当前设置补历史身份')
             except (KeyError, TypeError, ValueError) as exc:
-                self.retain(pending, 'OUTPUTScan / ' + str(source), data)
-                self.issue(['OUTPUTScan', source], exc)
+                retained = self.retain(pending, 'OUTPUTScan / ' + str(source), data)
+                self.issue(['OUTPUTScan', source], exc, retained)
         return dict(RUN_DB=Layout(runs), OUTPUTScan=Layout({}), LEGACY_UNCLASSIFIED=Layout(pending))
 
     def cgyro(self, module):
@@ -424,6 +455,11 @@ class ArchiveIndex:
         runs, changed = {}, bool(from_output)
         pending = {key: Reference(value) for key, value in self.read(self.get(module, 'LEGACY_UNCLASSIFIED', {})).items()}
         for runid, run in self.read(original).items():
+            if isinstance(runid, str) and '/' in runid:
+                retained = self.retain(pending, 'RUN_DB / ' + runid, run)
+                self.issue(['RUN_DB', runid], '结果集名称包含斜杠，保留原节点待核对', retained)
+                changed = True
+                continue
             target = runs.setdefault(runid, {})
             if not branch(run):
                 self.retain(pending, str(runid), run)
@@ -475,7 +511,7 @@ class ArchiveIndex:
                             key = ('KY_ONLY' if info.get('scan_dimensions', None) == 0 else
                                    '__'.join(axis['name'] + ''.join('+' + item['name'] for item in axis.get('linked', []))
                                              for axis in axes) if axes else str(scanid or root))
-                            if not key or key.startswith('__'):
+                            if not key or key.startswith('__') or '/' in key:
                                 raise ValueError('Invalid archived scan identity')
                             identity, nr, rho, ion = self.identity(caseid, info)
                             candidates.append((runid, identity, key, contents[source], info, tasks,
@@ -515,8 +551,8 @@ class ArchiveIndex:
                         self.install(runs, *candidate)
                 except (TypeError, ValueError, KeyError) as exc:
                     # Keep the complete source case when any part is uncertain.
-                    self.retain(pending, str(runid) + ' / ' + str(caseid), output if from_output else case)
-                    self.issue(['OUTPUTScan'] if from_output else ['RUN_DB', runid, caseid], exc)
+                    retained = self.retain(pending, str(runid) + ' / ' + str(caseid), output if from_output else case)
+                    self.issue(['OUTPUTScan'] if from_output else ['RUN_DB', runid, caseid], exc, retained)
                     changed = True
         if not changed:
             del self.sources[start:]
@@ -537,8 +573,11 @@ class ArchiveIndex:
             row.update(dict(case_id=identity, runid=run))
             row['result_path'][0] = key
         case[key] = payload.value if isinstance(payload, Layout) else Reference(payload)
-        case.setdefault('__SCANS__', {})[key] = dict(info=info, tasks=tasks)
-        case['__INFO__'], case['__TASKS__'] = info, tasks
+        # Metadata can legitimately use file paths as dictionary keys. Keep
+        # these freshly copied mappings as plain dicts, as the runner does,
+        # rather than converting every nested mapping into an OMFITtree.
+        case.setdefault('__SCANS__', {})[key] = dict(info=Reference(info), tasks=Reference(tasks))
+        case['__INFO__'], case['__TASKS__'] = Reference(info), Reference(tasks)
         self.sources.append(dict(source=[str(part) for part in source],
             target=[str(part) for part in ['RUN_DB', run, identity, key]], points=len(tasks)))
 
