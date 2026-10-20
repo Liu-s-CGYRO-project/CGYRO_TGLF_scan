@@ -11,19 +11,28 @@ import hashlib
 import math
 import os
 import re
+from OMFITlib_cgyro_archive import case_scans, scan_branch
 
 
 def archived_case(module, token):
-    """Reject stale result dialogs instead of continuing a replaced case."""
+    """Resolve one retained scan; reject a dialog for a replaced scan token."""
     for runid, run in module.get('RUN_DB', {}).items():
         if str(runid).startswith('__'):
             continue
         for case_id, case in run.items():
             if str(case_id).startswith('__') or not hasattr(case, 'get'):
                 continue
-            info = case.get('__INFO__', {})
-            if str(info.get('run_token', '')) == str(token):
-                return runid, case_id, case
+            for _, info, tasks in case_scans(case):
+                if str(info.get('run_token', '')) == str(token):
+                    branch = scan_branch(case, info, tasks)
+                    # A view of only this scan prevents continuation from
+                    # copying unrelated axes or reusing their point IDs.
+                    view = {'__INFO__': info, '__TASKS__': tasks}
+                    for row in tasks.values():
+                        path = row.get('result_path', [])
+                        if path:
+                            view[path[0]] = case[branch]
+                    return runid, case_id, view
     raise ValueError('The selected result was replaced or is unindexed. Reopen the result table.')
 
 

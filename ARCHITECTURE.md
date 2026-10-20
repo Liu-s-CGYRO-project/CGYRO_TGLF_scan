@@ -13,7 +13,7 @@
 | CGYRO 批量队列 | `LIB/OMFITlib_cgyro_queue.py` | 切换当前案例、保存整批进度、等待和整批取消 |
 | CGYRO 重试 | `LIB/OMFITlib_cgyro_retry.py` | 确认提交结果、筛选可重试点、复用核对过的输入 |
 | CGYRO 调度器状态 | `LIB/OMFITlib_cgyro_run_state.py` | 解析状态、核对作业身份、取消与已有 Kill local 接口 |
-| CGYRO 准备、下载、归档 | `CGYRO_scan/SCRIPTS/subscan_lin.py`、`downsync.py`、`CGYROScan.py` | 原生 OMFIT 任务适配；完整结果才替换旧案例 |
+| CGYRO 准备、下载、归档 | `CGYRO_scan/SCRIPTS/subscan_lin.py`、`downsync.py`、`CGYROScan.py`、`LIB/OMFITlib_cgyro_archive.py` | 原生 OMFIT 任务适配；完整结果仅替换相同扫描参数组 |
 | TGLF 工作台和多剖面 | `LIB/OMFITlib_tglf_workbench.py`、`OMFITlib_tglf_multi_run.py` | 准备计划和持久运行记录；底层执行在 `TGLF_scan/TGLF/SCRIPTS` |
 | Transfer 粒子处理 | `Transfer_tool/LIB/OMFITlib_transfer_particles.py`、`OMFITlib_transfer_equivalent.py`、`OMFITlib_transfer_zeff.py` | 原始副本准中性 → 完整组成 Zeff → 粒子方案 → 局部输入复查 |
 | 对比选择、配对、绘图 | `LIB/OMFITlib_compare_state.py`、`OMFITlib_compare_cases.py`、`OMFITlib_compare_*` | 选择状态、结果读取、曲线构造、渲染分开；图中文字为英文 |
@@ -27,7 +27,8 @@
 
 - `INPUTS`、Transfer 原始剖面和准备好的 `BATCH_INPUTS` 属于输入。转换时先建立副本，再完成校验；不能在界面刷新或预览时覆盖原文件。
 - CGYRO 的 `RUN_BATCH` 保存本批计划与 token，`RUN_HISTORY[token]` 保存各案例快照；`RUN_MANIFEST` 和 `Cases` 是当前激活案例。切换案例前保存，等待和收集结束后再次保存。调度器作业结束不等于结果已完整下载。
-- `RUN_DB` 是已归档结果。同一结果名、半径和离子重新计算时，只有完整收集成功才替换旧案例。作业号和结果目录由运行记录持有，不能从当前 GUI 参数重新推断。
+- `RUN_DB` 是已归档结果。同一结果名、半径和离子下，不同参数扫描并存；相同有序参数轴（包含联动参数，不包含取值和 ky 网格）的完整重扫才替换该组结果。`N_THETA` 与 `N_ENERGY` 分别保存；多轴组合及仅 ky 扫描用独立分支，避免共享首轴时相互覆盖。发布先在临时树合并全部旧扫描并准备新扫描，成功后才替换案例节点。
+- 每个案例的 `__SCANS__[扫描键]` 保存独立的 `info` / `tasks`，物理结果仍只有一份、保存在该案例的公开扫描分支。`p000001` 等点编号只在各自扫描内有效。顶部 `__INFO__` / `__TASKS__` 仅作最近一次扫描的兼容视图；浏览与续算必须遍历 `case_scans`，不能以它们代表整个案例。续算只替换选定扫描的选定点，并拒绝已经重扫替换的旧 token。作业号和结果目录由运行记录持有，不能从当前 GUI 参数重新推断。
 - 网络报错后先确认原提交是否成功。无法确认时保留 `submission_uncertain`，不重复提交。重试资格按每个扫描点判定，先前的取消、超时和内存不足状态不能因切换到重试数组而丢失。
 - TGLF 批量点允许部分成功；归档和异常传播是两个步骤，后续点失败不能抹去前面已经返回的结果。
 - 局部输入转换不会自动选择新的碰撞模型。CGYRO → TGLF 在指定 Zeff 时保留该值；反向旧入口仍采用 `COLLISION_MODEL=4`，没有将 TGLF 的独立 Zeff 转为指定 Zeff 模式。需要改变这一物理约定时，应单独核对模型适用条件，不能只增加一个字段。

@@ -2,7 +2,7 @@
 import copy
 from builtins import ValueError, dict, int, len, list, set, str
 from datetime import datetime, timezone
-from OMFITlib_cgyro_archive import canonical_case_key
+from OMFITlib_cgyro_archive import canonical_case_key, combine_cases, matching_cases, store_scan
 from OMFITlib_cgyro_retry import collect_current
 from OMFITlib_cgyro_continue import archived_case
 defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False, continuation=None)
@@ -48,7 +48,7 @@ def publish_loaded_run(root):
     expected = list(manifest.get('points', loaded))
     if (not loaded or len(loaded) != len(expected) or set(loaded) != set(expected)
             or manifest.get('failed_points', []) or manifest.get('partial_points', [])):
-        raise ValueError('Only a completely collected scan can replace the previous case results')
+        raise ValueError('Only a completely collected scan can replace the previous results for these axes')
     continuation = manifest.get('continuation', None)
     source_case = None
     if continuation:
@@ -58,7 +58,7 @@ def publish_loaded_run(root):
     case_tag = manifest['case_tag']
     fresh_output = OMFITtree()
     if source_case is not None:
-        # Assemble the entire case away from RUN_DB; unselected points survive.
+        # archived_case returns this scan only; unselected points survive.
         for key in source_case:
             if not str(key).startswith('__'):
                 fresh_output[key] = copy.deepcopy(source_case[key])
@@ -76,23 +76,15 @@ def publish_loaded_run(root):
     base_case_key = ('nr=' + str(manifest['nr']) if legacy else str(manifest['case_id']))
     case_key = canonical_case_key(base_case_key, {'rho': manifest.get('rho', None), 'ion_case': manifest['mass']})
     previous = root.get('RUN_DB', {}).get(run_id, {})
-    replaced, old_keys = [], []
-    for key in previous.keys():
-        if str(key).startswith('__'):
-            continue
+    replaced = []
+    old_keys = matching_cases(root, run_id, case_key)
+    for key in old_keys:
         old_info = previous[key].get('__INFO__', {})
-        if canonical_case_key(key, old_info) == case_key:
-            old_keys.append(key)
-            replaced.append(str(key))
-            replaced.extend(str(value) for value in old_info.get('replaced_case_keys', []))
-    # Build the complete replacement away from RUN_DB. A failed read/copy must
-    # leave the previous successful case available, never an empty branch.
-    destination = OMFITtree()
-    for parameter in fresh_output:
-        # Older records encoded the ion case in the parameter key. New records
-        # encode it once in case_id, keeping parameter names physically accurate.
-        key = parameter + '_' + str(manifest['mass']) if legacy else parameter
-        destination[key] = copy.deepcopy(fresh_output[parameter])
+        replaced.append(str(key))
+        replaced.extend(str(value) for value in old_info.get('replaced_case_keys', []))
+    # Build off-tree, preserving all other scan axes. Replacing the whole case
+    # here used to discard N_THETA as soon as N_ENERGY was collected.
+    destination = combine_cases([previous[key] for key in old_keys], OMFITtree)
 
     task_rows = OMFITtree()
     if source_case is not None:
@@ -134,8 +126,7 @@ def publish_loaded_run(root):
     # Keep the task table with the results.  Reserved double-underscore keys are
     # hidden by the comparison selectors, while remaining directly inspectable
     # in the OMFIT data tree.
-    destination['__INFO__'] = info
-    destination['__TASKS__'] = task_rows
+    store_scan(destination, fresh_output, info, task_rows, OMFITtree)
     if 'RUN_DB' not in root:
         root['RUN_DB'] = OMFITtree()
     if run_id not in root['RUN_DB']:
@@ -145,7 +136,7 @@ def publish_loaded_run(root):
     for key in old_keys:
         if key != case_key:
             del run[key]
-    # OUTPUTScan is the view of the same complete, most recently collected case.
+    # OUTPUTScan is the latest scan only; RUN_DB contains all retained axes.
     root['OUTPUTScan'] = fresh_output
     root['RUN_MANIFEST']['case_id'] = case_key
     root['RUN_MANIFEST']['status'] = 'published'

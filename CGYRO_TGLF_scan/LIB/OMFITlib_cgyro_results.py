@@ -1,6 +1,6 @@
 """RUN_DB-backed CGYRO result browser for one-, two- and three-axis scans."""
 from OMFITlib_gui_fonts import configure_window_fonts, style_widget
-from OMFITlib_cgyro_archive import latest_cases
+from OMFITlib_cgyro_archive import case_scans, latest_cases
 from OMFITlib_cgyro_continue import point_status
 from builtins import (Exception, TypeError, ValueError, abs, any, dict, float, int,
                       len, list, max, min, range, set, sorted, str, tuple, zip)
@@ -45,18 +45,15 @@ def _run_options(root):
             case = run[case_id]
             if not hasattr(case, 'get'):
                 continue
-            info = case.get('__INFO__', None)
-            tasks = case.get('__TASKS__', None)
-            if info is None or tasks is None:
-                continue
-            active.add(case_id)
-            token = str(info.get('run_token', '')).strip() or '{}::{}'.format(runid, case_id)
-            entry = dict(info)
-            entry.update(dict(runid=runid, case_id=case_id, tasks=tasks,
-                              destination=[runid, case_id]))
-            records[token] = entry
-            label = '{} | {} | {}'.format(runid, case_id, token[:8])
-            options[label] = token
+            for scan, info, tasks in case_scans(case):
+                active.add(case_id)
+                token = str(info.get('run_token', '')).strip() or '{}::{}::{}'.format(runid, case_id, scan)
+                entry = dict(info)
+                entry.update(dict(runid=runid, case_id=case_id, tasks=tasks,
+                                  destination=[runid, case_id]))
+                records[token] = entry
+                label = '{} | {} | {} | {}'.format(runid, case_id, scan, token[:8])
+                options[label] = token
         covered.update((str(runid), str(key)) for key, target in aliases.items() if target in active)
 
     # Pre-1.13 records remain readable, while new records use RUN_DB only.
