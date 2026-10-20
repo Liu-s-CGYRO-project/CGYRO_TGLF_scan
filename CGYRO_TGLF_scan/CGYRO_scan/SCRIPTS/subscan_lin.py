@@ -3,7 +3,7 @@
 The project orchestrator calls this once per rho/isotope case. Point IDs keep
 their original array indices so failed subsets can be retried independently.
 """
-from builtins import (Exception, RuntimeError, TypeError, ValueError, all, any, bool, dict, enumerate, float,
+from builtins import (BaseException, Exception, RuntimeError, TypeError, ValueError, all, any, bool, dict, enumerate, float,
                       int, isinstance, iter, len, list, max, range, set, sorted, str, tuple, zip)
 import numpy as np
 import copy
@@ -19,9 +19,9 @@ from OMFITlib_cgyro_read import num2str_xj
 from OMFITlib_cgyro_parameters import (FIELDS as CALCULATION_FIELDS, apply_parameters, initialize_parameters,
                                       parameter_value, validate_zeff)
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolved_scan_axes
-from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, text_output as output_to_text
+from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, submission_pending, text_output as output_to_text
 from OMFITlib_cgyro_queue import advancing_batch, collection_done, pending_runs, save_current, wait_current
-from OMFITlib_cgyro_retry import confirm_submission, retry_limit
+from OMFITlib_cgyro_retry import confirm_submission, interrupt_submission, retry_limit
 from OMFITlib_cgyro_continue import continuation_plan, prepare_point, restart_files
 from OMFITlib_cgyro_storage import compact_storage, result_view
 
@@ -247,6 +247,8 @@ restart_mode = 0 if continuation else int(physics['restart_mode'])
 if restart_mode not in (0, 1):
     raise ValueError('restart_mode must be 0 or 1')
 previous_manifest = root.get('RUN_MANIFEST', {})
+if submission_pending(previous_manifest):
+    raise ValueError('The previous submission is unconfirmed. Synchronize its saved submission log before submitting again.')
 if not batch_id and pending_runs(root):
     raise ValueError('The queued CGYRO batch still needs synchronization or collection before another run.')
 if not batch_id:
@@ -614,6 +616,9 @@ if setup['irun']==1:
         except Exception as exc:
             root['RUN_MANIFEST']['submit_error'] = str(exc)
             ret_code = -1
+        except BaseException as exc:
+            interrupt_submission(root, OMFITtree, submit_out, submit_err, exc)
+            raise
         confirm_submission(root, OMFITx, OMFITtree, ret_code, submit_out, submit_err)
         if wait_for_completion:
             wait_current(root, OMFITx, OMFITtree)

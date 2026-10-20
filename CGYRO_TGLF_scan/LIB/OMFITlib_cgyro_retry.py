@@ -4,7 +4,7 @@ A transport retry only reads the existing submission/output. A solver retry
 creates a new attempt directory, verifies the original inputs, and retains the
 successful points' locations. These operations must never be interchanged.
 """
-from builtins import Exception, RuntimeError, ValueError, any, dict, enumerate, int, iter, len, list, print, range, str
+from builtins import BaseException, Exception, RuntimeError, ValueError, any, dict, enumerate, int, iter, len, list, print, range, str
 from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
@@ -41,6 +41,10 @@ def recover_submission(root, ui, factory=dict):
     scheduler = manifest.get('scheduler', '')
     job_id = submitted_job_id(manifest.get('submit_output', ''), scheduler)
     if not job_id:
+        # The executor has returned or explicit synchronization was requested.
+        # A missing/empty log is not evidence that the scheduler rejected the job.
+        manifest.update(dict(status='submission_unconfirmed', submission_uncertain=True))
+        save_current(root, factory)
         for attempt in range(3):
             output, errors = [], []
             try:
@@ -48,6 +52,7 @@ def recover_submission(root, ui, factory=dict):
                     manifest['workDir'], manifest.get('tunnel', ''), quiet=True, ignoreReturnCode=True,
                     use_bang_command=False, std_out=output, std_err=errors)
                 if code == 0:
+                    manifest.pop('submission_probe_error', None)
                     # Retain a recovered rejection too, so a known refusal does
                     # not leave the run permanently marked "submission uncertain".
                     recovered = text_output(output)
@@ -57,6 +62,8 @@ def recover_submission(root, ui, factory=dict):
                     job_id = submitted_job_id(output, scheduler)
                     if job_id:
                         break
+                else:
+                    manifest['submission_probe_error'] = text_output(errors) or 'Submission log is not available.'
             except Exception as exc:
                 manifest['submission_probe_error'] = str(exc)
             if attempt < 2:
@@ -64,12 +71,28 @@ def recover_submission(root, ui, factory=dict):
     if not job_id:
         if re.search(r'(?mi)^(?:sbatch|qsub):.*(?:error|invalid|reject)', manifest.get('submit_output', '')):
             manifest.update(dict(status='failed', submission_uncertain=False))
-            save_current(root, factory)
+        save_current(root, factory)
         return False
     manifest.update(dict(job_id=job_id, status='submitted', submission_uncertain=False))
     manifest.pop('submission_probe_error', None)
     save_current(root, factory)
     return True
+
+
+def interrupt_submission(root, factory, output, errors, error):
+    """Persist Abort without another remote operation, then let it propagate.
+
+    OMFIT's Abort derives from KeyboardInterrupt, outside Exception. The server
+    may already have accepted the job; only a captured acknowledgement proves it.
+    """
+    manifest = root['RUN_MANIFEST']
+    manifest['submit_output'] = text_output([output, errors])
+    job_id = submitted_job_id(manifest['submit_output'], manifest['scheduler'])
+    manifest.update(dict(job_id=job_id, submission_uncertain=not job_id,
+        status='submitted' if job_id else 'submission_unconfirmed',
+        submit_error=str(error) or 'Local submission interrupted.',
+        submission_interrupted_at=datetime.now(timezone.utc).isoformat()))
+    save_current(root, factory)
 
 
 def confirm_submission(root, ui, factory, return_code, output, errors):
@@ -200,6 +223,9 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
     except Exception as exc:
         manifest['submit_error'] = str(exc)
         code = -1
+    except BaseException as exc:
+        interrupt_submission(root, factory, output, errors, exc)
+        raise
     confirm_submission(root, ui, factory, code, output, errors)
     manifest['failed_points'], manifest['partial_points'] = [], []
     save_current(root, factory)

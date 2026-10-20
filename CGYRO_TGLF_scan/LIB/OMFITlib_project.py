@@ -38,7 +38,7 @@ from OMFITlib_cgyro_parameters import (initialize_parameters,
     numeric_source, parameter_catalog)
 from OMFITlib_cgyro_scan_values import scan_axes as configured_scan_axes
 from OMFITlib_cgyro_isotopes import remap_physics
-from OMFITlib_cgyro_run_state import stop_message
+from OMFITlib_cgyro_run_state import stop_message, submission_pending
 from OMFITlib_cgyro_queue import activate_run, collection_done, pending_runs, queue_records, queue_summary, save_current
 from OMFITlib_cgyro_retry import retry_limit
 from OMFITlib_cgyro_continue import continuation_plan
@@ -85,6 +85,10 @@ def collect_issues(root):
            for _, entry in queue_records(read(root, ('CGYRO_scan',), {}))):
         return []
     manifest = read(root, ('CGYRO_scan', 'RUN_MANIFEST'), {})
+    if submission_pending(manifest):
+        return ['提交状态待确认，请先同步作业状态']
+    if manifest.get('status', '') == 'failed' and not manifest.get('job_id', ''):
+        return ['没有已确认提交的作业，无需收集']
     if not manifest or manifest.get('status', None) not in ('submitted', 'submitted_or_finished', 'running', 'loaded', 'failed', 'cancelled', 'cancel_requested'):
         return ['尚无已执行 / 已提交的 CGYRO 运行；仅生成输入后不能收集结果']
     if not manifest.get('points', None) or not manifest.get('workDir', None):
@@ -96,12 +100,12 @@ def sync_run_issues(root):
     queued = [entry['manifest'] for _, entry in queue_records(read(root, ('CGYRO_scan',), {}))
               if entry['manifest'].get('status', '') != 'published']
     if any(row.get('scheduler', '') == 'slurm' and
-           (row.get('job_id', '') or row.get('submission_uncertain', False)) for row in queued):
+           (row.get('job_id', '') or submission_pending(row)) for row in queued):
         return []
     manifest = read(root, ('CGYRO_scan', 'RUN_MANIFEST'), {})
     if not manifest or manifest.get('status', '') == 'published':
         return ['尚无需要同步状态的 CGYRO 运行']
-    if manifest.get('scheduler', '') == 'slurm' and manifest.get('submission_uncertain', False):
+    if manifest.get('scheduler', '') == 'slurm' and submission_pending(manifest):
         return []
     if not re.fullmatch(r'[0-9]+', str(manifest.get('job_id', '') or '')):
         return ['当前记录没有 Slurm 作业号，不能推断远程状态']
@@ -984,7 +988,9 @@ class ProjectActions:
                     continue
                 if automatic and collection_done(manifest):
                     continue
-                if not manifest.get('job_id', '') or manifest.get('submission_uncertain', False):
+                if not manifest.get('job_id', '') and manifest.get('status', '') == 'failed' and not submission_pending(manifest):
+                    continue  # A confirmed rejection has no results to collect.
+                if not manifest.get('job_id', '') or submission_pending(manifest):
                     errors.append(str(manifest.get('case_id', token)) + ': submission is not confirmed')
                     continue
                 activate_run(node, token)

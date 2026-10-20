@@ -52,6 +52,12 @@ def submitted_job_id(output, scheduler):
     return match.group(1) if match is not None else ''
 
 
+def submission_pending(manifest):
+    """Include legacy submitting records whose local executor was aborted."""
+    return bool(manifest.get('submission_uncertain', False)
+                or manifest.get('status', '') in ('submitting', 'submission_unconfirmed'))
+
+
 def slurm_queue_query(job_id):
     """Define a Bash query shared by waiting, synchronization and cancellation.
 

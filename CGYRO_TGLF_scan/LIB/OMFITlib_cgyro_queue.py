@@ -10,7 +10,7 @@ from copy import deepcopy
 import time
 from OMFITlib_cgyro_storage import compact_storage
 from OMFITlib_cgyro_run_state import (linked_kill_local, pbs_wait, quote as shell_quote,
-                                    refresh_run_state, slurm_wait, stop_message, stop_run)
+                                    refresh_run_state, slurm_wait, stop_message, stop_run, submission_pending)
 
 
 def collection_done(manifest):
@@ -91,18 +91,23 @@ def refresh_queue(root, ui, factory=dict, recover=None):
             continue
         try:
             record_root = dict(RUN_MANIFEST=manifest, SETTINGS=root['SETTINGS'])
-            if manifest.get('submission_uncertain', False) and (recover is None or not recover(record_root, ui, factory)):
+            if submission_pending(manifest) and recover is not None:
+                recover(record_root, ui, factory)
+            if submission_pending(manifest):
                 raise RuntimeError('Submission has no confirmed job ID; inspect its saved submit log: '
-                                   + str(manifest.get('workDir', '')))
+                                   + str(manifest.get('workDir', '')) + '/.cgyro_submit.out\n'
+                                   + str(manifest.get('submission_probe_error', '')))
             if not manifest.get('job_id', '') and manifest.get('status', '') == 'failed':
+                manifest.pop('sync_error', None)
                 continue  # A definite rejection did not create a server job.
             refresh_run_state(record_root, ui)
             manifest.pop('sync_error', None)
         except Exception as exc:
             manifest['sync_error'] = str(exc)
             errors.append(str(manifest.get('case_id', token)) + ': ' + str(exc))
-        if token == current:
-            root['RUN_MANIFEST'].update(deepcopy(manifest))
+        finally:
+            if token == current:
+                root['RUN_MANIFEST'].update(deepcopy(manifest))
     if errors:
         raise RuntimeError('\n'.join(errors))
     return queue_summary(root)
