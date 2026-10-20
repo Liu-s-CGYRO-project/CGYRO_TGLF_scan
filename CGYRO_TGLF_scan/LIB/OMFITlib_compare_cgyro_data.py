@@ -1,7 +1,7 @@
 """Read CGYRO spectra once and prepare numeric scan data without making figures."""
-from builtins import IndexError, KeyError, TypeError, ValueError, any, float, hasattr, int, len, list, max, str, tuple
+from builtins import IndexError, KeyError, OSError, TypeError, ValueError, any, dict, float, hasattr, int, len, list, max, str, tuple
 import numpy as np
-from OMFITlib_compare_core import cgyro_frequency_stats, apply_divide_by_ky, normalize_if_needed, resolve_key
+from OMFITlib_compare_core import cgyro_frequency_history, cgyro_frequency_stats, apply_divide_by_ky, normalize_if_needed, resolve_key
 from OMFITlib_compare_cgyro_selection import maybe_abs_ky, maybe_abs_ky_list, parse_float_list_text
 from OMFITlib_compare_state import stable_keys
 
@@ -81,6 +81,39 @@ def collect_value_series(root, ctx, nr, para, value):
     values = np.asarray(rows, dtype=float)
     values = values[np.argsort(values[:, 0], kind='stable')]
     return tuple(values[:, column] for column in (0, 1, 2, 3, 4, 5, 6))
+
+
+def collect_time_series(root, ctx, nr, para, value):
+    """Read selected ky histories directly, including unconverged points.
+
+    Snap requested ky within each selected scan value's saved grid. Repeated
+    targets select a point once; signed ky and unequal time grids stay intact.
+    """
+    linear = _get_cgyro_lin_node(root, ctx, nr, para, value)
+    if linear is None or not len(linear):
+        diagnostic(ctx, nr, para, value, 'No saved linear histories')
+        return []
+    candidates = []
+    for key in stable_keys(linear):
+        try:
+            data = linear[key]
+            ky = float(data['kyrhos'])
+            if not np.isfinite(ky):
+                raise ValueError('Non-finite saved ky')
+            candidates.append((key, ky, data))
+        except (KeyError, IndexError, OSError, TypeError, ValueError) as exc:
+            diagnostic(ctx, nr, para, value, exc, ky=key)
+    selected = filter_single_ky(np.asarray([ky for _, ky, _ in candidates]), ctx.get('selected_time_ky', []))
+    traces = []
+    for key, ky, data in candidates:
+        if ky not in selected:
+            continue
+        try:
+            times, omega, gamma = cgyro_frequency_history(data)
+            traces.append(dict(ky=ky, time=times, omega=omega, gamma=gamma))
+        except (KeyError, IndexError, OSError, TypeError, ValueError) as exc:
+            diagnostic(ctx, nr, para, value, exc, ky=key)
+    return traces
 
 
 def build_param_cloud(root, ctx, nr, para, para_values):

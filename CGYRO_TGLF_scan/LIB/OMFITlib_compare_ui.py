@@ -211,19 +211,28 @@ class ComparisonUI(CaseSelection):
             return
         modes = OrderedDict([('频率 / 增长率谱', 'Plot 2D')])
         if self_mode:
-            modes.update([('指定 ky 的参数扫描', 'Plot single ky'),
+            modes.update([('频率 / 增长率随时间', 'Plot time traces'),
+                          ('指定 ky 的参数扫描', 'Plot single ky'),
                           ('增长率比值 γ / γ_ref', 'Plot γ/γ_ref'),
                           ('三维扫描图', 'Plot 3D'), ('Ballooning 本征函数', 'Plot eigen ball')])
         else:
             modes['增长率比值 γ / γ_ref'] = 'Plot γ/γ_ref'
         self._combo('plot_mode', modes, '绘图类型', 'Plot 2D')
         mode = settings.get('plot_mode', 'Plot 2D')
+        time_traces = self_mode and mode == 'Plot time traces'
         ratio, eigen = mode == 'Plot γ/γ_ref', mode == 'Plot eigen ball'
         if self_mode:
             with self.ui.same_row():
                 if mode != 'Plot 3D':
                     self._check('merge_all_nr_plot', '合并所选半径')
-                self._check('abs_ky', '使用 |ky|', help='扫描图中将正、负 ky 按绝对值合并。')
+                if not time_traces:
+                    self._check('abs_ky', '使用 |ky|', help='扫描图中将正、负 ky 按绝对值合并。')
+        if time_traces:
+            self.ui.Separator('时间曲线选项')
+            self._entry('time_ky_values', 'ky 列表', '', help='留空使用全部已保存 ky；多个值用逗号分隔，各扫描取值分别匹配最近的 ky。')
+            self.ui.Label('每个实际 ky 独立分页；同页叠加所选扫描取值。勾选“合并所选半径”可同时对比 H / D / T。', align='left')
+            self.ui.Label('绘制完整原始时间序列，横轴为时间，两个子图分别为频率和增长率；保留未收敛曲线。', align='left')
+            return
         self.ui.Separator('统计与归一化')
         self._entry('ave_window', '末段平均比例', .02, help='0.02 表示采用时间序列最后 2% 的数据；取值必须大于 0 且不超过 1。', width=10)
         if not eigen:
@@ -279,8 +288,9 @@ class ComparisonUI(CaseSelection):
         self._render_legend_order_controls(self._path, self.state, ','.join(dict.fromkeys(names)))
 
     def _render_actions(self):
-        self.ui.Separator('导出数据')
-        spectra = not (self.mode == 'TGLF_vs_TGLF' and self.plot_settings.get('tglf_vs_tglf_mode', None) == 'Flux')
+        time_traces = self.mode == 'CGYRO_vs_CGYRO' and self.plot_settings.get('plot_mode', None) == 'Plot time traces'
+        self.ui.Separator('保存图片' if time_traces else '导出数据')
+        spectra = not time_traces and not (self.mode == 'TGLF_vs_TGLF' and self.plot_settings.get('tglf_vs_tglf_mode', None) == 'Flux')
         if spectra:
             self.ui.Button('导出频率 / 增长率谱…', self._export, width=24,
                            help='在选择的目录中新建导出文件夹，保存原始谱及设置；不会覆盖已有文件。')

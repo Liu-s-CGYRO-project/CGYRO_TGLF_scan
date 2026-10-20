@@ -11,6 +11,7 @@ from OMFITlib_compare_style import (
     compact_scan_value, finalize_axis_legend)
 
 FIGURE_SIZES = {'Plot 2D': (12.5, 6.5), 'Plot single ky': (13., 5.6),
+                'Plot time traces': (13., 5.6),
                 'Plot γ/γ_ref': (9., 5.4), 'Plot eigen ball': (12.5, 6.5),
                 'Plot 3D': (14., 5.9)}
 
@@ -91,6 +92,21 @@ def _spectra(axes, items, ctx):
     for axis in axes[-1, :]:
         axis.set_xlabel(r'$k_y\rho_s$')
     return annotations
+
+
+def _time_traces(axes, items, ctx):
+    """A page owns one actual ky; both panels use identical curve identities."""
+    for item in items:
+        trace = item['trace']
+        for axis, field in zip(axes.ravel(), ('omega', 'gamma')):
+            values = np.asarray(trace[field], dtype=float)
+            axis.plot(trace['time'], np.where(np.isfinite(values), values, np.nan),
+                      label=_label(item, ctx), linewidth=ctx['lw'],
+                      marker='o' if len(trace['time']) == 1 else None, markersize=ctx['ms'])
+    for axis, symbol in zip(axes.ravel(), (r'$\omega$', r'$\gamma$')):
+        axis.set_xlabel(r'Time ($a/c_s$)')
+        axis.set_ylabel(symbol + r' ($c_s/a$)')
+        axis.set_title(symbol + ' vs time')
 
 
 def _single_ky(axes, items, ctx):
@@ -182,15 +198,17 @@ def render_page(notebook, ctx, label, items):
     mode = 'Plot γ/γ_ref' if ctx['plot_gamma_ratio'] else ctx['plot_mode']
     rows, columns = {'Plot 2D': (2, 2 if ctx['error_flag'] == 'CGYRO' else 1),
                      'Plot single ky': (1, 2), 'Plot γ/γ_ref': (1, 1),
+                     'Plot time traces': (1, 2),
                      'Plot eigen ball': (2, 2), 'Plot 3D': (1, 2)}[mode]
     options = {'subplot_kw': {'projection': '3d'}} if mode == 'Plot 3D' else {}
     fig, axes = notebook.subplots(nrows=rows, ncols=columns, label=label, squeeze=False,
-                                  figsize=FIGURE_SIZES[mode], sharex=mode in ('Plot 2D', 'Plot eigen ball'), **options)
+                                  figsize=FIGURE_SIZES[mode], sharex=mode in ('Plot 2D', 'Plot eigen ball', 'Plot time traces'), **options)
     annotations = []
     if mode == 'Plot 3D':
         _surface(fig, axes, items[0], ctx)
     else:
         renderer = {'Plot 2D': _spectra, 'Plot single ky': _single_ky,
+                    'Plot time traces': _time_traces,
                     'Plot γ/γ_ref': _ratio, 'Plot eigen ball': _eigen}[mode]
         annotations = renderer(axes, items, ctx) or []
         apply_color_order_to_axes(axes, ctx)

@@ -46,6 +46,8 @@ def validate_options(settings):
     try:
         if mode == 'Plot single ky':
             parse_float_list_text(settings.get('single_ky_values', ''))
+        elif mode == 'Plot time traces':
+            parse_float_list_text(settings.get('time_ky_values', ''))
         elif mode == 'Plot eigen ball' and settings.get('eigen_ky_mode', None) == 'single ky':
             if not parse_float_list_text(settings.get('eigen_ky_values', '')):
                 raise ValueError('Enter at least one ky value for the eigenfunction')

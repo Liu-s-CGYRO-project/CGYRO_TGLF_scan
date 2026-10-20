@@ -11,7 +11,7 @@ from OMFITlib_compare_cgyro_selection import (
     build_context, _combine_nr_on_single_page, _iter_selected_parameter_items,
     _has_any_selected_parameters, parse_float_list_text)
 from OMFITlib_compare_cgyro_data import (
-    collect_value_series, build_param_cloud, get_gamma_ratio_curve, diagnostic,
+    collect_value_series, collect_time_series, build_param_cloud, get_gamma_ratio_curve, diagnostic,
     compute_freq_stats, filter_single_ky, normalize_if_needed)
 from OMFITlib_compare_cgyro_eigen import (
     collect_eigen_entries_for_value, extract_eigen_curve, flatten_balloon_field,
@@ -28,7 +28,11 @@ def collect_plot_items(root, ctx):
     for nr in ctx['nr_CGYRO']:
         for para, values in _iter_selected_parameter_items(ctx, nr):
             identity = {'nr': nr, 'para': para}
-            if ctx['plot_gamma_ratio']:
+            if ctx.get('plot_time_traces', False):
+                for value in values:
+                    for trace in collect_time_series(root, ctx, nr, para, value):
+                        items.append(dict(identity, value=value, trace=trace))
+            elif ctx['plot_gamma_ratio']:
                 ratio = get_gamma_ratio_curve(root, ctx, nr, para, values)
                 if ratio is not None:
                     items.append(dict(identity, ratio=ratio))
@@ -64,6 +68,8 @@ def group_plot_pages(items, ctx):
             key = (str(item['nr']), str(item['para']))
         else:
             key = ('All selected radii',) if _combine_nr_on_single_page(ctx) else (str(item['nr']),)
+            if ctx.get('plot_time_traces', False):
+                key += ('ky={:.10g}'.format(item['trace']['ky']),)
         pages.setdefault(key, []).append(item)
     labeled = []
     for key, values in pages.items():

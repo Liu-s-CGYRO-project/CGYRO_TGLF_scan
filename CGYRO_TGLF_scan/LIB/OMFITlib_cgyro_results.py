@@ -2,6 +2,7 @@
 from OMFITlib_gui_fonts import configure_window_fonts, style_widget
 from OMFITlib_cgyro_archive import case_scans, latest_cases
 from OMFITlib_cgyro_continue import point_status
+from OMFITlib_compare_core import cgyro_frequency_history
 from builtins import (Exception, TypeError, ValueError, abs, any, dict, float, int,
                       len, list, max, min, range, set, sorted, str, tuple, zip)
 from collections import OrderedDict
@@ -442,14 +443,7 @@ def plot_time_traces(root, notebook, token, point_ids, legend_font_size=10):
     for point in point_ids:
         row = tasks[point]
         result = _result_node(root, entry, row)
-        times = np.asarray(result['t'], dtype=float).ravel()
-        omega = np.asarray(result['freq']['omega'][0], dtype=float).ravel()
-        gamma = np.asarray(result['freq']['gamma'][0], dtype=float).ravel()
-        if (len(times) < 1 or len(times) != len(omega) or len(times) != len(gamma)
-                or not np.all(np.isfinite(times)) or np.any(np.diff(times) <= 0)):
-            raise ValueError('{}：时间与频率采样无效或长度不一致。'.format(point))
-        if not np.any(np.isfinite(omega)) or not np.any(np.isfinite(gamma)):
-            raise ValueError('{}：没有有效的频率数据。'.format(point))
+        times, omega, gamma = cgyro_frequency_history(result)
         values = row.get('values', {})
         label = ', '.join('{}={}'.format('ky' if name == 'KY' else name, _number_text(values[name]))
                           for name in list(dict.fromkeys(names + ['KY'])))

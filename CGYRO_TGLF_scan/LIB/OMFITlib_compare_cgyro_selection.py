@@ -223,8 +223,10 @@ def build_context(root):
     ctx['single_ky'] = (ctx['plot_mode'] == 'Plot single ky')
     ctx['plot_gamma_ratio'] = is_gamma_ratio_plot_mode(ctx['plot_mode'])
     ctx['plot_eigen_ball'] = (ctx['plot_mode'] == 'Plot eigen ball')
+    ctx['plot_time_traces'] = (ctx['plot_mode'] == 'Plot time traces')
     ctx['abs_ky'] = bool(settings.get('abs_ky', legacy_physics.get('abs_ky', False)))
     exporting = settings.get('linear_export_now', False)
+    ctx['selected_time_ky'] = parse_float_list_text(settings.get('time_ky_values', '')) if ctx['plot_time_traces'] and not exporting else []
     ctx['selected_single_ky'] = parse_single_ky_values(root) if ctx['single_ky'] and not exporting else []
     ctx['gamma_ref_mode'] = settings.get('gamma_ref_mode', 'all ky')
     ctx['gamma_ref_value'] = settings.get('gamma_ref_value', '')
@@ -255,6 +257,11 @@ def build_context(root):
     ctx['divide_by_ky2'] = settings.get('divide_by_ky2', False)
     ctx['error_filter'] = settings.get('error_filter', False)
     ctx['highlight_max_gamma'] = settings.get('highlight_max_gamma', False)
+    if ctx['plot_time_traces']:
+        # Hidden spectrum controls from a previous plot must not change the
+        # saved time/frequency units or remove unconverged histories.
+        ctx.update(dict(normalize_main_ion=False, divide_by_ky=False,
+                        divide_by_ky2=False, error_filter=False, abs_ky=False))
     ctx['export_linear_now'] = settings.get('linear_export_now', False)
     ctx['export_linear_dir'] = settings.get('linear_export_dir', '')
     ctx['legend_order_mode'] = settings.get('legend_order_mode', 'Plot order')

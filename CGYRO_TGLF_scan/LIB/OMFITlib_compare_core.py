@@ -99,7 +99,8 @@ def build_context(root):
     ctx['check_cgyro_output_now'] = bool(mode_state.get('check_cgyro_output_now', False))
 
     plot_state = mode_state if compare_mode == 'CGYRO_vs_CGYRO' else ctx['plot_state']
-    ctx['ave_window'] = float(plot_state.get('ave_window', 0.02))
+    time_traces = compare_mode == 'CGYRO_vs_CGYRO' and plot_state.get('plot_mode', None) == 'Plot time traces'
+    ctx['ave_window'] = .02 if time_traces else float(plot_state.get('ave_window', 0.02))
     ctx['effnum'] = plot_state.get('effnum', 5)
     ctx['plot_mode'] = plot_state.get('plot_mode', 'Plot 2D')
     ctx['plot_gamma_ratio'] = is_gamma_ratio_plot_mode(ctx['plot_mode'])
@@ -213,6 +214,24 @@ def cgyro_frequency_stats(data, window):
     if stats is None:
         raise ValueError('Empty or non-finite frequency statistics in the averaging window')
     return stats
+
+
+def cgyro_frequency_history(data):
+    """Return saved native-unit samples, keeping non-finite frequency gaps.
+
+    Do not average, sort or truncate histories: each point can have its own
+    adaptive time grid and final time. Invalid time coordinates are rejected.
+    """
+    times = np.asarray(data['t'], dtype=float).ravel()
+    omega = np.asarray(data['freq']['omega'][0], dtype=float).ravel()
+    gamma = np.asarray(data['freq']['gamma'][0], dtype=float).ravel()
+    if (len(times) < 1 or len(times) != int(data['n_time'])
+            or len(times) != len(omega) or len(times) != len(gamma)
+            or not np.all(np.isfinite(times)) or np.any(np.diff(times) <= 0)):
+        raise ValueError('Invalid saved time coordinates or inconsistent frequency sample counts')
+    if not np.any(np.isfinite(omega)) or not np.any(np.isfinite(gamma)):
+        raise ValueError('No finite saved omega or gamma samples')
+    return times, omega, gamma
 
 
 def normalize_if_needed(datadir, ky_val, omega_val, gamma_val, normalize_main_ion):

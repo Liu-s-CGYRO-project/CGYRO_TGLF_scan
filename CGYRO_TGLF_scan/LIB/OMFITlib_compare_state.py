@@ -177,6 +177,7 @@ def selection_check(root, mode=None):
     mode = mode or physics.get('compare_mode', 'CGYRO_vs_TGLF')
     state = physics.get(mode, {})
     settings = state if mode == 'CGYRO_vs_CGYRO' else state.get('plot', {})
+    time_traces = mode == 'CGYRO_vs_CGYRO' and settings.get('plot_mode', None) == 'Plot time traces'
     errors, warnings = [], []
     cg = state if mode == 'CGYRO_vs_CGYRO' else state.get('CGYRO', {})
     tg = state.get('TGLF', {})
@@ -193,12 +194,13 @@ def selection_check(root, mode=None):
         if mode == 'CGYRO_vs_CGYRO' and not cg.get('nr_CGYRO', None):
             errors.append('请选择所选 CGYRO 半径下的离子。' if cg.get('cgyro_radius_selected', None)
                           else '请选择 CGYRO 半径。')
-        try:
-            window = float(settings.get('ave_window', 0.02))
-            if not math.isfinite(window) or not 0 < window <= 1:
-                raise ValueError
-        except (TypeError, ValueError):
-            errors.append('末段平均比例应大于 0 且不超过 1（0.02 表示最后 2%）。')
+        if not time_traces:
+            try:
+                window = float(settings.get('ave_window', 0.02))
+                if not math.isfinite(window) or not 0 < window <= 1:
+                    raise ValueError
+            except (TypeError, ValueError):
+                errors.append('末段平均比例应大于 0 且不超过 1（0.02 表示最后 2%）。')
     if mode != 'CGYRO_vs_CGYRO':
         key = 'selected_paras_2d' if tg.get('spectra_mode', '1D') == '2D' else 'selected_paras'
         if not any(has_values(v) for v in tg.get(key, {}).values()):
@@ -218,16 +220,17 @@ def selection_check(root, mode=None):
                 if not cfg.get('nr_selected', None) and not any(cfg.get('nr_flag', {}).values()):
                     target = 'CGYRO 半径下的离子' if cfg.get('cgyro_radius_selected', None) else 'CGYRO 半径'
                     errors.append('请为 TGLF {} 选择{}。'.format(rho, target))
-    if settings.get('divide_by_ky', None) and settings.get('divide_by_ky2', None):
+    if not time_traces and settings.get('divide_by_ky', None) and settings.get('divide_by_ky2', None):
         errors.append('Choose one spectrum scaling: raw, /ky, or /ky².')
     if mode == 'CGYRO_vs_CGYRO':
         errors.extend(validate_options(settings))
-    try:
-        tol = float(settings.get('error_tolerance', 0.01))
-        if not math.isfinite(tol) or tol <= 0:
-            raise ValueError
-    except (TypeError, ValueError):
-        errors.append('相对波动容差必须为大于 0 的有限数值。')
+    if not time_traces:
+        try:
+            tol = float(settings.get('error_tolerance', 0.01))
+            if not math.isfinite(tol) or tol <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            errors.append('相对波动容差必须为大于 0 的有限数值。')
     try:
         global_plot_style(root)
     except (TypeError, ValueError) as exc:
