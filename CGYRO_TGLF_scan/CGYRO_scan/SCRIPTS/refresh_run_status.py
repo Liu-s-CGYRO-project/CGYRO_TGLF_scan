@@ -1,4 +1,4 @@
-"""Synchronize bookkeeping only; never submit, cancel or delete a job."""
+"""Recover saved identities; a modern gate may seal an unstarted submission."""
 from OMFITlib_cgyro_run_state import refresh_run_state, submission_pending
 from OMFITlib_cgyro_queue import queue_records, refresh_queue
 from OMFITlib_cgyro_retry import recover_submission
@@ -14,7 +14,7 @@ else:
                            + '/.cgyro_submit.out before resubmitting.\n'
                            + str(manifest.get('submission_probe_error', '')))
     if not manifest.get('job_id', '') and manifest.get('status', '') == 'failed':
-        print('The scheduler rejected this submission. No job was accepted; a fresh run is allowed.')
+        print('No job was accepted by this attempt. A fresh run is allowed.')
     else:
         result = refresh_run_state(root, OMFITx)
         print('CGYRO scheduler state: ' + result['outcome'])

@@ -26,6 +26,7 @@ from OMFITlib_project import (ERROR_NOTICE_SUFFIX, ION_CASES, LABELS, MODULES, P
 from OMFITlib_cgyro_run_state import submission_pending
 
 STATUS = {'prepared': '输入已准备', 'submitted': '已提交', 'submitting': '正在提交', 'loaded': '结果已读取',
+          'uploading': '上传输入中',
           'submission_unconfirmed': '提交状态待确认',
           'submitted_or_finished': '已提交或执行返回',
           'published': '结果已归档', 'complete': '完成', 'running': '运行中',

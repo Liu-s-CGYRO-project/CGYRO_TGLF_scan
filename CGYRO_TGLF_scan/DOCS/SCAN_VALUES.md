@@ -36,7 +36,7 @@ H/D/T 案例先合并已识别的全部 Z=1 主离子，再将合并后的质量
 
 合并密度为 `sum(n_i)`，温度为 `sum(n_i*T_i)/sum(n_i)`。密度梯度按密度加权，温度梯度由总压力梯度减去合并密度梯度得到，不直接平均各温度梯度。杂质、电子及原 Zeff 设置保留，N_SPECIES 和十种原生粒子字段同步重新编号。粒子扫描轴和启用的固定参数按原编号映射；同时指向合并主离子的多个轴或不一致固定值会报错，避免静默覆盖。原值倍数以合并后的实际输入为基准。
 
-`LIB/OMFITlib_cgyro_isotopes.py` 提供 `isotope_input(source, mass, main_indices, rhostar=None, global_curvature=False)` 和 `remap_physics(physics, dimensions, mapping)`。返回独立输入和包含原编号、新编号、参数与规则的记录；案例准备、预检查及提交使用同一接口。局部输入要求 PROFILE_MODEL=1；非 1 的粒子梯度倍率需要先折算进源输入。
+局部输入要求 PROFILE_MODEL=1；非 1 的粒子梯度倍率需先折算进源输入。接口和编号映射见上述完整参考。
 
 新版 Transfer_tool 记录原生 locpargen 的 rhos/a，按 expro 的有效曲率定义还原并合并密度和压力二阶导数。旧等效杂质记录中的 rhostar 也可复用。旧输入缺少该尺度时，仅允许 GLOBAL_FLAG=0 的局部扫描，未使用的曲率字段保留加权值；全局扫描会要求重新生成输入，不猜测尺度。N_GLOBAL 只控制全局输出分辨率，不能据此判断是否启用全局剖面变化。
 
@@ -61,7 +61,7 @@ H/D/T 扫描只改变合并热主离子的质量 0.5/1/1.5，辅助组采用同�
 
 设置保存在 `PHYSICS/generation/equivalent_temperature`（`pressure` / `main_ion`），生成时冻结进 `OUTPUTS/Particle_processing/options`。局部记录 `local_inputs/input.cgyro_N/equivalent`（TGLF 同理）包含 `sources`、`thermal_main_reference`、最终 `parameters`、守恒项及残差、辅助组前后矩和 `total_pressure_change`。完整剖面图仍表示局部合成前的组成，最终等效物种以局部输入和这些记录为准。切换约定或从旧等效规则升级后需要重新运行 Transfer_tool，不改写历史结果。
 
-程序接口为 `equivalent_local_input(value, kind, main_count, expected_ions, rhostar=None, temperature_mode='pressure')`。`expected_ions` 使用本轮完整的粒子来源记录，不能仅传入电荷列表；温度选项从冻结记录传入，不从运行中的 GUI 重读。上述合并公式是模型约定；字段归一化遵循 [GACODE 参数定义](https://gacode.io/cgyro/cgyro_list.html#cgyro-dlnndr)，曲率遵循下述 expro 源码约定。
+粒子来源和温度选项使用冻结记录，运行时不从 GUI 重读。接口与归一化依据见完整参考。
 
 ## 主离子、等效杂质与等效快粒子
 
@@ -103,7 +103,7 @@ CGYRO 还原有效曲率后，三组均保持自身电荷密度二阶导数；�
 
 CGYRO 的顺序为主离子、等效杂质（若有）、等效快粒子（若有）、电子；TGLF 为电子、主离子、等效杂质、等效快粒子。分数电荷和质量在 locpargen 完成后写入局部输入，避免原生完整剖面文件的整数电荷写出限制。原始完整剖面和已归档计算结果保留。
 
-设置为 `PHYSICS/generation/particle_mode='separate_fast'`，规则更新为 `merged_thermal_main_thermal_impurity_fast_pressure_v2`；1.22.18 的旧生成结果需重新运行 Transfer_tool，不改写历史归档。来源及最终参数保存在 `OUTPUTS/Particle_processing/local_inputs/input.cgyro_N/equivalent/groups`（TGLF 同理），三个键为 `main`、`impurity`、`fast`；每组有 `sources`、`before`、`after`、`parameters`、`conserved_moments`、`residuals`、`temperature_residuals`、`pressure_change`、`pressure_gradient_change`、`omitted` 和最终 `solver_index`。热杂质守恒清单不包含压力及其导数。上层 `equivalent` 保存 `thermal_main_reference`、`total_pressure_change`、`total_pressure_gradient_change`、`pressure_budget_residuals` 和 `electron_beta`。局部输入自身的 `main_count=1` 用于 H/D/T 扫描，不能使用完整剖面阶段原有的主离子数量。程序接口仍为 `separate_fast_local_input(value, kind, main_count, expected_ions, rhostar=None)`。
+该方案使用 separate_fast，规则为 merged_thermal_main_thermal_impurity_fast_pressure_v2。旧版结果需重新生成；来源、最终参数及压力预算在 OUTPUTS/Particle_processing/local_inputs 中记录。局部输入 main_count=1。全部字段与接口见完整参考。
 
 完整剖面图仍显示局部合成前的源粒子，局部快粒子压力和 KBM / BAE 热快驱动分组使用记录中的最终编号。原 ITG / ETG 解析估算依赖单个源热离子的剖面，不适用于此合并方案，界面会提示使用保留粒子的生成结果。等效物种仍是由温度描述的近似，保留上述矩不等于保留完整的慢化能谱、各向异性或各源物种独立响应。局部 Z、MASS 视为常量，不对相邻半径的等效 Z、MASS 作剖面求导。字段单位遵循 [input.gacode 定义](https://gacode.io/input_gacode.html)、[CGYRO 参数](https://gacode.io/cgyro/cgyro_list.html)及 [TGLF 参数](https://www.gacode.io/tglf/tglf_list.html)。
 
@@ -123,12 +123,7 @@ CGYRO 的 `GAMMA_E` 已列入“平衡与剪切”，可直接编辑或扫描，
 
 ## 参数帮助接口
 
-“计算参数”旁的“?”及扫描轴参数的帮助共用 `LIB/OMFITlib_cgyro_parameter_help.py`。常用参数逐项列出可输入的数值 / 枚举值、含义、单位 / 归一化和生效条件；粒子编号字段共用 `SPECIES_HELP`，形状谐波按前缀识别。新增说明在 `PARAMETER_HELP` 追加 `(可输入值, 含义, 单位, 条件)` 元组即可，不需修改 GUI 或求解器。未核对的扩展参数明确标注未收录含义，不按名称编造。
-
-```python
-from OMFITlib_cgyro_parameter_help import parameter_help
-text = parameter_help('EQUILIBRIUM_MODEL')
-```
+“计算参数”和扫描轴的“?”提供可输入值、物理含义、单位和生效条件。说明与扩展接口见完整参考；未核对的参数不按名称猜测含义。
 
 说明为随包提供的中文数据，离线可用；“?”使用可滚动窗口，较长的说明不会被截断。输入框继续只接受参数值，物理解释不混入数值字段。Z_EFF_METHOD 采用普通数值输入框，填 1 或 2，回车生效。
 

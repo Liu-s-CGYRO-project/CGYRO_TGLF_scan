@@ -19,7 +19,7 @@ BRANCHES = (
     (('TGLF_scan', 'TGYRO'), ('OUTPUTS', 'RUN_DB')),
     (('Transfer_tool', 'OUTPUTS'), ('TGYRO',)),
 )
-ACTIVE = ('running', 'submitted', 'submitting', 'queued', 'preparing', 'cancel_requested')
+ACTIVE = ('running', 'submitted', 'submitting', 'uploading', 'queued', 'preparing', 'cancel_requested')
 
 
 def node_at(root, path):

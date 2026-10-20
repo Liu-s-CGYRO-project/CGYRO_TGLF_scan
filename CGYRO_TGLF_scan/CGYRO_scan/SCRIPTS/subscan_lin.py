@@ -3,7 +3,7 @@
 The project orchestrator calls this once per rho/isotope case. Point IDs keep
 their original array indices so failed subsets can be retried independently.
 """
-from builtins import (BaseException, Exception, RuntimeError, TypeError, ValueError, all, any, bool, dict, enumerate, float,
+from builtins import (Exception, RuntimeError, TypeError, ValueError, all, any, bool, dict, enumerate, float,
                       int, isinstance, iter, len, list, max, range, set, sorted, str, tuple, zip)
 import numpy as np
 import copy
@@ -21,7 +21,7 @@ from OMFITlib_cgyro_parameters import (FIELDS as CALCULATION_FIELDS, apply_param
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolved_scan_axes
 from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, submission_pending, text_output as output_to_text
 from OMFITlib_cgyro_queue import advancing_batch, collection_done, pending_runs, save_current, wait_current
-from OMFITlib_cgyro_retry import confirm_submission, interrupt_submission, retry_limit
+from OMFITlib_cgyro_retry import execute_submission, retry_limit
 from OMFITlib_cgyro_continue import continuation_plan, prepare_point, restart_files
 from OMFITlib_cgyro_storage import compact_storage, result_view
 
@@ -595,31 +595,7 @@ if setup['irun']==1:
         submit_cmd='sbatch scan.pbs'
         if scheduler == 'pbs':
             submit_cmd='qsub scan.pbs'
-        rmtserver=remote_server
-        rmttunnel=remote_tunnel
-        workdir=submit_workdir
-        rmtworkdir=remote_workdir
-        submit_out=[]
-        submit_err=[]
-        submit_log='.cgyro_submit.out'
-        submit_wrapper = shell_quote('rm -f ' + submit_log + '; ' + submit_cmd + ' > ' + submit_log
-                                     + ' 2>&1; status=$?; cat ' + submit_log + '; exit "$status"')
-        submit_wrapper = '/bin/bash -lc ' + submit_wrapper
-        root['RUN_MANIFEST']['status'] = 'submitting'
-        root['RUN_MANIFEST']['submission_uncertain'] = True
-        save_current(root, OMFITtree)
-        try:
-            ret_code=OMFITx.executable(root, inputs=inputs, outputs=[],
-                                       server=rmtserver, tunnel=rmttunnel, workdir=workdir, remotedir=rmtworkdir,
-                                       executable=submit_wrapper, clean=False, std_out=submit_out,
-                                       std_err=submit_err, ignoreReturnCode=True)
-        except Exception as exc:
-            root['RUN_MANIFEST']['submit_error'] = str(exc)
-            ret_code = -1
-        except BaseException as exc:
-            interrupt_submission(root, OMFITtree, submit_out, submit_err, exc)
-            raise
-        confirm_submission(root, OMFITx, OMFITtree, ret_code, submit_out, submit_err)
+        execute_submission(root, OMFITx, OMFITtree, OMFITascii, inputs, submit_workdir, submit_cmd)
         if wait_for_completion:
             wait_current(root, OMFITx, OMFITtree)
 

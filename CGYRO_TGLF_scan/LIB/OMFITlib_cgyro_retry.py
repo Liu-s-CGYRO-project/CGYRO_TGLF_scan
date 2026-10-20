@@ -1,10 +1,10 @@
 """Recover submission acknowledgements and retry eligible failed points.
 
-A transport retry only reads the existing submission/output. A solver retry
-creates a new attempt directory, verifies the original inputs, and retains the
-successful points' locations. These operations must never be interchanged.
+Transport recovery never resubmits; it can seal a gated attempt before it starts.
+A solver retry uses verified inputs in a new directory and retains successful
+points. A failed upload restores the previous confirmed attempt.
 """
-from builtins import BaseException, Exception, RuntimeError, ValueError, any, dict, enumerate, int, iter, len, list, print, range, str
+from builtins import BaseException, Exception, KeyboardInterrupt, RuntimeError, ValueError, any, bool, dict, enumerate, int, isinstance, iter, len, list, print, range, str
 from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
@@ -16,6 +16,7 @@ import uuid
 import zipfile
 from OMFITlib_cgyro_queue import save_current, shell_quote, wait_current
 from OMFITlib_cgyro_run_state import submitted_job_id, text_output
+from OMFITlib_cgyro_submission import PROTOCOL, discover_submission, seal_unstarted, submit_command
 
 
 NON_RETRYABLE_STATES = {'CANCELLED', 'TIMEOUT', 'OUT_OF_MEMORY', 'DEADLINE'}
@@ -35,6 +36,26 @@ def network_error(error):
         'network', 'broken pipe', 'temporary', 'socket', 'transport', 'could not query', 'could not synchronize'))
 
 
+def no_submission(root, factory, reason, error='', interrupted=False):
+    """Keep an unsuccessful retry from hiding the last confirmed allocation."""
+    manifest = root['RUN_MANIFEST']
+    failure = dict(workDir=manifest['workDir'], nonce=manifest.get('submission_nonce', ''),
+        reason=reason, error=str(error), at=datetime.now(timezone.utc).isoformat())
+    parent = manifest.pop('submission_parent', None)
+    if parent is not None:
+        count = manifest.get('retry_count', 0)
+        manifest.clear()
+        manifest.update(parent)
+        manifest['retry_count'] = count
+        manifest['retry_submission_failures'] = list(manifest.get('retry_submission_failures', [])) + [failure]
+        if interrupted:
+            manifest['stop_requested'] = True
+    else:
+        manifest.update(dict(status='failed', terminal_reason=reason, submit_error=str(error)))
+    manifest['submission_uncertain'] = False
+    save_current(root, factory)
+
+
 def recover_submission(root, ui, factory=dict):
     """Read the transaction log before considering another scheduler submission."""
     manifest = root['RUN_MANIFEST']
@@ -48,8 +69,8 @@ def recover_submission(root, ui, factory=dict):
         for attempt in range(3):
             output, errors = [], []
             try:
-                code = ui.remote_execute(manifest['server'], 'cat -- .cgyro_submit.out',
-                    manifest['workDir'], manifest.get('tunnel', ''), quiet=True, ignoreReturnCode=True,
+                code = ui.remote_execute(manifest['server'], 'cat -- ' + shell_quote(posixpath.join(manifest['workDir'], '.cgyro_submit.out')),
+                    '/', manifest.get('tunnel', ''), quiet=True, ignoreReturnCode=True,
                     use_bang_command=False, std_out=output, std_err=errors)
                 if code == 0:
                     manifest.pop('submission_probe_error', None)
@@ -68,15 +89,65 @@ def recover_submission(root, ui, factory=dict):
                 manifest['submission_probe_error'] = str(exc)
             if attempt < 2:
                 time.sleep(1)
+    if not job_id and not re.search(r'(?mi)^(?:sbatch|qsub):.*(?:error|invalid|reject)', manifest.get('submit_output', '')):
+        try:
+            if seal_unstarted(manifest, ui):
+                no_submission(root, factory, 'sealed_before_submission',
+                    interrupted=bool(manifest.get('submission_interrupted_at', '')))
+                return False
+            if scheduler == 'slurm':
+                job_id = discover_submission(manifest, ui)
+                if not job_id:
+                    manifest['submission_probe_error'] = ('No matching WorkDir in the live queue or the last 7 days of accounting. '
+                        'This attempt remains protected; a legacy submission needs manual verification before release.')
+        except Exception as exc:
+            manifest['submission_probe_error'] = str(exc)
     if not job_id:
         if re.search(r'(?mi)^(?:sbatch|qsub):.*(?:error|invalid|reject)', manifest.get('submit_output', '')):
-            manifest.update(dict(status='failed', submission_uncertain=False))
+            no_submission(root, factory, 'submission_rejected', manifest.get('submit_output', ''))
         save_current(root, factory)
         return False
     manifest.update(dict(job_id=job_id, status='submitted', submission_uncertain=False))
+    manifest.pop('submission_parent', None)
     manifest.pop('submission_probe_error', None)
     save_current(root, factory)
     return True
+
+
+def execute_submission(root, ui, factory, ascii_reader, inputs, local, command):
+    """Upload without a scheduler command, then perform one gated submission."""
+    manifest = root['RUN_MANIFEST']
+    manifest.update(dict(submission_protocol=PROTOCOL, submission_nonce=uuid.uuid4().hex,
+        job_id='', status='uploading', submission_uncertain=False, submit_output='', submit_error=''))
+    manifest.pop('submission_interrupted_at', None)
+    marker = os.path.join(local, '.cgyro_submit.identity')
+    try:
+        with open(marker, 'w', encoding='ascii') as stream:
+            stream.write(manifest['submission_nonce'] + '\n')
+        save_current(root, factory)
+        code = ui.executable(root, inputs=list(inputs) + [ascii_reader(marker)], outputs=[],
+            server=manifest['server'], tunnel=manifest.get('tunnel', ''), workdir=local,
+            remotedir=manifest['workDir'], executable=':', clean=False, use_bang_command=False)
+        if code != 0:
+            raise RuntimeError('CGYRO input transfer did not complete.')
+    except BaseException as exc:
+        # This phase cannot create an allocation: the remote command is only ':'.
+        no_submission(root, factory, 'input_transfer_interrupted', exc, isinstance(exc, KeyboardInterrupt))
+        raise
+    output, errors = [], []
+    manifest.update(dict(status='submitting', submission_uncertain=True))
+    save_current(root, factory)
+    try:
+        code = ui.remote_execute(manifest['server'], submit_command(manifest, command),
+            manifest['workDir'], manifest.get('tunnel', ''), quiet=False, ignoreReturnCode=True,
+            use_bang_command=False, std_out=output, std_err=errors)
+    except Exception as exc:
+        manifest['submit_error'] = str(exc)
+        code = -1
+    except BaseException as exc:
+        interrupt_submission(root, factory, output, errors, exc)
+        raise
+    return confirm_submission(root, ui, factory, code, output, errors)
 
 
 def interrupt_submission(root, factory, output, errors, error):
@@ -92,6 +163,8 @@ def interrupt_submission(root, factory, output, errors, error):
         status='submitted' if job_id else 'submission_unconfirmed',
         submit_error=str(error) or 'Local submission interrupted.',
         submission_interrupted_at=datetime.now(timezone.utc).isoformat()))
+    if job_id:
+        manifest.pop('submission_parent', None)
     save_current(root, factory)
 
 
@@ -107,12 +180,14 @@ def confirm_submission(root, ui, factory, return_code, output, errors):
     if recover_submission(root, ui, factory):
         return manifest['job_id']
     save_current(root, factory)
-    reason = ('CGYRO submission was rejected; inspect ' if not manifest.get('submission_uncertain', True)
+    reason = ('CGYRO submission did not start or was rejected; inspect ' if not manifest.get('submission_uncertain', True)
               else 'CGYRO submission is unconfirmed; inspect ')
-    raise RuntimeError(reason + manifest['workDir']
+    failures = manifest.get('retry_submission_failures', [])
+    failure = failures[-1] if failures and not manifest.get('submission_uncertain', True) else {}
+    raise RuntimeError(reason + failure.get('workDir', manifest['workDir'])
                        + '/.cgyro_submit.out before submitting again (return code '
                        + str(return_code) + ').\n' + manifest.get('submit_output', '')
-                       + '\n' + manifest.get('submit_error', ''))
+                       + '\n' + failure.get('error', manifest.get('submit_error', '')))
 
 
 def point_scheduler_states(manifest):
@@ -207,26 +282,14 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
         locations.setdefault(point, manifest['workDir'])
     for point in points:
         locations[point] = remote
+    manifest['submission_parent'] = deepcopy(manifest)
     manifest.update(dict(attempts=attempts, source_workDir=original_remote, source_local_workDir=original_local,
         retry_count=number, active_points=list(points), point_workdirs=locations, workDir=remote,
         job_id='', status='submitting', submission_uncertain=True, wait_completed=False,
         scheduler_sync={}, scheduler_status='', submit_output='', submit_error='',
         retry_at=datetime.now(timezone.utc).isoformat()))
     save_current(root, factory)
-    wrapper = command + ' > .cgyro_submit.out 2>&1; status=$?; cat .cgyro_submit.out; exit "$status"'
-    output, errors = [], []
-    try:
-        code = ui.executable(root, inputs=inputs, outputs=[], server=manifest['server'],
-            tunnel=manifest.get('tunnel', ''), workdir=local, remotedir=remote,
-            executable='/bin/bash -lc ' + shell_quote(wrapper), clean=False,
-            std_out=output, std_err=errors, ignoreReturnCode=True)
-    except Exception as exc:
-        manifest['submit_error'] = str(exc)
-        code = -1
-    except BaseException as exc:
-        interrupt_submission(root, factory, output, errors, exc)
-        raise
-    confirm_submission(root, ui, factory, code, output, errors)
+    execute_submission(root, ui, factory, ascii_reader, inputs, local, command)
     manifest['failed_points'], manifest['partial_points'] = [], []
     save_current(root, factory)
 
