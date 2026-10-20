@@ -20,6 +20,7 @@
 | GUI 外观 | `LIB/OMFITlib_gui_api.py`、`OMFITlib_gui_controls.py`、`OMFITlib_gui_fonts.py` | 控件适配、字体和尺寸；业务代码不单独重设主题 |
 | 模板更新 | `OMFITtemplates/LIB/OMFITlib_template_*` | 下载与校验、更新预览、应用与回退；独立于科学计算 |
 | 打包与静态兼容检查 | `tools/build_project.py`、`tools/check_omfit_api.py` | 从已登记引用构建代码包，校验 API、依赖、字体标识和包大小 |
+| 首次部署与独立旧模块迁移 | `tools/deploy_project.py`、`tools/build_deployer.py` | 配套版本与摘要随脚本发布；离线调整标准旧模块路径，复用归档合并引擎另存新 ZIP |
 
 表中省略的 `LIB/` 均位于 `CGYRO_TGLF_scan` 下。已有 `GUIS/`、`SCRIPTS/`、`PLOTS/` 脚本是 OMFIT 入口，不应仅因文件短而删掉；原生数据类的子类也不能机械移动进 LIB，详见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
 

@@ -506,6 +506,7 @@
 ['CGYRO_TGLF_scan']['DOCS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['DOCS']['绘图接口'] <-:-:-> OMFITascii <-:-:-> ./CGYRO_TGLF_scan/DOCS/PLOTTING_API.md <-:-:-> {}
 ['CGYRO_TGLF_scan']['DOCS']['扫描取值接口'] <-:-:-> OMFITascii <-:-:-> ./CGYRO_TGLF_scan/DOCS/SCAN_VALUES.md <-:-:-> {}
+['CGYRO_TGLF_scan']['DOCS']['首次部署与迁移'] <-:-:-> OMFITascii <-:-:-> ./CGYRO_TGLF_scan/DOCS/FIRST_DEPLOY.md <-:-:-> {}
 ['CGYRO_TGLF_scan']['DOCS']['字体许可'] <-:-:-> OMFITascii <-:-:-> ./CGYRO_TGLF_scan/DOCS/FONT_LICENSE.txt <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_gui_fonts'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_fonts.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_gui_font_data'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_font_data.py <-:-:-> {}

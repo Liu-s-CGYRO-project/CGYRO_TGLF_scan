@@ -1,3 +1,16 @@
+工程 1.22.22：新增首次部署脚本 omfit-deploy.py，可用两条终端命令下载并迁移已保存的旧工程 ZIP。自动识别已有总模块，或将独立 CGYRO_scan / TGLF_scan / Transfer_tool 迁入新总模块，保留输入、结果、运行历史和设置，另存新 ZIP 及报告。脚本绑定配套包大小与 SHA-256，直接下载 Release 附件，无需 GitHub API 查询、gh、pip 或 Tk；支持预览、离线迁移和全新工程。管理器保持 1.10.17，代码包小于 1 MB；仅做静态与安装包校验，未执行迁移、安装、测试或 GUI。
+
+## 两条命令首次部署
+
+先在 OMFIT 把旧工程保存成自包含 ZIP。在运行 OMFIT 的 Linux 终端中，用其 Python 3.9+ 环境执行：
+
+```sh
+curl -fL --retry 3 --proxy http://47.102.120.146:18889 https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/latest/download/omfit-deploy.py -o omfit-deploy.py
+python3 omfit-deploy.py '/路径/旧工程.zip'
+```
+
+自动识别已有 CGYRO_TGLF_scan，或独立的 CGYRO_scan、TGLF_scan、Transfer_tool。原 ZIP 保留，生成新工程与 .deploy.json 报告；在 OMFIT 打开打印出的新 ZIP 即可。输入 / 结果 / 设置保留，代码与依赖使用新版。若只想全新部署，第二行改为 `python3 omfit-deploy.py --new`。预览、离线模式、网络选择和范围见 [首次部署与迁移](CGYRO_TGLF_scan/DOCS/FIRST_DEPLOY.md)。
+
 工程 1.22.21：在“CGYRO 对比 → 绘图设置 → 绘图类型”增加“频率 / 增长率随时间”。沿用当前半径、H/D/T、扫描参数及取值，可筛选多个 ky，每个实际 ky 独立分页，并排绘制完整 omega(t) / gamma(t)。可合并所选案例，沿用全局样式和图例排序；保留未收敛曲线与各点原时间网格，图内使用英文。管理器仍为 1.10.17，代码包小于 1 MB；仅做静态与安装包校验，未运行测试、GUI、绘图或求解器。
 
 工程 1.22.20：修正 CGYRO 不同参数扫描被整案例覆盖的问题。同一结果名、半径和离子的 N_THETA、N_ENERGY 等扫描分别保留，完整重扫只替换相同参数组；多轴组合、联动参数和仅 ky 扫描各自独立。结果浏览与续算按扫描记录定位，点编号不会跨参数组混用。旧单记录在下次归档时兼容迁移；已经覆盖的结果需原结果目录及原 manifest.json 或旧工程恢复，不能仅凭历史条目还原。管理器仍为 1.10.17，代码包小于 1 MB；仅做静态和安装包校验，未运行测试、GUI 或求解器。
