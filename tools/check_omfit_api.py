@@ -1,12 +1,50 @@
-"""Static OMFIT mapping compatibility checks; never execute project scripts.
+"""Static OMFIT API compatibility checks; never execute project scripts.
 
 OMFIT SortedDict.get/setdefault require a default argument; update accepts one
 mapping, unlike dict.update's keyword form. Use the stricter form throughout
 project code so a plain dict can safely become a saved OMFIT tree.
+OMFIT also wraps Tk StringVar/BooleanVar with name as the first parameter;
+explicit keyword arguments work in both native Tk and the OMFIT wrapper.
 """
 import ast
 from pathlib import Path
 import warnings
+
+
+def validate_tk_variable_calls(tree, source):
+    """Inspect imported Tk aliases without importing Tk or opening a window."""
+    variables = {'Variable', 'StringVar', 'BooleanVar', 'IntVar', 'DoubleVar'}
+    modules, constructors = set(), {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == 'tkinter':
+                    modules.add(alias.asname or alias.name)
+                elif alias.name.startswith('tkinter.') and alias.asname is None:
+                    modules.add('tkinter')
+        elif isinstance(node, ast.ImportFrom) and node.module == 'tkinter':
+            for alias in node.names:
+                if alias.name in variables:
+                    constructors[alias.asname or alias.name] = alias.name
+    count = 0
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        function = node.func
+        name = ''
+        if (isinstance(function, ast.Attribute) and isinstance(function.value, ast.Name)
+                and function.value.id in modules and function.attr in variables):
+            name = function.attr
+        elif isinstance(function, ast.Name):
+            name = constructors.get(function.id, '')
+        if not name:
+            continue
+        count += 1
+        if node.args or not any(item.arg == 'master' for item in node.keywords):
+            raise ValueError('{}:{}：{} 必须显式传入 master=，并用 value= / name= 传参；'
+                             'OMFIT 会将 StringVar / BooleanVar 的首个位置参数解释为 name'.format(
+                                 source, node.lineno, name))
+    return count
 
 
 def _native_getter(node, tree):
@@ -29,7 +67,7 @@ def validate_project_api(project_root, extra_sources=()):
     project_root = Path(project_root).resolve()
     sources = set(project_root.rglob('*.py'))
     sources.update(Path(path).resolve() for path in extra_sources)
-    problems, methods = [], 0
+    problems, methods, tk_variables = [], 0, 0
     for path in sorted(sources):
         if project_root not in path.parents or not path.is_file():
             raise ValueError('Invalid project source: ' + str(path))
@@ -38,6 +76,7 @@ def validate_project_api(project_root, extra_sources=()):
             warnings.simplefilter('ignore', SyntaxWarning)
             tree = ast.parse(path.read_text(encoding='utf-8-sig'), filename=name,
                              feature_version=(3, 9))
+        tk_variables += validate_tk_variable_calls(tree, name)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
                 continue
@@ -57,4 +96,4 @@ def validate_project_api(project_root, extra_sources=()):
                 problems.append('{}:{}：{}'.format(name, node.lineno, message))
     if problems:
         raise ValueError('\n'.join(problems))
-    return {'files': len(sources), 'method_calls': methods}
+    return {'files': len(sources), 'method_calls': methods, 'tk_variables': tk_variables}

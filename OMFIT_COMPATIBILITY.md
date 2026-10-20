@@ -1,5 +1,11 @@
 # OMFIT 兼容审计与内部支持代码 · 1.1.1
 
+## 1.22.28：Tk 变量参数
+
+OMFIT 的 utils_tk.py 将 StringVar / BooleanVar 封装为 `(name=None, **kw)`。工程和管理器统一写 `tk.StringVar(master=window, value=...)`；不能把窗口作为位置参数传入，否则它被解释为 name 并抛出 `TypeError: name must be a string`。计算点说明和续算时长两个变量已修正，更新后关闭旧工程总控和计算点弹窗并重新打开，避免沿用旧按钮保留的回调；已有结果与检查点不变。
+
+tools/check_omfit_api.py 与工程保存树检查通过 AST 检查 Tk 模块别名、直接导入的变量构造器以及 master 关键字，不导入 Tk 或执行回调。此修订只做静态和安装包校验，未运行服务器 GUI。
+
 ## 1.1.1 / 管理器 1.3.1：连接脚本的 Python 环境
 
 桌面通过绝对路径启动 OMFIT 时，子进程继承的 PATH 可能找不到 python3。加载脚本现在仅对子进程将 `sys.executable` 所在目录置于 PATH 首位，不解析虚拟环境符号链接，不写入个人绝对路径，不修改 OMFIT 主进程环境。该修复要求 OMFIT 环境提供 python3；外部终端仍需先激活相应环境。

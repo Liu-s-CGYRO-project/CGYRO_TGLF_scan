@@ -376,7 +376,8 @@ class ResultBrowser:
                                     float(effective.get('DELTA_T', 0)) * float(effective.get('PRINT_STEP', 1)))
             except (TypeError, ValueError):
                 pass
-        details = tk.StringVar(window, value='未选择计算点。')
+        # OMFIT wraps StringVar(name=None, **kw); master must stay a keyword.
+        details = tk.StringVar(master=window, value='未选择计算点。')
         ttk.Label(window, textvariable=details, wraplength=width - 40,
                   anchor='w').pack(fill=tk.X, padx=10, pady=8)
 
@@ -418,7 +419,7 @@ class ResultBrowser:
             controls = ttk.Frame(window)
             controls.pack(fill=tk.X, padx=10, pady=(4, 8))
             ttk.Label(controls, text='追加计算时间 Δt (a/cs)').pack(side=tk.LEFT, padx=(0, 8))
-            duration = tk.StringVar(window, value=_number_text(max([100.] + [
+            duration = tk.StringVar(master=window, value=_number_text(max([100.] + [
                 value for value in defaults if np.isfinite(value) and value > 0])))
             ttk.Entry(controls, textvariable=duration, width=14).pack(side=tk.LEFT, padx=(0, 10))
 

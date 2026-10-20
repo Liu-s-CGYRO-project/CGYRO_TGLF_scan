@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.22.27",
-  "parent_release": "1.22.26",
+  "version": "1.22.28",
+  "parent_release": "1.22.27",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -257,7 +257,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_parameters.py": "ee2f748a36f5fd40012ffcc702cd0d5bb4e549d6f7670d13f764a06ed167f950",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_plan.py": "625988b2d227ca7517b7437479442a739af862547aae3cbe6ca2ece58c488e8b",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_queue.py": "ae694f68468acc49b832d3b36a2a3a19ac29ef3493d1e799c7c0cd517ae45397",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_results.py": "a61f29a6e98de860300bc5a65f18c0f2fca9e9db5e77dc2ca7cd7dd424930e1c",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_results.py": "c367670d628207631ef7e8c0f49593375747f96c61a3cba94236928ddf1902f2",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_retry.py": "102d0762d9152b5be2aee328ce5773ab9841845e1ff6c11543106fcaa5e0f4c0",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_run_state.py": "3b92ea757d3eca088c846713d9090dba118350876d34641f0649ee7da4ff1425",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_scan_values.py": "acf24376045f1418663244b1602b882abe6f1a0905db8cae259c81cfe9f50707",
@@ -521,7 +521,7 @@
     "CGYRO_TGLF_scan/Transfer_tool/help.rst": "26508f034662cb0d05eddef094af58ad3cdc33c70fd48dc092b7acd14e76c94b",
     "CGYRO_TGLF_scan/help.rst": "e22b7c834a7d8a190eefee6318b2b14067c40a7ee1ed3814b74227e42dde7efe",
     "MainSettingsNamelist.txt": "18c52429df491c0886df36a7de01700f5ceaab2c6495a65c36aba72ab6e0dd4f",
-    "OMFIT_COMPATIBILITY.md": "2b06f06986133a2f25c4a199f279505c32207751b9c122f58fbd3ef6c5b323c6",
+    "OMFIT_COMPATIBILITY.md": "972d72a001a635820ba051610888caa542072108b97a903df2d2ae7935f02bab",
     "OMFITsave.txt": "23c162a24fe7096453bce4af193d83cf6dfe0ffac9e02954113837a8da0f67ec",
     "OMFITtemplates/DOCS/FONT_LICENSE.txt": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
     "OMFITtemplates/GUIS/main.py": "381cebad5eb76eeb9228e5dffd1092708daff396033957bf1c8a81bcb3e3e626",

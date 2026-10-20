@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 import zipfile
 from omfit_help import validate_module_help, validate_module_settings
-from check_omfit_api import validate_project_api
+from check_omfit_api import validate_project_api, validate_tk_variable_calls
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'OMFITtemplates/LIB'))
@@ -141,6 +141,10 @@ def validate_library_imports(rows, base):
             if base.resolve() not in path.parents or not path.is_file():
                 raise TemplateError('无效的 Python 文件引用：' + row.ref)
             tree = ast.parse(path.read_text(encoding='utf-8-sig'), filename=row.ref, feature_version=(3, 9))
+            try:
+                validate_tk_variable_calls(tree, row.ref)
+            except ValueError as exc:
+                raise TemplateError(str(exc)) from exc
             names = []
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
