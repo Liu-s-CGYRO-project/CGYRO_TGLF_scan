@@ -4,6 +4,8 @@ Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
 from OMFITlib_plot_sources import context_results
 from OMFITlib_compare_style import cgyro_case_caption, compact_scan_value
+from OMFITlib_cgyro_scan_view import (comparison_case_view, coordinate_label, linear_node,
+                                     slice_coordinates, view_config)
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     Exception,
@@ -53,13 +55,17 @@ from OMFITlib_compare_core import (
 def collect_cgyro_series(root, ctx, runid, nr, para, value):
     """Read one CGYRO spectrum and report malformed/missing samples explicitly."""
     node = root.get('CGYRO_scan', {}).get('RUN_DB', {})
-    for token in (runid, nr, para, value):
+    for token in (runid, nr):
         key = resolve_key(node, token)
         if key is None:
             ctx.setdefault('_diagnostics', []).append('Missing CGYRO selection: {}'.format((runid, nr, para, value)))
             return tuple(array([]) for _ in range(5))
         node = node[key]
-    linear = node.get('lin', {})
+    node = ctx.get('_cgyro_views', {}).get(str(nr), node)
+    linear = linear_node(node, para, value)
+    if linear is None:
+        ctx.setdefault('_diagnostics', []).append('Missing CGYRO spectrum: {}'.format((runid, nr, para, value)))
+        return tuple(array([]) for _ in range(5))
     values = []
     for key in stable_keys(linear):
         try:
@@ -261,9 +267,13 @@ def collect_cgyro_curves(k, v, runid, run_db, cgyro_selected_paras, root, ctx):
     if nr_resolved is None:
         return curves
 
-    run_db_nr = run_db_runid[nr_resolved]
+    run_db_nr, selected, metadata, problems = comparison_case_view(
+        run_db_runid[nr_resolved], cgyro_selected_paras, view_config(ctx.get('cgyro_state', {}), nr_resolved))
+    ctx.setdefault('_cgyro_views', {})[str(nr_resolved)] = run_db_nr
+    ctx.setdefault('_cgyro_slices', {}).update({(str(nr_resolved), name): value for name, value in metadata.items()})
+    ctx.setdefault('_diagnostics', []).extend('{} / {}: {}'.format(runid, nr_resolved, problem) for problem in problems)
 
-    for para, values in cgyro_selected_paras.items():
+    for para, values in selected.items():
         para_key = resolve_key(run_db_nr, para)
         if para_key is None:
             continue
@@ -289,7 +299,10 @@ def collect_cgyro_curves(k, v, runid, run_db, cgyro_selected_paras, root, ctx):
             if not len(ky):
                 continue
             case_label = cgyro_case_caption(nr_resolved, ctx.get('_cgyro_legend_cases', [nr_resolved]))
-            label_cg = 'CGYRO {} · {}={}'.format(case_label, para, compact_scan_value(value))
+            meta = metadata.get(str(para), {})
+            coordinates = slice_coordinates(meta, value)
+            coordinate_text = coordinate_label(meta, value) if meta else '{}={}'.format(para, compact_scan_value(value))
+            label_cg = 'CGYRO {} · {}'.format(case_label, coordinate_text)
             curves.append({
                 'kind': 'CGYRO',
                 'label': label_cg,
@@ -297,8 +310,10 @@ def collect_cgyro_curves(k, v, runid, run_db, cgyro_selected_paras, root, ctx):
                 'show_error': True,
                 'nr': nr_resolved,
                 'rho': None,
-                'para': para,
+                'para': meta.get('axis', para),
                 'value': value,
+                'scan_key': meta.get('scan_key', str(para)),
+                'coordinates': coordinates,
                 'ky': ky,
                 'omega': omega,
                 'gamma': gamma,

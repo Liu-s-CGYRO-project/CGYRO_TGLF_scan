@@ -2,6 +2,7 @@
 
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
+from OMFITlib_cgyro_scan_view import comparison_case_view, coordinate_label, linear_node, view_config
 
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
@@ -163,56 +164,40 @@ def _collect_cgyro_output_status_curves(root, mode_state, runid, nr, para, value
         nr_key = resolve_key(nr_map, nr)
         if nr_key is None:
             return out_curves
-        para_map = nr_map[nr_key]
-        para_key = resolve_key(para_map, para)
-        if para_key is None:
-            return out_curves
-        value_map = para_map[para_key]
+        view, selections, metadata, _ = comparison_case_view(
+            nr_map[nr_key], {para: values}, view_config(mode_state, nr))
     except Exception:
         return out_curves
 
-    values_iter = list(values)
-    if len(values_iter) == 0 and allow_all_values_fallback and hasattr(value_map, 'keys'):
-        values_iter = list(value_map.keys())
-
-    for value in values_iter:
-        value_key = resolve_key(value_map, value)
-        if value_key is None:
-            continue
-        try:
-            cgyrodir = value_map[value_key]['lin']
-        except Exception:
-            continue
-        if not hasattr(cgyrodir, 'keys'):
-            continue
-
-        ky_vals = []
-        status_vals = []
-        for ky_key in cgyrodir.keys():
-            datadir = cgyrodir[ky_key]
-            ky_val = _to_float_scalar(_get_mapping_item(datadir, 'kyrhos'))
-            if ky_val is None:
-                ky_val = _to_float_scalar(ky_key)
-            if ky_val is None:
+    for parameter, chosen in selections.items():
+        value_map = view.get(parameter, {})
+        values_iter = list(chosen)
+        if not values_iter and allow_all_values_fallback:
+            values_iter = list(value_map.keys())
+        for value in values_iter:
+            cgyrodir = linear_node(view, parameter, value)
+            if cgyrodir is None:
                 continue
-            ky_val = _maybe_abs_ky(ky_val, mode_state.get('plot', {}))
-            status_code = _read_cgyro_status_code(datadir)
-            ky_vals.append(float(ky_val))
-            status_vals.append(float(status_code))
-
-        if len(ky_vals) == 0:
-            continue
-        ky_arr = array(ky_vals, dtype=float)
-        st_arr = array(status_vals, dtype=float)
-        sort_idx = argsort(ky_arr)
-        ky_arr = ky_arr[sort_idx]
-        st_arr = st_arr[sort_idx]
-
-        out_curves.append({
-            'label': f'{para}={value}',
-            'ky': ky_arr,
-            'status': st_arr,
-        })
+            ky_vals = []
+            status_vals = []
+            for ky_key in cgyrodir.keys():
+                datadir = cgyrodir[ky_key]
+                ky_val = _to_float_scalar(_get_mapping_item(datadir, 'kyrhos'))
+                if ky_val is None:
+                    ky_val = _to_float_scalar(ky_key)
+                if ky_val is None:
+                    continue
+                ky_val = _maybe_abs_ky(ky_val, mode_state.get('plot', {}))
+                status_code = _read_cgyro_status_code(datadir)
+                ky_vals.append(float(ky_val))
+                status_vals.append(float(status_code))
+            if not ky_vals:
+                continue
+            ky_arr = array(ky_vals, dtype=float)
+            st_arr = array(status_vals, dtype=float)
+            sort_idx = argsort(ky_arr)
+            out_curves.append({'label': coordinate_label(metadata.get(parameter, {}), value, parameter),
+                               'ky': ky_arr[sort_idx], 'status': st_arr[sort_idx]})
     return out_curves
 
 

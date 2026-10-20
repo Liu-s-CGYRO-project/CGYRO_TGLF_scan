@@ -8,6 +8,7 @@ import tempfile
 import numpy as np
 from OMFITlib_compare_cgyro_data import collect_value_series
 from OMFITlib_compare_cgyro_selection import _iter_selected_parameter_items
+from OMFITlib_cgyro_scan_view import slice_coordinates
 
 
 def _safe_text_token(value):
@@ -29,9 +30,11 @@ def _export_linear_omega_gamma_vs_ky(ctx, nr, para, value, ky, omega, gamma,
     path = Path(export_dir) / filename
     matrix = np.column_stack(arrays)
     matrix = matrix[np.argsort(matrix[:, 0], kind='stable')]
+    metadata = ctx.get('_cgyro_slices', {}).get((str(nr), str(para)), {})
     header = '\n'.join([
         'CGYRO_vs_CGYRO raw linear spectrum',
         'runid={!r}; nr={!r}; parameter={!r}; value={!r}'.format(ctx.get('runid', None), nr, para, value),
+        'scan_key={!r}; coordinates={!r}'.format(metadata.get('scan_key', str(para)), slice_coordinates(metadata, value)),
         'normalize_main_ion={}; tail_fraction={}'.format(ctx.get('normalize_main_ion', False), ctx['ave_window']),
         'native units: ky=k_y*rho_s; omega/gamma=c_s/a',
         'main-ion option: ky *= sqrt(MASS)/Z; frequency/std *= sqrt(MASS), with the existing input species convention',
@@ -62,7 +65,10 @@ def export_selected_linear_spectra(root, ctx):
     files = []
     for nr, para, value, series in spectra:
         output = _export_linear_omega_gamma_vs_ky(ctx, nr, para, value, *series, directory)
-        files.append({'file': Path(output).name, 'nr': str(nr), 'parameter': str(para), 'value': str(value)})
+        metadata = ctx.get('_cgyro_slices', {}).get((str(nr), str(para)), {})
+        files.append({'file': Path(output).name, 'nr': str(nr), 'parameter': metadata.get('axis', str(para)),
+                      'value': str(value), 'scan_key': metadata.get('scan_key', str(para)),
+                      'coordinates': slice_coordinates(metadata, value)})
     metadata = {
         'format': 1, 'workflow': 'CGYRO_vs_CGYRO', 'runid': str(ctx['runid']),
         'normalization': 'main-ion' if ctx['normalize_main_ion'] else 'native saved units',

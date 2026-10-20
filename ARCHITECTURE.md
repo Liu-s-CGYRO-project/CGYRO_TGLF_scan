@@ -16,6 +16,7 @@
 | CGYRO 准备、下载、归档 | `CGYRO_scan/SCRIPTS/subscan_lin.py`、`downsync.py`、`CGYROScan.py`、`LIB/OMFITlib_cgyro_archive.py` | 原生 OMFIT 任务适配；完整结果仅替换相同扫描参数组 |
 | TGLF 工作台和多剖面 | `LIB/OMFITlib_tglf_workbench.py`、`OMFITlib_tglf_multi_run.py` | 准备计划和持久运行记录；底层执行在 `TGLF_scan/TGLF/SCRIPTS` |
 | Transfer 粒子处理 | `Transfer_tool/LIB/OMFITlib_transfer_particles.py`、`OMFITlib_transfer_equivalent.py`、`OMFITlib_transfer_zeff.py` | 原始副本准中性 → 完整组成 Zeff → 粒子方案 → 局部输入复查 |
+| CGYRO 多参数对比视图 | `LIB/OMFITlib_cgyro_scan_view.py` | 按任务坐标 / 原路径建立只读分组；任选变化轴，其余轴固定；不改归档或合并物理样本 |
 | 对比选择、配对、绘图 | `LIB/OMFITlib_compare_state.py`、`OMFITlib_compare_cases.py`、`OMFITlib_compare_*` | 选择状态、结果读取、曲线构造、渲染分开；图中文字为英文 |
 | GUI 外观 | `LIB/OMFITlib_gui_api.py`、`OMFITlib_gui_controls.py`、`OMFITlib_gui_fonts.py` | 控件适配、字体和尺寸；业务代码不单独重设主题 |
 | 字体下载和设置窗口 | `LIB/OMFITlib_font_download_ui.py`、`OMFITlib_font_ui.py` | 下载层不依赖字体设置；设置窗口顶部导入 gui_fonts，回调只使用保留的引用；管理器副本保持一致 |
@@ -38,6 +39,7 @@
 - TGLF 批量点允许部分成功；归档和异常传播是两个步骤，后续点失败不能抹去前面已经返回的结果。
 - 局部输入转换不会自动选择新的碰撞模型。CGYRO → TGLF 在指定 Zeff 时保留该值；反向旧入口仍采用 `COLLISION_MODEL=4`，没有将 TGLF 的独立 Zeff 转为指定 Zeff 模式。需要改变这一物理约定时，应单独核对模型适用条件，不能只增加一个字段。
 - Transfer 等效方案只把高密度热 H/D/T 识别为主离子，快粒子和微量燃料留在辅助组；规则同时用于原始副本的电荷补偿。`equivalent_temperature` 明确区分保压与温度随热主离子，随同其他选项冻结进生成记录。后者只检查实际保留的电荷 / Zeff / 质量 / 电荷梯度约束，单独记录压力变化；不能把压力变化误报为守恒失败，也不能继续显示“压力守恒”。曲率先还原物理导数再重建，不能直接复制温度改变前的 SDLNNDR。
+- 二维 / 三参数 CGYRO 比较必须使用任务的完整 values / result_path，不能用组合扫描键当作单一参数。cgyro_scan_view 的虚拟切片仅存在于绘图上下文：一个变化参数、其余固定坐标和原物理结果引用；谱 / 时间 / 本征函数 / 状态 / 跨模型 / 导出共用，缺网格用 NaN 或实际散点，不平均不同固定坐标。
 - 对比选择和半径配对属于所选数据源。切换结果集后恢复该结果集的选择，同时重新检查有效值；图例短名不能取代归档键。
 - “清空全部结果”在既有确认后同时清理主结果、旧索引和派生缓存，保留输入和配置。远程文件不由此入口删除。
 

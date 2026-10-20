@@ -7,6 +7,7 @@ from builtins import (
     all,
     any,
     bool,
+    dict,
     enumerate,
     float,
     hasattr,
@@ -23,7 +24,7 @@ from copy import (
 )
 import math
 import re
-from OMFITlib_compare_options import validate_options
+from OMFITlib_compare_options import parse_float_list_text, validate_options
 
 MODES = ['CGYRO_vs_TGLF', 'CGYRO_vs_CGYRO', 'TGLF_vs_TGLF', 'TGLF_vs_CGYRO']
 MODE_LABELS = {
@@ -43,6 +44,7 @@ SELECTION_KEYS = (
     'para_flag', 'para_list_flag', 'selected_paras', 'selected_paras_2d',
     'rho_pair_flags', 'rho_pair_cfg', 'para_list_flag_by_nr',
     'selected_paras_by_nr', '_selector_keys', '_pairing_run',
+    'cgyro_multi', 'cgyro_multi_by_nr',
 )
 
 
@@ -171,6 +173,27 @@ def initialize_settings(root):
     return physics
 
 
+def _cgyro_axis_errors(state):
+    """Check explicit axis filters, without opening a saved result object."""
+    if state.get('force_read_all_nr_items', False):
+        groups = [(state.get('selected_paras_by_nr', {}).get(str(nr), {}),
+                   state.get('cgyro_multi_by_nr', {}).get(str(nr), {}))
+                  for nr in state.get('nr_CGYRO', [])]
+    else:
+        groups = [(state.get('selected_paras', {}), state.get('cgyro_multi', {}))]
+    errors = []
+    for selected, configs in groups:
+        for name in selected:
+            cfg = configs.get(str(name), {})
+            for axis, values in cfg.get('values', {}).items():
+                try:
+                    if not parse_float_list_text(values):
+                        raise ValueError('请选择至少一个取值。')
+                except (TypeError, ValueError) as exc:
+                    errors.append('{} / {}: {}'.format(name, axis, exc))
+    return list(dict.fromkeys(errors))
+
+
 def selection_check(root, mode=None):
     """Cheap selection/setting validation; never forces loading saved result objects."""
     physics = root.get('SETTINGS', {}).get('PHYSICS', {})
@@ -191,6 +214,7 @@ def selection_check(root, mode=None):
             selections = [cg.get('selected_paras_by_nr', {}).get(str(nr), {}) for nr in cg.get('nr_CGYRO', [])]
         if not any(has_values(v) for selected in selections for v in selected.values()):
             errors.append('请选择 CGYRO 扫描参数及取值。')
+        errors.extend(_cgyro_axis_errors(cg))
         if mode == 'CGYRO_vs_CGYRO' and not cg.get('nr_CGYRO', None):
             errors.append('请选择所选 CGYRO 半径下的离子。' if cg.get('cgyro_radius_selected', None)
                           else '请选择 CGYRO 半径。')

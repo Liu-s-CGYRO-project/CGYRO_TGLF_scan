@@ -6,6 +6,7 @@ import numpy as np
 from OMFITlib_compare_core import apply_divide_by_ky, divide_title
 from OMFITlib_compare_cgyro_data import filter_single_ky, grid_scan_points
 from OMFITlib_compare_cgyro_selection import _legend_nr_prefix
+from OMFITlib_cgyro_scan_view import coordinate_label, slice_caption
 from OMFITlib_compare_style import (
     _default_color_cycle, _sort_label_handle_pairs, apply_figure_layout, cgyro_case_caption,
     compact_scan_value, finalize_axis_legend)
@@ -57,6 +58,8 @@ def _adjust_labels(texts, axis):
 
 
 def _label(item, ctx):
+    if item.get('slice_meta', {}):
+        return _legend_nr_prefix(ctx, item['nr']) + coordinate_label(item['slice_meta'], item['value'])
     return '{}{}={}'.format(_legend_nr_prefix(ctx, item['nr']), item['para'], compact_scan_value(item['value']))
 
 
@@ -111,15 +114,15 @@ def _time_traces(axes, items, ctx):
 
 def _single_ky(axes, items, ctx):
     for item in items:
-        x, y, omega, gamma = grid_scan_points(*item['cloud'])
+        x, y, omega, gamma = grid_scan_points(*item['cloud'], parameter_values=item.get('scan_values', None))
         selected = filter_single_ky(x, ctx['selected_single_ky'])
         for ky in selected:
             column = np.flatnonzero(x == ky)[0]
             # A missing scan value stays NaN, leaving a visible gap in the curve.
-            label = '{}{}, ky={:.4g}'.format(_legend_nr_prefix(ctx, item['nr']), item['para'], ky)
+            label = '{}{}, ky={:.4g}'.format(_legend_nr_prefix(ctx, item['nr']), slice_caption(item.get('slice_meta', {}), item['para']), ky)
             for axis, values in zip(axes.ravel(), (omega[:, column], gamma[:, column])):
                 axis.plot(y, values, 'o-', label=label, linewidth=ctx['lw'], markersize=ctx['ms'])
-    parameters = list(dict.fromkeys(item['para'] for item in items))
+    parameters = list(dict.fromkeys(item.get('axis_name', item['para']) for item in items))
     for axis, field in zip(axes.ravel(), ('omega', 'gamma')):
         axis.set_xlabel(str(parameters[0]) if len(parameters) == 1 else 'parameter value')
         axis.set_ylabel(divide_title(ctx, field))
@@ -131,8 +134,8 @@ def _ratio(axes, items, ctx):
     for item in items:
         x, y, reference = item['ratio']
         axis.plot(x, y, 'o-', linewidth=ctx['lw'], markersize=ctx['ms'],
-                  label='{}{}, ref={:g}'.format(_legend_nr_prefix(ctx, item['nr']), item['para'], reference))
-    parameters = list(dict.fromkeys(item['para'] for item in items))
+                  label='{}{}, ref={:g}'.format(_legend_nr_prefix(ctx, item['nr']), slice_caption(item.get('slice_meta', {}), item['para']), reference))
+    parameters = list(dict.fromkeys(item.get('axis_name', item['para']) for item in items))
     axis.set_xlabel(str(parameters[0]) if len(parameters) == 1 else 'parameter value')
     axis.set_ylabel(r'$\gamma/\gamma_{\mathrm{ref}}$')
     axis.set_title('Growth-rate ratio')
@@ -169,7 +172,8 @@ def _eigen(axes, items, ctx):
 
 def _surface(fig, axes, item, ctx):
     ky, parameter, omega, gamma = item['cloud']
-    x, y, omega_grid, gamma_grid = grid_scan_points(ky, parameter, omega, gamma)
+    x, y, omega_grid, gamma_grid = grid_scan_points(ky, parameter, omega, gamma,
+                                                  parameter_values=item.get('scan_values', None))
     xgrid, ygrid = np.meshgrid(x, y)
     for axis, field, values, grid, cmap in zip(axes.ravel(), ('omega', 'gamma'),
                                              (omega, gamma), (omega_grid, gamma_grid), ('viridis', 'plasma')):
@@ -179,9 +183,9 @@ def _surface(fig, axes, item, ctx):
         else:
             artist = axis.scatter(ky, parameter, values, c=values, cmap=cmap, s=28)
         axis.set_xlabel(r'$k_y\rho_s$')
-        axis.set_ylabel(str(item['para']))
+        axis.set_ylabel(str(item.get('axis_name', item['para'])))
         axis.set_zlabel(divide_title(ctx, field))
-        axis.set_title('{} vs {} ({})'.format(divide_title(ctx, field), item['para'],
+        axis.set_title('{} vs {} ({})'.format(divide_title(ctx, field), slice_caption(item.get('slice_meta', {}), item['para']),
                                             cgyro_case_caption(item['nr'], include_radius=True)))
         for name, coordinates in (('x', ky), ('y', parameter), ('z', values)):
             if ctx.get('plot_log_' + name, None):

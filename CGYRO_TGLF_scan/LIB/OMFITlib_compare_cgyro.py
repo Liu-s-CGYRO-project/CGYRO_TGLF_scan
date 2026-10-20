@@ -20,6 +20,7 @@ from OMFITlib_compare_cgyro_export import export_selected_linear_spectra
 from OMFITlib_compare_cgyro_render import render_page
 from OMFITlib_compare_state import selection_check
 from OMFITlib_compare_style import cgyro_case_caption
+from OMFITlib_cgyro_scan_view import slice_caption
 
 
 def collect_plot_items(root, ctx):
@@ -27,7 +28,9 @@ def collect_plot_items(root, ctx):
     items = []
     for nr in ctx['nr_CGYRO']:
         for para, values in _iter_selected_parameter_items(ctx, nr):
-            identity = {'nr': nr, 'para': para}
+            metadata = ctx.get('_cgyro_slices', {}).get((str(nr), str(para)), {})
+            identity = dict(nr=nr, para=para, slice_meta=metadata,
+                            axis_name=metadata.get('axis', para), scan_values=values)
             if ctx.get('plot_time_traces', False):
                 for value in values:
                     for trace in collect_time_series(root, ctx, nr, para, value):
@@ -73,6 +76,8 @@ def group_plot_pages(items, ctx):
         pages.setdefault(key, []).append(item)
     labeled = []
     for key, values in pages.items():
+        if ctx['plot_3d']:
+            key = (key[0], slice_caption(values[0]['slice_meta'], key[1]))
         if not _combine_nr_on_single_page(ctx):
             key = (cgyro_case_caption(key[0], include_radius=True),) + key[1:]
         labeled.append((' / '.join(key), values))

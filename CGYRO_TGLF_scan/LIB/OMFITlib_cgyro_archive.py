@@ -213,7 +213,7 @@ def remap_case_selection(state, aliases):
     if 'cgyro_radius_selected' in state:
         state['cgyro_radius_selected'] = list(dict.fromkeys(radius(value) for value in state['cgyro_radius_selected']))
     _remap_flags(state, 'cgyro_radius_flag', radius)
-    for field in ('selected_paras_by_nr', 'para_list_flag_by_nr'):
+    for field in ('selected_paras_by_nr', 'para_list_flag_by_nr', 'cgyro_multi_by_nr'):
         if field not in state:
             continue
         old, remapped = state[field], {}

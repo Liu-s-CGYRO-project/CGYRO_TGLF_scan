@@ -10,6 +10,7 @@ from OMFITlib_compare_state import STYLE_DEFAULTS, stable_keys
 from OMFITlib_compare_core import resolve_key as _resolve_mapping_key
 from OMFITlib_compare_options import is_gamma_ratio_plot_mode, parse_float_list_text, validate_options
 from OMFITlib_compare_style import cgyro_case_caption
+from OMFITlib_cgyro_scan_view import comparison_case_view, view_config
 
 
 def _parse_gui_value_text(text):
@@ -283,6 +284,25 @@ def build_context(root):
     ctx['selected_single_ky'] = maybe_abs_ky_list(ctx['selected_single_ky'], ctx)
     ctx['selected_eigen_ky'] = maybe_abs_ky_list(ctx['selected_eigen_ky'], ctx)
     ctx['_diagnostics'] = []
+    # Expand only the runtime view. Saved GUI choices and RUN_DB keep their
+    # original identities; every spectrum is one full parameter coordinate.
+    runs = root.get('CGYRO_scan', {}).get('RUN_DB', {})
+    run_key = _resolve_mapping_key(runs, ctx['runid'])
+    run = {} if run_key is None else runs[run_key]
+    ctx['_cgyro_views'], ctx['_cgyro_slices'] = {}, {}
+    per_case = {}
+    for nr in ctx['nr_CGYRO']:
+        case_key = _resolve_mapping_key(run, nr)
+        if case_key is None:
+            per_case[str(nr)] = {}
+            continue
+        selected = dict(_iter_selected_parameter_items(ctx, nr))
+        view, choices, metadata, problems = comparison_case_view(run[case_key], selected, view_config(settings, nr))
+        ctx['_cgyro_views'][str(nr)] = view
+        per_case[str(nr)] = choices
+        ctx['_cgyro_slices'].update({(str(nr), key): value for key, value in metadata.items()})
+        ctx['_diagnostics'].extend('{} / {}: {}'.format(ctx['runid'], nr, problem) for problem in problems)
+    ctx['selected_paras_by_nr'] = per_case
     return ctx
 
 

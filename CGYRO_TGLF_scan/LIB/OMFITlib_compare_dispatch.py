@@ -86,13 +86,15 @@ def export_comparison(root, ctx, pages):
     with (directory/'spectra.csv').open('x', newline='', encoding='utf-8-sig') as stream:
         writer = csv.writer(stream)
         writer.writerow(['page', 'model', 'curve', 'nr', 'rho', 'parameter', 'scan_value',
-                         'ky', 'omega', 'gamma', 'omega_relative_std', 'gamma_relative_std'])
+                         'ky', 'omega', 'gamma', 'omega_relative_std', 'gamma_relative_std',
+                         'scan_key', 'coordinates'])
         for title, cg, tg in pages:
             for curve in cg + tg:
                 for i in np.argsort(curve['ky']):
                     error = [curve['omega_error'][i], curve['gamma_error'][i]] if curve['kind'] == 'CGYRO' else ['', '']
                     writer.writerow([title, curve['kind'], curve['label'], curve.get('nr', None), curve.get('rho', None),
-                                     curve['para'], str(curve['value']), curve['ky'][i], curve['omega'][i], curve['gamma'][i], *error])
+                                     curve['para'], str(curve['value']), curve['ky'][i], curve['omega'][i], curve['gamma'][i], *error,
+                                     curve.get('scan_key', ''), json.dumps(curve.get('coordinates', {}), sort_keys=True)])
     def serial(value):
         return value.tolist() if hasattr(value, 'tolist') else str(value)
     metadata = {

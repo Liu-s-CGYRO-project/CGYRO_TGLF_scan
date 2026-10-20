@@ -4,26 +4,30 @@ import numpy as np
 from OMFITlib_compare_core import cgyro_frequency_history, cgyro_frequency_stats, apply_divide_by_ky, normalize_if_needed, resolve_key
 from OMFITlib_compare_cgyro_selection import maybe_abs_ky, maybe_abs_ky_list, parse_float_list_text
 from OMFITlib_compare_state import stable_keys
+from OMFITlib_cgyro_scan_view import coordinate_label, linear_node
 
 
 def diagnostic(ctx, nr, para, value, message, ky=None):
-    location = '{} / {} / {}={}'.format(ctx.get('runid', ''), nr, para, value)
+    metadata = ctx.get('_cgyro_slices', {}).get((str(nr), str(para)), {})
+    location = '{} / {} / {}'.format(ctx.get('runid', ''), nr, coordinate_label(metadata, value, para))
     if ky is not None:
         location += ' / ky={}'.format(ky)
     ctx.setdefault('_diagnostics', []).append(location + ': ' + str(message))
 
 
 def _get_cgyro_lin_node(root, ctx, nr, para, value):
+    view = ctx.get('_cgyro_views', {}).get(str(nr), None)
+    if view is not None:
+        return linear_node(view, para, value)
     node = root.get('CGYRO_scan', {}).get('RUN_DB', {})
-    for token in (ctx.get('runid', ''), nr, para, value):
+    for token in (ctx.get('runid', ''), nr):
         if not hasattr(node, 'keys'):
             return None
         key = resolve_key(node, token)
         if key is None:
             return None
         node = node[key]
-    linear = node.get('lin', None) if hasattr(node, 'get') else None
-    return linear if hasattr(linear, 'keys') else None
+    return linear_node(node, para, value)
 
 
 def _empty_series_arrays():
@@ -145,10 +149,13 @@ def filter_single_ky(unique_ky, selected_single_ky):
     return np.unique(available[indices])
 
 
-def grid_scan_points(ky, parameter, omega, gamma):
+def grid_scan_points(ky, parameter, omega, gamma, parameter_values=None):
     """Group coordinates once, accumulate duplicates, and leave missing cells as NaN."""
     x, xi = np.unique(ky, return_inverse=True)
     y, yi = np.unique(parameter, return_inverse=True)
+    if parameter_values is not None:
+        y = np.unique(np.concatenate((y, np.asarray(parameter_values, dtype=float))))
+        yi = np.searchsorted(y, parameter)
     shape = (len(y), len(x))
     count = np.zeros(shape, dtype=int)
     np.add.at(count, (yi, xi), 1)

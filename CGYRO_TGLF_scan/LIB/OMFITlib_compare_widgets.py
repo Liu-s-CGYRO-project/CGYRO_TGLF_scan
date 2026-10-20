@@ -117,7 +117,7 @@ class ComparisonWidgets:
 
     def _render_parameter_entries(self, state, flag_key, selected_key, parameters,
                                   checkbox_path_builder, entry_path_builder, value_keys_builder,
-                                  unchecked_policy='empty'):
+                                  unchecked_policy='empty', entry_renderer=None):
         selected = state.setdefault(selected_key, {})
         flags = sync_flags(state, flag_key, parameters, selected_key)
         self._prune_mapping_keys(selected, parameters)
@@ -135,7 +135,8 @@ class ComparisonWidgets:
                 available = self._normalize_value_list(value_keys_builder(name))
                 if name not in selected:
                     selected[name] = available.copy()
-                self._parameter_entry(entry_path_builder(name), name, selected[name], default_values=available)
+                if entry_renderer is None or not entry_renderer(name, selected):
+                    self._parameter_entry(entry_path_builder(name), name, selected[name], default_values=available)
             else:
                 selected.pop(name, None)
         if not parameters:
