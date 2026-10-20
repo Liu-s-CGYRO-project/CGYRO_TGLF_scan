@@ -3,7 +3,7 @@
 Probe completion before parsing outputs. The retry controller consumes probe
 failures separately from transport/reader errors and decides whether to rerun.
 """
-from builtins import Exception, RuntimeError, ValueError, any, float, int, len, list, set, str
+from builtins import Exception, RuntimeError, ValueError, any, enumerate, float, int, len, list, set, str
 import os
 import re
 from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, text_output as output_text
@@ -86,36 +86,93 @@ def failure_report(points, status='failed'):
     return report
 
 
-def probe_run_outputs(scheduler, job_id, scheduler_record=None):
-    command = ''
+OUTPUT_PROBE_MAX_BYTES = 16 * 1024
+
+
+def output_probe_commands():
+    """Share the checker and bound the actual UTF-8, shell-quoted argv size.
+
+    remote_execute transports commands over stdin, but our inner bash -c
+    still receives one argument. Repeating the checker per point exceeded
+    Linux's per-argument limit for larger scans. Paths can also vary after
+    retries, so a fixed point count alone is not a safe command-size bound.
+    """
+    header = r'''cgyro_probe_point() {
+  local point="$1" point_id="$2" missing="" name code solver_errors fatal error
+  for name in out.cgyro.grids out.cgyro.time; do
+    [ -s "$point/$name" ] || missing="$missing $name"
+  done
+  if [ ! -s "$point/out.cgyro.freq" ] && [ ! -s "$point/bin.cgyro.freq" ]; then
+    missing="$missing frequency"
+  fi
+  if [ -s "$point/cgyro.exit" ]; then
+    code=$(cat -- "$point/cgyro.exit"); [ "$code" = 0 ] || missing="$missing exit=$code"
+  else missing="$missing no_exit_record"; fi
+  if [ -s "$point/out.cgyro.info" ]; then
+    solver_errors=$(grep -E "^[[:space:]]*ERROR:" "$point/out.cgyro.info" || true)
+    if [ -n "$solver_errors" ]; then
+      missing="$missing solver_error"
+      printf '%s\n' "$solver_errors" | while IFS= read -r error; do
+        printf 'CGYRO_ERROR|%s|%s\n' "$point_id" "$error"
+      done
+    fi
+  fi
+  if [ -s "$point/run_log" ]; then
+    fatal=$(grep -m 4 -i -E "Integration error exceeded limit|Bogus parameter|Unknown parameter|invalid input|error reading input" "$point/run_log" || true)
+    if [ -n "$fatal" ]; then
+      missing="$missing solver_error"
+      printf '%s\n' "$fatal" | while IFS= read -r error; do
+        printf 'CGYRO_ERROR|%s|%s\n' "$point_id" "$error"
+      done
+    fi
+  fi
+  printf 'CGYRO_POINT|%s|%s\n' "$point_id" "$missing"
+}
+'''
+    points, calls = [], []
     for point in parentdir:
-        command += ('point=' + shell_quote(point_result_dir(point)) + '; point_id=' + shell_quote(point) + '; missing="";\n')
-        command += ('for name in out.cgyro.grids out.cgyro.time; do\n'
-                    '  [ -s "$point/$name" ] || missing="$missing $name";\ndone\n'
-                    'if [ ! -s "$point/out.cgyro.freq" ] && [ ! -s "$point/bin.cgyro.freq" ]; then\n'
-                    '  missing="$missing frequency"; fi\n'
-                    'if [ -s "$point/cgyro.exit" ]; then\n'
-                    '  code=$(cat -- "$point/cgyro.exit"); [ "$code" = 0 ] || missing="$missing exit=$code";\n'
-                    'else missing="$missing no_exit_record"; fi\n'
-                    'if [ -s "$point/out.cgyro.info" ]; then\n'
-                    '  solver_errors=$(grep -E "^[[:space:]]*ERROR:" "$point/out.cgyro.info" || true);\n'
-                    '  if [ -n "$solver_errors" ]; then\n'
-                    '    missing="$missing solver_error";\n'
-                    '    printf "%s\\n" "$solver_errors" | while IFS= read -r error; do\n'
-                    '      printf "CGYRO_ERROR|%s|%s\\n" "$point_id" "$error";\n'
-                    '    done;\n  fi;\nfi\n'
-                    'if [ -s "$point/run_log" ]; then\n'
-                    '  fatal=$(grep -m 4 -i -E "Integration error exceeded limit|Bogus parameter|Unknown parameter|invalid input|error reading input" "$point/run_log" || true);\n'
-                    '  if [ -n "$fatal" ]; then\n'
-                    '    missing="$missing solver_error";\n'
-                    '    printf "%s\\n" "$fatal" | while IFS= read -r error; do\n'
-                    '      printf "CGYRO_ERROR|%s|%s\\n" "$point_id" "$error";\n'
-                    '    done;\n  fi;\nfi\n'
-                    'printf "CGYRO_POINT|%s|%s\\n" "$point_id" "$missing";\n')
-    status, output, errors = read_run_files(command)
-    manifest['output_probe'] = output
-    if status != 0:
-        raise RuntimeError('CGYRO job query failed; results have not been loaded: ' + errors)
+        # Point IDs appear in a line protocol; paths remain separately quoted.
+        if any(char in str(point) for char in ('|', '\n', '\r', '\x00')):
+            raise ValueError('Invalid CGYRO point ID in output probe.')
+        call = ('cgyro_probe_point ' + shell_quote(point_result_dir(point)) + ' '
+                + shell_quote(point) + ' || exit $?\n')
+        candidate = header + ''.join(calls) + call
+        if len(('/bin/bash -c ' + shell_quote(candidate)).encode('utf-8')) > OUTPUT_PROBE_MAX_BYTES:
+            if points:
+                yield points, header + ''.join(calls)
+                points, calls = [], []
+            if len(('/bin/bash -c ' + shell_quote(header + call)).encode('utf-8')) > OUTPUT_PROBE_MAX_BYTES:
+                raise ValueError('CGYRO output path exceeds the safe probe command size: ' + str(point))
+        points.append(point)
+        calls.append(call)
+    if points:
+        yield points, header + ''.join(calls)
+
+
+def probe_run_outputs(scheduler, job_id, scheduler_record=None):
+    """Validate every read-only batch before loading any solver results."""
+    chunks = []
+    manifest['output_probe'] = ''
+    manifest['output_probe_progress'] = dict(total=len(parentdir), checked=0, batches=0,
+                                           max_command_bytes=OUTPUT_PROBE_MAX_BYTES)
+    progress = manifest['output_probe_progress']
+    for index, (points, command) in enumerate(output_probe_commands(), 1):
+        status, output, errors = read_run_files(command)
+        chunks.append(output)
+        manifest['output_probe'] = '\n'.join(chunks)
+        if status != 0:
+            progress.update(dict(failed_batch=index, return_code=status, error=errors))
+            raise RuntimeError('CGYRO output-file probe failed in batch {} after {}/{} points; '
+                               'results have not been loaded. Retry collection; saved jobs and results are preserved.\n{}'.format(
+                                   index, progress['checked'], len(parentdir), errors or output))
+        seen = [line.split('|')[1] for line in output.splitlines()
+                if line.startswith('CGYRO_POINT|') and len(line.split('|')) >= 3]
+        if len(seen) != len(points) or set(seen) != set(points):
+            progress.update(dict(failed_batch=index, error='Incomplete or duplicate output-probe response'))
+            raise RuntimeError('CGYRO output-file probe batch {} did not return its exact point list; '
+                               'results have not been loaded. Retry collection.'.format(index))
+        progress.update(dict(checked=progress['checked'] + len(points), batches=index))
+    output = manifest['output_probe']
     if 'CGYRO_ACTIVE' in output.splitlines():
         manifest['status'] = 'submitted'
         raise RuntimeError('CGYRO job ' + job_id + ' is still queued/running; collect after it finishes.')
@@ -146,10 +203,10 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
                         failed.add(point)
     if states:
         manifest['scheduler_status'] = '\n'.join(states)
+    if len(seen) != len(parentdir) or set(seen) != set(parentdir):
+        raise RuntimeError('CGYRO output probe did not return the complete task list; results have not been loaded.')
     manifest['solver_errors'] = solver_errors
     manifest['missing_outputs'] = absent
-    if set(seen) != set(parentdir):
-        raise RuntimeError('CGYRO output probe did not return the complete task list; results have not been loaded.')
     if scheduler_record is not None:
         for point, state in scheduler_record.get('point_states', {}).items():
             if state and state != 'COMPLETED' and point not in complete:

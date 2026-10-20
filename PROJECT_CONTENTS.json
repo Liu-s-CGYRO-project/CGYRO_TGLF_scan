@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.22.26",
-  "parent_release": "1.22.25",
+  "version": "1.22.27",
+  "parent_release": "1.22.26",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -216,7 +216,7 @@
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/CGYROScan.py": "10aa312cfd26b7b593ca4fe57cb927b9afe58bfdf7dcb4819d889c86526055b1",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/CGYROScan_2d.py": "f25ead6f9c71267a5dd5201622bd7e4259e48455d3e5ea146a0e90408c298f70",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/LM3Scan.py": "e6035465afa360122ea284a8dcb2ffff7cc3e1ae576afe6b8014a1616cd1a859",
-    "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/downsync.py": "33499749abac4a6e7a9b1342d778e4096ddb6711db316409a57096e8d7fe68ea",
+    "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/downsync.py": "0ebda4804a4fc42f65c2c5c4c1c851cb4ac3430bff1dfaa3a86fec1ec5f6f3d8",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/prepinputnl.py": "ba5447bff89c9f435cf775d5d023d588fa8e6f032f66735a48dc2d3ca8711fef",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/prepinputnl_gyro.py": "f294c101acb1ac6fc0ebaca11b58f4b02a827d87155b14dfa5b4e128a58009be",
     "CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/refresh_run_status.py": "996f38d362a7d384327d493f6ee9e371530021cf1c0aba8f84cde85625a239e4",
@@ -233,7 +233,7 @@
     "CGYRO_TGLF_scan/CGYRO_scan/SettingsNamelist.txt": "ea639e8e105899f230ec4b365ed365f29702623b892c1f2e9f45176eb48ce236",
     "CGYRO_TGLF_scan/CGYRO_scan/help.rst": "422f96834b12182ea05db88a29dd9199f2479dc8617bbbaee9d36294de54ba55",
     "CGYRO_TGLF_scan/CGYRO_scan/tmp.py.py": "824f92439e21835df6980513fc12e9f2238968076e8cad79b2d19b6027a2b68f",
-    "CGYRO_TGLF_scan/DOCS/CANCEL_RESUME.md": "92025d95e39f1d23c23d7f13a952c90db5ae2c412bfe8f0492c4d15dbe5aa44a",
+    "CGYRO_TGLF_scan/DOCS/CANCEL_RESUME.md": "85fb2619b615978957a365ba2c8978fa95e1b039e3a169e98f1819dd2356f09b",
     "CGYRO_TGLF_scan/DOCS/FIRST_DEPLOY.md": "7ae841d1f525bdd94fc1b6e78880d1a1628d7397dcf0dc319c3d5f74115dc8af",
     "CGYRO_TGLF_scan/DOCS/FONT_LICENSE.txt": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
     "CGYRO_TGLF_scan/DOCS/GUI_FONTS.md": "a56411a2455e5204fe71d0daa28c35678757104f9bbb7a9c463e36162a6fcf89",
