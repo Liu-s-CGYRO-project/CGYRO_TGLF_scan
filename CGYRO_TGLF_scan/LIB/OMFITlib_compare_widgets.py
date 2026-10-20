@@ -5,8 +5,13 @@ from OMFITlib_cgyro_archive import canonical_case_key, case_parts as archived_ca
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     RuntimeError,
+    ValueError,
     dict,
     enumerate,
+    float,
+    hasattr,
+    int,
+    isinstance,
     len,
     list,
     min,
@@ -18,6 +23,7 @@ from builtins import (
 )
 import os
 from collections import Counter, OrderedDict
+from decimal import Decimal, InvalidOperation
 import numpy as np
 from OMFITlib_compare_state import (
     dict_path,
@@ -27,6 +33,29 @@ from OMFITlib_compare_state import (
 )
 
 LEGEND_ORDER_OPTIONS = ['Plot order', 'Natural', 'Isotope mass', 'Alphabetical', 'Reverse alphabetical', 'Manual order']
+
+
+def _display_scan_values(values):
+    """Unify old numeric string keys and new numbers for native Entry display.
+
+    Keep archive keys and saved selections intact. Conversion is presentation
+    only, including reset defaults; never shorten a value at lost precision.
+    """
+    if isinstance(values, str) or not hasattr(values, '__iter__'):
+        return values
+    result = []
+    for value in values:
+        try:
+            number = Decimal(str(value))
+            if number.is_finite():
+                if number == number.to_integral_value():
+                    value = int(number)
+                elif Decimal(str(float(number))) == number:
+                    value = float(number)
+        except (InvalidOperation, ValueError):
+            pass  # Non-numeric options retain their literal value.
+        result.append(value)
+    return result
 
 
 class ComparisonWidgets:
@@ -93,7 +122,8 @@ class ComparisonWidgets:
 
     def _parameter_entry(self, path, name, values, default_values=None):
         label, full_name = self._choice_label(name)
-        self.ui.Entry(path, label, default=values if default_values is None else default_values,
+        self.ui.Entry(path, label, default=_display_scan_values(values if default_values is None else default_values),
+                      preentry=_display_scan_values,
                       width=24, multiline=True,
                       kwlabel={'width': 20, 'anchor': 'w'},
                       help=(full_name + '\n' if full_name else '') + '所选扫描值；可使用列表。重置恢复当前结果的全部取值。')

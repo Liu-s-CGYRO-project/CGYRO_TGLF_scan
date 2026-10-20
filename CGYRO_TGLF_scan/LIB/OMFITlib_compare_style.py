@@ -75,42 +75,48 @@ def enable_legend_picking(ax):
     def identity(line):
         return str(getattr(line, '_comparison_identity', line.get_label()))
 
+    def entries(current):
+        # Legend texts, proxy handles and original artists share legend order,
+        # including column-major packing and custom sorting. Retain artists
+        # rather than looking them up by a possibly duplicated display label.
+        proxies = getattr(current, 'legend_handles', None)
+        if proxies is None:  # Matplotlib before 3.7.
+            proxies = getattr(current, 'legendHandles', [])
+        return zip(current.get_texts(), proxies, getattr(current, '_compare_sources', []))
+
     def refresh():
         for axes in figure.axes:
             current = axes.get_legend()
             if current is None:
                 continue
-            by_label = {str(line.get_label()): line for line in axes.get_lines()}
-            handles = current.get_lines()
-            for idx, text in enumerate(current.get_texts()):
-                line = by_label.get(text.get_text(), None)
-                visible = line is None or line.get_visible()
+            for text, proxy, source in entries(current):
+                visible = source.get_visible()
                 text.set_alpha(1. if visible else .25)
-                if idx < len(handles):
-                    handles[idx].set_alpha(1. if visible else .25)
+                proxy.set_alpha(1. if visible else .25)
 
     def click(event):
-        if event.button != 1 or event.x is None or event.y is None:
+        if ax.get_legend() is not legend or event.button != 1 or event.x is None or event.y is None:
             return
         # An outside legend has event.inaxes == None; use its displayed bounds.
         renderer = figure.canvas.get_renderer()
         if not legend.get_window_extent(renderer).contains(event.x, event.y):
             return
-        texts = legend.get_texts()
-        if not texts:
+        for text, proxy, source in entries(legend):
+            bounds = text.get_window_extent(renderer)
+            handle = proxy.get_window_extent(renderer)
+            # Include the handle-to-text gap, but not another column or empty
+            # legend space. Re-measure on each click after dragging/resizing.
+            left, right = min(bounds.x0, handle.x0), max(bounds.x1, handle.x1)
+            if not (left - 2 <= event.x <= right + 2 and bounds.y0 - 2 <= event.y <= bounds.y1 + 2):
+                continue
+            key, visible = identity(source), not source.get_visible()
+            for axes in figure.axes:
+                for line in axes.get_lines():
+                    if identity(line) == key:
+                        line.set_visible(visible)
+            refresh()
+            figure.canvas.draw_idle()
             return
-        text = min(texts, key=lambda item: abs(event.y - item.get_window_extent(renderer).y0
-                                              - item.get_window_extent(renderer).height / 2))
-        targets = [line for line in ax.get_lines() if str(line.get_label()) == text.get_text()]
-        if not targets:
-            return
-        key, visible = identity(targets[0]), not targets[0].get_visible()
-        for axes in figure.axes:
-            for line in axes.get_lines():
-                if identity(line) == key:
-                    line.set_visible(visible)
-        refresh()
-        figure.canvas.draw_idle()
 
     ax._compare_legend_cid = figure.canvas.mpl_connect('button_press_event', click)
     refresh()
@@ -154,6 +160,7 @@ def reorder_legend(ax, ctx=None, fontsize=None):
         options = {'loc': 'upper left', 'bbox_to_anchor': (1.02, 1.)}
     options['ncol'] = ctx.get('_legend_columns', 1)
     legend_new = ax.legend(handles_sorted, labels_sorted, fontsize=fontsize, framealpha=.85, **options)
+    legend_new._compare_sources = handles_sorted
     try:
         legend_new.set_draggable(True)
     except Exception:

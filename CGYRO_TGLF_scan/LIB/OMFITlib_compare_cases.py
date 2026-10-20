@@ -54,8 +54,14 @@ class CaseSelection(ComparisonWidgets):
             self._parameter_entry(cfg_path('values', axis), axis, values[axis], default_values=available)
         self.ui.ComboBox(cfg_path('axis'), names, '变化参数', default=names[0], updateGUI=True,
                          width=20, kwlabel={'width': 20, 'anchor': 'w'},
-                         help='指定 ky、增长率比值和三维图使用此参数作为变化轴，其余参数逐个固定分组。')
-        self.ui.Label('各轴取值共同筛选实际保存的组合；部分结果中的缺点保留为空，不混合不同参数组合。', align='left')
+                         help='指定 ky、增长率比值和三维图使用此参数作为变化轴，其余参数逐个固定分组。\n'
+                              '各轴取值共同筛选实际保存的组合；部分结果中的缺点保留为空，不混合不同参数组合。')
+        # Keep the inline hint short. Some X11 fallback fonts report less line
+        # height than their CJK glyphs need; a wrapped ttk.Label then overlaps.
+        # Full guidance lives in the scrollable help window with real leading.
+        note = self.ui.Label('按完整组合筛选，缺失结果留空。', align='left')
+        if note is not None:
+            note._cgyro_role = 'note'
         # Retain the old first-axis selection shape for saved-setting migration.
         selected[name] = values[names[0]]
         return True

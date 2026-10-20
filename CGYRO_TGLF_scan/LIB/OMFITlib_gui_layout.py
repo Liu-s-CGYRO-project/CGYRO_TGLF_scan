@@ -192,8 +192,10 @@ class NativeLayout:
                 if role == 'heading':
                     child.configure(font=self.heading, foreground=self.heading_color,
                                     padding=(0, self.gap * 2, 0, self.gap))
-                elif role == 'muted':
+                elif role in ('muted', 'note'):
                     child.configure(foreground=self.muted_color)
+                    if role == 'note':
+                        child.configure(padding=(0, self.gap, 0, self.gap * 2))
                 elif role == 'pending':
                     child.configure(foreground='#185a9d' if self.heading_color == '#274b63' else '#8bc7fa')
                 if self.compact:
