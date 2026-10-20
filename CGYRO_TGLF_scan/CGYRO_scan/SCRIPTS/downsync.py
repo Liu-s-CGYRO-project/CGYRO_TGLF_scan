@@ -8,6 +8,7 @@ import os
 import re
 from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, text_output as output_text
 from OMFITlib_cgyro_continue import validate_continued_result
+from OMFITlib_cgyro_storage import compact_storage, store_result
 
 
 def read_run_files(command):
@@ -231,6 +232,7 @@ restart_extra_files = ['bin.cgyro.restart', 'bin.cgyro.restart.old', 'run_log', 
                        'bin.cgyro.lky_flux_n', 'bin.cgyro.lky_flux_e', 'bin.cgyro.lky_flux_v',
                        'bin.cgyro.eparb', 'bin.cgyro.hb']
 
+compact_storage(root, OMFITtree)
 setup = root['SETTINGS']['SETUP']
 icgyro=setup['icgyro']
 rmtsetup=root['SETTINGS']['REMOTE_SETUP']
@@ -310,7 +312,7 @@ for itemdir in parentdir:
             failed_cases.append(itemdir)
             manifest['skipped_reasons'][itemdir] = str(exc)
             continue
-        caseRoot[caseTag][itemdir] = candidate
+        caseRoot[caseTag][itemdir] = store_result(root, candidate, OMFITtree) if icgyro == 1 else candidate
         if itemdir in failed_cases:
             partial_cases.append(itemdir)  # Readable samples, never a completed calculation.
         else:

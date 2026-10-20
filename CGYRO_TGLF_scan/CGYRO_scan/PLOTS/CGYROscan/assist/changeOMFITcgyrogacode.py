@@ -1,7 +1,8 @@
+from OMFITlib_cgyro_storage import result_view
 import os
 import tempfile
 case_tag = root['SETTINGS']['PHYSICS']['case_tag']
-cases = root['Cases'][case_tag]
+cases = result_view(root, root['Cases'][case_tag])
 if not cases:
     raise ValueError('No cases to convert')
 converted = OMFITtree()

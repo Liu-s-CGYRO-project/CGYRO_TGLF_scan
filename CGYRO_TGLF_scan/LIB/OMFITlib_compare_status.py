@@ -3,6 +3,7 @@
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
 from OMFITlib_cgyro_scan_view import comparison_case_view, coordinate_label, linear_node, view_config
+from OMFITlib_cgyro_storage import result_view
 
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
@@ -175,7 +176,7 @@ def _collect_cgyro_output_status_curves(root, mode_state, runid, nr, para, value
         if not values_iter and allow_all_values_fallback:
             values_iter = list(value_map.keys())
         for value in values_iter:
-            cgyrodir = linear_node(view, parameter, value)
+            cgyrodir = result_view(root['CGYRO_scan'], linear_node(view, parameter, value))
             if cgyrodir is None:
                 continue
             ky_vals = []

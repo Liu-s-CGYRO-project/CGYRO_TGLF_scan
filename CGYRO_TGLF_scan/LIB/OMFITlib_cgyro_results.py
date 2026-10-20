@@ -2,6 +2,7 @@
 from OMFITlib_gui_fonts import configure_window_fonts, style_widget
 from OMFITlib_cgyro_archive import case_scans, latest_cases
 from OMFITlib_cgyro_continue import point_status, resume_source, stopped_context
+from OMFITlib_cgyro_storage import resolve_result
 from OMFITlib_compare_core import cgyro_frequency_history
 from builtins import (Exception, TypeError, ValueError, abs, any, dict, float, int,
                       len, list, max, min, range, set, sorted, str, tuple, zip)
@@ -150,7 +151,7 @@ def _result_node(root, entry, row):
         node = entry['resume_view']
         for key in row['result_path']:
             node = node[key]
-        return node
+        return resolve_result(root['CGYRO_scan'], node)
     node = root['CGYRO_scan']['RUN_DB']
     result_path = row.get('result_path', None)
     if result_path is not None:
@@ -159,7 +160,7 @@ def _result_node(root, entry, row):
         destination = row.get('destination', [])
     for key in destination:
         node = node[key]
-    return node
+    return resolve_result(root['CGYRO_scan'], node)
 
 
 def _frequency_summary(result, fraction):

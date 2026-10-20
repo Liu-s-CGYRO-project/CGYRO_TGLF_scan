@@ -6,6 +6,7 @@ from OMFITlib_cgyro_archive import canonical_case_key, combine_cases, matching_c
 from OMFITlib_cgyro_retry import collect_current
 from OMFITlib_cgyro_continue import continuation_case, point_result
 from OMFITlib_cgyro_queue import save_current
+from OMFITlib_cgyro_storage import compact_storage, prune_storage, store_result
 defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False, continuation=None)
 
 setup = root['SETTINGS']['SETUP']
@@ -46,6 +47,7 @@ def remember_collection(root):
     saved = copy.deepcopy(manifest)
     if manifest.get('status', '') == 'published':
         saved.pop('point_table', None)
+        history.pop('cases', None)
     else:
         history['cases'] = copy.deepcopy(root['Cases'][manifest['case_tag']])
     history['manifest'] = saved
@@ -53,6 +55,7 @@ def remember_collection(root):
 
 
 def publish_loaded_run(root):
+    compact_storage(root, OMFITtree)
     manifest = root.get('RUN_MANIFEST', None)
     if not manifest or manifest.get('collection_status', '') != 'ready' and manifest.get('status', '') != 'loaded':
         return
@@ -96,7 +99,7 @@ def publish_loaded_run(root):
                 if key not in node:
                     node[key] = OMFITtree()
                 node = node[key]
-            node[path[-1]] = copy.deepcopy(point_result(source_case, row))
+            node[path[-1]] = store_result(root, point_result(source_case, row), OMFITtree)
     for point_id in readable:
         path = result_path(manifest, point_id)
         node = fresh_output
@@ -193,6 +196,7 @@ def publish_loaded_run(root):
     if complete:
         manifest['status'] = 'published'
     remember_collection(root)
+    prune_storage(root)
     print('Collected {} complete and {} partial points; {} points skipped. {}'.format(
         len(loaded), len(partial), len(manifest.get('skipped_points', [])),
         'Full scan archived.' if complete else 'Partial results archived separately; previous full scans are preserved.'))

@@ -14,14 +14,16 @@ import re
 import shutil
 import zipfile
 from OMFITlib_cgyro_archive import case_scans, scan_branch, scan_key
+from OMFITlib_cgyro_storage import result_view
+from OMFITlib_cgyro_checkpoint import directory_checkpoint
 
 
 def saved_run(module, token):
     current = module.get('RUN_MANIFEST', {})
     if str(current.get('run_token', '')) == str(token):
-        return current, module.get('Cases', {}).get(current['case_tag'], {})
+        return current, result_view(module, module.get('Cases', {}).get(current['case_tag'], {}))
     entry = module.get('RUN_HISTORY', {}).get(str(token), {})
-    return entry.get('manifest', {}), entry.get('cases', {})
+    return entry.get('manifest', {}), result_view(module, entry.get('cases', {}))
 
 
 def stopped_context(module, token):
@@ -157,7 +159,7 @@ def archived_case(module, token):
                         path = row.get('result_path', [])
                         if path:
                             view[path[0]] = case[branch]
-                    return runid, case_id, view
+                    return runid, case_id, result_view(module, view)
     raise ValueError('The selected result was replaced or is unindexed. Reopen the result table.')
 
 
@@ -173,28 +175,12 @@ def point_result(case, row):
 
 def checkpoint_tag(directory):
     """Check the paired binary/tag and the saved time samples before submission."""
-    for name in ('input.cgyro', 'bin.cgyro.restart', 'out.cgyro.tag', 'out.cgyro.time'):
-        path = os.path.join(directory, name)
-        if not os.path.isfile(path) or os.path.getsize(path) == 0:
-            raise ValueError('Missing checkpoint file: ' + name)
-    with open(os.path.join(directory, 'out.cgyro.tag'), encoding='ascii') as handle:
-        fields = handle.read().split()
-    if len(fields) < 2:
-        raise ValueError('Invalid out.cgyro.tag')
-    count = int(fields[0])
-    time = float(fields[1].replace('D', 'e').replace('d', 'e'))
-    if count < 1 or not math.isfinite(time) or time < 0:
-        raise ValueError('Invalid checkpoint time or sample count')
-    times = []
-    with open(os.path.join(directory, 'out.cgyro.time'), encoding='ascii') as handle:
-        for line in handle:
-            if line.strip():
-                times.append(float(line.split()[0].replace('D', 'e').replace('d', 'e')))
-    if (count > len(times) or any(not math.isfinite(value) for value in times)
-            or any(right <= left for left, right in zip(times, times[1:]))
-            or not math.isclose(times[count - 1], time, rel_tol=1e-7, abs_tol=1e-10)):
-        raise ValueError('Checkpoint tag does not match the saved time history')
-    return dict(sample_count=count, time=time, last_time=times[-1])
+    _, report = directory_checkpoint(directory)
+    if not report['resume_ready']:
+        detail = (report.get('warning', '') or report['candidates'].get('bin.cgyro.restart', {}).get('reason', '')
+                  or 'bin.cgyro.restart is missing')
+        raise ValueError('No verified current CGYRO checkpoint: ' + detail)
+    return report['tag']
 
 
 def point_status(result):

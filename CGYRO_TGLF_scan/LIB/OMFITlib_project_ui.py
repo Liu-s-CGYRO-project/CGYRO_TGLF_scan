@@ -152,6 +152,8 @@ class ProjectUI:
             self.nav('模板 / GitHub', 'templates')
         self.ui.Separator('结果管理')
         self.ui.Button('全局图形样式', lambda: self.root['GUIS']['Plot_style'].run())
+        self.ui.Button('优化 CGYRO 归档（去重）', self.actions.optimize_cgyro_storage, updateGUI=True,
+                       help='相同结果只保存一份；检查点检测后优先保留当前文件，损坏时保留有效 .old，无法确认则保留两份并告警。原 ZIP 和服务器文件不变，完成后另存工程。')
         self.ui.Button('清空全部结果…', self.clear_all_results, updateGUI=True,
                        help='清空已保存的计算结果与运行记录，保留输入和配置。点击后会确认。')
 

@@ -1,3 +1,5 @@
+from OMFITlib_cgyro_storage import result_view
+_stored_output = result_view(root, root['OUTPUTScan'])
 # Export the selected native ballooning eigenfunctions; do not invent missing fields.
 import os
 import tempfile
@@ -13,7 +15,7 @@ else:
     os.makedirs(destination, exist_ok=True)
 for parameter in selection['para_eigen']:
     for ky in settings['PLOTS']['ky_eigen']:
-        case = root['OUTPUTScan'][selection['Para']][num2str_xj(parameter, effnum)]['lin'][num2str_xj(ky, effnum)]
+        case = _stored_output[selection['Para']][num2str_xj(parameter, effnum)]['lin'][num2str_xj(ky, effnum)]
         balloon = case['balloon']
         theta_key = 'theta_b_over_pi'
         columns = [np.asarray(balloon[theta_key])]

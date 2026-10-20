@@ -42,6 +42,7 @@ from OMFITlib_cgyro_run_state import stop_message
 from OMFITlib_cgyro_queue import activate_run, collection_done, pending_runs, queue_records, queue_summary, save_current
 from OMFITlib_cgyro_retry import retry_limit
 from OMFITlib_cgyro_continue import continuation_plan
+from OMFITlib_cgyro_storage import compact_storage, prune_storage
 
 MODULES = {
     'transfer': ('Transfer_tool',), 'cgyro': ('CGYRO_scan',),
@@ -958,6 +959,16 @@ class ProjectActions:
                 node['INPUTS'].pop('input.cgyro', None)
             else:
                 node['INPUTS']['input.cgyro'] = original_input
+
+    def optimize_cgyro_storage(self):
+        node = module(self.root, 'cgyro')
+        report = compact_storage(node, self.factory)
+        report['unreferenced_results'] = prune_storage(node)
+        self.settings['message'] = ('归档已去重：处理 {} 份结果，重复载荷约 {:.2f} GB。'
+            '检查点已检测择一保留；{} 个结果有备用文件或检查告警，详见 RESULT_STORAGE/checkpoints。'
+            '请另存工程以减少 ZIP 体积。').format(
+                report['converted_copies'], report['duplicate_bytes'] / 1e9, report['checkpoint_warnings'])
+        return report
 
     def _collect_cgyro_queue(self, automatic=False):
         node = module(self.root, 'cgyro')

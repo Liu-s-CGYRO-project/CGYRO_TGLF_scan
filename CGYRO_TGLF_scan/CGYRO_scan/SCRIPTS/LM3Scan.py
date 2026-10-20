@@ -1,3 +1,4 @@
+from OMFITlib_cgyro_storage import resolve_result
 # x: ky : y: para
 # iegensolver=1: holland method on ky,    len(wr_guess)=len(Range)
 # iegensolver=2: Holland method on para,  len(wr_guess)=len(ky)
@@ -63,7 +64,7 @@ try:
             root['SCRIPTS']['downsync.py'].run()
             for count, para_val in enumerate(para_rang):
                 new_dir = para_name + '~' + num2str_xj(para_val, effnum) + '~ky~' + num2str_xj(ky, effnum)
-                casenode=root['Cases'][case_tag][new_dir]
+                casenode=resolve_result(root, root['Cases'][case_tag][new_dir])
                 try:
                     omega,err_omega=readfreq(casenode)
                 # there exist an error in the omfitcgyro, which get wrong the wr and wi, so here we will need to change accoridnlgy
@@ -94,7 +95,7 @@ try:
             root['SCRIPTS']['downsync.py'].run()
             for count, ky in enumerate(kyarr):
                 new_dir = para_name + '~' + num2str_xj(para_val, effnum) + '~ky~' + num2str_xj(ky, effnum)
-                casenode=root['Cases'][case_tag][new_dir]
+                casenode=resolve_result(root, root['Cases'][case_tag][new_dir])
                 try:
                     omega,err_omega=readfreq(casenode)
                     wr_temp[count]=omega[1]

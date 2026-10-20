@@ -5,6 +5,7 @@ from OMFITlib_compare_core import cgyro_frequency_history, cgyro_frequency_stats
 from OMFITlib_compare_cgyro_selection import maybe_abs_ky, maybe_abs_ky_list, parse_float_list_text
 from OMFITlib_compare_state import stable_keys
 from OMFITlib_cgyro_scan_view import coordinate_label, linear_node
+from OMFITlib_cgyro_storage import result_view
 
 
 def diagnostic(ctx, nr, para, value, message, ky=None):
@@ -18,7 +19,7 @@ def diagnostic(ctx, nr, para, value, message, ky=None):
 def _get_cgyro_lin_node(root, ctx, nr, para, value):
     view = ctx.get('_cgyro_views', {}).get(str(nr), None)
     if view is not None:
-        return linear_node(view, para, value)
+        return result_view(root.get('CGYRO_scan', {}), linear_node(view, para, value))
     node = root.get('CGYRO_scan', {}).get('RUN_DB', {})
     for token in (ctx.get('runid', ''), nr):
         if not hasattr(node, 'keys'):
@@ -27,7 +28,7 @@ def _get_cgyro_lin_node(root, ctx, nr, para, value):
         if key is None:
             return None
         node = node[key]
-    return linear_node(node, para, value)
+    return result_view(root.get('CGYRO_scan', {}), linear_node(node, para, value))
 
 
 def _empty_series_arrays():

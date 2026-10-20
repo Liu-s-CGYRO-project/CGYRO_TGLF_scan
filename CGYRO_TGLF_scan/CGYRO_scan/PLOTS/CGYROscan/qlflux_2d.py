@@ -1,3 +1,5 @@
+from OMFITlib_cgyro_storage import result_view
+_stored_output = result_view(root, root['OUTPUTScan'])
 # this script is used to plot the quasilinear flux.
 import sys
 import xarray as xr
@@ -8,7 +10,7 @@ with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as
 for paraxval_item in Range_x:
     for parayval_item in Range_y:
         for ky_item in kyarr:
-            datanode=root['OUTPUTScan'][Para_x][num2str_xj(paraxval_item,effnum)][Para_y][num2str_xj(parayval_item,effnum)]['lin'][num2str_xj(ky_item,effnum)]
+            datanode=_stored_output[Para_x][num2str_xj(paraxval_item,effnum)][Para_y][num2str_xj(parayval_item,effnum)]['lin'][num2str_xj(ky_item,effnum)]
             dirname='parax_'+num2str_xj(paraxval_item,effnum)+'~paray_'+num2str_xj(parayval_item,effnum)+'~ky_'+num2str_xj(ky_item,effnum)
             mounttree[dirname]=copy.deepcopy(datanode)
 

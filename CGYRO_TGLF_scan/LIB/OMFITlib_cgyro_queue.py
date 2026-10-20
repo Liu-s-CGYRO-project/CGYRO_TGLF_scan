@@ -8,6 +8,7 @@ from builtins import Exception, RuntimeError, ValueError, dict, len, list, print
 from contextlib import nullcontext
 from copy import deepcopy
 import time
+from OMFITlib_cgyro_storage import compact_storage
 from OMFITlib_cgyro_run_state import (linked_kill_local, pbs_wait, quote as shell_quote,
                                     refresh_run_state, slurm_wait, stop_message, stop_run)
 
@@ -26,6 +27,7 @@ def queue_records(root):
 
 def save_current(root, factory=dict):
     """Checkpoint the active case; drop duplicate payloads only after publish."""
+    compact_storage(root, factory)
     manifest = root.get('RUN_MANIFEST', {})
     batch = root.get('RUN_BATCH', {})
     if not batch.get('batch_id', '') or manifest.get('batch_id', '') != batch['batch_id']:

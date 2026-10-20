@@ -1,3 +1,5 @@
+from OMFITlib_cgyro_storage import result_view
+_stored_output = result_view(root, root['OUTPUTScan'])
 # this script is used to plot the status of the linear calculation
 # linear converge: 0
 # linear terminated at max time: 1
@@ -47,7 +49,7 @@ else:
 icgyro=setup['icgyro']
 for k in range(0,nRange):
     for p in range(num_ky):
-        datanode=root['OUTPUTScan'][Para][num2str_xj(Range[k],effnum)]['lin'][num2str_xj(kyarr[p],effnum)]
+        datanode=_stored_output[Para][num2str_xj(Range[k],effnum)]['lin'][num2str_xj(kyarr[p],effnum)]
         if icgyro==1:
             try:
                 filename=datanode['out.cgyro.info'].filename

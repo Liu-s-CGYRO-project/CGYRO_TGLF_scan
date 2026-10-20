@@ -1,3 +1,5 @@
+from OMFITlib_cgyro_storage import result_view
+_stored_output = result_view(root, root['OUTPUTScan'])
 # this script is used to plot the eigenfrequency and growth rate for all the scanning cases,
 # the parameters and the value is specified in root['SETTINGS']['PLOTS']['Para'] and root['SETTINGS']['PLOTS']['Range']
 # note the stability analyis should be performed by GYRO before running this plot scrip
@@ -43,7 +45,7 @@ else:
 
 for k in range(0,nRange):
     for p in range(num_ky):
-        datanode=root['OUTPUTScan'][Para][num2str_xj(Range[k],effnum)]['lin'][num2str_xj(kyarr[p],effnum)]
+        datanode=_stored_output[Para][num2str_xj(Range[k],effnum)]['lin'][num2str_xj(kyarr[p],effnum)]
         # try:
         filename=datanode
         flag_read=1

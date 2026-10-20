@@ -1,3 +1,5 @@
+from OMFITlib_cgyro_storage import result_view
+_stored_output = result_view(root, root['OUTPUTScan'])
 # this script is used to plot the quasilinear flux weight
 import numpy as np
 import xarray as xr
@@ -10,7 +12,7 @@ with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as
 # get the data
 for paraval_item in Range:
     for ky_item in kyarr:
-        datanode=root['OUTPUTScan'][Para][num2str_xj(paraval_item,effnum)]['lin'][num2str_xj(ky_item,effnum)]
+        datanode=_stored_output[Para][num2str_xj(paraval_item,effnum)]['lin'][num2str_xj(ky_item,effnum)]
         dirname='para_'+num2str_xj(paraval_item,effnum)+'~ky_'+num2str_xj(ky_item,effnum)
         mounttree[dirname]=copy.deepcopy(datanode)
 

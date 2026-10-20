@@ -28,39 +28,7 @@ RUN_BATCH 关联本批计划与 token，RUN_HISTORY 保存各例的独立目录�
 
 Slurm 补跑保持原数组索引，并用 `--array=失败索引列表%并发上限` 选择失败点，参见 [sbatch](https://slurm.schedmd.com/sbatch.html)；PBS 生成只含失败点的列表。各轮作业号、目录和状态进入 attempts，point_workdirs 标记每个点的实际结果来源，原目录和日志均保留。
 
-## 程序接口
-
-`LIB/OMFITlib_cgyro_scan_values.py` 提供无 GUI、无作业提交的接口：
-
-```python
-from OMFITlib_cgyro_scan_values import ky_values, scan_axes
-
-physics = root['CGYRO_scan']['SETTINGS']['PHYSICS']
-ky = ky_values(physics)
-axes = scan_axes(physics, dimensions=1, source=input_cgyro)
-```
-
-预检查与实际提交共用此接口。返回的轴保留 `name`、实际 `values` 和 `linked`；不改写原始输入或计算数据。旧工程未设置新定义时，继续读取 `kyarr` 和 `1d/Range`、`2d/Range_x` 等原有列表。
-
-新定义存储在同一个 PHYSICS 分支：
-
-```python
-physics['ky_spec'] = {'mode': 'range', 'start': 0.1, 'end': 1.0, 'count': 10}
-physics['1d']['value_specs'] = {
-    'Range': {'mode': 'range', 'start': 16, 'end': 64, 'count': 4}
-}
-```
-
-`mode='list'` 使用原有实际列表，也接受单值；`mode='original'` 使用输入原值。倍数定义使用独立的 `factor` 范围，切换方式时分别保留实际范围和倍数范围：
-
-```python
-physics['1d']['value_specs']['Range'] = {
-    'mode': 'factor',
-    'factor': {'start': 1.0, 'end': 3.0, 'count': 3}
-}
-```
-
-ky 的对数范围用 `mode='log'`，起止值直接填写实际正数。点数限制为 1–10000；非有限值、重复值、非正 ky、非整数的整数参数和联动长度不匹配会在提交前报错。任务与结果清单保存实际使用的值。
+程序接口与扩展示例见 GitHub 仓库根目录 [SCAN_VALUES_REFERENCE.md](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/blob/main/SCAN_VALUES_REFERENCE.md)。预检查与实际提交共用 cgyro_scan_values，返回实际轴取值，不改原始输入。
 
 ## H / D / T 主离子合并
 

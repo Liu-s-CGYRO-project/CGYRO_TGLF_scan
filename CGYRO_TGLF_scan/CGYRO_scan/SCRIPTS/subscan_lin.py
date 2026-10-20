@@ -23,6 +23,7 @@ from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, te
 from OMFITlib_cgyro_queue import advancing_batch, collection_done, pending_runs, save_current, wait_current
 from OMFITlib_cgyro_retry import confirm_submission, retry_limit
 from OMFITlib_cgyro_continue import continuation_plan, prepare_point, restart_files
+from OMFITlib_cgyro_storage import compact_storage, result_view
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -239,8 +240,9 @@ if continuation:
         continuation['points'], continuation['additional_time'])
     scan_dimensions = int(continuation['info'].get('scan_dimensions', continuation['info']['dimensions']))
 caseName = continuation['case_tag'] if continuation else physics['case_tag']
+compact_storage(root, OMFITtree)
 caseRoot = root['Cases']
-previous_cases = caseRoot.get(caseName, OMFITtree())
+previous_cases = result_view(root, caseRoot.get(caseName, OMFITtree()))
 restart_mode = 0 if continuation else int(physics['restart_mode'])
 if restart_mode not in (0, 1):
     raise ValueError('restart_mode must be 0 or 1')
@@ -396,6 +398,7 @@ if previous_manifest or previous_cases:
     archived_manifest = copy.deepcopy(previous_manifest)
     if previous_status == 'published':
         archived_manifest.pop('point_table', None)  # Permanent task rows live once in RUN_DB.
+        root['RUN_HISTORY'][history_key].pop('cases', None)
     elif previous_failed or not previous_manifest:
         old_tag = previous_manifest.get('case_tag', caseName)
         root['RUN_HISTORY'][history_key]['cases'] = copy.deepcopy(caseRoot.get(old_tag, OMFITtree()))

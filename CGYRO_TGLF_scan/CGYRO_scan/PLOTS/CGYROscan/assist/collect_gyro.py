@@ -1,3 +1,5 @@
+from OMFITlib_cgyro_storage import result_view
+_stored_output = result_view(root, root['OUTPUTScan'])
 import sys
 from OMFITlib_cgyro_read import *
 with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as _helper_source:
@@ -499,7 +501,7 @@ dirname_arr=[];
 if idimrun==1:
     for paraval_item in para_eigen:
         for ky_item in ky_eigen:
-            datanode=root['OUTPUTScan'][Para][num2str_xj(paraval_item,effnum)]['lin'][num2str_xj(ky_item,effnum)]
+            datanode=_stored_output[Para][num2str_xj(paraval_item,effnum)]['lin'][num2str_xj(ky_item,effnum)]
             #datanode=OMFIT['OUTPUTS-CFETRphi']['nr=11']['lin']['1.00000']
             dirname=Para+'_'+num2str_xj(paraval_item,effnum)+'~ky_'+num2str_xj(ky_item,effnum)
             if isinstance(datanode,OMFITtree):
@@ -515,7 +517,7 @@ else:
     for para_x_item in para_x_eigen:
         for para_y_item in para_y_eigen:
             for ky_item in ky_eigen:
-                datanode=root['OUTPUTScan'][Para_x][num2str_xj(para_x_item,effnum)][Para_y][num2str_xj(para_y_item,effnum)]['lin'][num2str_xj(ky_item,effnum)]
+                datanode=_stored_output[Para_x][num2str_xj(para_x_item,effnum)][Para_y][num2str_xj(para_y_item,effnum)]['lin'][num2str_xj(ky_item,effnum)]
                 dirname=Para_x+'_'+num2str_xj(para_x_item,effnum)+'~'+Para_y+'_'+num2str_xj(para_y_item,effnum)+'~ky_'+num2str_xj(ky_item,effnum)
                 if isinstance(datanode,OMFITtree):
                     datanode.deploy(deploypath+dirname)

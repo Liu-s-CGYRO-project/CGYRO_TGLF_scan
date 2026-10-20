@@ -3,6 +3,7 @@
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
 from OMFITlib_plot_sources import context_results
+from OMFITlib_cgyro_storage import result_view
 from OMFITlib_compare_style import cgyro_case_caption, compact_scan_value
 from OMFITlib_cgyro_scan_view import (comparison_case_view, coordinate_label, linear_node,
                                      slice_coordinates, view_config)
@@ -62,7 +63,7 @@ def collect_cgyro_series(root, ctx, runid, nr, para, value):
             return tuple(array([]) for _ in range(5))
         node = node[key]
     node = ctx.get('_cgyro_views', {}).get(str(nr), node)
-    linear = linear_node(node, para, value)
+    linear = result_view(root.get('CGYRO_scan', {}), linear_node(node, para, value))
     if linear is None:
         ctx.setdefault('_diagnostics', []).append('Missing CGYRO spectrum: {}'.format((runid, nr, para, value)))
         return tuple(array([]) for _ in range(5))

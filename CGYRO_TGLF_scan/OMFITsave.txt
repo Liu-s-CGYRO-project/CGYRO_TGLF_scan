@@ -244,6 +244,8 @@
 ['LIB']['OMFITlib_cgyro_isotopes'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_isotopes.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_run_state'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_run_state.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_archive'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_archive.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_storage'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_storage.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_checkpoint'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_checkpoint.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_scan_view'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_scan_view.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_queue'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_queue.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_retry'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_retry.py <-:-:-> {}
@@ -358,6 +360,8 @@
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_isotopes'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_isotopes.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_run_state'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_run_state.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_archive'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_archive.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_cgyro_storage'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_storage.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_cgyro_checkpoint'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_checkpoint.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_queue'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_queue.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_retry'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_retry.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_continue'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_continue.py <-:-:-> {}
@@ -471,6 +475,7 @@
 ['DOCS']['扫描取值接口'] <-:-:-> OMFITascii <-:-:-> ./DOCS/SCAN_VALUES.md <-:-:-> {}
 ['DOCS']['首次部署与迁移'] <-:-:-> OMFITascii <-:-:-> ./DOCS/FIRST_DEPLOY.md <-:-:-> {}
 ['DOCS']['中止与续算'] <-:-:-> OMFITascii <-:-:-> ./DOCS/CANCEL_RESUME.md <-:-:-> {}
+['DOCS']['结果归档去重'] <-:-:-> OMFITascii <-:-:-> ./DOCS/RESULT_STORAGE.md <-:-:-> {}
 ['DOCS']['多参数扫描绘图'] <-:-:-> OMFITascii <-:-:-> ./DOCS/MULTI_AXIS_PLOTS.md <-:-:-> {}
 ['DOCS']['字体许可'] <-:-:-> OMFITascii <-:-:-> ./DOCS/FONT_LICENSE.txt <-:-:-> {}
 ['LIB']['OMFITlib_gui_fonts'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_fonts.py <-:-:-> {}
