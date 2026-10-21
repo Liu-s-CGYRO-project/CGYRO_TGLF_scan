@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.0。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.1。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 先找到修改层
 
@@ -121,3 +121,7 @@ OMFITlib_cgyro_storage_files.SubmissionFiles 只计划新所有者与索引，�
 ## RUN_DB 唯一存储接口（1.24.0）
 
 新增 CGYRO 写入使用 cgyro_db.run_cases / set_run_cases；冻结输入使用 freeze_run_inputs，结果安装使用 store_result。作业快照使用 save_current，外部 RUN_HISTORY 仅保留元数据。绘图仅通过 RUN_DB 和 resolve_result 读取，不创建持久结果缓存。迁移入口 consolidate_storage 统一旧数据、恢复索引、检查引用后清理。store_scan 按全部参数坐标与 ky 更新点，validate_preserved_scans 在安装前保护未重算坐标及其他扫描。持久路径是 runid / nr=..._rho=... / ion；catalog_runs 仅返回不保存的逻辑案例视图，case_destination 解析实际路径。新增读者不能把 case_id 直接拼到 RUN_DB 后。停止作业读取原始点表，不能从合并后的点号重建提交顺序。详见 RESULT_STORAGE_DESIGN.md。
+
+## 启动与临时空间（1.24.1）
+
+check_start_capacity 只检查启动时已有占用；check_temp_start 通过三个原生脚本传递，批量仅首案例为 True，直接运行和新续算默认为 True。ensure_capacity 只检查真实剩余空间，禁止在逐点打包或保存输入时遍历整个 /tmp。该标志只作本次调用参数，不能写入 SETTINGS 作为持久跳过开关。准备进度按案例与计算点打印，取得作业号后单独输出记录状态；没有进度不能推断已经提交。

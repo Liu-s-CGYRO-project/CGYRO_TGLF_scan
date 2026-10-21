@@ -12,7 +12,7 @@ from OMFITlib_cgyro_storage import compact_storage, prune_storage, resolve_resul
 from OMFITlib_cgyro_db import run_cases
 from OMFITlib_cgyro_recover import recover_archives
 defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False, continuation=None,
-            allow_solver_retries=None)
+            allow_solver_retries=None, check_temp_start=True)
 
 setup = root['SETTINGS']['SETUP']
 # Direct legacy run entries inherit their run intent. A collection-only entry
@@ -26,7 +26,8 @@ if dimensions not in (0, 1, 2, 3):
 
 if setup['irun'] == 1:
     root['SCRIPTS']['subscan_lin.py'].run(scan_dimensions=dimensions,
-        wait_for_completion=wait_for_completion, batch_id=batch_id, continuation=continuation)
+        wait_for_completion=wait_for_completion, batch_id=batch_id, continuation=continuation,
+        check_temp_start=check_temp_start)
 if (wait_for_completion and (setup['idownsync'] == 1 or root.get('RUN_MANIFEST', {}).get('auto_collect_requested', False))
         and (collect_stopped or root.get('RUN_MANIFEST', {}).get('auto_collect_requested', False)
              or not root.get('RUN_MANIFEST', {}).get('stop_requested', False))):

@@ -4,7 +4,7 @@ The project orchestrator calls this once per rho/isotope case. Point IDs keep
 their original array indices so failed subsets can be retried independently.
 """
 from builtins import (Exception, OSError, RuntimeError, TypeError, ValueError, all, any, bool, dict, enumerate, float,
-                      int, isinstance, iter, len, list, max, range, set, sorted, str, sum, tuple, zip)
+                      int, isinstance, iter, len, list, max, print, range, set, sorted, str, sum, tuple, zip)
 import numpy as np
 import copy
 import hashlib
@@ -25,7 +25,7 @@ from OMFITlib_cgyro_retry import execute_submission, retry_limit
 from OMFITlib_cgyro_continue import archived_case, continuation_plan, point_result, prepare_point, restart_files
 from OMFITlib_cgyro_storage import compact_storage, result_view
 from OMFITlib_cgyro_db import run_cases, set_run_cases
-from OMFITlib_cgyro_scratch import clean_stage, directory_bytes, ensure_capacity
+from OMFITlib_cgyro_scratch import check_start_capacity, clean_stage, directory_bytes, ensure_capacity
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -120,7 +120,7 @@ def runtime_abs_path(path):
     return os.path.abspath(path)
 
 
-defaultVars(scan_dimensions=1, wait_for_completion=True, batch_id='', continuation=None)
+defaultVars(scan_dimensions=1, wait_for_completion=True, batch_id='', continuation=None, check_temp_start=True)
 
 
 def json_scalar(value):
@@ -242,6 +242,12 @@ if continuation:
         continuation['points'], continuation['additional_time'])
     scan_dimensions = int(continuation['info'].get('scan_dimensions', continuation['info']['dimensions']))
 caseName = continuation['case_tag'] if continuation else physics['case_tag']
+base_workdir = runtime_abs_path(setup_workdir())
+if check_temp_start:
+    print('[CGYRO] Checking existing temporary usage once (100 GiB start limit).', flush=True)
+    space = check_start_capacity(base_workdir)
+    print('[CGYRO] Start check passed; preparing inputs. Later peaks above 100 GiB are allowed.', flush=True)
+print('[CGYRO] Checking saved result/input references before preparing this case.', flush=True)
 compact_storage(root, OMFITtree)
 previous_cases = result_view(root, run_cases(root))
 restart_mode = 0 if continuation else int(physics['restart_mode'])
@@ -271,7 +277,6 @@ if previous_manifest and not collection_done(previous_manifest) and not previous
 if restart_mode and not previous_cases:
     raise ValueError('No saved cases are available for restart')
 run_token = uuid.uuid4().hex
-base_workdir = runtime_abs_path(setup_workdir())
 case_id = (str(continuation['source_case_id']) if continuation else
            str(physics.get('case_id', '') or 'nr={}__ion={}'.format(physics['nr'], physics['mass'])))
 if not wait_for_completion:
@@ -335,7 +340,10 @@ inputs = []
 dir_list = []
 input_checksums = {}
 point_table = {}
-for new_dir, overrides, point_metadata in points:
+for point_number, (new_dir, overrides, point_metadata) in enumerate(points, 1):
+    if point_number == 1 or point_number % 10 == 0 or point_number == len(points):
+        print('[CGYRO] Preparing input {}/{}: {} ({})'.format(
+            point_number, len(points), new_dir, case_id), flush=True)
     stage = os.path.join(submit_workdir, 'staging', new_dir)
     # OMFITobject.deploy(existing_dir) appends its original basename. Supply a
     # nonexistent destination when copying a result directory (framework API).
@@ -592,7 +600,9 @@ run_manifest = OMFITtree()
 run_manifest.update(manifest)
 root['RUN_MANIFEST'] = run_manifest
 set_run_cases(root, run_manifest, prepared_cases, OMFITtree)
+print('[CGYRO] Saving {} prepared input ZIPs and original point table.'.format(len(points)), flush=True)
 save_current(root, OMFITtree)
+print('[CGYRO] Local preparation complete: {} points. Run directory: {}'.format(len(points), submit_workdir), flush=True)
 if setup['irun']==1:
     # sub jobs
     # Submit through scheduler directly and let OMFIT wait for job completion.
@@ -614,7 +624,10 @@ if setup['irun']==1:
         submit_cmd='sbatch scan.pbs'
         if scheduler == 'pbs':
             submit_cmd='qsub scan.pbs'
+        print('[CGYRO] Uploading inputs to {}; then submitting {}.'.format(remote_server, scheduler), flush=True)
         execute_submission(root, OMFITx, OMFITtree, OMFITascii, inputs, submit_workdir, submit_cmd)
+        print('[CGYRO] Recorded job ID: {} (state: {}).'.format(
+            root['RUN_MANIFEST'].get('job_id', ''), root['RUN_MANIFEST'].get('status', '')), flush=True)
         if wait_for_completion:
             wait_current(root, OMFITx, OMFITtree)
 

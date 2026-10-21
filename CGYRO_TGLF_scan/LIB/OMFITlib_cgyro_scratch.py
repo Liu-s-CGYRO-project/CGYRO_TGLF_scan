@@ -1,7 +1,7 @@
 """Bound CGYRO temporary copies and remove only verified staging directories.
 
-The 100 GiB limit includes the user's existing /tmp area. It is a preflight
-guard, not an OS quota: other processes can allocate concurrently. Never sweep
+The 100 GiB limit applies once at the start of a run/batch, not to its peak.
+Every subsequent copy checks actual free space. Never sweep
 /tmp by age/name, remove another session, or delete a RUN_DB physical owner.
 """
 from builtins import (FileNotFoundError, RuntimeError, ValueError, any, dict, int, iter, len,
@@ -15,6 +15,7 @@ import tempfile
 import zipfile
 
 LIMIT_BYTES = 100 * 1024 ** 3
+START_LIMIT_POLICY_VERSION = 1
 
 
 def _inside(path, parent):
@@ -41,8 +42,8 @@ def directory_bytes(directory):
     return total
 
 
-def space_report(path, tmp_root=None):
-    """Inspect the user's temp area, and free space on the destination device."""
+def _space_location(path, tmp_root=None):
+    """Resolve the accounting scope without traversing its files."""
     path = os.path.abspath(path)
     existing = path
     while not os.path.exists(existing):
@@ -59,22 +60,40 @@ def space_report(path, tmp_root=None):
         user_root = os.path.join(temporary, getpass.getuser())
         if _inside(path, user_root):
             scope = user_root
+    return path, scope, existing
+
+
+def space_report(path, tmp_root=None):
+    """Inspect the user's temp area, and free space on the destination device."""
+    path, scope, existing = _space_location(path, tmp_root)
     return dict(path=path, scope=scope, used_bytes=directory_bytes(scope) if scope else 0,
                 free_bytes=shutil.disk_usage(existing).free, limit_bytes=LIMIT_BYTES)
 
 
-def ensure_capacity(path, additional_bytes=0):
-    """Fail before copying; original results and remote jobs remain intact."""
+def check_start_capacity(path):
+    """Check existing usage once, before this run's preparation/submission.
+
+    The caller checks only the first case of a batch. A later peak above the
+    start limit is allowed; this does not skip per-copy filesystem free space.
+    """
     report = space_report(path)
-    required = max(0, int(additional_bytes))
-    if report['scope'] and report['used_bytes'] + required > LIMIT_BYTES:
-        raise RuntimeError('CGYRO temporary space would exceed 100 GiB: {} ({:.2f} GiB used, '
-                           '{:.2f} GiB additional). Compact verified staging or save the project '
-                           'to a larger work area; RUN_DB owners were not deleted.'.format(
-                               report['scope'], report['used_bytes'] / 1024**3, required / 1024**3))
-    if required > report['free_bytes']:
-        raise RuntimeError('Insufficient free space for CGYRO temporary copy: ' + str(path))
+    if report['scope'] and report['used_bytes'] > LIMIT_BYTES:
+        raise RuntimeError('CGYRO cannot start above 100 GiB of existing temporary data: {} '
+                           '({:.2f} GiB used). Compact or save existing data first; '
+                           'RUN_DB and remote jobs are unchanged.'.format(
+                               report['scope'], report['used_bytes'] / 1024**3))
     return report
+
+
+def ensure_capacity(path, additional_bytes=0):
+    """Check real free space for this copy, without rescanning all /tmp files."""
+    required = max(0, int(additional_bytes))
+    path, scope, existing = _space_location(path)
+    free = shutil.disk_usage(existing).free
+    if required > free:
+        raise RuntimeError('Insufficient free space for CGYRO temporary copy: ' + str(path))
+    return dict(path=path, scope=scope, used_bytes=None, free_bytes=free,
+                limit_bytes=LIMIT_BYTES, start_limit_applied=False)
 
 
 def _digest(stream):

@@ -14,7 +14,7 @@ from OMFITlib_cgyro_plan import (ISOTOPE_MASSES, ION_CASES, sync_cgyro_ion_cases
     cgyro_ion_mode, cgyro_scan_axes, cgyro_plan_summary, cgyro_sources, sync_cgyro_choices,
     cgyro_plan_issues, cgyro_input_issues, _cgyro_case_id, _cgyro_main_indices,
     _cgyro_case_input, _original_ion_label, _cgyro_radius_number, _generated_particle_record)
-from builtins import abs, all, any, bool, dict, enumerate, float, int, isinstance, iter, len, list, next, ord, range, set, sorted, str, sum, tuple
+from builtins import abs, all, any, bool, dict, enumerate, float, int, isinstance, iter, len, list, next, ord, print, range, set, sorted, str, sum, tuple
 import ast
 import copy
 from datetime import datetime, timezone
@@ -888,7 +888,7 @@ class ProjectActions:
         collecting = False
         try:
             setup['irun'], setup['idownsync'] = 1, 0 if queued else 1
-            for item in plan:
+            for case_number, item in enumerate(plan):
                 nr, ion_case = item['nr'], item['ion_case']
                 provenance = item.get('isotope_preparation', None)
                 case_physics = (remap_physics(original_physics, dimensions, provenance['index_map'])
@@ -901,9 +901,10 @@ class ProjectActions:
                 node['INPUTS']['input.cgyro'] = node['BATCH_INPUTS'][str(nr)][ion_case].duplicate()
                 physics['nr'], physics['rho'], physics['mass'] = nr, item['rho'], ion_case
                 physics['case_id'] = item['case_id']
+                print('[CGYRO] Starting case {}: initializing native task context.'.format(item['case_id']), flush=True)
                 self.call('CGYRO {}'.format(item['case_id']),
                            MODULES['cgyro'] + ('SCRIPTS', 'runCGYRO.py'),
-                           wait_for_completion=not queued, batch_id=batch_id)
+                           wait_for_completion=not queued, batch_id=batch_id, check_temp_start=case_number == 0)
                 manifest = node.get('RUN_MANIFEST', {})
                 if manifest.get('stop_requested', False):
                     if queued:

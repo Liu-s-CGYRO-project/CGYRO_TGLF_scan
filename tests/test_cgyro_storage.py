@@ -586,15 +586,69 @@ class StorageCases(unittest.TestCase):
         storage.compact_storage(root, NativeKeys)
         self.assertEqual(storage.storage_state(root)['recovery'], {'kept': True})
 
-    def test_temp_limit_stops_before_copy_and_counts_existing_files(self):
+    def test_temp_limit_is_only_checked_at_operation_start(self):
         (self.base / 'existing').write_bytes(b'x' * 90)
         report = scratch.space_report(self.base, tmp_root=self.base)
         self.assertEqual(report['used_bytes'], 90)
         with patch.object(scratch, 'space_report', return_value=report), patch.object(scratch, 'LIMIT_BYTES', 100):
-            scratch.ensure_capacity(self.base, 10)
+            scratch.check_start_capacity(self.base)
+            # This run may temporarily pass its initial usage limit.
+            scratch.ensure_capacity(self.base, 11)
+            report['used_bytes'] = 101
             with self.assertRaisesRegex(RuntimeError, '100 GiB'):
-                scratch.ensure_capacity(self.base, 11)
+                scratch.check_start_capacity(self.base)
         self.assertEqual((self.base / 'existing').read_bytes(), b'x' * 90)
+
+    def test_84_point_preparation_checks_free_space_without_full_temp_walks(self):
+        with patch.object(scratch, 'directory_bytes', side_effect=AssertionError('Repeated /tmp walk')):
+            for number in range(84):
+                report = scratch.ensure_capacity(self.base / ('p%06d.zip' % number), 1024)
+                self.assertIsNone(report['used_bytes'])
+                self.assertFalse(report['start_limit_applied'])
+
+    def test_runtime_free_space_failure_does_not_remove_existing_results(self):
+        original = self.base / 'previous-result'
+        original.write_bytes(b'unchanged')
+        with patch.object(scratch.shutil, 'disk_usage', return_value=types.SimpleNamespace(free=4)):
+            with self.assertRaisesRegex(RuntimeError, 'Insufficient free space'):
+                scratch.ensure_capacity(self.base / 'next-copy', 5)
+        self.assertEqual(original.read_bytes(), b'unchanged')
+
+    def test_hdt_batch_requests_start_limit_only_for_first_case(self):
+        path = REPO / 'CGYRO_TGLF_scan/LIB/OMFITlib_project.py'
+        project_class = next(node for node in ast.parse(path.read_text(encoding='utf-8')).body
+                             if isinstance(node, ast.ClassDef) and node.name == 'ProjectActions')
+        method = next(node for node in project_class.body if isinstance(node, ast.FunctionDef) and node.name == 'run_cgyro')
+        scope = dict(copy=copy, MODULES={'cgyro': ('CGYRO_scan',)},
+                     module=lambda root, name: root['CGYRO_scan'],
+                     cgyro_input_issues=lambda root: [], runtime_issues=lambda root, code: [],
+                     retry_limit=lambda node: 0, pending_runs=lambda node: [],
+                     uuid=types.SimpleNamespace(uuid4=lambda: types.SimpleNamespace(hex='c' * 32)))
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(path), 'exec'), scope)
+        plan = [dict(nr=1, rho=.33, ion_case=ion, case_id='nr=1__rho=0.33__ion=' + ion) for ion in 'HDT']
+        node = dict(SETTINGS=dict(SETUP=dict(icgyro=1, idimrun=1, irun=0, idownsync=1),
+                                 PHYSICS=dict(restart_mode=0),
+                                 REMOTE_SETUP=dict(serverPicker='cluster', cluster=dict(scheduler='slurm'))),
+                    INPUTS={}, BATCH_INPUTS={'1': {ion: types.SimpleNamespace(duplicate=lambda: {}) for ion in 'HDT'}})
+        calls = []
+        class Harness:
+            factory = dict
+            root = {'CGYRO_scan': node}
+            settings = {}
+            def prepare_cgyro_batch(self, install_first=False):
+                return plan
+            def _record(self, *args, **kwargs):
+                return dict(kwargs)
+            def call(self, title, path, **kwargs):
+                calls.append(kwargs)
+                node['RUN_MANIFEST'] = dict(status='submitted', stop_requested=False)
+            def _collect_cgyro_queue(self, automatic=False):
+                return [item['case_id'] for item in plan]
+        scope['run_cgyro'](Harness())
+        self.assertEqual([call['check_temp_start'] for call in calls], [True, False, False])
+        self.assertEqual(node['SETTINGS']['SETUP']['irun'], 0)
+        self.assertEqual(node['SETTINGS']['SETUP']['idownsync'], 1)
+        self.assertNotIn('input.cgyro', node['INPUTS'])
 
     def test_staging_cleanup_requires_verified_zip_and_protects_live_reader(self):
         token, point = 'a' * 32, 'p000001'

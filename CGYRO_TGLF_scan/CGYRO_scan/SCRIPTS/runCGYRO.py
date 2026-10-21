@@ -1,5 +1,7 @@
 # Validate the selected endpoint, then run the unified 1D/2D/3D collector.
-defaultVars(wait_for_completion=True, batch_id='', continuation=None)
+from builtins import print
+print('[CGYRO] Run entry started; validating endpoint and scan settings.', flush=True)
+defaultVars(wait_for_completion=True, batch_id='', continuation=None, check_temp_start=True)
 rmt_setup=root['SETTINGS']['REMOTE_SETUP']
 setup=root['SETTINGS']['SETUP']
 
@@ -42,5 +44,6 @@ if setup['icgyro'] == 0 and 'input.gyro' not in root['INPUTS']:
 idimrun = int(setup['idimrun'])
 if idimrun not in (0, 1, 2, 3):
     config_error('CGYRO parameter-axis count must be 0, 1, 2, or 3')
+print('[CGYRO] Loading scan preparation workflow.', flush=True)
 root['SCRIPTS']['CGYROScan.py'].run(wait_for_completion=wait_for_completion,
-    batch_id=batch_id, continuation=continuation)
+    batch_id=batch_id, continuation=continuation, check_temp_start=check_temp_start)
