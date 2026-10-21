@@ -102,7 +102,7 @@ def compact(source, output, code_project, report_path):
     module_path = '/'.join(module)
     with zipfile.ZipFile(source) as archive, zipfile.ZipFile(code_project) as code:
         released = rows(code.read('OMFITsave.txt'))
-        for library in ('OMFITlib_cgyro_checkpoint', 'OMFITlib_cgyro_storage'):
+        for library in ('OMFITlib_cgyro_checkpoint', 'OMFITlib_cgyro_storage', 'OMFITlib_cgyro_storage_files'):
             path = 'CGYRO_TGLF_scan/LIB/' + library + '.py'
             if (('CGYRO_TGLF_scan', 'LIB', library) not in released
                     or code.read(path) != (Path(__file__).resolve().parents[1] / path).read_bytes()):

@@ -5,7 +5,7 @@ OMFIT therefore saves the directory once and can reload it without a custom data
 class. Only explicit readers resolve indexes into temporary, unsaved views.
 """
 from builtins import (OSError, RuntimeError, ValueError, any, dict, getattr, hasattr,
-                      isinstance, iter, len, list, max, open, set, sorted, str, sum, tuple, type)
+                      int, isinstance, iter, len, list, max, open, set, sorted, str, sum, tuple, type)
 from copy import deepcopy
 import hashlib
 import json
@@ -13,17 +13,18 @@ import os
 import re
 from omfit_classes.omfit_gacode import OMFITcgyro
 from OMFITlib_cgyro_checkpoint import select_checkpoint
+from OMFITlib_cgyro_storage_files import (FILE_STORE, SubmissionFiles,
+                                         file_reference_id, native_kind, resolve_file)
 
 STORE = 'RESULT_STORE'
 REF = '__RESULT_REF__'
-BRANCHES = ('RUN_DB', 'Cases', 'RUN_HISTORY', 'OUTPUTScan', 'RUN_INDEX')
+BRANCHES = ('RUN_DB', 'Cases', 'RUN_HISTORY', 'OUTPUTScan', 'RUN_INDEX', 'LEGACY_UNCLASSIFIED', 'OUTPUTS')
 
 
 def is_result(node):
-    names = {base.__name__ for base in type(node).__mro__}
     # Derived diagnostic objects may carry extra in-memory state. Do not
     # collapse those merely because they originated from the same directory.
-    return type(node).__name__ == 'OMFITcgyro' or ('OMFITlazyLoad' in names and getattr(node, 'cls', '') == 'OMFITcgyro')
+    return native_kind(node, 'OMFITcgyro')
 
 
 def _file_node(node):
@@ -55,12 +56,41 @@ def resolve_result(module, node):
 
 def result_view(module, node):
     """Return plain runtime scaffolding; never attach this view to the tree."""
+    if file_reference_id(node) is not None:
+        return resolve_file(module, node)
     key = reference_id(node)
     if key is not None:
         return resolve_result(module, node)
     if _file_node(node) or not hasattr(node, 'items'):
         return node
     return {key: result_view(module, value) for key, value in node.items()}
+
+
+def submission_file(module, manifest, name, point=None):
+    """Find a frozen input even after reopening a project on another machine.
+
+    Point ZIP names on disk may belong to another deduplicated point. Callers
+    that upload them must deploy to the requested point basename explicitly.
+    """
+    token = manifest.get('run_token', '')
+    candidates = []
+    if token and module.get('RUN_MANIFEST', {}).get('run_token', '') == token:
+        candidates.append(module.get('Cases', {}).get(manifest.get('case_tag', ''), {}))
+    candidates.append(module.get('RUN_HISTORY', {}).get(token, {}).get('cases', {}))
+    for cases in candidates:
+        node = cases.get(point, {}) if point is not None else cases
+        if not _file_node(node) and hasattr(node, 'get'):
+            value = node.get(name, None)
+            if value is not None:
+                value = resolve_file(module, value)
+                path = getattr(value, 'filename', '')
+                if path and os.path.isfile(path):
+                    return path
+    original = manifest.get('source_local_workDir', manifest.get('local_workDir', ''))
+    path = os.path.join(str(original), str(point) + '.zip' if point is not None else name)
+    if not original or not os.path.isfile(path):
+        raise ValueError('Frozen CGYRO submission file is missing: ' + path)
+    return path
 
 
 def content_key(files):
@@ -177,7 +207,7 @@ def store_result(module, result, factory=dict):
     if not is_result(pool[key]):
         raise ValueError('Invalid physical CGYRO result: ' + key)
     state = module.setdefault('RESULT_STORAGE', factory())
-    state.update(dict(version=2, checkpoint_policy=1))
+    state.update(dict(version=3, checkpoint_policy=1))
     state.setdefault('bytes', factory())[key] = sum(row[1] for row in files)
     state.setdefault('checkpoints', factory())[key] = json.dumps(checkpoint, sort_keys=True)
     return _reference(key, factory)
@@ -195,6 +225,7 @@ def compact_storage(module, factory=dict):
     sizes = dict(previous_state.get('bytes', {}))
     checkpoints = dict(previous_state.get('checkpoints', {}))
     additions, plans, paths, remapped = {}, {}, {}, {}
+    submissions = SubmissionFiles(module, factory)
     raw_bytes, raw_copies = 0, 0
 
     def plan_result(node):
@@ -213,10 +244,15 @@ def compact_storage(module, factory=dict):
     # redirect its public indexes. Unreferenced old owners are pruned later.
     if previous_state.get('checkpoint_policy', 0) != 1:
         for old, node in pool.items():
-            remapped[old] = plan_result(node)
+            if old != FILE_STORE:
+                remapped[old] = plan_result(node)
 
     def convert(node):
         nonlocal raw_bytes, raw_copies
+        file_key = file_reference_id(node)
+        if file_key is not None:
+            resolve_file(module, node)
+            return submissions.reference(file_key)
         key = reference_id(node)
         if key is not None:
             if key not in pool and key not in additions:
@@ -229,6 +265,8 @@ def compact_storage(module, factory=dict):
             return _reference(key, factory)
         if _file_node(node) or not hasattr(node, 'items'):
             return deepcopy(node)
+        if submissions.pending(node):
+            return submissions.convert_bundle(node, convert)
         result = factory()
         for key, value in node.items():
             result[key] = convert(value)
@@ -238,33 +276,49 @@ def compact_storage(module, factory=dict):
     def has_raw(node):
         if is_result(node):
             return True
+        if file_reference_id(node) is not None:
+            resolve_file(module, node)
+            return False
         key = reference_id(node)
         if key is not None:
             return key in remapped
         if _file_node(node) or not hasattr(node, 'items'):
             return False
+        if submissions.pending(node):
+            return True
         return any(has_raw(value) for value in node.values())
 
     for branch in BRANCHES:
         if branch in module and has_raw(module[branch]):
             plans[branch] = convert(module[branch])
+    submissions.verify_sources()
     original = {branch: module[branch] for branch in plans}
     previous_sizes = module.get('RESULT_STORAGE', None)
     created_pool = STORE not in module
     target = module.setdefault(STORE, factory())
+    created_files = FILE_STORE not in target
     try:
         for key, value in additions.items():
             target[key] = value
+        if submissions.additions:
+            files = target.setdefault(FILE_STORE, factory())
+            for key, value in submissions.additions.items():
+                files[key] = value
         for branch, replacement in plans.items():
             module[branch] = replacement
         state = factory()
-        state.update(dict(version=2, checkpoint_policy=1, bytes=sizes, checkpoints=checkpoints))
+        state.update(dict(version=3, checkpoint_policy=1, bytes=sizes, checkpoints=checkpoints,
+                          file_bytes=submissions.sizes))
         module['RESULT_STORAGE'] = state
     except BaseException:
         for branch, value in original.items():
             module[branch] = value
         for key in additions:
             target.pop(key, None)
+        for key in submissions.additions:
+            target.get(FILE_STORE, {}).pop(key, None)
+        if created_files:
+            target.pop(FILE_STORE, None)
         if created_pool:
             module.pop(STORE, None)
         if previous_sizes is None:
@@ -273,9 +327,14 @@ def compact_storage(module, factory=dict):
             module['RESULT_STORAGE'] = previous_sizes
         raise
     reports = [json.loads(value) for key, value in checkpoints.items() if key in target]
-    return dict(converted_copies=raw_copies, physical_results=len(target),
-                duplicate_bytes=max(0, raw_bytes - sum(sizes[key] for key in additions)),
-                physical_bytes=sum(sizes.get(key, 0) for key in target),
+    return dict(converted_copies=raw_copies, physical_results=len(target) - int(FILE_STORE in target),
+                converted_input_zips=submissions.converted, expanded_input_bytes=submissions.omitted_bytes,
+                retained_expanded_files=submissions.retained_files,
+                input_zip_bytes=sum(submissions.sizes.get(key, 0) for key in target.get(FILE_STORE, {})),
+                duplicate_bytes=max(0, raw_bytes - sum(sizes[key] for key in additions)) +
+                    max(0, submissions.raw_bytes - sum(submissions.sizes[key] for key in submissions.additions)) +
+                    submissions.omitted_bytes,
+                physical_bytes=sum(sizes.get(key, 0) for key in target if key != FILE_STORE),
                 checkpoint_warnings=sum(1 for report in reports if report.get('warning', '')),
                 backup_checkpoints=sum(1 for report in reports if report.get('selected', '') == 'bin.cgyro.restart.old'))
 
@@ -283,9 +342,14 @@ def compact_storage(module, factory=dict):
 def prune_storage(module):
     """Drop unreachable pool entries from the saved tree, never delete files."""
     pool = module.get(STORE, {})
-    used = set()
+    used, used_files = set(), set()
 
     def visit(node):
+        file_key = file_reference_id(node)
+        if file_key is not None:
+            resolve_file(module, node)
+            used_files.add(file_key)
+            return
         key = reference_id(node)
         if key is not None:
             if key not in pool or not is_result(pool[key]):
@@ -298,11 +362,17 @@ def prune_storage(module):
     for key, value in module.items():
         if key not in (STORE, 'RESULT_STORAGE'):
             visit(value)
-    stale = [key for key in pool if key not in used]
+    stale = [key for key in pool if key != FILE_STORE and key not in used]
+    files = pool.get(FILE_STORE, {})
+    stale_files = [key for key in files if key not in used_files]
     sizes = module.get('RESULT_STORAGE', {}).get('bytes', {})
     checkpoints = module.get('RESULT_STORAGE', {}).get('checkpoints', {})
+    file_sizes = module.get('RESULT_STORAGE', {}).get('file_bytes', {})
     for key in stale:
         del pool[key]
         sizes.pop(key, None)
         checkpoints.pop(key, None)
-    return len(stale)
+    for key in stale_files:
+        del files[key]
+        file_sizes.pop(key, None)
+    return len(stale) + len(stale_files)

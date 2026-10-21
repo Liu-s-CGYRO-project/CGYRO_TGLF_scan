@@ -26,7 +26,7 @@ def queue_records(root):
 
 
 def save_current(root, factory=dict):
-    """Checkpoint the active case; drop duplicate payloads only after publish."""
+    """Save immutable result/input references before copying the active case."""
     manifest = root.get('RUN_MANIFEST', {})
     if not manifest.get('run_token', '') or 'Cases' not in root:
         return  # Metadata-only scheduler views already refer to the saved entry.

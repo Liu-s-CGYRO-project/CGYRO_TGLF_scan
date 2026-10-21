@@ -11,12 +11,15 @@ import hashlib
 import os
 import posixpath
 import re
+import shutil
+import tempfile
 import time
 import uuid
 import zipfile
 from OMFITlib_cgyro_queue import collection_done, save_current, shell_quote, stop_queue, wait_current
 from OMFITlib_cgyro_run_state import linked_local_action, stop_run, submitted_job_id, text_output
 from OMFITlib_cgyro_submission import PROTOCOL, discover_submission, seal_unstarted, submit_command
+from OMFITlib_cgyro_storage import submission_file
 
 
 NON_RETRYABLE_STATES = {'CANCELLED', 'TIMEOUT', 'OUT_OF_MEMORY', 'DEADLINE'}
@@ -298,10 +301,14 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
     original_remote = manifest.get('source_workDir', manifest['workDir'])
     number = int(manifest.get('retry_count', 0)) + 1
     suffix = 'retry_{}_{}'.format(number, uuid.uuid4().hex)
-    local = os.path.join(original_local, suffix)
+    # Reopened projects may no longer have the old OMFIT temporary directory.
+    # Frozen files remain in the tree; stage the retry in a fresh local folder.
+    local = (os.path.join(original_local, suffix) if os.path.isdir(original_local)
+             else tempfile.mkdtemp(prefix='cgyro-' + suffix + '-'))
     remote = posixpath.join(original_remote, suffix)
-    os.makedirs(local)
-    with open(os.path.join(original_local, 'scan.pbs'), 'rb') as stream:
+    if os.path.isdir(original_local):
+        os.makedirs(local)
+    with open(submission_file(root, manifest, 'scan.pbs'), 'rb') as stream:
         script_bytes = stream.read()
     if hashlib.sha256(script_bytes).hexdigest() != manifest['submit_script_sha256']:
         raise ValueError('Original submission script changed; retry was not submitted.')
@@ -325,8 +332,12 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
         stream.write(script)
     inputs = [ascii_reader(script_path)]
     for point in points:
-        path = os.path.join(original_local, point + '.zip')
-        with zipfile.ZipFile(path) as archive:
+        path = submission_file(root, manifest, 'zip', point=point)
+        # A deduplicated owner may have another basename. Verify the staged
+        # bytes that will actually be uploaded, not a separately copied file.
+        upload_path = os.path.join(local, point + '.zip')
+        shutil.copyfile(path, upload_path)
+        with zipfile.ZipFile(upload_path) as archive:
             expected_names = manifest['input_sha256'][point]
             if len(archive.namelist()) != len(expected_names) or set(archive.namelist()) != set(expected_names):
                 raise ValueError('Original retry archive member list changed: ' + point)
@@ -337,7 +348,7 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
                         digest.update(chunk)
                 if digest.hexdigest() != expected:
                     raise ValueError('Original retry input changed: ' + point + '/' + name)
-        inputs.append(path_reader(path))
+        inputs.append(path_reader(upload_path))
     attempts = list(manifest.get('attempts', []))
     attempts.append(dict(job_id=manifest.get('job_id', ''), workDir=manifest['workDir'],
         points=list(manifest.get('active_points', manifest['points'])), status=manifest.get('status', ''),

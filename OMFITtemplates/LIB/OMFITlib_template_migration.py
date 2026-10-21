@@ -6,7 +6,7 @@ Names and archived metadata are evidence. Current GUI settings are never used
 to guess the radius, isotope, time or remote directory of an old calculation.
 """
 from builtins import (KeyError, TypeError, ValueError, all, any, bool, dict, enumerate, float, getattr,
-                      id, isinstance, len, list, object, range, repr, set, sorted, str, tuple, type, zip)
+                      id, isinstance, len, list, object, range, repr, set, sorted, str, tuple, type, vars, zip)
 import ast
 import hashlib
 import math
@@ -125,6 +125,32 @@ class ArchiveIndex:
     def __init__(self):
         self.guards, self.sources, self.issues = [], [], []
         self.input_guards = {}
+        self.cgyro_pool = {}
+
+    @staticmethod
+    def cgyro_object(value):
+        return kind(value, 'OMFITcgyro') or (kind(value, 'OMFITlazyLoad') and
+            vars(value).get('tp', vars(value).get('cls', '')) == 'OMFITcgyro')
+
+    def cgyro_payload(self, value):
+        """Recognize indexed output without materializing it in a second tree.
+
+        The updater runs before new application libraries are installed, so
+        this small format check is independent of the project's import hook.
+        """
+        if self.cgyro_object(value):
+            return True
+        if not branch(value):
+            return False
+        contents = self.read(value)
+        if '__RESULT_REF__' not in contents:
+            return False
+        key = contents['__RESULT_REF__']
+        if len(contents) != 1 or not isinstance(key, str) or re.fullmatch(r'[0-9a-f]{64}', key) is None:
+            raise ValueError('Invalid CGYRO result reference')
+        if not self.cgyro_object(self.get(self.cgyro_pool, key, None)):
+            raise ValueError('Missing CGYRO result owner: ' + key)
+        return True
 
     def read(self, node):
         if not branch(node):
@@ -207,7 +233,7 @@ class ArchiveIndex:
                     order = axes
                     for ky, payload in self.read(contents['lin']).items():
                         self.number(ky)
-                        if not kind(payload, 'OMFITcgyro'):
+                        if not self.cgyro_payload(payload):
                             raise ValueError('Unrecognized CGYRO payload')
                         points.append((here + ['lin', ky], coordinate, ky))
                 elif len(contents) == 1:
@@ -263,7 +289,7 @@ class ArchiveIndex:
                 paths = {tuple(row.get('result_path', [])) for row in table.values()}
                 leaves = set()
                 def visit(node, path):
-                    if kind(node, 'OMFITcgyro'):
+                    if self.cgyro_payload(node):
                         leaves.add(tuple(path))
                     elif branch(node) and len(path) < 9:
                         for key, child in self.read(node).items():
@@ -285,6 +311,10 @@ class ArchiveIndex:
 
     def input_identity(self, payload):
         """Read frozen scalar input text, never the current input or output arrays."""
+        if not self.cgyro_object(payload):
+            if not self.cgyro_payload(payload):
+                raise ValueError('Unrecognized CGYRO result')
+            payload = self.get(self.cgyro_pool, self.get(payload, '__RESULT_REF__', ''), None)
         path = Path(payload.filename) / 'input.cgyro'
         if not path.is_file() or path.stat().st_size > 262144:
             self.input_guards[str(path)] = None
@@ -312,6 +342,7 @@ class ArchiveIndex:
         labelled source group, without invented job/restart provenance.
         """
         runs, pending = {}, {}
+        self.cgyro_pool = self.get(module, 'RESULT_STORE', {})
         previous = self.get(module, 'LEGACY_UNCLASSIFIED', {})
         if branch(previous):
             pending.update({key: Reference(value) for key, value in self.read(previous).items()})
@@ -320,7 +351,7 @@ class ArchiveIndex:
         old_run_db = self.get(module, 'RUN_DB', None)
         if branch(old_run_db) and self.read(old_run_db):
             self.retain(pending, 'Prior empty RUN_DB structure', old_run_db)
-        single = kind(output, 'OMFITcgyro')
+        single = self.cgyro_payload(output)
         if single:
             try:
                 scalar, _ = self.input_identity(output)
@@ -331,7 +362,7 @@ class ArchiveIndex:
                 return dict(RUN_DB=Layout({}), OUTPUTScan=Layout({}), LEGACY_UNCLASSIFIED=Layout(pending))
         else:
             branches = self.read(output)
-        direct_ky = bool(branches) and all(kind(value, 'OMFITcgyro') for value in branches.values())
+        direct_ky = bool(branches) and all(self.cgyro_payload(value) for value in branches.values())
         if direct_ky:
             try:
                 for ky in branches:
@@ -352,7 +383,7 @@ class ArchiveIndex:
                     axes, points = ['REFERENCE'], []
                     for ky, payload in self.read(data).items():
                         self.number(ky)
-                        if not kind(payload, 'OMFITcgyro'):
+                        if not self.cgyro_payload(payload):
                             raise ValueError('Unrecognized ky-only CGYRO result')
                         points.append((['KY_ONLY', '0.00000', 'lin', ky], [0], ky))
                     key, ky_only = 'KY_ONLY', True
@@ -436,13 +467,14 @@ class ArchiveIndex:
 
     def cgyro(self, module):
         start = len(self.sources)
+        self.cgyro_pool = self.get(module, 'RESULT_STORE', {})
         original = self.get(module, 'RUN_DB', None)
         output = self.get(module, 'OUTPUTScan', None)
         has_records = original is not None and (not branch(original) or
             any(not branch(run) or bool(self.read(run)) for run in self.read(original).values()))
-        from_output = not has_records and (kind(output, 'OMFITcgyro') or branch(output) and bool(self.read(output)))
+        from_output = not has_records and (self.cgyro_payload(output) or branch(output) and bool(self.read(output)))
         if from_output:
-            if kind(output, 'OMFITcgyro'):
+            if self.cgyro_payload(output):
                 return self.bare_output(module, output, {})
             original = self.output_case(module, output)
             case = list(list(original.values())[0].values())[0]
@@ -505,7 +537,7 @@ class ArchiveIndex:
                                 node = contents[source]
                                 for part in row['result_path'][1:]:
                                     node = self.read(node)[part]
-                                if not kind(node, 'OMFITcgyro'):
+                                if not self.cgyro_payload(node):
                                     raise ValueError('Archived task does not point to a CGYRO result')
                             axes = info.get('scan_axes', [])
                             key = ('KY_ONLY' if info.get('scan_dimensions', None) == 0 else

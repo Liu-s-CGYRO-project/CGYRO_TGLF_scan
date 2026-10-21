@@ -380,7 +380,8 @@ for new_dir, overrides, point_metadata in points:
                     digest.update(chunk)
                 checksums[name] = digest.hexdigest()
             archive.write(path, name)
-            prepared[name] = OMFITgacode(path) if name == 'input.cgyro' else OMFITpath(path)
+            # The ZIP is the immutable submission input. Keeping each expanded
+            # restart here as well used to multiply large files in history.
     prepared['zip'] = OMFITpath(zip_path)
     prepared_cases[new_dir] = prepared
     inputs.append(prepared['zip'])

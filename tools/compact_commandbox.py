@@ -16,21 +16,17 @@ import time
 from urllib import error, request
 import zipfile
 
-TOOL_VERSION = '1.0.0'
-PROJECT_VERSION = '1.22.31'
+TOOL_VERSION = '1.1.0'
+PROJECT_VERSION = '1.22.38'
 REPOSITORY = 'Liu-s-CGYRO-project/CGYRO_TGLF_scan'
 DEFAULT_PROXY = 'http://47.102.120.146:18889'
-PACKAGES = {
-    'code': dict(name='CGYRO_TGLF_scan_code_only_1.22.31.zip', bytes=996878,
-                 sha256='0afe5571d55158eff719ad135dd8f7b3388c44d3a80edf00c55abae3f178b064'),
-    'template': dict(name='tdxy-liu__cgyro-tglf__1.22.31.omfittpl.zip', bytes=999546,
-                     sha256='54fbd75ecceeaa3997534ae2856f6ae4b1c61b23ebbe9c5b03c56c3b56864a10'),
-}
+PACKAGES = {'code': {'name': 'CGYRO_TGLF_scan_code_only_1.22.38.zip', 'bytes': 972671, 'sha256': '22b2127a8273feed6cca0a9de24e3d98b92a3c669cd84e9198da7c91b470cba4'}, 'template': {'name': 'tdxy-liu__cgyro-tglf__1.22.38.omfittpl.zip', 'bytes': 963880, 'sha256': '7da22e7c49f2344ac58bfd9369e5f2d0e6de1ce39efb17bdf69e8b7c4db1d002'}}
+
 REQUIRED = {
-    (): ('OMFITlib_cgyro_storage', 'OMFITlib_cgyro_checkpoint', 'OMFITlib_cgyro_continue',
+    (): ('OMFITlib_cgyro_storage', 'OMFITlib_cgyro_storage_files', 'OMFITlib_cgyro_checkpoint', 'OMFITlib_cgyro_continue',
          'OMFITlib_cgyro_results', 'OMFITlib_compare_cgyro_data', 'OMFITlib_compare_series',
          'OMFITlib_compare_status'),
-    ('CGYRO_scan',): ('OMFITlib_cgyro_storage', 'OMFITlib_cgyro_checkpoint',
+    ('CGYRO_scan',): ('OMFITlib_cgyro_storage', 'OMFITlib_cgyro_storage_files', 'OMFITlib_cgyro_checkpoint',
                     'OMFITlib_cgyro_continue', 'OMFITlib_cgyro_queue'),
 }
 
@@ -138,9 +134,11 @@ def compact(omfit, proxy=DEFAULT_PROXY):
     print('Checking checkpoints and hashing/copying retained result files. Large projects can take several minutes ...')
     report = api.compact_storage(node, OMFITtree)
     report['unreferenced_results'] = api.prune_storage(node)
-    report['physical_results'] = len(node['RESULT_STORE'])
+    report['physical_results'] = len([key for key in node['RESULT_STORE'] if key != '__FILES__'])
     sizes = node['RESULT_STORAGE'].get('bytes', {})
-    report['physical_bytes'] = sum(sizes.get(key, 0) for key in node['RESULT_STORE'])
+    report['physical_bytes'] = sum(sizes.get(key, 0) for key in node['RESULT_STORE'] if key != '__FILES__')
+    file_sizes = node['RESULT_STORAGE'].get('file_bytes', {})
+    report['input_zip_bytes'] = sum(file_sizes.get(key, 0) for key in node['RESULT_STORE'].get('__FILES__', {}))
     print('CGYRO compaction completed: ' + json.dumps(report, sort_keys=True))
     print('Checkpoint details: CGYRO_scan / RESULT_STORAGE / checkpoints')
     print('Use OMFIT Save As to save a NEW ZIP. Existing ZIPs and server files have not been deleted.')

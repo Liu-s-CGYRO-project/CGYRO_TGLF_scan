@@ -4,6 +4,21 @@
 
 每份结果只归 CGYRO_scan/RESULT_STORE 所有。Cases、RUN_HISTORY、OUTPUTScan、RUN_DB 和旧 RUN_INDEX 保存 __RESULT_REF__ 小索引。按实际保留文件的名称、长度、SHA-256 去重，不按点号或文件大小合并。部分扫描、独有历史、原输入 ZIP、场与时间数据保留。缺文件、内容变化、软链接或悬空索引会中止。
 
+## 提交 ZIP 与旧结果的补充去重（1.22.38）
+
+先更新模板管理器到 1.10.21，再更新工程到 1.22.38。已有工程在“项目概览 → 结果管理 → 优化 CGYRO 归档（去重）”执行整理，完成后另存。更新代码本身不会立即重写所有旧数据。
+
+- 去重范围包含 LEGACY_UNCLASSIFIED、旧 OUTPUTS，以及 RUN_DB、OUTPUTScan、Cases、RUN_HISTORY、RUN_INDEX。未分类旧数据保持原标签，不靠当前输入猜测旧结果身份。
+- 原生 OMFITcgyro 结果仍位于 RESULT_STORE/<内容摘要>；提交 ZIP 位于 RESULT_STORE/__FILES__/<文件摘要>。没有新增顶层数据分支。Cases 与历史中的 zip 叶保存 __FILE_REF__，RESULT_STORAGE/file_bytes 仅记录体积。
+- 新提交只在保存树中保留 ZIP，不再同时挂载展开的重启文件。旧提交的 ZIP 先核对完整成员及 CRC；普通 OMFITpath 展开文件只有名称、长度和 SHA-256 与 ZIP 成员相同才从保存树移除。内容不同、未包含在 ZIP 内的文件和可能有未保存编辑的 OMFITgacode 输入继续保留。
+- 所有新物理所有者和替代索引准备成功后才替换原分支；失败或 Abort 恢复原树。prune_storage 先核对全部可达引用，再移除无引用的结果/ZIP 条目，不删除原文件。
+- 取消后未开始点从原 ZIP 恢复，已有结果仍使用原结果检查点。重试可从保存树读取 ZIP 和提交脚本，上传时重新使用 p000xxx.zip 点名，并校验实际上传副本的成员摘要。手动收集仍不提交补算。
+- 管理器认识并核对 __RESULT_REF__ 的物理所有者，更新时不会因结果已经去重就将其误归入 LEGACY_UNCLASSIFIED。已经留在未分类分支的旧结果会去重但不会被无依据地重新归类。
+
+界面节点仍然存在，因为它们承担输入、历史和索引功能。去重不合并内容不同的历史结果，不跨不同结果目录做逐文件/分块压缩，也不清理旧工程 ZIP、OMFIT 临时目录或服务器目录；因此不能承诺整个磁盘只有一份检查点。归档报告中的减少字节数是保存树载荷估算，不是原磁盘已释放空间，也不是 ZIP 压缩后的实际差值。
+
+该变更完成 Python 3.9 语法、符号/接口与安装包校验，并通过 10 项隔离文件与元数据测试。测试中的原生对象使用最小路径替身；真实 OMFIT 保存/重开、GUI、取消和求解器续算仍需用户环境验证。
+
 ## 检查点只保留一份
 
 1. 当前 bin.cgyro.restart 通过检查，并有与时间历史匹配的 out.cgyro.tag：归档副本只保留当前文件。
@@ -28,10 +43,12 @@
 
 ## 离线整理已有 ZIP
 
+此工具只整理原生结果目录；提交 ZIP 和历史快照的补充整理使用上方工程内去重入口。已有 RESULT_STORE 的工程也使用工程内入口。
+
 在仓库根目录执行，代码 ZIP 应与本工具属于同一发布：
 
 ```powershell
-python -B -X utf8 tools/compact_cgyro_project.py OMFIT_updated.zip --output OMFIT_compact.zip --code-project CGYRO_TGLF_scan_code_only_1.22.31.zip --report compaction.json
+python -B -X utf8 tools/compact_cgyro_project.py OMFIT_updated.zip --output OMFIT_compact.zip --code-project CGYRO_TGLF_scan_code_only_1.22.38.zip --report compaction.json
 ```
 
 只读取 ZIP、二进制和字面保存清单，不运行项目脚本、表达式或 pickle。普通输入 / 设置 / 自定义代码和其他文件逐字节保留，安装同版读取库；新 ZIP 的首个成员为 OMFITsave.txt。写完逐文件验证 SHA-256 与 CRC，确认原文件大小和修改时间未变后才将 .partial 改为最终名称。需要源工程加新副本的磁盘空间。工具处理已统一的 CGYRO_TGLF_scan/CGYRO_scan；独立旧模块先通过管理器迁入。

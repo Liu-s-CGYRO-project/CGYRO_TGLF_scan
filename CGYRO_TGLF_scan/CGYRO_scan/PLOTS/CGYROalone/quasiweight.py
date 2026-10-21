@@ -5,6 +5,7 @@ different units are not added together.
 """
 import numpy as np
 import matplotlib.pyplot as plt
+from OMFITlib_cgyro_storage import resolve_result
 
 def _flux_spectrum(case, channel_name, species, field):
     data = case['flux_ky'][channel_name].isel(species=species)
@@ -21,7 +22,7 @@ def _ratio(numerator, denominator):
 
 settings = root['SETTINGS']['PLOTS']['nl']
 case_name = settings['case_t_trace']
-case = root['OUTPUTS']['NonLinear'][case_name]
+case = resolve_result(root, root['OUTPUTS']['NonLinear'][case_name])
 channels = settings['channel']
 field = int(settings['i_field'])
 if field not in (-1, 0, 1, 2):

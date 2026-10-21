@@ -1,11 +1,12 @@
 # some commonly used variables
+from OMFITlib_cgyro_storage import result_view
 pltnl=root['SETTINGS']['PLOTS']['nl']
 t_ave=pltnl['t_ave']  # average over [1-t_ave,1]*time_tot
 case_plot=pltnl['case_plot']
 n_case=len(case_plot)
 channel=pltnl['channel']  # which channel to be compared, including  Q_*, Gamma_*,Pi_*, multiple value is available
 n_channel=len(channel)
-outputs=root['OUTPUTS']['NonLinear']
+outputs=result_view(root, root['OUTPUTS']['NonLinear'])
 freq_lin=pltnl['freq_lin']
 tick_scale={0:'linear',1:'log'}
 effnum=root['SETTINGS']['SETUP']['effnum']

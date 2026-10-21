@@ -1,6 +1,7 @@
 """Plot triad transfer with per-case windows and actual result dimensions."""
 import numpy as np
 import matplotlib.pyplot as plt
+from OMFITlib_cgyro_storage import result_view
 
 def _average_transfer(case, quantity, windows, window, end, theta, kx, ky, species=0):
     if windows < 1 or not 0 < window <= end <= 1:
@@ -64,7 +65,7 @@ if int(n_split) != n_split:
 n_split = int(n_split)
 loader = 'collect.py' if root['SETTINGS']['SETUP']['icgyro']==1 else 'collect_gyro.py'
 root['PLOTS']['CGYROalone']['assist'][loader].run()
-outputs = root['OUTPUTS']['NonLinear']
+outputs = result_view(root, root['OUTPUTS']['NonLinear'])
 case_names = list(settings['case_plot'])
 if not case_names:
     raise ValueError('Select at least one nonlinear case')

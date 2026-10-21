@@ -1,6 +1,7 @@
 # 99949 version.
 import sys
 import os
+from OMFITlib_cgyro_storage import resolve_result
 
 # Set this env var to "1" before importing collect to load only class/function definitions.
 _COLLECT_IMPORT_ONLY = os.environ.get('CGYRO_COLLECT_IMPORT_ONLY', '0') == '1'
@@ -975,7 +976,7 @@ if (not _COLLECT_IMPORT_ONLY) and ('root' in globals()):
     ncount=0
     for case in case_plot:
         try:
-            case_node=output_cases[case]
+            case_node=resolve_result(root, output_cases[case])
         except Exception as exc:
             raise KeyError('Cannot find nonlinear case '+str(case)+' in the selected output tree') from exc
         if isinstance(t_ave,float):

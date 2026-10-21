@@ -13,7 +13,7 @@ BRANCHES = (
     # RUN_INDEX is also a legacy browser source. Clear the complete result set
     # together, while INPUTS and prepared BATCH_INPUTS remain available.
     (('CGYRO_scan',), ('OUTPUTS', 'OUTPUTScan', 'RUN_DB', 'RUN_MANIFEST', 'RUN_BATCH',
-                     'RUN_HISTORY', 'RUN_INDEX', 'Cases', '_PLOT_CACHE', 'RESULT_STORE', 'RESULT_STORAGE')),
+                     'RUN_HISTORY', 'RUN_INDEX', 'Cases', 'LEGACY_UNCLASSIFIED', '_PLOT_CACHE', 'RESULT_STORE', 'RESULT_STORAGE')),
     (('TGLF_scan',), ('RUN_DB',) + RESULT_KEYS),
     (('TGLF_scan', 'TGLF'), RESULT_KEYS),
     (('TGLF_scan', 'TGYRO'), ('OUTPUTS', 'RUN_DB')),

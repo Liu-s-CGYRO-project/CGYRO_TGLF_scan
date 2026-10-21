@@ -980,10 +980,11 @@ class ProjectActions:
         node = module(self.root, 'cgyro')
         report = compact_storage(node, self.factory)
         report['unreferenced_results'] = prune_storage(node)
-        self.settings['message'] = ('归档已去重：处理 {} 份结果，重复载荷约 {:.2f} GB。'
+        self.settings['message'] = ('归档已去重：处理 {} 份结果、{} 份提交 ZIP，减少归档载荷约 {:.2f} GB。'
             '检查点已检测择一保留；{} 个结果有备用文件或检查告警，详见 RESULT_STORAGE/checkpoints。'
             '请另存工程以减少 ZIP 体积。').format(
-                report['converted_copies'], report['duplicate_bytes'] / 1e9, report['checkpoint_warnings'])
+                report['converted_copies'], report['converted_input_zips'],
+                report['duplicate_bytes'] / 1e9, report['checkpoint_warnings'])
         return report
 
     def _cgyro_script(self, title, name, **kwargs):
