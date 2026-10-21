@@ -2,6 +2,7 @@
 
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
+from OMFITlib_cgyro_archive import catalog_runs
 from OMFITlib_plot_sources import context_results
 from OMFITlib_cgyro_storage import result_view
 from OMFITlib_compare_style import cgyro_case_caption, compact_scan_value
@@ -55,7 +56,7 @@ from OMFITlib_compare_core import (
 
 def collect_cgyro_series(root, ctx, runid, nr, para, value):
     """Read one CGYRO spectrum and report malformed/missing samples explicitly."""
-    node = root.get('CGYRO_scan', {}).get('RUN_DB', {})
+    node = catalog_runs(root.get('CGYRO_scan', {}))
     for token in (runid, nr):
         key = resolve_key(node, token)
         if key is None:
@@ -217,7 +218,7 @@ def read_settings(root, ctx, compare_mode):
     elif compare_mode == 'TGLF_vs_CGYRO':
         rho_selected = tglf_state.get('rho_selected', [])
         nr_pair_cfg = cgyro_state.get('rho_pair_cfg', {})
-        run_db = root['CGYRO_scan']['RUN_DB']
+        run_db = catalog_runs(root['CGYRO_scan'])
         runid_key = resolve_key(run_db, runid)
         for rho in rho_selected:
             rho_key = str(rho)

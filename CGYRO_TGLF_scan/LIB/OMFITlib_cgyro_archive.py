@@ -1,11 +1,96 @@
 """Stable case identities and independent parameter scans within each case."""
-from builtins import (TypeError, ValueError, all, bool, dict, enumerate, float, getattr,
-                      hasattr, int, len, list, max, range, set, sorted, str, tuple, zip)
+from builtins import (OSError, TypeError, ValueError, all, any, bool, dict, enumerate, float, getattr,
+                      hasattr, int, len, list, max, open, range, reversed, set, sorted, str, tuple, type, zip)
 from collections import OrderedDict
 from copy import deepcopy
 import math
+import os
 import re
 from OMFITlib_cgyro_db import legacy_branch, metadata_value
+
+
+def clean_run_id(value):
+    """Strip only generated legacy suffixes; job state is never a directory."""
+    return re.sub(r'(?: \[(?:partial [0-9a-f]+|recovered [^\]]+|legacy revision [0-9]+)\])+$', '', str(value)).strip()
+
+
+def grouped_case_path(value, info=None):
+    """Return the persistent radius / isotope hierarchy for a logical case ID."""
+    info = {} if info is None else info
+    parts = case_parts(canonical_case_key(value, info))
+    if parts is None:
+        nr = info.get('source_nr', info.get('nr', ''))
+        ion = str(info.get('ion_case', info.get('mass', '')))
+        rho = info.get('rho', 'unknown')
+        if not str(nr) or not ion:
+            raise ValueError('Missing archived radius/isotope identity')
+        try:
+            rho = '{:.8g}'.format(float(rho)) if math.isfinite(float(rho)) else 'unknown'
+        except (TypeError, ValueError):
+            rho = 'unknown'
+        parts = str(nr), str(rho), ion
+    nr, rho, ion = parts
+    if any('/' in str(part) or str(part).startswith('__') for part in parts):
+        raise ValueError('Unsafe archived radius/isotope identity')
+    return ['nr={}_rho={}'.format(nr, rho), ion]
+
+
+def catalog_runs(module):
+    """Unsaved flat adapter for readers; RUN_DB itself remains radius/ion trees.
+
+    The logical case ID stays stable for job manifests and saved GUI choices.
+    Values are existing nodes, not copied result payloads or a saved cache.
+    """
+    runs = OrderedDict()
+    for rid, source in module.get('RUN_DB', {}).items():
+        if str(rid).startswith('__'):
+            continue
+        run = OrderedDict()
+        source = metadata_value(source)
+        if any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(source).__mro__) or not hasattr(source, 'items'):
+            runs[rid] = run
+            continue
+        for key, node in metadata_value(source).items():
+            if str(key).startswith('__'):
+                continue
+            node = metadata_value(node)
+            metadata = (not any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad')
+                               for base in type(node).__mro__) and hasattr(node, 'items'))
+            if (metadata and re.fullmatch(r'nr=.+_rho=[^_/]+', str(key))
+                    and not any(name in node for name in ('__INFO__', '__SCANS__', '__TASKS__'))):
+                radial = re.fullmatch(r'nr=(.+)_rho=(.+)', str(key))
+                for ion, case in node.items():
+                    if not str(ion).startswith('__'):
+                        run['nr={}__rho={}__ion={}'.format(radial.group(1), radial.group(2), ion)] = case
+            else:
+                run[key] = node
+        runs[rid] = run
+    return runs
+
+
+def case_destination(module, runid, caseid, info=None):
+    """Resolve a read path during both old and grouped-format operation."""
+    run = module.get('RUN_DB', {}).get(runid, {})
+    if caseid in run:
+        return [runid, caseid]
+    return [runid] + grouped_case_path(caseid, info)
+
+
+def output_final_time(result):
+    """Read only the last time row; no solver arrays or restart payload load."""
+    try:
+        with open(os.path.join(result.filename, 'out.cgyro.time'), 'rb') as handle:
+            handle.seek(0, 2)
+            handle.seek(max(0, handle.tell() - 16384))
+            lines = handle.read().splitlines()
+        for line in reversed(lines):
+            fields = line.split()
+            if fields:
+                value = float(fields[0].replace(b'D', b'E').replace(b'd', b'e'))
+                return value if math.isfinite(value) else None
+    except (OSError, TypeError, ValueError):
+        pass
+    return None
 
 
 def scan_key(info, fallback=''):
@@ -41,7 +126,7 @@ def latest_output(module):
     """Read the latest indexed slice for old plotting entries, only in RUN_DB."""
     current = str(module.get('RUN_MANIFEST', {}).get('run_token', ''))
     candidates = []
-    for runid, run in module.get('RUN_DB', {}).items():
+    for runid, run in catalog_runs(module).items():
         if str(runid).startswith('__'):
             continue
         for key, case in run.items():
@@ -122,7 +207,7 @@ def _install_point(payload, path, result, factory):
     return actual
 
 
-def store_scan(destination, data, info, tasks, factory=dict):
+def store_scan(destination, data, info, tasks, factory=dict, prefer_progress=False):
     """Upsert points off-tree: replace matching coordinates, retain other ky.
 
     Keep incoming point IDs for its job/continuation records. Reassign only
@@ -159,14 +244,32 @@ def store_scan(destination, data, info, tasks, factory=dict):
         row.setdefault('run_token', info.get('run_token', ''))
         path = list(row['result_path'])
         path[0] = original
-        points[coordinate] = (str(point), row, _at(data, path), True)
+        result = _at(data, path)
+        if coordinate in points:
+            old_point, old_row, old_result, _ = points[coordinate]
+            old_complete = old_row.get('status', 'loaded') == 'loaded' and not old_row.get('resume_pending', False)
+            new_complete = row.get('status', 'loaded') == 'loaded' and not row.get('resume_pending', False)
+            old_time, new_time = old_row.get('final_time', None), row.get('final_time', None)
+            if ((old_complete and not new_complete and
+                    (old_time is None or new_time is None or float(new_time) <= float(old_time))) or
+                    (not old_complete and not new_complete and old_time is not None
+                     and (new_time is None or float(new_time) < float(old_time))) or
+                    (prefer_progress and old_time is not None and new_time is not None
+                     and float(new_time) < float(old_time))):
+                # Incomplete recollection must not replace a useful completed
+                # result, or roll a checkpoint back to an earlier saved time.
+                row, result = deepcopy(old_row), old_result
+                if str(point) != old_point:
+                    row.setdefault('source_point_id', old_point)
+        points[coordinate] = (str(point), row, result, True)
     reserved = {point for point, _, _, fresh in points.values() if fresh}
+    reserved.update(str(point) for point in info.get('planned_points', []))
     used, payload = set(), factory()
     number = max([int(point[1:]) for point, _, _, _ in points.values()
                   if re.fullmatch(r'p[0-9]{6,}', point)] + [0])
     for point, source, result, fresh in points.values():
         assigned = point
-        if point in used or not fresh and point in reserved:
+        while assigned in used or not fresh and assigned in reserved:
             number += 1
             assigned = 'p{:06d}'.format(number)
         used.add(assigned)
@@ -191,7 +294,7 @@ def store_scan(destination, data, info, tasks, factory=dict):
 
 
 def combine_cases(cases, factory=dict):
-    """Coalesce old revisions off-tree; later scans replace matching axes only."""
+    """Merge indexed points off-tree, retaining every different scan and ky."""
     destination = factory()
     for case in cases:
         records = case_scans(case)
@@ -254,7 +357,7 @@ def validate_preserved_scans(cases, destination, replaced_scan, incoming_tasks=N
 
 def matching_cases(module, runid, identity):
     """Return old case keys oldest-first, with the visible revision last."""
-    run = module.get('RUN_DB', {}).get(runid, {})
+    run = catalog_runs(module).get(runid, {})
     _, aliases = latest_cases(module, runid)
     keys = [key for key in run if not str(key).startswith('__') and hasattr(run[key], 'get')
             and canonical_case_key(key, run[key].get('__INFO__', {})) == identity]
@@ -266,8 +369,14 @@ def matching_cases(module, runid, identity):
 def canonical_case_key(value, info=None):
     """Strip only the UUID suffix formerly generated by the publisher."""
     text = re.sub(r'(?:__run=[0-9a-fA-F]{8})+$', '', str(value))
-    if re.fullmatch(r'nr=.+?__rho=[^_]+__ion=[^_]+', text):
-        return text
+    match = re.fullmatch(r'nr=(.+?)__rho=([^_]+)__ion=([^_]+)', text)
+    if match:
+        nr, rho, ion = match.groups()
+        try:
+            rho = '{:.8g}'.format(float(rho)) if math.isfinite(float(rho)) else 'unknown'
+        except ValueError:
+            pass
+        return 'nr={}__rho={}__ion={}'.format(nr, rho, ion)
     # Give old nr-only records an isotope identity when their metadata has it.
     match = re.fullmatch(r'nr=(.+?)(?:__ion=([^_]+))?', text)
     if match is not None and info is not None:
@@ -298,7 +407,7 @@ def latest_cases(module, runid):
     Former publishers inserted RUN_HISTORY and RUN_DB entries in publication
     order. Use that recorded order, never the random UUID's lexical order.
     """
-    run = module.get('RUN_DB', {}).get(runid, {})
+    run = catalog_runs(module).get(runid, {})
     history = module.get('RUN_HISTORY', {})
     order = {str(token): index for index, token in enumerate(history.keys())}
     current = module.get('RUN_MANIFEST', {})

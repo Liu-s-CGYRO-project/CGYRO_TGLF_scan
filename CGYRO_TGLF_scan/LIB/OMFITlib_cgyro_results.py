@@ -1,9 +1,10 @@
 """RUN_DB-backed CGYRO result browser for one-, two- and three-axis scans."""
+from OMFITlib_cgyro_archive import catalog_runs, case_destination
 from OMFITlib_gui_fonts import configure_window_fonts, style_widget
 from OMFITlib_cgyro_archive import case_scans, latest_cases
 from OMFITlib_cgyro_continue import point_status, previous_final_time, resume_source, stopped_context
 from OMFITlib_cgyro_storage import resolve_result
-from OMFITlib_cgyro_db import legacy_branch, run_records
+from OMFITlib_cgyro_db import legacy_branch, run_records, storage_state
 from OMFITlib_cgyro_present import record_options, record_details
 from OMFITlib_compare_core import cgyro_frequency_history
 from builtins import (Exception, TypeError, ValueError, abs, any, dict, float, int,
@@ -33,7 +34,7 @@ def _view_settings(root):
 
 def _run_options(root):
     module = root.get('CGYRO_scan', {})
-    run_db = module.get('RUN_DB', {})
+    run_db = catalog_runs(module)
     records = OrderedDict()
     covered = set()
     for runid in _stable_keys(run_db):
@@ -56,13 +57,16 @@ def _run_options(root):
                     continue
                 entry = dict(info)
                 entry.update(dict(runid=runid, case_id=case_id, tasks=tasks,
-                                  destination=[runid, case_id]))
+                                  destination=case_destination(module, runid, case_id, info)))
                 records[token] = entry
                 entry.setdefault('scan_key', scan)  # View metadata only; never rename archived branches.
         covered.update((str(runid), str(key)) for key, target in aliases.items() if target in active)
 
     # Pre-1.13 records remain readable, while new records use RUN_DB only.
-    legacy = legacy_branch(module, 'RUN_INDEX')
+    # The grouped catalog already contains every verified scan. Old indexes
+    # retain obsolete directory paths and must not recreate duplicate choices.
+    legacy = ({} if storage_state(module).get('case_layout', '') == 'radius-ion'
+              else legacy_branch(module, 'RUN_INDEX'))
     for token in _stable_keys(legacy):
         if token in records:
             continue
@@ -78,6 +82,10 @@ def _run_options(root):
     for token, manifest in saved.items():
         if manifest.get('collection_status', '') not in ('partial', 'empty'):
             continue
+        # A stopped job's results already share the ordinary scan record.
+        # Keep only the current empty-job entry when it needs a resume action.
+        if token not in records and token != str(current.get('run_token', '')):
+            continue
         try:
             context = stopped_context(module, token)
         except (KeyError, ValueError) as exc:
@@ -85,9 +93,10 @@ def _run_options(root):
             entry['resume_error'] = str(exc)
             records[token] = entry
             continue
-        entry = dict(context['info'])
-        entry.update(dict(tasks=context['view']['__TASKS__'], resume_tasks=context['rows'],
-                          resume_view=context['view'], resume_context=context, stopped_run=True))
+        entry = dict(records.get(token, context['info']))
+        if token not in records:
+            entry.update(dict(tasks=context['view']['__TASKS__'], resume_view=context['view']))
+        entry.update(dict(resume_tasks=context['rows'], resume_context=context, stopped_run=True))
         records[token] = entry
     return records, record_options(records)
 
@@ -307,6 +316,11 @@ class ResultBrowser:
         """Select full task coordinates, independently of the heatmap slice."""
         _, token, entry, _ = selected_record(self.root)
         tasks = entry.get('resume_tasks', entry.get('tasks', {}))
+        if entry.get('stopped_run', False):
+            # A merged archive can reuse IDs for another job. This dialog
+            # inspects the stopped job's frozen coordinates and time histories.
+            view = entry['resume_context']['view']
+            entry = dict(entry, tasks=view['__TASKS__'], resume_view=view)
         if not tasks:
             raise ValueError('所选运行没有可选择的计算点。')
         names = [str(axis['name']) for axis in entry.get('scan_axes', []) if not axis.get('fixed', False)]
@@ -409,7 +423,8 @@ class ResultBrowser:
                 if not points:
                     raise ValueError('所选点尚无时间样本。')
                 self.root['PLOTS']['CGYRO_results'].plot(
-                    time_traces=True, run_token=token, point_ids=points)
+                    time_traces=True, run_token=token, point_ids=points,
+                    stopped_points=entry.get('stopped_run', False))
             except Exception as exc:
                 messagebox.showerror('时间曲线', str(exc), parent=window)
 
@@ -510,12 +525,15 @@ class ResultBrowser:
                   anchor='w', wraplength=width - 48).pack(fill=tk.X, padx=10, pady=(0, 10))
 
 
-def plot_time_traces(root, notebook, token, point_ids, legend_font_size=10):
+def plot_time_traces(root, notebook, token, point_ids, legend_font_size=10, stopped_points=False):
     """Plot native cumulative time samples; never average or re-zero a restart."""
     records, _ = _run_options(root)
     if token not in records:
         raise ValueError('结果记录已改变，请重新打开计算点选择窗口。')
     entry = records[token]
+    if stopped_points and entry.get('stopped_run', False):
+        view = entry['resume_context']['view']
+        entry = dict(entry, tasks=view['__TASKS__'], resume_view=view)
     tasks = entry.get('tasks', {})
     if not point_ids or any(point not in tasks for point in point_ids):
         raise ValueError('请选择有效的计算点。')

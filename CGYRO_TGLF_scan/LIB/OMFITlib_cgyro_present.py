@@ -6,7 +6,7 @@ Keep complete identifiers in record_details and persistent keys unchanged.
 from builtins import len, str
 from collections import Counter, OrderedDict
 import re
-from OMFITlib_cgyro_archive import canonical_case_key, case_parts, scan_key
+from OMFITlib_cgyro_archive import canonical_case_key, case_parts, clean_run_id, scan_key
 from OMFITlib_workbench_catalog import STATUS
 
 
@@ -68,12 +68,11 @@ def record_options(records):
     """
     labels = OrderedDict()
     for token, record in records.items():
-        runid = re.sub(r' \[partial [0-9a-f]+\]$', '', str(record.get('runid', '未命名')))
+        runid = clean_run_id(record.get('runid', '未命名'))
         scan = scan_key(record, record.get('scan_key', '')).replace('__', ' × ')
         labels[token] = ' | '.join((short_text(runid, 18),
             short_text(case_caption(record.get('case_id', '未知案例')), 26), short_text(scan or '旧扫描', 32)))
         suffix = ('待核对' if record.get('resume_error', '') else
-                  '部分' if record.get('collection_status', '') == 'partial' else
                   '无新结果' if record.get('collection_status', '') == 'empty' else
                   '旧记录' if record.get('legacy_record', False) else '')
         if suffix:

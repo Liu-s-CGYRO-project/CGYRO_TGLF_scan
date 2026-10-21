@@ -2,16 +2,16 @@
 
 Uncertain sources remain under RUN_DB/__UNCLASSIFIED__. A complete metadata
 index and every physical point must validate before the original is removed.
-Different parameter axes merge; conflicting historical versions stay separate.
+Different parameter axes and ky merge into one radius/isotope hierarchy.
 """
-from builtins import (KeyError, TypeError, ValueError, all, any, dict, enumerate,
-                      hasattr, len, list, set, str, tuple, type, vars)
+from builtins import (BaseException, KeyError, TypeError, ValueError, any, dict, enumerate,
+                      float, hasattr, len, list, object, set, sorted, str, type, vars)
 from copy import deepcopy
 import math
 import re
-from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, combine_cases,
-                                   scan_branch, scan_key, store_scan)
-from OMFITlib_cgyro_db import PENDING, ensure_layout, metadata_value, run_records
+from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, catalog_runs, clean_run_id,
+                                   grouped_case_path, output_final_time, scan_branch, store_scan)
+from OMFITlib_cgyro_db import PENDING, STATE, ensure_layout, metadata_value, run_records
 
 
 def _point(case, path):
@@ -30,8 +30,34 @@ def _reference(node):
     return None
 
 
+def _retain_pending(pending, label, source):
+    """Preserve ambiguous sources without overwriting an older retained name."""
+    base, number = str(label).replace('/', '%2F'), 1
+    label = base
+    while label in pending and pending[label] is not source:
+        number += 1
+        label = '{} [{}]'.format(base, number)
+    pending[label] = source
+
+
+def _retain_private(pending, label, source, known=()):
+    """Unrecognized private metadata can own payloads too; never drop it."""
+    source = metadata_value(source)
+    if (any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(source).__mro__)
+            or not hasattr(source, 'items')):
+        return
+    if '__RESULT_REF__' in source or '__FILE_REF__' in source:
+        return  # An opaque owner index is not a container of legacy metadata.
+    for key, value in source.items():
+        if str(key).startswith('__') and key not in known:
+            _retain_pending(pending, str(label) + ' / ' + str(key), value)
+
+
 def _indexed_case(case, resolve, module, factory):
     case = metadata_value(case)
+    if (any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(case).__mro__)
+            or not hasattr(case, 'get')):
+        raise ValueError('A raw result has no complete case index')
     records = case_scans(case)
     if not records:
         raise ValueError('No complete scan index')
@@ -69,6 +95,9 @@ def _indexed_case(case, resolve, module, factory):
             if not math.isfinite(ky) or ('KY' in values and not math.isclose(float(values['KY']), ky, rel_tol=1e-8, abs_tol=1e-10)):
                 raise ValueError('Conflicting archived ky')
             row.update(dict(task_id=str(point), values=dict(values, KY=ky), result_path=actual_path))
+            row.setdefault('status', 'partial' if info.get('collection_status', '') == 'partial' else 'loaded')
+            row.setdefault('resume_pending', row['status'] != 'loaded')
+            row['final_time'] = output_final_time(result)
             tasks[point] = row
         if not tasks:
             raise ValueError('Empty archived scan')
@@ -79,31 +108,39 @@ def _indexed_case(case, resolve, module, factory):
     return normalized
 
 
-def _same_scan(first, second, key):
-    a = {scan_key(info, name): (info, tasks) for name, info, tasks in case_scans(first)}
-    b = {scan_key(info, name): (info, tasks) for name, info, tasks in case_scans(second)}
-    if key not in a or key not in b:
-        return False
-    info_a, tasks_a = a[key]
-    info_b, tasks_b = b[key]
-    if str(info_a.get('run_token', '')) != str(info_b.get('run_token', '')) or set(tasks_a) != set(tasks_b):
-        return False
-    return all(_reference(_point(first, tasks_a[p]['result_path'])) is not None and
-               _reference(_point(first, tasks_a[p]['result_path'])) ==
-               _reference(_point(second, tasks_b[p]['result_path'])) for p in tasks_a)
-
-
 def recover_archives(module, resolve, factory=dict, exclude_token=''):
-    """Reindex validated cases and retained unfinished runs; never submit jobs."""
+    """Consolidate all proven results into run / radius / isotope / scans.
+
+    State and provenance stay in task metadata. No public partial, recovered or
+    revision folders are created. The complete replacement is validated before
+    touching the installed catalog; unknown sources remain inside RUN_DB.
+    """
     db = ensure_layout(module, factory)
-    pending = db.get(PENDING, {})
-    candidates = [(str(label), source, True) for label, source in pending.items()]
-    # A pre-archive interrupted run may hold the only surviving H/D/T points.
+    pending = dict(metadata_value(db.get(PENDING, {})))
+    grouped_before = db.get(STATE, {}).get('case_layout', '') == 'radius-ion'
+    candidates = []
+    public = [key for key in db if not str(key).startswith('__')]
+    for rid, run in catalog_runs(module).items():
+        _retain_private(pending, rid, db[rid])
+        source = metadata_value(db[rid])
+        if not any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(source).__mro__) and hasattr(source, 'items'):
+            for key, value in source.items():
+                if re.fullmatch(r'nr=.+_rho=[^_/]+', str(key)):
+                    _retain_private(pending, str(rid) + ' / ' + str(key), value,
+                                    ('__INFO__', '__SCANS__', '__TASKS__'))
+        for cid, case in run.items():
+            candidates.append((str(rid) + ' / ' + str(cid), case, False, str(rid), str(cid)))
+        if not run:
+            source = db[rid]
+            # A malformed or unindexed root is preserved internally, never
+            # guessed into the visible Jet hierarchy.
+            if any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(source).__mro__) or not hasattr(source, 'items') or list(source):
+                _retain_pending(pending, rid, source)
+    candidates.extend((str(label), source, True, '', '') for label, source in list(pending.items()))
     for token, record in run_records(module).items():
         if str(token) == str(exclude_token):
             continue
-        manifest = record.get('manifest', {})
-        points = record.get('cases', {})
+        manifest, points = record.get('manifest', {}), record.get('cases', {})
         tasks, payload = factory(), factory()
         for point, row in manifest.get('point_table', {}).items():
             if point not in points or _reference(points[point]) is None:
@@ -132,55 +169,68 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
             info = deepcopy(dict(manifest))
             info.update(dict(ion_case=manifest.get('mass', ''), source_nr=manifest.get('nr', ''),
                              planned_points=list(manifest.get('points', [])),
-                             collection_status='complete' if complete else 'partial', status='recovered'))
-            if not complete:
-                info['runid'] = str(manifest.get('runid', 'Recovered')) + ' [partial ' + str(token)[:8] + ']'
+                             collection_status='complete' if complete else 'partial'))
             payload['__INFO__'], payload['__TASKS__'] = info, tasks
-            candidates.append(('run ' + str(token), payload, False))
-    recovered, issues = [], []
-    for label, source, remove_source in candidates:
+            candidates.append(('run ' + str(token), payload, False, '', ''))
+    validated, issues, recovered = [], [], []
+    for order, (label, source, remove_source, rid_hint, cid_hint) in enumerate(candidates):
         try:
             normalized = _indexed_case(source, resolve, module, factory)
-            updates = {}
-            for key, info, tasks in case_scans(normalized):
-                rid = str(info.get('runid', '')).strip()
-                cid = canonical_case_key(info.get('case_id', ''), info)
-                if not rid or rid.startswith('__') or not cid or '/' in rid or '/' in cid:
-                    raise ValueError('Missing or unsafe archived run/case identity')
-                existing = updates.get((rid, cid), db.get(rid, {}).get(cid, {}))
-                existing_keys = {scan_key(i, k) for k, i, _ in case_scans(existing)}
-                if key in existing_keys and not _same_scan(existing, normalized, key):
-                    # Ambiguous older revisions must not overwrite a current
-                    # same-axis result. Their data remain directly selectable.
-                    rid += ' [recovered ' + str(info.get('run_token', '') or label)[-8:] + ']'
-                    existing = updates.get((rid, cid), db.get(rid, {}).get(cid, {}))
-                    if key in {scan_key(i, k) for k, i, _ in case_scans(existing)} and not _same_scan(existing, normalized, key):
-                        raise ValueError('A different recovered revision already uses this identity')
-                destination = combine_cases([existing], factory)
-                copied_info = deepcopy(dict(info))
-                copied_info.update(dict(runid=rid, case_id=cid, recovery_source=label))
-                store_scan(destination, normalized, copied_info, tasks, factory)
-                updates[(rid, cid)] = destination
-            originals, created = {}, []
-            try:
-                for (rid, cid), value in updates.items():
-                    if rid not in db:
-                        db[rid] = factory()
-                        created.append(rid)
-                    originals[(rid, cid)] = db[rid].get(cid, None)
-                    db[rid][cid] = value
-                if remove_source:
-                    pending.pop(label)
-            except BaseException:
-                for (rid, cid), value in originals.items():
-                    if value is None:
-                        db[rid].pop(cid, None)
-                    else:
-                        db[rid][cid] = value
-                for rid in created:
-                    db.pop(rid, None)
-                raise
-            recovered.append(label)
+            _retain_private(pending, label, source, ('__INFO__', '__SCANS__', '__TASKS__'))
+            for key, source_info, tasks in case_scans(normalized):
+                info = deepcopy(dict(source_info))
+                original_rid = str(info.get('source_runid', '') or info.get('runid', '') or rid_hint)
+                rid = clean_run_id(original_rid)
+                cid = canonical_case_key(info.get('case_id', '') or cid_hint, info)
+                if not rid or rid.startswith(('__', 'Legacy ')) or not cid or '/' in rid or '/' in cid:
+                    raise ValueError('Missing original run/case identity')
+                radial, ion = grouped_case_path(cid, info)
+                info.update(dict(runid=rid, case_id=cid, source_runid=rid, case_path=[radial, ion]))
+                for row in tasks.values():
+                    row.update(dict(runid=rid, case_id=cid))
+                preference = 2 if rid_hint and clean_run_id(rid_hint) == rid_hint else 1 if rid_hint else 0
+                validated.append((str(info.get('published_at', '') or ''), preference, order,
+                                  rid, cid, radial, ion, normalized, info, tasks))
+            if remove_source:
+                pending.pop(label, None)
+                recovered.append(label)
         except (KeyError, TypeError, ValueError) as exc:
+            if rid_hint:
+                _retain_pending(pending, label, source)
             issues.append(dict(source=label, reason=str(exc)))
-    return dict(recovered=recovered, unresolved=issues)
+    plans = {}
+    for stamp, _, _, rid, cid, radial, ion, source, info, tasks in sorted(validated, key=lambda item: item[:3]):
+        run = plans.setdefault(rid, factory())
+        group = run.setdefault(radial, factory())
+        destination = group.setdefault(ion, factory())
+        store_scan(destination, source, info, tasks, factory, prefer_progress=not stamp)
+    # All source records and references validated above. Installation never
+    # renames physical files and can roll back even after OMFIT Abort.
+    missing = object()
+    original = {key: db[key] for key in public}
+    old_pending, old_state = db.get(PENDING, missing), db.get(STATE, missing)
+    try:
+        for key in public:
+            del db[key]
+        for key, run in plans.items():
+            db[key] = run
+        retained = factory()
+        retained.update(pending)
+        db[PENDING] = retained
+        state = factory()
+        state.update(dict({} if old_state is missing else old_state))
+        state.update(dict(version=5, case_layout='radius-ion'))
+        db[STATE] = state
+    except BaseException:
+        for key in plans:
+            db.pop(key, None)
+        for key, value in original.items():
+            db[key] = value
+        for key, value in ((PENDING, old_pending), (STATE, old_state)):
+            if value is missing:
+                db.pop(key, None)
+            else:
+                db[key] = value
+        raise
+    return dict(recovered=recovered, unresolved=issues,
+                grouped_cases=len(validated) if not grouped_before else 0)

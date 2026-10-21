@@ -6,7 +6,7 @@ RUN_DB contains metadata only. Readers never fall back to an external result
 branch; migration is an explicit preparation/compaction operation.
 """
 from builtins import (ValueError, any, dict, getattr, hasattr, isinstance, len,
-                      list, object, set, str, tuple, type, vars)
+                      list, max, object, set, str, tuple, type, vars)
 from copy import deepcopy
 
 POOL, STATE, RUNS = '__STORE__', '__STORAGE__', '__RUNS__'
@@ -108,7 +108,7 @@ def ensure_layout(module, factory=dict):
 
     original = {key: module[key] for key in OLD_BRANCHES if key in module}
     state = _tree(current_state, factory)
-    state['version'] = 4
+    state['version'] = max(4, state.get('version', 0))
     plan = {STATE: state}
     if 'RESULT_STORE' in original:
         owners = _tree(db.get(POOL, {}), factory)
@@ -119,7 +119,7 @@ def ensure_layout(module, factory=dict):
         plan[POOL] = owners
     if 'RESULT_STORAGE' in original:
         state.update(dict(_mapping(original['RESULT_STORAGE']).items()))
-        state['version'] = 4
+        state['version'] = max(4, state.get('version', 0))
         plan[STATE] = state
     if 'LEGACY_UNCLASSIFIED' in original:
         pending = _tree(db.get(PENDING, {}), factory)

@@ -4,6 +4,7 @@ The archive is the source of truth: live input/scan controls are never applied
 to a restart. Planning and staging do not change the successful result case.
 CGYRO rewinds its history to out.cgyro.tag and MAX_TIME adds a new time segment.
 """
+from OMFITlib_cgyro_archive import catalog_runs
 from builtins import (AttributeError, OSError, TypeError, ValueError, any, dict, float, int, len,
                       isinstance, iter, list, max, range, set, sorted, str, sum, type, zip)
 import copy
@@ -154,7 +155,11 @@ def resume_source(module, token, point, context=None):
 
 def archived_case(module, token):
     """Resolve one retained scan; reject a dialog for a replaced scan token."""
-    for runid, run in module.get('RUN_DB', {}).items():
+    manifest, points = saved_run(module, token)
+    stopped = manifest.get('collection_status', '') in ('partial', 'empty')
+    for runid, run in catalog_runs(module).items():
+        if stopped:
+            break  # A stopped job uses its frozen IDs, never merged catalog IDs.
         if str(runid).startswith('__'):
             continue
         for case_id, case in run.items():
@@ -171,6 +176,28 @@ def archived_case(module, token):
                         if path:
                             view[path[0]] = case[branch]
                     return runid, case_id, result_view(module, view)
+    # Older stopped jobs retain their original point IDs internally, even
+    # after their public results merge into Jet/radius/isotope. Use that
+    # frozen table rather than another job's identically named p000001.
+    tasks, view = {}, {}
+    for point, source in manifest.get('point_table', {}).items():
+        result = points.get(point, None)
+        if result is None or not any(base.__name__ == 'OMFITcgyro' for base in type(result).__mro__):
+            continue
+        row = copy.deepcopy(dict(source))
+        loaded = point in manifest.get('loaded_points', []) and point not in manifest.get('partial_points', [])
+        row.update(dict(task_id=point, run_token=str(token),
+                        status='loaded' if loaded else 'partial', resume_pending=not loaded))
+        tasks[point] = row
+        node = view
+        for part in row['result_path'][:-1]:
+            node = node.setdefault(part, {})
+        node[row['result_path'][-1]] = result
+    if tasks:
+        info = copy.deepcopy(dict(manifest))
+        info.update(dict(ion_case=manifest.get('mass', ''), source_nr=manifest.get('nr', '')))
+        view.update(dict(__INFO__=info, __TASKS__=tasks))
+        return manifest.get('runid', ''), manifest.get('case_id', ''), view
     raise ValueError('The selected result was replaced or is unindexed. Reopen the result table.')
 
 
@@ -386,8 +413,8 @@ def validate_continued_result(result, metadata):
     """Raise for damaged history; return a warning for a valid pending segment.
 
     Replaying the tail after a checkpoint is readable work, not a download
-    error. Keep it in a separate partial archive, including its checkpoint,
-    without declaring the old scan complete or automatically rerunning it.
+    error. Retain the segment/checkpoint in the run's internal record without
+    replacing a longer public result or automatically rerunning it.
     """
     restart = metadata.get('continuation', {})
     if not restart or not restart.get('checkpoint', None):

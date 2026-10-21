@@ -22,7 +22,7 @@ from OMFITlib_cgyro_storage_files import (FILE_STORE, SubmissionFiles,
 
 STORE = POOL
 REF = '__RESULT_REF__'
-REFERENCE_WALK_VERSION = 2  # RUN_DB-only owners, persisted metadata and sequences.
+REFERENCE_WALK_VERSION = 3  # RUN_DB-only owners with radius/isotope readers.
 
 
 def is_result(node):
@@ -216,7 +216,7 @@ def store_result(module, result, factory=dict):
     if not is_result(pool[key]):
         raise ValueError('Invalid physical CGYRO result: ' + key)
     state = storage_state(module, factory)
-    state.update(dict(version=4, checkpoint_policy=1))
+    state.update(dict(version=max(4, state.get('version', 0)), checkpoint_policy=1))
     state.setdefault('bytes', factory())[key] = sum(row[1] for row in files)
     state.setdefault('checkpoints', factory())[key] = json.dumps(checkpoint, sort_keys=True)
     return _reference(key, factory)
@@ -329,7 +329,7 @@ def compact_storage(module, factory=dict):
             db[branch] = replacement
         state = factory()
         state.update(deepcopy(dict(previous_state)))
-        state.update(dict(version=4, checkpoint_policy=1, bytes=sizes, checkpoints=checkpoints,
+        state.update(dict(version=max(4, previous_state.get('version', 0)), checkpoint_policy=1, bytes=sizes, checkpoints=checkpoints,
                           file_bytes=submissions.sizes))
         db[STATE] = state
     except BaseException:

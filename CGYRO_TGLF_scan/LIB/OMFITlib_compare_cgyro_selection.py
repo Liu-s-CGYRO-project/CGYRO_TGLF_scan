@@ -1,4 +1,5 @@
 """CGYRO self-comparison: selection helpers, independent of GUI globals."""
+from OMFITlib_cgyro_archive import catalog_runs
 from OMFITlib_plot_style import validated as global_plot_style
 # Explicit builtins protect against the OMFIT pylab execution namespace.
 from builtins import Exception, TypeError, ValueError, abs, all, bool, dict, enumerate, float, hasattr, isinstance, len, list, repr, set, str, tuple
@@ -132,7 +133,7 @@ def _filter_selected_map_by_index_flags(selected_map, flag_map, ordered_names):
 def _current_cgyro_parameter_names(root, runid, nr_list, force_read_all):
     """Rebuild the GUI parameter list so index flags map to current names."""
     try:
-        run_db = root['CGYRO_scan']['RUN_DB']
+        run_db = catalog_runs(root['CGYRO_scan'])
         runid_key = _resolve_mapping_key(run_db, runid)
         if runid_key is None:
             return []
@@ -286,7 +287,7 @@ def build_context(root):
     ctx['_diagnostics'] = []
     # Expand only the runtime view. Saved GUI choices and RUN_DB keep their
     # original identities; every spectrum is one full parameter coordinate.
-    runs = root.get('CGYRO_scan', {}).get('RUN_DB', {})
+    runs = catalog_runs(root.get('CGYRO_scan', {}))
     run_key = _resolve_mapping_key(runs, ctx['runid'])
     run = {} if run_key is None else runs[run_key]
     ctx['_cgyro_views'], ctx['_cgyro_slices'] = {}, {}

@@ -1,4 +1,5 @@
 """Validate, collect comparison pages, then render or export through OMFIT."""
+from OMFITlib_cgyro_archive import catalog_runs
 
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
@@ -57,7 +58,7 @@ def collect_comparison_pages(root, ctx):
             yield 'rho={}'.format(rho), [], curves
         return
     pairs, selected_tg, selected_cg, runid = read_settings(root, ctx, mode)
-    runs = root.get('CGYRO_scan', {}).get('RUN_DB', {})
+    runs = catalog_runs(root.get('CGYRO_scan', {}))
     for anchor, paired in pairs.items():
         cgyro = []
         ctx['_cgyro_legend_cases'] = [anchor] if mode == 'CGYRO_vs_TGLF' else paired

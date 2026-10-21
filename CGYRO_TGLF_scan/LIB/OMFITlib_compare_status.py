@@ -2,6 +2,7 @@
 
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
+from OMFITlib_cgyro_archive import catalog_runs
 from OMFITlib_cgyro_scan_view import comparison_case_view, coordinate_label, linear_node, view_config
 from OMFITlib_cgyro_storage import result_view
 
@@ -157,7 +158,7 @@ def _collect_cgyro_output_status_curves(root, mode_state, runid, nr, para, value
     """Collect status-code curves (y=status) vs ky for one (nr, para)."""
     out_curves = []
     try:
-        run_db = root['CGYRO_scan']['RUN_DB']
+        run_db = catalog_runs(root['CGYRO_scan'])
         runid_key = resolve_key(run_db, runid)
         if runid_key is None:
             return out_curves

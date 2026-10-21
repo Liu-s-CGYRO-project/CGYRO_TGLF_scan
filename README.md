@@ -1,4 +1,4 @@
-工程 1.23.0：CGYRO 的结果、检查点和冻结输入统一保存于 RUN_DB，绘图只从 RUN_DB 读取。按全部扫描参数值和 ky 逐点归档：不同扫描并存，同参数新增 ky 追加，同坐标重算仅更新该点。可核实的旧 H/D/T 结果按原索引恢复，无法核实的原节点仍保留在 RUN_DB 内。修复数值表点号显示、绘图多余白窗口并移除收集说明行。增加 100 GiB 临时空间预检与已核验输入展开目录清理。先更新管理器到 1.10.22，再更新工程；已有数据的整理命令见 [Command Box 整理](COMMAND_BOX_COMPACTION.md)。
+工程 1.24.0：扫描结果统一放到 `RUN_DB → Jet → nr=1_rho=0.33 → H / D / T`，各离子下保存 N_THETA、N_ENERGY 和多轴扫描。旧的 partial、recovered、legacy revision 目录合并回原结果名，计算状态留在内部记录中。不同扫描和 ky 逐点合并，保留其他结果。更新后整理已有目录的一行命令见 [Command Box 整理](COMMAND_BOX_COMPACTION.md)。
 
 操作与 .old 风险见 [归档去重说明](CGYRO_TGLF_scan/DOCS/RESULT_STORAGE.md)，取消与续算见 [操作说明](CGYRO_TGLF_scan/DOCS/CANCEL_RESUME.md)。历史修订见 [完整版本记录](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/blob/main/RELEASE_HISTORY.md)。
 
@@ -32,13 +32,13 @@ python3 omfit-deploy.py '/路径/旧工程.zip'
 
 用于 Linux 桌面的 OMFIT 工程，包含已审计、修复和整理的 CGYRO/TGLF 工具，以及项目内置的 **OMFIT GitHub 模板管理器**。
 
-当前工程版本为 **1.23.0**，管理器为 **1.10.22**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
+当前工程版本为 **1.24.0**，管理器为 **1.10.23**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
 
 管理器在 OMFIT 内更新当前工程的代码，保留案例、结果和设置；常规更新不调用整个工程的加载或保存。更新后照常另存工程。历史管理器修订已保存在上述完整版本记录。
 
 ## 在 OMFIT 打开
 
-推荐从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.23.0.zip`，在 OMFIT 中打开。
+推荐从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.24.0.zip`，在 OMFIT 中打开。
 
 也可直接加载本仓库的工程入口：
 

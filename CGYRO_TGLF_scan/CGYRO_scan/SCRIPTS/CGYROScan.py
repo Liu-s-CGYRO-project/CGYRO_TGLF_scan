@@ -2,7 +2,8 @@
 import copy
 from builtins import ValueError, any, dict, int, len, list, set, str
 from datetime import datetime, timezone
-from OMFITlib_cgyro_archive import (canonical_case_key, combine_cases, matching_cases,
+from OMFITlib_cgyro_archive import (canonical_case_key, catalog_runs, clean_run_id, combine_cases,
+                                  grouped_case_path, matching_cases, output_final_time,
                                   scan_key, store_scan, validate_preserved_scans)
 from OMFITlib_cgyro_retry import collect_current
 from OMFITlib_cgyro_continue import continuation_case, point_result
@@ -111,22 +112,14 @@ def publish_loaded_run(root):
             node = node[key]
         node[path[-1]] = copy.deepcopy(run_cases(root, manifest)[point_id])
 
-    run_id = str(manifest['runid'])
+    run_id = clean_run_id(manifest['runid'])
     if not run_id or run_id.startswith('__') or '/' in run_id:
         raise ValueError('CGYRO run ID is empty, reserved or contains a slash')
-    if not complete:
-        base = run_id + ' [partial ' + str(manifest['run_token'])[:8] + ']'
-        run_id, number = base, 1
-        db = root.get('RUN_DB', {})
-        while run_id in db and not any(case.get('__INFO__', {}).get('run_token', '') == manifest['run_token']
-                                       for case in db[run_id].values()):
-            number += 1
-            run_id = base + ' [' + str(number) + ']'
-        manifest['partial_runid'] = run_id
+    manifest.pop('partial_runid', None)
     legacy = 'case_id' not in manifest
     base_case_key = ('nr=' + str(manifest['nr']) if legacy else str(manifest['case_id']))
     case_key = canonical_case_key(base_case_key, {'rho': manifest.get('rho', None), 'ion_case': manifest['mass']})
-    previous = root.get('RUN_DB', {}).get(run_id, {})
+    previous = catalog_runs(root).get(run_id, {})
     replaced = []
     old_keys = matching_cases(root, run_id, case_key)
     for key in old_keys:
@@ -154,6 +147,7 @@ def publish_loaded_run(root):
         row['resume_pending'] = point_id in partial
         row['continuation_pending'] = manifest.get('continuation_pending', {}).get(point_id, '')
         row['scheduler_state'] = manifest.get('point_states', {}).get(point_id, '')
+        row['final_time'] = output_final_time(resolve_result(root, run_cases(root, manifest)[point_id]))
         task_rows[point_id] = row
     for row in task_rows.values():
         row.update(dict(runid=run_id, case_id=case_key))
@@ -179,6 +173,7 @@ def publish_loaded_run(root):
                      continuation_pending={point: row['continuation_pending'] for point, row in task_rows.items()
                                            if row.get('continuation_pending', '')},
                      status='published'))
+    info['case_path'] = grouped_case_path(case_key, info)
     if source_case is not None:
         continuations = copy.deepcopy(source_case['__INFO__'].get('continuations', []))
         continuations.append(dict(continuation, run_token=manifest['run_token']))
@@ -195,11 +190,13 @@ def publish_loaded_run(root):
     if run_id not in root['RUN_DB']:
         root['RUN_DB'][run_id] = OMFITtree()
     run = root['RUN_DB'][run_id]
-    run[case_key] = destination
+    radial, ion = info['case_path']
+    run.setdefault(radial, OMFITtree())[ion] = destination
     for key in old_keys:
-        if key != case_key:
+        if key in run:
             del run[key]
     root['RUN_MANIFEST']['case_id'] = case_key
+    manifest['runid'] = run_id
     manifest['collection_status'] = 'complete' if complete else 'partial'
     if complete:
         manifest['status'] = 'published'
@@ -207,7 +204,7 @@ def publish_loaded_run(root):
     prune_storage(root)
     print('Collected {} complete and {} partial points; {} points skipped. {}'.format(
         len(loaded), len(partial), len(manifest.get('skipped_points', [])),
-        'Full scan archived.' if complete else 'Partial results archived separately; previous full scans are preserved.'))
+        'Results merged into RUN_DB / {} / {} / {}.'.format(run_id, radial, ion)))
 
 
 if wait_for_completion:

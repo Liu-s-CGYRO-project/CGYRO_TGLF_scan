@@ -1,4 +1,4 @@
-# RUN_DB 单一结果存储设计（1.23.0）
+# RUN_DB 单一结果存储设计（1.24.0）
 
 ## 持久化布局
 
@@ -6,9 +6,11 @@
 
 ```text
 RUN_DB/
-  Jet/<case>/N_THETA | N_ENERGY__N_XI | ...
-             __SCANS__/<scan>/{info,tasks}
-  <partial/recovered run>/<case>/...
+  Jet/
+    nr=1_rho=0.33/
+      H | D | T/
+        N_THETA | N_ENERGY | N_ENERGY__N_XI | ...
+        __SCANS__/<scan>/{info,tasks}
   __STORE__/<sha256>                 # 唯一原生 OMFITcgyro 所有者
            __FILES__/<sha256>        # 唯一冻结输入 ZIP 所有者
   __RUNS__/<token>/{manifest,cases,inputs}
@@ -25,15 +27,15 @@ RUN_DB/
 
 不同运行的 p000001 不是同一个点。新运行保留自己的点号，冲突的保留点分配独立归档点号，记录 source_point_id 及原 run_token。新续算使用选中归档点的原输入和检查点，在新运行目录中执行。旧窗口的过期 token 不会凭短名匹配别的运行。
 
-归档先在树外合并，核对其他扫描及同扫描未重算坐标仍存在，才安装结果并清理不可达所有者。完整输出和部分输出分别保存；手动“重新收集未归档结果”没有补算权限。
+归档先在树外合并，核对其他扫描及同扫描未重算坐标仍存在，才安装结果并清理不可达所有者。完整和部分输出统一显示在原结果名下，状态只进入元数据；较短或未知进度的部分输出不替换已有完整点；手动“重新收集未归档结果”没有补算权限。
 
 ## 迁移与去重
 
 `OMFITlib_cgyro_db.ensure_layout` 将旧已知分支移入 RUN_DB，带事务回滚，不删除不确定来源。`compact_storage` 核对名称、长度与完整 SHA-256 后生成唯一所有者及普通索引。原生延迟元数据必须先加载才能遍历引用，原生文件读取器保持延迟；未打开的扫描也必须保留可达性。映射、列表、元组均纳入引用检查。
 
-`recover_archives` 验证原 runid、case_id、轴、每一点路径及输出引用；可核实后再删除未分类来源。同轴冲突的历史版本独立保留，不覆盖当前版本。无法验证的内容留在 __UNCLASSIFIED__。`prune_storage` 先检查全部引用再移除不可达所有者的树条目，不删除磁盘源文件。
+`recover_archives` 验证原 runid、case_id、轴、每一点路径及输出引用；可核实后再删除未分类来源。partial、recovered、legacy revision 后缀归回原结果名，再按半径 / 离子合并完整坐标。同坐标优先采用有明确发布时间的新记录；没有可靠时间顺序时比较实际末时刻并保护完整结果，不生成可见修订目录。无法验证的内容留在 __UNCLASSIFIED__。`prune_storage` 先检查全部引用再移除不可达所有者的树条目，不删除磁盘源文件。
 
-`store_result`、`resolve_result`、`run_cases`、`freeze_run_inputs` 是写入、读取、运行点和冻结输入接口。临时 result_view 不能写回保存树。普通元数据映射可用完整路径作为键，不强制转换成禁止斜杠的 OMFITtree。
+`store_result`、`resolve_result`、`run_cases`、`freeze_run_inputs` 是写入、读取、运行点和冻结输入接口。`grouped_case_path` 给出实际半径 / 离子路径；`catalog_runs` 为旧比较接口提供不保存的扁平逻辑视图，值引用现有案例节点。`case_id` 保持原逻辑身份，不能直接把它当作实际树路径。`case_destination` 用于表格读取。停止作业的续算按 __RUNS__ 中的原点表取源；合并时连未开始的原点号也预留，防止被其他结果占用。临时 result_view 不能写回保存树。普通元数据映射可用完整路径作为键，不强制转换成禁止斜杠的 OMFITtree。
 
 旧工程推荐 [Command Box 脚本](COMMAND_BOX_COMPACTION.md) 并另存。离线工具只读 ZIP 与字面 OMFITsave 行，不执行 pickle；不具备原生元数据读取能力时拒绝处理旧分散结果，要求先用应用内入口迁移。
 

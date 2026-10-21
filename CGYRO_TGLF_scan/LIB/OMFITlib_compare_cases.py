@@ -1,4 +1,5 @@
 """Case and scan-value selection for the four comparison workflows."""
+from OMFITlib_cgyro_archive import catalog_runs
 from builtins import next, iter
 from OMFITlib_plot_sources import run_choices, source_dimension, tglf_results
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
@@ -142,7 +143,7 @@ class CaseSelection(ComparisonWidgets):
         state[selected_key] = selected_items(flags, cases)
 
     def _choose_cgyro(self, state, path, select_radii=True, legacy=False):
-        runs = self.root.get('CGYRO_scan', {}).get('RUN_DB', {})
+        runs = catalog_runs(self.root.get('CGYRO_scan', {}))
         state.setdefault('runid', '')
         self.ui.Separator('CGYRO 数据来源')
         self.ui.ComboBox(path('runid'), stable_keys(runs), '运行记录', default='', updateGUI=True,

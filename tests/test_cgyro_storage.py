@@ -173,12 +173,12 @@ class StorageCases(unittest.TestCase):
         self.assertEqual(len(storage.result_pool(root)), 188)
         run = root['RUN_DB']['Jet']
         for ion, key, count in (('H', 'N_ENERGY', 60), ('D', 'N_THETA', 64), ('T', 'N_THETA', 64)):
-            case = run['nr=1__rho=0.33__ion=' + ion]
+            case = run['nr=1_rho=0.33'][ion]
             self.assertEqual(len(case['__SCANS__'][key]['tasks']), count)
         self.assertFalse(any(key in root for key in db_api.OLD_BRANCHES))
         self.assertEqual(storage.consolidate_storage(root)['recovered_archives'], 0)
 
-    def test_recovery_preserves_conflicting_same_axis_revisions(self):
+    def test_recovery_merges_revisions_without_visible_suffixes(self):
         root = {}
         first = self.indexed_scan(root, 'theta_old', 'T', values=(16,), ky_count=1)
         second = self.indexed_scan(root, 'theta_new', 'T', values=(16,), ky_count=1)
@@ -187,10 +187,185 @@ class StorageCases(unittest.TestCase):
         root['LEGACY_UNCLASSIFIED'] = {'old revision': second}
         report = storage.consolidate_storage(root)
         self.assertEqual(report['recovered_archives'], 1)
-        self.assertEqual(root['RUN_DB']['Jet'][cid]['__INFO__']['run_token'], 'theta_old')
-        self.assertEqual(len(storage.result_pool(root)), 2)
+        self.assertEqual(root['RUN_DB']['Jet']['nr=1_rho=0.33']['T']['__INFO__']['run_token'], 'theta_old')
+        self.assertEqual(len(storage.result_pool(root)), 1)
         visible = [key for key in root['RUN_DB'] if not key.startswith('__')]
-        self.assertEqual(len(visible), 2)
+        self.assertEqual(visible, ['Jet'])
+
+    def test_generated_run_folders_merge_without_losing_scans_or_radii(self):
+        root = {}
+        scans = [(ion, token, name, value) for ion, token, name, value in (
+            ('H', 'h_theta', 'N_THETA', 16), ('H', 'h_energy', 'N_ENERGY', 8),
+            ('D', 'd_theta', 'N_THETA', 16), ('T', 't_theta', 'N_THETA', 16),
+            ('T', 't_revision', 'N_THETA', 32), ('T', 't_recovered', 'N_THETA', 48),
+            ('T', 't_energy', 'N_ENERGY', 8), ('H', 'other_radius', 'N_THETA', 16))]
+        cases = {token: self.indexed_scan(root, token, ion, name, (value,), 1)
+                 for ion, token, name, value in scans}
+        cid = lambda ion: 'nr=1__rho=0.33__ion=' + ion
+        other = cases['other_radius']
+        other['__INFO__'].update(case_id='nr=2__rho=0.66__ion=H', source_nr=2, rho=.66)
+        root['RUN_DB'].update({
+            'Jet': {cid('H'): cases['h_theta'], cid('D'): cases['d_theta'], cid('T'): cases['t_theta'],
+                    'nr=2__rho=0.66__ion=H': other},
+            'Jet [legacy revision 2]': {cid('T'): cases['t_revision']},
+            'Jet [partial 3fdce673]': {cid('T'): cases['t_energy']},
+            'Jet [partial 1535d4da] [recovered 086c682d]': {cid('T'): cases['t_recovered']},
+            'Jet [recovered abcd]': {cid('H'): cases['h_energy']}})
+        unknown = {'lin': {'0.01': cases['h_theta']['N_THETA']['16']['lin']['0.01']}}
+        root['RUN_DB']['Legacy OUTPUTScan'] = {'unknown': unknown}
+        private = storage.store_result(root, self.result('private_output', b'private output'))
+        root['RUN_DB']['Jet']['__CUSTOM__'] = private
+        cases['h_theta']['__CUSTOM__'] = private
+        root['RUN_DB']['Jet']['nr=3_rho=0.9'] = {'__CUSTOM__': private}
+        storage.consolidate_storage(root)
+        self.assertEqual([key for key in root['RUN_DB'] if not key.startswith('__')], ['Jet'])
+        jet = root['RUN_DB']['Jet']
+        self.assertEqual(set(jet), {'nr=1_rho=0.33', 'nr=2_rho=0.66'})
+        self.assertEqual(set(jet['nr=1_rho=0.33']), {'H', 'D', 'T'})
+        self.assertEqual(set(jet['nr=1_rho=0.33']['H']['__SCANS__']), {'N_THETA', 'N_ENERGY'})
+        theta = jet['nr=1_rho=0.33']['T']['__SCANS__']['N_THETA']['tasks']
+        self.assertEqual({row['values']['N_THETA'] for row in theta.values()}, {16, 32, 48})
+        self.assertEqual(len(storage.result_pool(root)), len(cases) + 1)
+        storage.resolve_result(root, private)
+        self.assertTrue(root['RUN_DB'][db_api.PENDING])  # No identity was guessed for raw output.
+        def coordinates():
+            return {(cid, key): {archive_api.point_coordinate(row): continuation.point_result(case, row)
+                    for row in tasks.values()}
+                    for cid, case in archive_api.catalog_runs(root)['Jet'].items()
+                    for key, _, tasks in archive_api.case_scans(case)}
+        before = copy.deepcopy(coordinates())
+        owners = set(storage.result_pool(root))
+        storage.consolidate_storage(root)
+        self.assertEqual(coordinates(), before)
+        self.assertEqual(set(storage.result_pool(root)), owners)
+        self.assertEqual(storage.storage_state(root)['case_layout'], 'radius-ion')
+        self.assertEqual(storage.storage_state(root)['version'], 5)
+
+    def test_partial_aliases_keep_the_most_advanced_readable_coordinate(self):
+        root = {}
+        def timed(token, final_time, partial):
+            case = self.indexed_scan(root, token, 'T', values=(16,), ky_count=1)
+            row = case['__TASKS__']['p000001']
+            result = storage.resolve_result(root, continuation.point_result(case, row))
+            if final_time is not None:
+                (Path(result.filename) / 'out.cgyro.time').write_text(str(final_time) + '\n', encoding='utf-8')
+            row.update(status='partial' if partial else 'loaded', resume_pending=partial)
+            case['__INFO__']['collection_status'] = 'partial' if partial else 'complete'
+            return case
+        complete = timed('complete', 100, False)
+        short = timed('short', 80, True)
+        cid = complete['__INFO__']['case_id']
+        root['RUN_DB'].update({'Jet': {cid: complete}, 'Jet [partial abcd]': {cid: short}})
+        storage.consolidate_storage(root)
+        row = root['RUN_DB']['Jet']['nr=1_rho=0.33']['T']['__TASKS__']['p000001']
+        self.assertEqual((row['run_token'], row['final_time']), ('complete', 100))
+        advanced, unknown = timed('advanced', 120, True), timed('unknown', None, True)
+        root['RUN_DB'].update({'Jet [partial dcba]': {cid: advanced}, 'Jet [recovered abcd]': {cid: unknown}})
+        storage.consolidate_storage(root)
+        row = root['RUN_DB']['Jet']['nr=1_rho=0.33']['T']['__TASKS__']['p000001']
+        self.assertEqual((row['run_token'], row['final_time']), ('advanced', 120))
+        self.assertTrue(row['resume_pending'])
+
+    def test_merged_point_ids_reserve_unstarted_original_tasks(self):
+        root = {}
+        old = self.indexed_scan(root, 'old_ids', 'T', values=(16,), ky_count=1)
+        new = self.indexed_scan(root, 'new_ids', 'T', values=(32,), ky_count=1)
+        new['__INFO__']['planned_points'] = ['p000001', 'p000002']
+        destination = archive_api.combine_cases([old])
+        archive_api.store_scan(destination, new, new['__INFO__'], new['__TASKS__'])
+        self.assertEqual(set(destination['__TASKS__']), {'p000001', 'p000003'})
+        self.assertEqual(destination['__TASKS__']['p000003']['source_point_id'], 'p000001')
+        self.assertEqual(destination['__TASKS__']['p000003']['run_token'], 'old_ids')
+
+    def test_grouping_abort_restores_original_public_catalog(self):
+        root = {}
+        case = self.indexed_scan(root, 'abort_grouping', 'T', values=(16,), ky_count=1)
+        cid = case['__INFO__']['case_id']
+        original = {cid: case}
+        class FailOnce(dict):
+            fail = True
+            def __setitem__(self, key, value):
+                if key == 'Jet' and self.fail:
+                    self.fail = False
+                    raise KeyboardInterrupt('Abort during grouped catalog installation')
+                super().__setitem__(key, value)
+        db = FailOnce(root['RUN_DB'])
+        dict.__setitem__(db, 'Jet', original)
+        root['RUN_DB'] = db
+        state = db[db_api.STATE]
+        with self.assertRaises(KeyboardInterrupt):
+            storage.recover_archives(root, storage.resolve_result)
+        self.assertIs(root['RUN_DB']['Jet'], original)
+        self.assertIs(root['RUN_DB'][db_api.STATE], state)
+        storage.resolve_result(root, case['N_THETA']['16']['lin']['0.01'])
+
+    def test_unknown_public_name_never_overwrites_retained_source(self):
+        root = {}
+        first = storage.store_result(root, self.result('unknown_first', b'first'))
+        second = storage.store_result(root, self.result('unknown_second', b'second'))
+        root['RUN_DB']['Unknown'] = first
+        root['RUN_DB'][db_api.PENDING] = {'Unknown': second}
+        storage.consolidate_storage(root)
+        pending = root['RUN_DB'][db_api.PENDING]
+        self.assertEqual(pending['Unknown'], second)
+        self.assertEqual(pending['Unknown [2]'], first)
+        self.assertEqual(len(storage.result_pool(root)), 2)
+
+    def test_grouped_readers_and_stopped_resume_use_distinct_point_tables(self):
+        root = {}
+        old = self.indexed_scan(root, 'prior_grid', 'T', values=(16,), ky_count=1)
+        new = self.indexed_scan(root, 'stopped_grid', 'T', values=(32,), ky_count=1)
+        cid = new['__INFO__']['case_id']
+        new['__INFO__']['planned_points'] = ['p000001', 'p000002']
+        table = copy.deepcopy(new['__TASKS__'])
+        table['p000002'] = dict(values={'N_THETA': 48, 'KY': .01},
+                               result_path=['N_THETA', '48', 'lin', '0.01'])
+        bundle, members = self.bundle('stopped_original', zip_only=True)
+        manifest = dict(new['__INFO__'], nr=1, mass='T', case_tag='case',
+                        status='cancelled', collection_status='partial', points=list(table),
+                        loaded_points=['p000001'], partial_points=[], point_table=table,
+                        workDir='/original/stopped_grid', local_workDir=str(self.base / 'missing'),
+                        input_sha256={'p000002': {key: hashlib.sha256(value).hexdigest()
+                                                for key, value in members.items()}})
+        root['RUN_MANIFEST'] = manifest
+        root['Cases'] = {'case': {'p000001': continuation.point_result(new, table['p000001']),
+                                 'p000002': bundle}}
+        queue_api.save_current(root)
+        merged = archive_api.combine_cases([old])
+        archive_api.store_scan(merged, new, new['__INFO__'], new['__TASKS__'])
+        root['RUN_DB']['Jet'] = {'nr=1_rho=0.33': {'T': merged}}
+        storage.storage_state(root)['case_layout'] = 'radius-ion'
+        root['RUN_DB'][db_api.LEGACY] = {'RUN_INDEX': {'obsolete': dict(runid='Jet [partial abcd]', case_id=cid)}}
+        context = continuation.stopped_context(root, 'stopped_grid')
+        self.assertEqual(set(context['rows']), {'p000001', 'p000002'})
+        self.assertEqual(set(context['results']), {'p000001'})
+        self.assertEqual(context['unfinished'], {'p000002'})
+        self.assertEqual(context['rows']['p000002']['values']['N_THETA'], 48)
+        self.assertEqual(continuation.resume_source(root, 'stopped_grid', 'p000002', context)['mode'], 'checkpoint_zip')
+
+        # Execute real reader definitions without Tk, a Figure or an OMFIT session.
+        path = REPO / 'CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_results.py'
+        names = {'_stable_keys', '_run_options', '_result_node'}
+        definitions = [node for node in ast.parse(path.read_text(encoding='utf-8')).body
+                       if isinstance(node, ast.FunctionDef) and node.name in names]
+        from collections import OrderedDict
+        namespace = dict(OrderedDict=OrderedDict, catalog_runs=archive_api.catalog_runs,
+                         latest_cases=archive_api.latest_cases, case_scans=archive_api.case_scans,
+                         case_destination=archive_api.case_destination, legacy_branch=db_api.legacy_branch,
+                         run_records=db_api.run_records, storage_state=storage.storage_state,
+                         stopped_context=continuation.stopped_context,
+                         resolve_result=storage.resolve_result, record_options=lambda records: dict(records))
+        exec(compile(ast.Module(body=definitions, type_ignores=[]), str(path), 'exec'), namespace)
+        parent = {'CGYRO_scan': root}
+        records, _ = namespace['_run_options'](parent)
+        self.assertNotIn('obsolete', records)
+        entry = records['stopped_grid']
+        self.assertEqual(entry['destination'], ['Jet', 'nr=1_rho=0.33', 'T'])
+        self.assertEqual(set(entry['tasks']), {'p000001', 'p000003'})
+        self.assertEqual(set(entry['resume_tasks']), {'p000001', 'p000002'})
+        for row in entry['tasks'].values():
+            self.assertIsInstance(namespace['_result_node'](parent, entry, row), OMFITcgyro)
+        self.assertEqual(archive_api.case_destination(root, 'Jet', cid), entry['destination'])
 
     def test_missing_owner_prevents_recovery_and_pruning(self):
         root = {}
@@ -314,7 +489,7 @@ class StorageCases(unittest.TestCase):
                          compact_storage=storage.compact_storage, prune_storage=storage.prune_storage,
                          store_result=storage.store_result, resolve_result=storage.resolve_result,
                          run_cases=db_api.run_cases, recover_archives=storage.recover_archives)
-        for name in ('canonical_case_key', 'combine_cases', 'matching_cases', 'scan_key', 'store_scan', 'validate_preserved_scans'):
+        for name in ('canonical_case_key', 'catalog_runs', 'clean_run_id', 'combine_cases', 'grouped_case_path', 'matching_cases', 'output_final_time', 'scan_key', 'store_scan', 'validate_preserved_scans'):
             namespace[name] = getattr(archive_api, name)
         exec(compile(ast.Module(body=selected, type_ignores=[]), str(path), 'exec'), namespace)
         root = {}
@@ -335,11 +510,11 @@ class StorageCases(unittest.TestCase):
             namespace['publish_loaded_run'](root)
 
         collect('theta', ['N_THETA'], b'theta')
-        original = copy.deepcopy(root['RUN_DB']['Jet'][case_id]['N_THETA'])
+        original = copy.deepcopy(archive_api.catalog_runs(root)['Jet'][case_id]['N_THETA'])
         collect('energy_xi', ['N_ENERGY', 'N_XI'], b'energy_xi')
         collect('three_axes', ['N_ENERGY', 'N_XI', 'N_RADIAL'], b'three_axes')
         collect('energy_again', ['N_ENERGY', 'N_XI'], b'energy_again')
-        case = root['RUN_DB']['Jet'][case_id]
+        case = archive_api.catalog_runs(root)['Jet'][case_id]
         self.assertEqual(set(case['__SCANS__']), {'N_THETA', 'N_ENERGY__N_XI', 'N_ENERGY__N_XI__N_RADIAL'})
         self.assertEqual(case['N_THETA'], original)
         self.assertEqual(len(storage.result_pool(root)), 3)
@@ -351,7 +526,7 @@ class StorageCases(unittest.TestCase):
             storage.resolve_result(root, node)
         for names in (['N_THETA'], ['N_ENERGY', 'N_XI'], ['N_ENERGY', 'N_XI', 'N_RADIAL']):
             collect('extra_ky_' + str(len(names)), names, b'extra' + str(len(names)).encode(), ky=.2)
-            case = root['RUN_DB']['Jet'][case_id]
+            case = archive_api.catalog_runs(root)['Jet'][case_id]
             scan = '__'.join(names)
             tasks = case['__SCANS__'][scan]['tasks']
             self.assertEqual({row['values']['KY'] for row in tasks.values()}, {.1, .2})
@@ -363,18 +538,22 @@ class StorageCases(unittest.TestCase):
             self.assertEqual(older['source_point_id'], 'p000001')
             old_ref = copy.deepcopy(continuation.point_result(case, older))
             collect('overlap_' + str(len(names)), names, b'overlap' + str(len(names)).encode(), ky=.2)
-            case = root['RUN_DB']['Jet'][case_id]
+            case = archive_api.catalog_runs(root)['Jet'][case_id]
             tasks = case['__SCANS__'][scan]['tasks']
             self.assertEqual(len(tasks), 2)
             older = [row for row in tasks.values() if row['values']['KY'] == .1][0]
             self.assertEqual(continuation.point_result(case, older), old_ref)
         # A broken/custom merge cannot replace the installed case or hide its
         # other axes. Validation runs before assigning RUN_DB and pruning.
-        installed = root['RUN_DB']['Jet'][case_id]
+        installed = archive_api.catalog_runs(root)['Jet'][case_id]
+        def coordinates(case):
+            return {key: {archive_api.point_coordinate(row): continuation.point_result(case, row)
+                          for row in tasks.values()} for key, _, tasks in archive_api.case_scans(case)}
+        before = copy.deepcopy(coordinates(installed))
         namespace['combine_cases'] = lambda *args: {}
         with self.assertRaisesRegex(ValueError, 'Archive retention check failed'):
             collect('blocked_merge', ['N_ENERGY', 'N_XI'], b'blocked')
-        self.assertIs(root['RUN_DB']['Jet'][case_id], installed)
+        self.assertEqual(coordinates(archive_api.catalog_runs(root)['Jet'][case_id]), before)
 
     def test_retention_guard_rejects_discarded_ky_in_same_parameter_scan(self):
         root = {}

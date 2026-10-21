@@ -1,4 +1,5 @@
 """Read CGYRO spectra once and prepare numeric scan data without making figures."""
+from OMFITlib_cgyro_archive import catalog_runs
 from builtins import IndexError, KeyError, OSError, TypeError, ValueError, any, dict, float, hasattr, int, len, list, max, str, tuple
 import numpy as np
 from OMFITlib_compare_core import cgyro_frequency_history, cgyro_frequency_stats, apply_divide_by_ky, normalize_if_needed, resolve_key
@@ -20,7 +21,7 @@ def _get_cgyro_lin_node(root, ctx, nr, para, value):
     view = ctx.get('_cgyro_views', {}).get(str(nr), None)
     if view is not None:
         return result_view(root.get('CGYRO_scan', {}), linear_node(view, para, value))
-    node = root.get('CGYRO_scan', {}).get('RUN_DB', {})
+    node = catalog_runs(root.get('CGYRO_scan', {}))
     for token in (ctx.get('runid', ''), nr):
         if not hasattr(node, 'keys'):
             return None
