@@ -1,8 +1,9 @@
+from OMFITlib_cgyro_db import run_cases, set_run_cases
 from OMFITlib_cgyro_storage import result_view
 import os
 import tempfile
 case_tag = root['SETTINGS']['PHYSICS']['case_tag']
-cases = result_view(root, root['Cases'][case_tag])
+cases = result_view(root, run_cases(root))
 if not cases:
     raise ValueError('No cases to convert')
 converted = OMFITtree()
@@ -25,4 +26,4 @@ for name in list(cases.keys()):
         node = OMFITcgyro(directory)
         node['n_time']
     converted[name] = node
-root['Cases'][case_tag] = converted
+set_run_cases(root, root['RUN_MANIFEST'], converted, OMFITtree)

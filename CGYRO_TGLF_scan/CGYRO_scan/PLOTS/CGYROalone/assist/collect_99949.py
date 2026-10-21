@@ -1,3 +1,4 @@
+from OMFITlib_cgyro_db import legacy_outputs
 # 99949 version.
 import sys
 import os
@@ -972,7 +973,7 @@ if (not _COLLECT_IMPORT_ONLY) and ('root' in globals()):
     try:
         output_cases=outputs
     except NameError:
-        output_cases=root['OUTPUTS']
+        output_cases=legacy_outputs(root, OMFITtree)
     ncount=0
     for case in case_plot:
         try:

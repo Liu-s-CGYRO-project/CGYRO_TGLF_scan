@@ -1,5 +1,6 @@
 from OMFITlib_cgyro_storage import result_view
-_stored_output = result_view(root, root['OUTPUTScan'])
+from OMFITlib_cgyro_archive import latest_output
+_stored_output = result_view(root, latest_output(root))
 # Export the selected native ballooning eigenfunctions; do not invent missing fields.
 import os
 import tempfile

@@ -1,10 +1,11 @@
+from OMFITlib_cgyro_db import legacy_case_root
 raise RuntimeError('Legacy GYRO submission is disabled: this package lacks a verified restart converter and GYRO run manifest. Use CGYRO or supply and validate a GYRO backend before enabling this path.')
 
 import numpy as np
 import sys
 from OMFITlib_cgyro_read import *
 print ("============== scan_gyro ===========")
-caseRoot=root['Cases'] # the root of the tag, defines where to store the scanning data
+caseRoot=legacy_case_root(root, OMFITtree) # the root of the tag, defines where to store the scanning data
 physics=root['SETTINGS']['PHYSICS']
 phy1d=physics['1d']
 caseName=physics['case_tag'] # the name of the tag, which indicates the name of the scanning

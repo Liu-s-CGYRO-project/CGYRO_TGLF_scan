@@ -16,17 +16,17 @@ import time
 from urllib import error, request
 import zipfile
 
-TOOL_VERSION = '1.1.0'
-PROJECT_VERSION = '1.22.38'
+TOOL_VERSION = '1.2.0'
+PROJECT_VERSION = '1.23.0'
 REPOSITORY = 'Liu-s-CGYRO-project/CGYRO_TGLF_scan'
 DEFAULT_PROXY = 'http://47.102.120.146:18889'
-PACKAGES = {'code': {'name': 'CGYRO_TGLF_scan_code_only_1.22.38.zip', 'bytes': 972671, 'sha256': '22b2127a8273feed6cca0a9de24e3d98b92a3c669cd84e9198da7c91b470cba4'}, 'template': {'name': 'tdxy-liu__cgyro-tglf__1.22.38.omfittpl.zip', 'bytes': 963880, 'sha256': '7da22e7c49f2344ac58bfd9369e5f2d0e6de1ce39efb17bdf69e8b7c4db1d002'}}
+PACKAGES = {'code': {'name': 'CGYRO_TGLF_scan_code_only_1.23.0.zip', 'bytes': 986950, 'sha256': '660920dfd66a18510cc18f1aca10234180bbe83715fe85bdbad296ace4dedfbd'}, 'template': {'name': 'tdxy-liu__cgyro-tglf__1.23.0.omfittpl.zip', 'bytes': 978140, 'sha256': '0f0dc1ecc07c413e47a39be5c04ca1ff928685846bafd114479e0d3642b6209b'}}
 
 REQUIRED = {
-    (): ('OMFITlib_cgyro_storage', 'OMFITlib_cgyro_storage_files', 'OMFITlib_cgyro_checkpoint', 'OMFITlib_cgyro_continue',
+    (): ('OMFITlib_cgyro_db', 'OMFITlib_cgyro_recover', 'OMFITlib_cgyro_scratch', 'OMFITlib_cgyro_storage', 'OMFITlib_cgyro_storage_files', 'OMFITlib_cgyro_checkpoint', 'OMFITlib_cgyro_continue',
          'OMFITlib_cgyro_results', 'OMFITlib_compare_cgyro_data', 'OMFITlib_compare_series',
          'OMFITlib_compare_status'),
-    ('CGYRO_scan',): ('OMFITlib_cgyro_storage', 'OMFITlib_cgyro_storage_files', 'OMFITlib_cgyro_checkpoint',
+    ('CGYRO_scan',): ('OMFITlib_cgyro_db', 'OMFITlib_cgyro_recover', 'OMFITlib_cgyro_scratch', 'OMFITlib_cgyro_storage', 'OMFITlib_cgyro_storage_files', 'OMFITlib_cgyro_checkpoint',
                     'OMFITlib_cgyro_continue', 'OMFITlib_cgyro_queue'),
 }
 
@@ -47,6 +47,9 @@ def ready(omfit):
         libraries = node.get('LIB', {})
         if not all(name in libraries for name in names):
             return False
+        api = libraries['OMFITlib_cgyro_storage'].importCode(_relLoc=dict(root=node))
+        if getattr(api, 'REFERENCE_WALK_VERSION', 0) < 2:
+            return False  # Older readers can overlook unopened metadata refs.
     return True
 
 
@@ -132,15 +135,15 @@ def compact(omfit, proxy=DEFAULT_PROXY):
     node = omfit['CGYRO_TGLF_scan']['CGYRO_scan']
     api = node['LIB']['OMFITlib_cgyro_storage'].importCode(_relLoc=dict(root=node))
     print('Checking checkpoints and hashing/copying retained result files. Large projects can take several minutes ...')
-    report = api.compact_storage(node, OMFITtree)
-    report['unreferenced_results'] = api.prune_storage(node)
-    report['physical_results'] = len([key for key in node['RESULT_STORE'] if key != '__FILES__'])
-    sizes = node['RESULT_STORAGE'].get('bytes', {})
-    report['physical_bytes'] = sum(sizes.get(key, 0) for key in node['RESULT_STORE'] if key != '__FILES__')
-    file_sizes = node['RESULT_STORAGE'].get('file_bytes', {})
-    report['input_zip_bytes'] = sum(file_sizes.get(key, 0) for key in node['RESULT_STORE'].get('__FILES__', {}))
+    report = api.consolidate_storage(node, OMFITtree)
+    pool, state = api.result_pool(node), api.storage_state(node)
+    report['physical_results'] = len([key for key in pool if key != '__FILES__'])
+    sizes = state.get('bytes', {})
+    report['physical_bytes'] = sum(sizes.get(key, 0) for key in pool if key != '__FILES__')
+    file_sizes = state.get('file_bytes', {})
+    report['input_zip_bytes'] = sum(file_sizes.get(key, 0) for key in pool.get('__FILES__', {}))
     print('CGYRO compaction completed: ' + json.dumps(report, sort_keys=True))
-    print('Checkpoint details: CGYRO_scan / RESULT_STORAGE / checkpoints')
+    print('Checkpoint details: CGYRO_scan / RUN_DB / __STORAGE__ / checkpoints')
     print('Use OMFIT Save As to save a NEW ZIP. Existing ZIPs and server files have not been deleted.')
     return report
 

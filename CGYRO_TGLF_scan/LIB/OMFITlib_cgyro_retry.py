@@ -20,6 +20,7 @@ from OMFITlib_cgyro_queue import collection_done, save_current, shell_quote, sto
 from OMFITlib_cgyro_run_state import linked_local_action, stop_run, submitted_job_id, text_output
 from OMFITlib_cgyro_submission import PROTOCOL, discover_submission, seal_unstarted, submit_command
 from OMFITlib_cgyro_storage import submission_file
+from OMFITlib_cgyro_db import run_cases, set_run_cases
 
 
 NON_RETRYABLE_STATES = {'CANCELLED', 'TIMEOUT', 'OUT_OF_MEMORY', 'DEADLINE'}
@@ -372,6 +373,7 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
 
 def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_retries=False):
     """Read saved outputs; only an explicit run action may enable solver retries."""
+    save_current(root, factory)  # Freeze input ZIPs and migrate legacy payloads before taking a rollback snapshot.
     if not allow_solver_retries:
         print('Collecting existing CGYRO outputs only; solver retries are disabled.')
     collection_retries = 0
@@ -381,7 +383,7 @@ def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_r
         # failed read must not remove its resume entry or mix old rows/new files.
         preserved = None
         if collection_done(manifest):
-            preserved = (deepcopy(manifest), deepcopy(root['Cases'][manifest['case_tag']]))
+            preserved = (deepcopy(manifest), deepcopy(run_cases(root, manifest)))
         try:
             root['SCRIPTS']['downsync.py'].run()
         except BaseException as exc:
@@ -390,7 +392,7 @@ def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_r
             if preserved is not None:
                 manifest.clear()
                 manifest.update(preserved[0])
-                root['Cases'][manifest['case_tag']] = preserved[1]
+                set_run_cases(root, manifest, preserved[1], factory)
             else:
                 manifest['collection_status'] = 'incomplete'
             manifest['collection_error'] = str(exc) or 'Local collection interrupted.'

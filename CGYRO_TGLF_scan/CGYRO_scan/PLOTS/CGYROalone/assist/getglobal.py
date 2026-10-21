@@ -1,3 +1,4 @@
+from OMFITlib_cgyro_db import legacy_outputs
 # some commonly used variables
 from OMFITlib_cgyro_storage import result_view
 pltnl=root['SETTINGS']['PLOTS']['nl']
@@ -6,7 +7,7 @@ case_plot=pltnl['case_plot']
 n_case=len(case_plot)
 channel=pltnl['channel']  # which channel to be compared, including  Q_*, Gamma_*,Pi_*, multiple value is available
 n_channel=len(channel)
-outputs=result_view(root, root['OUTPUTS']['NonLinear'])
+outputs=result_view(root, legacy_outputs(root)['NonLinear'])
 freq_lin=pltnl['freq_lin']
 tick_scale={0:'linear',1:'log'}
 effnum=root['SETTINGS']['SETUP']['effnum']

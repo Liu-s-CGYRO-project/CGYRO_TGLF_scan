@@ -43,7 +43,7 @@ from OMFITlib_cgyro_queue import activate_run, collection_done, pending_runs, qu
 from OMFITlib_cgyro_retry import retry_limit
 from OMFITlib_cgyro_workflow import collect_batch, collect_run
 from OMFITlib_cgyro_continue import continuation_plan
-from OMFITlib_cgyro_storage import compact_storage, prune_storage
+from OMFITlib_cgyro_storage import consolidate_storage
 
 # Compatibility exports: saved scripts may still import these here.
 from OMFITlib_workbench_catalog import MODULES, LABELS, PAGES
@@ -274,7 +274,7 @@ def summary(root):
         'tglf_input': 'input.tglf' in read(tg, ('TGLF', 'FILES'), {}),
         'profiles': 'input.gacode' in read(tg, ('TGYRO', 'PROFILES_GEN', 'OUTPUTS'), {}),
         'multi_cases': len(cases), 'multi_selected': sum(bool(c.get('enabled', None)) for c in cases.values()),
-        'cgyro_runs': len(cg.get('RUN_DB', {})),
+        'cgyro_runs': len([key for key in cg.get('RUN_DB', {}) if not str(key).startswith('__')]),
         'cgyro_status': manifest.get('status', '尚无运行记录'),
         'tglf_radii': len(tg.get('scanResults_spectra', {})),
     }
@@ -978,10 +978,9 @@ class ProjectActions:
 
     def optimize_cgyro_storage(self):
         node = module(self.root, 'cgyro')
-        report = compact_storage(node, self.factory)
-        report['unreferenced_results'] = prune_storage(node)
+        report = consolidate_storage(node, self.factory)
         self.settings['message'] = ('归档已去重：处理 {} 份结果、{} 份提交 ZIP，减少归档载荷约 {:.2f} GB。'
-            '检查点已检测择一保留；{} 个结果有备用文件或检查告警，详见 RESULT_STORAGE/checkpoints。'
+            '检查点已检测择一保留；{} 个结果有备用文件或检查告警，详见 RUN_DB/__STORAGE__/checkpoints。'
             '请另存工程以减少 ZIP 体积。').format(
                 report['converted_copies'], report['converted_input_zips'],
                 report['duplicate_bytes'] / 1e9, report['checkpoint_warnings'])

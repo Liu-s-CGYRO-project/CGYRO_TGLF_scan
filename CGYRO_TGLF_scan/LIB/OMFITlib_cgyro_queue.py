@@ -1,14 +1,14 @@
 """Keep batch snapshots while one case occupies the live OMFIT branches.
 
-RUN_MANIFEST and Cases are the active view. RUN_HISTORY holds independent
-snapshots indexed by RUN_BATCH.tokens; switching that view must not mutate
-another case or lose its submitted job ID.
+RUN_MANIFEST is the active job view. RUN_HISTORY holds metadata only; point
+payloads and frozen inputs belong to RUN_DB/__RUNS__/<token>/cases.
 """
-from builtins import Exception, RuntimeError, ValueError, dict, len, list, print, range, str
+from builtins import Exception, RuntimeError, ValueError, any, dict, len, list, print, range, str
 from contextlib import nullcontext
 from copy import deepcopy
 import time
 from OMFITlib_cgyro_storage import compact_storage
+from OMFITlib_cgyro_db import ensure_layout, freeze_run_inputs, run_records
 from OMFITlib_cgyro_run_state import (linked_kill_local, pbs_wait, quote as shell_quote,
                                     refresh_run_state, slurm_wait, stop_message, stop_run, submission_pending)
 
@@ -28,7 +28,8 @@ def queue_records(root):
 def save_current(root, factory=dict):
     """Save immutable result/input references before copying the active case."""
     manifest = root.get('RUN_MANIFEST', {})
-    if not manifest.get('run_token', '') or 'Cases' not in root:
+    if (not manifest.get('run_token', '') or
+            not any(key in root for key in ('RUN_DB', 'Cases', 'RUN_HISTORY'))):
         return  # Metadata-only scheduler views already refer to the saved entry.
     compact_storage(root, factory)
     batch = root.get('RUN_BATCH', {})
@@ -38,22 +39,25 @@ def save_current(root, factory=dict):
         batch['tokens'] = list(batch['tokens']) + [token]
     entry = root.setdefault('RUN_HISTORY', factory()).setdefault(token, factory())
     saved = deepcopy(manifest)
+    record = run_records(root, factory).setdefault(str(token), factory())
+    record['manifest'] = deepcopy(manifest)
     if manifest.get('status', '') == 'published':
         saved.pop('point_table', None)
-        entry.pop('cases', None)
-    elif manifest['case_tag'] in root['Cases']:
-        entry['cases'] = deepcopy(root['Cases'][manifest['case_tag']])
+        record.pop('cases', None)  # Published scan paths now own these points.
+        record.pop('inputs', None)
+    else:
+        freeze_run_inputs(root, manifest, factory)
+    entry.pop('cases', None)
     entry['manifest'] = saved
 
 
 def activate_run(root, token):
     """Restore a batch snapshot before waiting, retrying, or collecting it."""
+    ensure_layout(root)
     entry = root['RUN_HISTORY'][token]
     if entry['manifest'].get('batch_id', '') != root['RUN_BATCH'].get('batch_id', ''):
         raise ValueError('The saved run belongs to another queue batch.')
     root['RUN_MANIFEST'] = deepcopy(entry['manifest'])
-    if 'cases' in entry:
-        root['Cases'][root['RUN_MANIFEST']['case_tag']] = deepcopy(entry['cases'])
 
 
 def pending_runs(root):

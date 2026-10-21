@@ -5,7 +5,7 @@ to a restart. Planning and staging do not change the successful result case.
 CGYRO rewinds its history to out.cgyro.tag and MAX_TIME adds a new time segment.
 """
 from builtins import (AttributeError, OSError, TypeError, ValueError, any, dict, float, int, len,
-                      isinstance, iter, list, max, range, set, sorted, str, type, zip)
+                      isinstance, iter, list, max, range, set, sorted, str, sum, type, zip)
 import copy
 import hashlib
 import math
@@ -15,15 +15,18 @@ import shutil
 import zipfile
 from OMFITlib_cgyro_archive import case_scans, scan_branch, scan_key
 from OMFITlib_cgyro_storage import result_view
+from OMFITlib_cgyro_db import run_cases, run_records
 from OMFITlib_cgyro_checkpoint import directory_checkpoint
+from OMFITlib_cgyro_scratch import directory_bytes, ensure_capacity
 
 
 def saved_run(module, token):
     current = module.get('RUN_MANIFEST', {})
     if str(current.get('run_token', '')) == str(token):
-        return current, result_view(module, module.get('Cases', {}).get(current['case_tag'], {}))
-    entry = module.get('RUN_HISTORY', {}).get(str(token), {})
-    return entry.get('manifest', {}), result_view(module, entry.get('cases', {}))
+        return current, result_view(module, run_cases(module, current))
+    entry = run_records(module).get(str(token), {})
+    manifest = entry.get('manifest', {})
+    return manifest, result_view(module, run_cases(module, manifest))
 
 
 def stopped_context(module, token):
@@ -310,6 +313,11 @@ def prepare_point(module, plan, point_id, stage, reader):
     """Copy to a new run directory and change only the segment duration."""
     row = plan['rows'][point_id]
     origin = plan['sources'][point_id]
+    if origin['mode'] == 'checkpoint':
+        ensure_capacity(stage, directory_bytes(origin['directory']))
+    else:
+        with zipfile.ZipFile(origin['zip']) as packed:
+            ensure_capacity(stage, sum(item.file_size for item in packed.infolist()))
     if origin['mode'] == 'checkpoint':
         # The collected directory is immutable. Copy it to a new staging path,
         # preserving optional histories and leaving the original run intact.

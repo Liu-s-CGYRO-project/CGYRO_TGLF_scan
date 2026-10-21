@@ -127,6 +127,29 @@ class ArchiveIndex:
         self.input_guards = {}
         self.cgyro_pool = {}
 
+    def materialize(self, value):
+        """Read a native metadata pickle, never a solver output reader.
+
+        Native reloads can wrap ordinary metadata dictionaries and strings.
+        Record that exact loader replacement in earlier guards; all unrelated
+        edits still invalidate the preview. Without this, valid scan indexes
+        can be misclassified merely because their metadata was unopened.
+        """
+        if (kind(value, 'OMFITlazyLoad') and vars(value).get('tp', '') in
+                ('OMFITpickle', 'OMFITtree', 'OMFITmodule', 'SortedDict', 'OMFITlist')):
+            loaded = value.__lazy_load__()
+            for index, (parent, expected) in enumerate(self.guards):
+                adjusted = []
+                for key, identity in expected:
+                    if identity == id(value):
+                        if dict.__getitem__(parent, key) is not loaded:
+                            raise ValueError('Archived metadata changed during native loading')
+                        identity = id(loaded)
+                    adjusted.append((key, identity))
+                self.guards[index] = (parent, tuple(adjusted))
+            return loaded
+        return value
+
     @staticmethod
     def cgyro_object(value):
         return kind(value, 'OMFITcgyro') or (kind(value, 'OMFITlazyLoad') and
@@ -138,6 +161,7 @@ class ArchiveIndex:
         The updater runs before new application libraries are installed, so
         this small format check is independent of the project's import hook.
         """
+        value = self.materialize(value)
         if self.cgyro_object(value):
             return True
         if not branch(value):
@@ -145,7 +169,7 @@ class ArchiveIndex:
         contents = self.read(value)
         if '__RESULT_REF__' not in contents:
             return False
-        key = contents['__RESULT_REF__']
+        key = self.materialize(contents['__RESULT_REF__'])
         if len(contents) != 1 or not isinstance(key, str) or re.fullmatch(r'[0-9a-f]{64}', key) is None:
             raise ValueError('Invalid CGYRO result reference')
         if not self.cgyro_object(self.get(self.cgyro_pool, key, None)):
@@ -153,6 +177,7 @@ class ArchiveIndex:
         return True
 
     def read(self, node):
+        node = self.materialize(node)
         if not branch(node):
             raise ValueError('Expected a metadata tree')
         if getattr(node, '__dict__', {}).get('dynaLoad', False):
@@ -162,9 +187,11 @@ class ArchiveIndex:
         return {key: dict.__getitem__(node, key) for key in names}
 
     def get(self, node, key, default=None):
+        node = self.materialize(node)
         return self.read(node).get(key, default) if branch(node) else default
 
     def metadata(self, value):
+        value = self.materialize(value)
         if kind(value, 'OMFITexpression'):
             raise ValueError('Archived identity contains a dynamic expression')
         if branch(value):
@@ -241,9 +268,12 @@ class ArchiveIndex:
                     visit(str(inner), nested, axes, coordinate, here + [inner])
                 else:
                     raise ValueError('Ambiguous nested scan')
-        visit(name, data, [], [], [name])
+        declared = str(name).split('__')
+        visit(declared[0], data, [], [], [name])
         if not points:
             raise ValueError('Empty scan')
+        if len(set(order)) != len(order) or len(declared) > 1 and order != declared:
+            raise ValueError('Composite scan name conflicts with its stored axes')
         return order, values, points
 
     def identity(self, name, info, ion=''):
@@ -467,8 +497,10 @@ class ArchiveIndex:
 
     def cgyro(self, module):
         start = len(self.sources)
-        self.cgyro_pool = self.get(module, 'RESULT_STORE', {})
         original = self.get(module, 'RUN_DB', None)
+        self.cgyro_pool = self.get(original, '__STORE__', self.get(module, 'RESULT_STORE', {}))
+        if self.get(self.get(original, '__STORAGE__', {}), 'version', 0) >= 4:
+            return None  # Current application owns RUN_DB; preserve its exact layout.
         output = self.get(module, 'OUTPUTScan', None)
         has_records = original is not None and (not branch(original) or
             any(not branch(run) or bool(self.read(run)) for run in self.read(original).values()))
@@ -487,6 +519,9 @@ class ArchiveIndex:
         runs, changed = {}, bool(from_output)
         pending = {key: Reference(value) for key, value in self.read(self.get(module, 'LEGACY_UNCLASSIFIED', {})).items()}
         for runid, run in self.read(original).items():
+            if str(runid).startswith('__'):
+                runs[runid] = Reference(run)
+                continue
             if isinstance(runid, str) and '/' in runid:
                 retained = self.retain(pending, 'RUN_DB / ' + runid, run)
                 self.issue(['RUN_DB', runid], '结果集名称包含斜杠，保留原节点待核对', retained)

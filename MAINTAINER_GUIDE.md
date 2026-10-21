@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.22.37。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.23.0。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 先找到修改层
 
@@ -85,7 +85,7 @@ collect_batch(cg, run_script, factory=OMFITtree)  # 读取整批；默认不等�
 
 - 新 CGYRO 参数进入 `OMFITlib_cgyro_parameters.FIELDS` 和 `OMFITlib_cgyro_parameter_help.PARAMETER_HELP`，同时核对扫描取值解析与物理限制。UI 文案不能隐式改变物理默认值。
 - 新绘图类型从 `OMFITlib_compare_state` 的选项、对应 `compare_*` 调度入口和渲染函数接入。多轴扫描使用完整任务坐标，不将组合键当作单个参数。详见 [绘图接口](CGYRO_TGLF_scan/DOCS/PLOTTING_API.md)。
-- 仅读取结果元数据的页面使用 `cgyro_present`；需要数值时才调用 `resolve_result/result_view`。后者返回的临时视图不能写回保存树。`RESULT_STORE` 仍是物理结果唯一拥有者。
+- 仅读取结果元数据的页面使用 `cgyro_present`；需要数值时才调用 `resolve_result/result_view`。后者返回的临时视图不能写回保存树。`RUN_DB/__STORE__` 仍是物理结果唯一拥有者。
 - `record_options(records)` 返回“显示文字 → 原 token”；同名和缩略重名会加标识区分。完整身份由 `record_details(record, token)` 提供，不可用短名反查目录或构造归档键。
 - `collection_status` 与作业状态独立。`COMPLETED` 只说明调度器执行返回，不能用它推断已收集、完整结果或物理收敛。
 
@@ -99,7 +99,7 @@ Tk 变量使用 `master=`，布尔框走 `gui_controls.checkbox`。不要在 `Co
 
 ## 静态检查与发布
 
-当前约定只执行静态和安装包检查；下面三条命令不会导入应用界面或运行求解器：
+构建执行静态和安装包检查；针对数据保留缺陷另执行隔离回归检查；下面三条命令不会导入应用界面或运行求解器：
 
 ```bash
 python tools/check_workbench.py
@@ -109,10 +109,15 @@ python tools/build_project.py --output /path/to/review/project.zip
 
 构建时会自动检查页面登记、mixin 方法冲突、回调导入位置、收集默认权限、原生 API 和每个模块的依赖注册。提交前还需检查 Python 3.9 AST/符号、ZIP 成员、CRC、源文件与包摘要、完整字体许可，并记录哪些分支未做真实服务器验证。
 
-管理器测试源码保留在 `OMFITtemplates/tests`，不再登记到运行树或打入工程安装包；它们仍可由后续显式授权的开发验证使用。不能通过删除字体许可、检查点保护或恢复信息缩减安装包。所有 GUI 实机验证、测试套件与集群任务都需要另外获得执行授权，静态检查不能声称它们已通过。
+管理器测试源码保留在 `OMFITtemplates/tests`，不再登记到运行树或打入工程安装包；它们仍可由后续显式授权的开发验证使用。不能通过删除字体许可、检查点保护或恢复信息缩减安装包。真实 GUI、工程保存重开和集群任务需单独验证；隔离测试不能声称这些流程已通过。
 
 ## 续算输入归档接口
 
-OMFITlib_cgyro_storage_files.SubmissionFiles 只计划新所有者与索引，不直接修改工程；compact_storage 负责提交与回滚。ZIP 所有者放在 RESULT_STORE/__FILES__，外部叶用 __FILE_REF__。需要文件时使用 result_view / submission_file，不复制解析后的视图回树。prune_storage 同时检查结果引用和文件引用。迁移器独立理解 __RESULT_REF__，不能依赖更新完成后才可导入的工程库。
+OMFITlib_cgyro_storage_files.SubmissionFiles 只计划新所有者与索引，不直接修改工程；compact_storage 负责提交与回滚。ZIP 所有者放在 RUN_DB/__STORE__/__FILES__，外部叶用 __FILE_REF__。需要文件时使用 result_view / submission_file，不复制解析后的视图回树。prune_storage 同时检查结果引用和文件引用。迁移器独立理解 __RESULT_REF__，不能依赖更新完成后才可导入的工程库。
 
 已读结果、未开始点 ZIP、部分历史和本次提交的输入是不同职责；不能通过删除整个 Cases / RUN_HISTORY 或删旧结果达到去重。保留旧 ZIP 的原始成员摘要，重试只从本次运行的冻结记录取文件，并恢复上传文件名。
+
+
+## RUN_DB 唯一存储接口（1.23.0）
+
+新增 CGYRO 写入使用 cgyro_db.run_cases / set_run_cases；冻结输入使用 freeze_run_inputs，结果安装使用 store_result。作业快照使用 save_current，外部 RUN_HISTORY 仅保留元数据。绘图仅通过 RUN_DB 和 resolve_result 读取，不创建持久结果缓存。迁移入口 consolidate_storage 统一旧数据、恢复索引、检查引用后清理。store_scan 按全部参数坐标与 ky 更新点，validate_preserved_scans 在安装前保护未重算坐标及其他扫描。详见 RESULT_STORAGE_DESIGN.md。

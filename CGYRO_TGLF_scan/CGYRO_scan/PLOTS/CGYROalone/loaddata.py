@@ -1,3 +1,4 @@
+from OMFITlib_cgyro_db import legacy_outputs
 # this script is used to load the nonlin data
 # to the output tree
 # setup for cori
@@ -12,7 +13,7 @@ tunnel=''
 
 pltnl=root['SETTINGS']['PLOTS']['nl']
 npath=len(pltnl['case_load'].keys())
-outputs=root['OUTPUTS']['NonLinear']
+outputs=legacy_outputs(root, OMFITtree)['NonLinear']
 icgyro=root['SETTINGS']['SETUP']['icgyro']
 # set the default server
 for k in range(npath):

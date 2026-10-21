@@ -3,6 +3,7 @@ from OMFITlib_gui_fonts import configure_window_fonts, style_widget
 from OMFITlib_cgyro_archive import case_scans, latest_cases
 from OMFITlib_cgyro_continue import point_status, previous_final_time, resume_source, stopped_context
 from OMFITlib_cgyro_storage import resolve_result
+from OMFITlib_cgyro_db import legacy_branch, run_records
 from OMFITlib_cgyro_present import record_options, record_details
 from OMFITlib_compare_core import cgyro_frequency_history
 from builtins import (Exception, TypeError, ValueError, abs, any, dict, float, int,
@@ -61,7 +62,7 @@ def _run_options(root):
         covered.update((str(runid), str(key)) for key, target in aliases.items() if target in active)
 
     # Pre-1.13 records remain readable, while new records use RUN_DB only.
-    legacy = module.get('RUN_INDEX', {})
+    legacy = legacy_branch(module, 'RUN_INDEX')
     for token in _stable_keys(legacy):
         if token in records:
             continue
@@ -70,7 +71,7 @@ def _run_options(root):
         if (str(entry.get('runid', '')), str(entry.get('case_id', ''))) in covered:
             continue
         records[token] = entry
-    saved = {str(token): entry.get('manifest', {}) for token, entry in module.get('RUN_HISTORY', {}).items()}
+    saved = {str(token): entry.get('manifest', {}) for token, entry in run_records(module).items()}
     current = module.get('RUN_MANIFEST', {})
     if current.get('run_token', ''):
         saved[str(current['run_token'])] = current
@@ -180,24 +181,24 @@ def result_grid(root):
     dimensions = int(entry.get('dimensions', len(axes)))
     if dimensions not in (1, 2, 3) or len(axes) != dimensions:
         raise ValueError('运行记录中的参数轴信息无效。')
-    tasks = list(entry.get('tasks', {}).values())
+    tasks = entry.get('tasks', {})
     if not tasks:
         raise ValueError('所选运行没有已读取的计算点。')
     names = [str(axis['name']) for axis in axes]
-    x_values = _unique_numeric(tasks, names[0])
+    x_values = _unique_numeric(tasks.values(), names[0])
     if dimensions == 1:
         y_name = 'KY'
-        y_values = _unique_numeric(tasks, 'KY')
+        y_values = _unique_numeric(tasks.values(), 'KY')
         filters = {}
     else:
         y_name = names[1]
-        y_values = _unique_numeric(tasks, y_name)
-        ky_values = _unique_numeric(tasks, 'KY')
+        y_values = _unique_numeric(tasks.values(), y_name)
+        ky_values = _unique_numeric(tasks.values(), 'KY')
         ky = _select_numeric(view.get('ky', ''), ky_values, 'ky')
         view['ky'] = _number_text(ky)
         filters = {'KY': ky}
         if dimensions == 3:
-            z_values = _unique_numeric(tasks, names[2])
+            z_values = _unique_numeric(tasks.values(), names[2])
             z_value = _select_numeric(view.get('slice_value', ''), z_values, names[2])
             view['slice_value'] = _number_text(z_value)
             filters[names[2]] = z_value
@@ -205,12 +206,14 @@ def result_grid(root):
     gamma = np.full((len(y_values), len(x_values)), np.nan)
     diagnostics, table_rows = [], []
     fraction = float(view.get('tail_fraction', .02))
-    for row in tasks:
+    # The mapping key is the persisted point identity. Frozen point-table rows
+    # and some migrated archives legitimately have no redundant task_id field.
+    for point, row in tasks.items():
         values = row.get('values', {})
         try:
             numeric = {name: float(values[name]) for name in names + ['KY']}
         except (KeyError, TypeError, ValueError):
-            diagnostics.append(str(row.get('task_id', '?')) + '：参数记录无效')
+            diagnostics.append(str(point) + '：参数记录无效')
             continue
         if any(not np.isclose(numeric[name], value, rtol=1e-10, atol=1e-12)
                for name, value in filters.items()):
@@ -223,11 +226,11 @@ def result_grid(root):
             om, ga, om_error, ga_error = _frequency_summary(
                 _result_node(root, entry, row), fraction)
             omega[y_index, x_index], gamma[y_index, x_index] = om, ga
-            table_rows.append(dict(task_id=str(row.get('task_id', '?')),
+            table_rows.append(dict(task_id=str(point),
                                    values=numeric, omega=om, gamma=ga,
                                    omega_error=om_error, gamma_error=ga_error))
         except (KeyError, TypeError, ValueError) as exc:
-            diagnostics.append('{}：{}'.format(row.get('task_id', '?'), exc))
+            diagnostics.append('{}：{}'.format(point, exc))
     if not np.any(np.isfinite(omega)) and not np.any(np.isfinite(gamma)):
         raise ValueError('当前切片没有可显示结果。' + ('\n' + '\n'.join(diagnostics[:5]) if diagnostics else ''))
     return dict(token=token, entry=entry, dimensions=dimensions, axes=axes,
@@ -479,7 +482,7 @@ class ResultBrowser:
         frame = ttk.Frame(window)
         frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         columns = ['task'] + names + ['KY', 'omega', 'gamma', 'omega_error', 'gamma_error', 'peak']
-        headings = ['任务'] + names + ['ky', '平均 ω', '平均 γ', 'ω 相对波动', 'γ 相对波动', '当前最大 γ']
+        headings = ['计算点'] + names + ['ky', '平均 ω', '平均 γ', 'ω 相对波动', 'γ 相对波动', '当前最大 γ']
         table = ttk.Treeview(frame, columns=columns, show='headings')
         style_widget(table)
         for column, heading in zip(columns, headings):

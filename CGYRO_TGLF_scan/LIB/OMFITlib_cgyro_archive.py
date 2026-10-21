@@ -1,18 +1,19 @@
 """Stable case identities and independent parameter scans within each case."""
 from builtins import (TypeError, ValueError, all, bool, dict, enumerate, float, getattr,
-                      hasattr, len, list, max, set, sorted, str)
+                      hasattr, int, len, list, max, range, set, sorted, str, tuple, zip)
 from collections import OrderedDict
 from copy import deepcopy
 import math
 import re
+from OMFITlib_cgyro_db import legacy_branch, metadata_value
 
 
 def scan_key(info, fallback=''):
     """Identify the ordered axes, not their values, ky grid or run UUID.
 
-    A complete rescan replaces this axis combination. Other combinations stay
-    independent, including 1D versus 2D with the same first axis, linked axes,
-    and the fixed reference coordinate used internally for ky-only scans.
+    Results within this axis combination merge by full parameter coordinates
+    and ky. Other combinations stay independent, including 1D versus 2D with
+    the same first axis, linked axes and the ky-only fixed reference coordinate.
     """
     axes = info.get('scan_axes', [])
     if info.get('scan_dimensions', None) == 0 or (axes and all(axis.get('fixed', False) for axis in axes)):
@@ -25,14 +26,38 @@ def scan_key(info, fallback=''):
 
 def case_scans(case):
     """Read new per-scan indexes and the former single-record case schema."""
+    case = metadata_value(case)
     if '__SCANS__' in case:
-        return [(str(key), record['info'], record['tasks'])
-                for key, record in case['__SCANS__'].items()]
-    info, tasks = case.get('__INFO__', None), case.get('__TASKS__', None)
+        return [(str(key), metadata_value(record['info']), metadata_value(record['tasks']))
+                for key, record in metadata_value(case['__SCANS__']).items()]
+    info, tasks = metadata_value(case.get('__INFO__', None)), metadata_value(case.get('__TASKS__', None))
     if info is None or tasks is None:
         return []
     parameters = info.get('parameters', [])
     return [(scan_key(info, parameters[0] if parameters else ''), info, tasks)]
+
+
+def latest_output(module):
+    """Read the latest indexed slice for old plotting entries, only in RUN_DB."""
+    current = str(module.get('RUN_MANIFEST', {}).get('run_token', ''))
+    candidates = []
+    for runid, run in module.get('RUN_DB', {}).items():
+        if str(runid).startswith('__'):
+            continue
+        for key, case in run.items():
+            if str(key).startswith('__') or not hasattr(case, 'get'):
+                continue
+            for _, info, tasks in case_scans(case):
+                branch = scan_branch(case, info, tasks)
+                candidates.append((str(info.get('run_token', '')) == current,
+                    str(info.get('published_at', '')), len(candidates), branch, case[branch]))
+    if candidates:
+        _, _, _, branch, payload = max(candidates, key=lambda row: row[:3])
+        return {branch: payload}
+    old = legacy_branch(module, 'OUTPUTScan')
+    if old:
+        return old
+    raise ValueError('No archived CGYRO scan in RUN_DB; collect or consolidate results first')
 
 
 def scan_branch(data, info, tasks):
@@ -51,12 +76,58 @@ def scan_branch(data, info, tasks):
     raise ValueError('Missing archived scan branch: ' + original)
 
 
-def store_scan(destination, data, info, tasks, factory=dict):
-    """Install one complete scan into an unpublished destination tree.
+def point_coordinate(row):
+    """A point is its complete stored parameter coordinate and signed ky.
 
-    Raw results have one owner. Only metadata is grouped in __SCANS__; point
-    IDs such as p000001 are local to that scan, never merged across scans.
-    The public branch key remains N_THETA / N_ENERGY for ordinary 1D scans.
+    Numeric spelling (16 / 16.00000) and reused Slurm point IDs do not define
+    identity. Never identify an entire spectrum by its first parameter alone.
+    """
+    path = list(metadata_value(row).get('result_path', []))
+    if len(path) not in (4, 6, 8) or path[-2] != 'lin':
+        raise ValueError('Invalid archived parameter/ky path')
+    values = tuple(float(path[index]) for index in list(range(1, len(path) - 2, 2)) + [len(path) - 1])
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError('Non-finite archived parameter/ky coordinate')
+    return tuple(str(path[index]) for index in range(2, len(path) - 2, 2)), values
+
+
+def _at(data, path):
+    for part in path:
+        data = metadata_value(data)[part]
+    return data
+
+
+def _install_point(payload, path, result, factory):
+    """Reuse existing numeric keys so mixed float spelling cannot split curves."""
+    node, actual = payload, []
+    for index, part in enumerate(path):
+        key = part
+        if index % 2 or index == len(path) - 1:
+            matches = []
+            for candidate in node:
+                try:
+                    if float(candidate) == float(part):
+                        matches.append(candidate)
+                except (TypeError, ValueError):
+                    pass
+            if len(matches) > 1:
+                raise ValueError('Ambiguous numeric archive key: ' + str(part))
+            if matches:
+                key = matches[0]
+        actual.append(key)
+        if index == len(path) - 1:
+            node[key] = deepcopy(result)
+        else:
+            node = node.setdefault(key, factory())
+    return actual
+
+
+def store_scan(destination, data, info, tasks, factory=dict):
+    """Upsert points off-tree: replace matching coordinates, retain other ky.
+
+    Keep incoming point IDs for its job/continuation records. Reassign only
+    colliding retained IDs, recording source_point_id and each row's run_token.
+    File payloads remain references to the sole physical owner in RUN_DB.
     """
     original = scan_branch(data, info, tasks)
     key = scan_key(info, original)
@@ -64,19 +135,55 @@ def store_scan(destination, data, info, tasks, factory=dict):
         raise ValueError('Invalid archived scan identity')
     saved_info, saved_tasks = factory(), factory()
     saved_info.update(deepcopy(dict(info)))
-    for point, source in tasks.items():
+    existing = {name: (old_info, old_tasks) for name, old_info, old_tasks in case_scans(destination)}
+    points, incoming = OrderedDict(), set()
+    if key in existing:
+        old_info, old_tasks = existing[key]
+        for point, source in old_tasks.items():
+            row = deepcopy(dict(metadata_value(source)))
+            row.setdefault('run_token', old_info.get('run_token', ''))
+            coordinate = point_coordinate(row)
+            if coordinate in points:
+                raise ValueError('Duplicate coordinate in existing scan')
+            points[coordinate] = (str(point), row, _at(destination, row['result_path']), False)
+        axes = deepcopy(list(info.get('scan_axes', [])))
+        for axis, old_axis in zip(axes, old_info.get('scan_axes', [])):
+            axis['values'] = sorted(set(list(axis.get('values', [])) + list(old_axis.get('values', []))), key=float)
+        saved_info['scan_axes'] = axes
+    for point, source in metadata_value(tasks).items():
+        row = deepcopy(dict(metadata_value(source)))
+        coordinate = point_coordinate(row)
+        if coordinate in incoming:
+            raise ValueError('Duplicate coordinate in incoming scan')
+        incoming.add(coordinate)
+        row.setdefault('run_token', info.get('run_token', ''))
+        path = list(row['result_path'])
+        path[0] = original
+        points[coordinate] = (str(point), row, _at(data, path), True)
+    reserved = {point for point, _, _, fresh in points.values() if fresh}
+    used, payload = set(), factory()
+    number = max([int(point[1:]) for point, _, _, _ in points.values()
+                  if re.fullmatch(r'p[0-9]{6,}', point)] + [0])
+    for point, source, result, fresh in points.values():
+        assigned = point
+        if point in used or not fresh and point in reserved:
+            number += 1
+            assigned = 'p{:06d}'.format(number)
+        used.add(assigned)
         row = factory()
-        row.update(deepcopy(dict(source)))
-        path = list(row.get('result_path', []))
-        if not path:
-            raise ValueError('Missing archived result path: ' + str(point))
-        path[0] = key
-        row['result_path'] = path
-        saved_tasks[point] = row
+        row.update(source)
+        if assigned != point:
+            row.setdefault('source_point_id', point)
+        row['task_id'] = assigned
+        path = [key] + list(row['result_path'])[1:]
+        row['result_path'] = _install_point(payload, path, result, factory)
+        saved_tasks[assigned] = row
     saved_info.update(dict(scan_key=key, parameters=[key]))
+    saved_info['points'] = len(saved_tasks)
+    saved_info['merged_run_tokens'] = list(dict.fromkeys(str(row.get('run_token', '')) for row in saved_tasks.values()))
     record = factory()
     record.update(dict(info=saved_info, tasks=saved_tasks))
-    destination[key] = deepcopy(data[original])
+    destination[key] = payload[key]
     destination.setdefault('__SCANS__', factory())[key] = record
     # Compatibility views describe the most recently published scan only.
     # New readers use __SCANS__ to offer every retained parameter scan.
@@ -96,6 +203,53 @@ def combine_cases(cases, factory=dict):
         for _, info, tasks in records:
             store_scan(destination, case, info, tasks, factory)
     return destination
+
+
+def validate_preserved_scans(cases, destination, replaced_scan, incoming_tasks=None):
+    """Refuse publication if merging would lose any different parameter scan.
+
+    Only exact incoming parameter/ky coordinates are replaceable. Validate
+    retained coordinates and result references before removing old aliases.
+    """
+    expected, unindexed, retained_points = {}, set(), {}
+    changed = set() if incoming_tasks is None else {point_coordinate(row) for row in incoming_tasks.values()}
+    for case in cases:
+        records = case_scans(case)
+        owned = {scan_branch(case, info, tasks) for _, info, tasks in records}
+        unindexed.update(key for key in case if not str(key).startswith('__') and key not in owned)
+        for key, info, tasks in records:
+            key = scan_key(info, key)
+            if key != replaced_scan:
+                expected[key] = (info, tasks)
+            else:
+                for row in tasks.values():
+                    coordinate = point_coordinate(row)
+                    if coordinate not in changed:
+                        retained_points[coordinate] = _at(case, row['result_path'])
+    actual = {scan_key(info, key): (info, tasks) for key, info, tasks in case_scans(destination)}
+    missing = (set(expected) | (unindexed - {replaced_scan})) - set(destination)
+    if missing:
+        raise ValueError('Archive retention check failed; previous scans are preserved: ' + ', '.join(sorted(missing)))
+    retained_tasks = actual.get(replaced_scan, ({}, {}))[1]
+    retained = {point_coordinate(row): _at(destination, row['result_path']) for row in retained_tasks.values()}
+    for coordinate, result in retained_points.items():
+        if coordinate not in retained or retained[coordinate] != result:
+            raise ValueError('Archive retention check failed for prior parameter/ky coordinate: ' + str(coordinate))
+    for key, (info, tasks) in expected.items():
+        saved_info, saved_tasks = actual.get(key, ({}, {}))
+        if (set(tasks) != set(saved_tasks) or
+                str(info.get('run_token', '')) != str(saved_info.get('run_token', ''))):
+            raise ValueError('Archive retention check failed for scan: ' + key)
+        for point, row in tasks.items():
+            path = list(row['result_path'])
+            path[0] = key
+            if path != list(saved_tasks[point]['result_path']):
+                raise ValueError('Archive point path changed in retained scan: ' + key)
+            node = destination
+            for part in path:
+                if part not in node:
+                    raise ValueError('Archive point missing in retained scan: ' + key + ' / ' + str(point))
+                node = node[part]
 
 
 def matching_cases(module, runid, identity):

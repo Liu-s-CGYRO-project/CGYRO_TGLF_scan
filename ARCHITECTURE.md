@@ -20,7 +20,7 @@
 | CGYRO 批量队列 | `LIB/OMFITlib_cgyro_queue.py` | 切换当前案例、保存整批进度、等待和整批取消 |
 | CGYRO 重试 | `LIB/OMFITlib_cgyro_retry.py` | 确认提交结果、筛选可重试点、复用核对过的输入 |
 | CGYRO 调度器状态 | `LIB/OMFITlib_cgyro_run_state.py` | 解析状态、核对作业身份、取消与已有 Kill local 接口 |
-| CGYRO 准备、下载、归档 | `CGYRO_scan/SCRIPTS/subscan_lin.py`、`downsync.py`、`CGYROScan.py`、`LIB/OMFITlib_cgyro_archive.py` | 原生 OMFIT 任务适配；完整结果仅替换相同扫描参数组 |
+| CGYRO 准备、下载、归档 | `CGYRO_scan/SCRIPTS/subscan_lin.py`、`downsync.py`、`CGYROScan.py`、`LIB/OMFITlib_cgyro_archive.py` | 原生 OMFIT 任务适配；按完整参数坐标与 ky 逐点合并相同扫描参数组 |
 | TGLF 工作台和多剖面 | `LIB/OMFITlib_tglf_workbench.py`、`OMFITlib_tglf_multi_run.py` | 准备计划和持久运行记录；底层执行在 `TGLF_scan/TGLF/SCRIPTS` |
 | Transfer 粒子处理 | `Transfer_tool/LIB/OMFITlib_transfer_particles.py`、`OMFITlib_transfer_equivalent.py`、`OMFITlib_transfer_zeff.py` | 原始副本准中性 → 完整组成 Zeff → 粒子方案 → 局部输入复查 |
 | CGYRO 单份结果归档 | `LIB/OMFITlib_cgyro_storage.py`、`tools/compact_cgyro_project.py` | 内容摘要唯一拥有原始结果；普通树索引持久化，读取才解析；保留独有历史；检查点验证择一保存 |
@@ -43,7 +43,7 @@
 - 每个案例的 `__SCANS__[扫描键]` 保存独立的 `info` / `tasks`，该案例的公开扫描分支保存指向 RESULT_STORE 的结果引用。`p000001` 等点编号只在各自扫描内有效。顶部 `__INFO__` / `__TASKS__` 仅作最近一次扫描的兼容视图；浏览与续算必须遍历 `case_scans`，不能以它们代表整个案例。续算只替换选定扫描的选定点，并拒绝已经重扫替换的旧 token。作业号和结果目录由运行记录持有，不能从当前 GUI 参数重新推断。
 - 取消后确认 Slurm 终态再自动收集整批。collection_status 与作业状态分离；空点跳过，部分扫描使用独立结果集，原完整归档保留。未开始点只可复用带摘要的原输入 ZIP；已有样本不能在检查点失效时静默重算。续算链和各点来源跨再次取消保留，完整覆盖原计划才替换完整扫描。
 - 续算验证把历史损坏与未推进分开：前缀、有限性、顺序和检查点索引不一致仍报读取错误；合法但尚未超过旧末时刻的段进入 continuation_pending 与 partial_points，保留本次结果 / 检查点到独立部分归档。各次续算通过 previous_final_time 保持原最长末时刻，不能以较短段降低完成目标。调度器失败即使有完整输出仍是部分点；Slurm 状态与待推进原因一同写入任务表供浏览，不触发未推进点自动重提。
-- 续算提交 ZIP 由 RESULT_STORE/__FILES__ 唯一持有，__FILE_REF__ 叶通过 result_view / submission_file 解析。保存快照前去重；新提交不挂载展开检查点。旧展开普通文件只在与 ZIP 成员逐字节摘要相同时移除，编辑型输入和不同内容保留。原目录不删除，上传恢复原点文件名并验证最终副本。新增引用类型时必须同步快照、剪枝、迁移和全部读取入口。
+- 续算提交 ZIP 由 RUN_DB/__STORE__/__FILES__ 唯一持有，__FILE_REF__ 叶通过 result_view / submission_file 解析。保存快照前去重；新提交不挂载展开检查点。旧展开普通文件只在与 ZIP 成员逐字节摘要相同时移除，编辑型输入和不同内容保留。原目录不删除，上传恢复原点文件名并验证最终副本。新增引用类型时必须同步快照、剪枝、迁移和全部读取入口。
 - CGYRO 物理目录只归 RESULT_STORE 所有。其余树的结果叶只能持久化 __RESULT_REF__ 索引；result_view 产生的普通 Python 视图只在局部读取，不能回写归档。去重覆盖完整目录内容，不凭 UUID / 点号 / 文件大小归并；部分和未发布历史的独有结果必须保留。prune_storage 先检查全部可达索引，才从保存树中移除无引用池条目，不直接删除磁盘文件。
 - 输出文件探测复用单个点检查函数，按 shell 引号转义后的 UTF-8 命令字节数分批（不超过 16 KiB）。每批返回码和点表均须完整匹配，全部探测确认后才开始读取结果；探测异常不能作为空点或求解器失败的证据。
 - 网络报错后先确认原提交是否成功。无法确认时保留 `submission_uncertain`，不重复提交。重试资格按每个扫描点判定，先前的取消、超时和内存不足状态不能因切换到重试数组而丢失。
@@ -80,3 +80,8 @@
 管理器的 TESTS 便利节点已从分发树移除，测试源码继续保留在仓库 `OMFITtemplates/tests`。构建时排除此开发目录，并拒绝残留的直接测试文件注册；未更改管理器运行代码或字体资源。
 
 归档去重的完整设计、旧项目流程及 .old 风险见 [RESULT_STORAGE_DESIGN.md](RESULT_STORAGE_DESIGN.md)。
+
+
+## RUN_DB 唯一存储接口（1.23.0）
+
+新增 CGYRO 写入使用 cgyro_db.run_cases / set_run_cases；冻结输入使用 freeze_run_inputs，结果安装使用 store_result。作业快照使用 save_current，外部 RUN_HISTORY 仅保留元数据。绘图仅通过 RUN_DB 和 resolve_result 读取，不创建持久结果缓存。迁移入口 consolidate_storage 统一旧数据、恢复索引、检查引用后清理。store_scan 按全部参数坐标与 ky 更新点，validate_preserved_scans 在安装前保护未重算坐标及其他扫描。详见 RESULT_STORAGE_DESIGN.md。

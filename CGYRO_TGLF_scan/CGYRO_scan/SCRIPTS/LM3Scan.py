@@ -1,3 +1,4 @@
+from OMFITlib_cgyro_db import run_cases
 from OMFITlib_cgyro_storage import resolve_result
 # x: ky : y: para
 # iegensolver=1: holland method on ky,    len(wr_guess)=len(Range)
@@ -64,7 +65,7 @@ try:
             root['SCRIPTS']['downsync.py'].run()
             for count, para_val in enumerate(para_rang):
                 new_dir = para_name + '~' + num2str_xj(para_val, effnum) + '~ky~' + num2str_xj(ky, effnum)
-                casenode=resolve_result(root, root['Cases'][case_tag][new_dir])
+                casenode=resolve_result(root, run_cases(root)[new_dir])
                 try:
                     omega,err_omega=readfreq(casenode)
                 # there exist an error in the omfitcgyro, which get wrong the wr and wi, so here we will need to change accoridnlgy
@@ -95,7 +96,7 @@ try:
             root['SCRIPTS']['downsync.py'].run()
             for count, ky in enumerate(kyarr):
                 new_dir = para_name + '~' + num2str_xj(para_val, effnum) + '~ky~' + num2str_xj(ky, effnum)
-                casenode=resolve_result(root, root['Cases'][case_tag][new_dir])
+                casenode=resolve_result(root, run_cases(root)[new_dir])
                 try:
                     omega,err_omega=readfreq(casenode)
                     wr_temp[count]=omega[1]
@@ -111,19 +112,7 @@ try:
     phy1d['Range']=para_rang
     phy1d['gyroeigen']['wr_guess']=wr_guess
     phy1d['gyroeigen']['wi_guess']=wi_guess
-    # # store the data
-    # for item in root['Cases'][case_tag].keys():
-    #     item_temp=item.split('~')
-    #     if not item_temp[0] in root['OUTPUTScan'].keys():
-    #         root['OUTPUTScan'][item_temp[0]]=OMFITtree()
-    #     if not item_temp[1] in root['OUTPUTScan'][item_temp[0]].keys():
-    #         root['OUTPUTScan'][item_temp[0]][item_temp[1]]=OMFITtree()
-    #     if not 'lin' in root['OUTPUTScan'][item_temp[0]][item_temp[1]].keys():
-    #         root['OUTPUTScan'][item_temp[0]][item_temp[1]]['lin']=OMFITtree()
-    #     root['OUTPUTScan'][item_temp[0]][item_temp[1]]['lin'][item_temp[3]]=OMFITtree()
-    #     for files in root['Cases'][case_tag][item]:
-    #         root['OUTPUTScan'][item_temp[0]][item_temp[1]]['lin'][item_temp[3]][files]=root['Cases'][case_tag][item][files]
-    #
+
 finally:
     root['SETTINGS']['PHYSICS'] = saved_physics
     root['INPUTS']['input.gyro'] = saved_input

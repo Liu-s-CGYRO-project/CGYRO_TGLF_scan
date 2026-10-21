@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import ttk
 from OMFITlib_workbench_catalog import SCAN_TABS as CGYRO_SCAN_TABS
 from OMFITlib_cgyro_results import ResultBrowser
-from OMFITlib_cgyro_present import run_caption, collection_caption, record_details
+from OMFITlib_cgyro_present import run_caption, collection_caption
 from OMFITlib_cgyro_queue import queue_records, queue_summary
 from OMFITlib_cgyro_parameters import FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS, initialize_parameters, numeric_source, parameter_catalog, scan_parameter_names
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, KY_MODES, VALUE_MODES, ky_values
@@ -52,9 +52,6 @@ class CgyroPage:
                 self.guarded('同步作业状态', self.actions.sync_cgyro_run, sync_run_issues(self.root))
                 self.guarded('重新收集未归档结果', self.actions.collect, collect_issues(self.root),
                              help='只读取、归档已有输出；运行中的案例提示后跳过。需要补算时，进入下方“选择点续算”。')
-            details = '\n\n'.join(record_details(entry['manifest']) for _, entry in queued) if queued else record_details(manifest)
-            self.note('手动收集只归档已有输出。',
-                      '收集与运行是两个动作。服务器作业结束并不代表结果已下载或归档。\n\n' + details)
         ResultBrowser(self.root, self.ui, continue_callback=self.actions.continue_cgyro).render(title=False)
         self.nav('对比绘图（可选）', 'plots')
 

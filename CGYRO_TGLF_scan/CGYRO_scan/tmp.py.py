@@ -4,8 +4,7 @@ import numpy as np
 module_location = OMFIT['CGYRO_TGLF_scan']['CGYRO_scan']
 for k in array(['H','D','T']):
 
-    module_location['Cases'].clear()
-    module_location['OUTPUTScan'].clear()
+    # Modern preparation creates a new run token; preserve earlier RUN_DB scans.
     module_location['SETTINGS']['PHYSICS']['nr']=2
     inputs = module_location['INPUTS']
     settings = module_location['SETTINGS']

@@ -9,7 +9,10 @@ import re
 from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, text_output as output_text
 from OMFITlib_cgyro_continue import validate_continued_result
 from OMFITlib_cgyro_retry import point_scheduler_states
-from OMFITlib_cgyro_storage import compact_storage, store_result
+from OMFITlib_cgyro_storage import store_result
+from OMFITlib_cgyro_db import run_cases
+from OMFITlib_cgyro_queue import save_current
+from OMFITlib_cgyro_scratch import directory_bytes, ensure_capacity
 
 
 def read_run_files(command):
@@ -100,7 +103,13 @@ def output_probe_commands():
     retries, so a fixed point count alone is not a safe command-size bound.
     """
     header = r'''cgyro_probe_point() {
-  local point="$1" point_id="$2" missing="" name code solver_errors fatal error
+  local point="$1" point_id="$2" missing="" name code solver_errors fatal error size
+  if [ -d "$point" ]; then
+    size=$(du -sb -- "$point") || return 1
+    size=${size%%[[:space:]]*}
+    case "$size" in ''|*[!0-9]*) return 1;; esac
+    printf 'CGYRO_BYTES|%s|%s\n' "$point_id" "$size"
+  fi
   for name in out.cgyro.grids out.cgyro.time; do
     [ -s "$point/$name" ] || missing="$missing $name"
   done
@@ -155,6 +164,7 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
     """Validate every read-only batch before loading any solver results."""
     chunks = []
     manifest['output_probe'] = ''
+    manifest['point_output_bytes'] = {}
     manifest['output_probe_progress'] = dict(total=len(parentdir), checked=0, batches=0,
                                            max_command_bytes=OUTPUT_PROBE_MAX_BYTES)
     progress = manifest['output_probe_progress']
@@ -194,6 +204,10 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
         elif len(fields) >= 3 and fields[0] == 'CGYRO_ERROR':
             failed.add(fields[1])
             solver_errors.setdefault(fields[1], []).append('|'.join(fields[2:]))
+        elif len(fields) == 3 and fields[0] == 'CGYRO_BYTES':
+            if fields[1] not in parentdir or not fields[2].isdigit():
+                raise RuntimeError('Invalid output size in CGYRO probe')
+            manifest.setdefault('point_output_bytes', {})[fields[1]] = int(fields[2])
         elif len(fields) >= 4 and fields[0] == 'CGYRO_STATE':
             states.append(line)
             state = fields[2].split()[0].rstrip('+') if fields[2].split() else ''
@@ -235,7 +249,7 @@ restart_extra_files = ['bin.cgyro.restart', 'bin.cgyro.restart.old', 'run_log', 
                        'bin.cgyro.lky_flux_n', 'bin.cgyro.lky_flux_e', 'bin.cgyro.lky_flux_v',
                        'bin.cgyro.eparb', 'bin.cgyro.hb']
 
-compact_storage(root, OMFITtree)
+save_current(root, OMFITtree)
 setup = root['SETTINGS']['SETUP']
 icgyro=setup['icgyro']
 rmtsetup=root['SETTINGS']['REMOTE_SETUP']
@@ -252,7 +266,7 @@ rmttunnel = manifest['tunnel']
 failed_cases = []
 local = rmtserver == 'localhost'
 caseTag = manifest['case_tag']
-caseRoot = root['Cases']
+casePoints = run_cases(root, manifest, OMFITtree)
 parentdir = list(manifest['points'])
 loaded_cases = []
 partial_cases = []
@@ -292,6 +306,12 @@ for itemdir in parentdir:
         manifest['skipped_reasons'][itemdir] = 'Missing result directory'
         continue
     try:
+        # Budget both the download and the immutable result owner before the
+        # native reader fetches large restart files into the user's /tmp area.
+        estimated = directory_bytes(result_dir) if local else manifest.get('point_output_bytes', {}).get(itemdir, None)
+        if estimated is None:
+            raise ValueError('Missing remote output size; collect again before downloading')
+        ensure_capacity(manifest['local_workDir'], 2 * estimated)
         if icgyro==0:
             if local:
                 candidate=OMFITgyro(result_dir,extra_files=['RESTART_0','RESTART_tag_0','RESTART_1','RESTART_tag_1','restart.dat'])
@@ -309,7 +329,7 @@ for itemdir in parentdir:
             manifest['skipped_reasons'][itemdir] = 'No time samples'
             continue
         warning = validate_continued_result(candidate, manifest.get('point_table', {}).get(itemdir, {}))
-        caseRoot[caseTag][itemdir] = store_result(root, candidate, OMFITtree) if icgyro == 1 else candidate
+        casePoints[itemdir] = store_result(root, candidate, OMFITtree) if icgyro == 1 else candidate
         if warning:
             manifest['continuation_pending'][itemdir] = warning
             print(itemdir + ': ' + warning)

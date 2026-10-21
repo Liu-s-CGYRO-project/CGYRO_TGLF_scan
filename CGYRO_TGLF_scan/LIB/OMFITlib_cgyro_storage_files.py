@@ -11,6 +11,8 @@ import os
 import re
 import zipfile
 from omfit_classes.omfit_path import OMFITpath
+from OMFITlib_cgyro_db import metadata_value, result_pool, storage_state
+from OMFITlib_cgyro_scratch import ensure_capacity
 
 FILE_STORE = '__FILES__'
 FILE_REF = '__FILE_REF__'
@@ -27,19 +29,21 @@ def native_kind(node, name):
 
 
 def file_reference_id(node):
+    node = metadata_value(node)
     if not isinstance(node, dict) or FILE_REF not in node:
         return None
-    key = node[FILE_REF]
+    key = metadata_value(node[FILE_REF])
     if len(node) != 1 or not isinstance(key, str) or re.fullmatch(r'[0-9a-f]{64}', key) is None:
         raise ValueError('Invalid CGYRO file reference')
     return key
 
 
 def resolve_file(module, node):
+    node = metadata_value(node)
     key = file_reference_id(node)
     if key is None:
         return node
-    owned = module.get('RESULT_STORE', {}).get(FILE_STORE, {}).get(key, None)
+    owned = result_pool(module).get(FILE_STORE, {}).get(key, None)
     if owned is None or not native_kind(owned, 'OMFITpath'):
         raise ValueError('Missing physical CGYRO submission file: ' + key)
     return owned
@@ -83,8 +87,8 @@ class SubmissionFiles:
     """An off-tree transaction plan; compact_storage owns commit/rollback."""
     def __init__(self, module, factory):
         self.module, self.factory = module, factory
-        self.pool = module.get('RESULT_STORE', {}).get(FILE_STORE, {})
-        self.sizes = dict(module.get('RESULT_STORAGE', {}).get('file_bytes', {}))
+        self.pool = metadata_value(result_pool(module).get(FILE_STORE, {}))
+        self.sizes = dict(storage_state(module).get('file_bytes', {}))
         self.additions, self.paths, self.inventories, self.stamps = {}, {}, {}, {}
         self.converted, self.raw_bytes, self.omitted_bytes = 0, 0, 0
         self.retained_files = 0
@@ -150,6 +154,7 @@ class SubmissionFiles:
             owned = OMFITpath('')
             if os.path.realpath(owned.filename) == os.path.realpath(path):
                 raise RuntimeError('Submission owner unexpectedly shares its source')
+            ensure_capacity(owned.filename, size)
             with open(path, 'rb') as incoming, open(owned.filename, 'wb') as outgoing:
                 for block in iter(lambda: incoming.read(4 * 1024 * 1024), b''):
                     outgoing.write(block)

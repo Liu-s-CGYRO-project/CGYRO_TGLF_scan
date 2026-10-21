@@ -1,5 +1,6 @@
 from OMFITlib_cgyro_storage import result_view
-_stored_output = result_view(root, root['OUTPUTScan'])
+from OMFITlib_cgyro_archive import latest_output
+_stored_output = result_view(root, latest_output(root))
 import sys
 from OMFITlib_cgyro_read import *
 with open(root['PLOTS']['CGYROscan']['assist']['getglobal.py'].filename, 'r') as _helper_source:

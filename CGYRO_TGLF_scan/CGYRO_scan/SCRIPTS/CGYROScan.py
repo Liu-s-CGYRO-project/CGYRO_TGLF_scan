@@ -2,11 +2,14 @@
 import copy
 from builtins import ValueError, any, dict, int, len, list, set, str
 from datetime import datetime, timezone
-from OMFITlib_cgyro_archive import canonical_case_key, combine_cases, matching_cases, scan_key, store_scan
+from OMFITlib_cgyro_archive import (canonical_case_key, combine_cases, matching_cases,
+                                  scan_key, store_scan, validate_preserved_scans)
 from OMFITlib_cgyro_retry import collect_current
 from OMFITlib_cgyro_continue import continuation_case, point_result
 from OMFITlib_cgyro_queue import save_current
-from OMFITlib_cgyro_storage import compact_storage, prune_storage, store_result
+from OMFITlib_cgyro_storage import compact_storage, prune_storage, resolve_result, store_result
+from OMFITlib_cgyro_db import run_cases
+from OMFITlib_cgyro_recover import recover_archives
 defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False, continuation=None,
             allow_solver_retries=None)
 
@@ -47,20 +50,14 @@ def result_path(manifest, point_id):
 
 
 def remember_collection(root):
-    manifest = root['RUN_MANIFEST']
-    history = root.setdefault('RUN_HISTORY', OMFITtree()).setdefault(manifest['run_token'], OMFITtree())
-    saved = copy.deepcopy(manifest)
-    if manifest.get('status', '') == 'published':
-        saved.pop('point_table', None)
-        history.pop('cases', None)
-    else:
-        history['cases'] = copy.deepcopy(root['Cases'][manifest['case_tag']])
-    history['manifest'] = saved
     save_current(root, OMFITtree)
 
 
 def publish_loaded_run(root):
     compact_storage(root, OMFITtree)
+    # The current run is published below; only recover older retained sources.
+    recover_archives(root, resolve_result, OMFITtree,
+                     exclude_token=str(root.get('RUN_MANIFEST', {}).get('run_token', '')))
     manifest = root.get('RUN_MANIFEST', None)
     if not manifest or manifest.get('collection_status', '') != 'ready' and manifest.get('status', '') != 'loaded':
         return
@@ -112,9 +109,11 @@ def publish_loaded_run(root):
             if key not in node:
                 node[key] = OMFITtree()
             node = node[key]
-        node[path[-1]] = copy.deepcopy(root['Cases'][case_tag][point_id])
+        node[path[-1]] = copy.deepcopy(run_cases(root, manifest)[point_id])
 
     run_id = str(manifest['runid'])
+    if not run_id or run_id.startswith('__') or '/' in run_id:
+        raise ValueError('CGYRO run ID is empty, reserved or contains a slash')
     if not complete:
         base = run_id + ' [partial ' + str(manifest['run_token'])[:8] + ']'
         run_id, number = base, 1
@@ -136,7 +135,8 @@ def publish_loaded_run(root):
         replaced.extend(str(value) for value in old_info.get('replaced_case_keys', []))
     # Build off-tree, preserving all other scan axes. Replacing the whole case
     # here used to discard N_THETA as soon as N_ENERGY was collected.
-    destination = combine_cases([previous[key] for key in old_keys], OMFITtree)
+    prior_cases = [previous[key] for key in old_keys]
+    destination = combine_cases(prior_cases, OMFITtree)
 
     task_rows = OMFITtree()
     if source_case is not None:
@@ -189,6 +189,7 @@ def publish_loaded_run(root):
     # hidden by the comparison selectors, while remaining directly inspectable
     # in the OMFIT data tree.
     store_scan(destination, fresh_output, info, task_rows, OMFITtree)
+    validate_preserved_scans(prior_cases, destination, scan_key(info), task_rows)
     if 'RUN_DB' not in root:
         root['RUN_DB'] = OMFITtree()
     if run_id not in root['RUN_DB']:
@@ -198,8 +199,6 @@ def publish_loaded_run(root):
     for key in old_keys:
         if key != case_key:
             del run[key]
-    # OUTPUTScan is the latest scan only; RUN_DB contains all retained axes.
-    root['OUTPUTScan'] = fresh_output
     root['RUN_MANIFEST']['case_id'] = case_key
     manifest['collection_status'] = 'complete' if complete else 'partial'
     if complete:

@@ -1,3 +1,4 @@
+from OMFITlib_cgyro_db import legacy_outputs
 import sys
 with open(root['PLOTS']['CGYROalone']['assist']['getglobal.py'].filename, 'r') as _helper_source:
     exec(compile(_helper_source.read(), _helper_source.name, 'exec'), globals())
@@ -700,7 +701,7 @@ ncase=len(case_plot)
 ncount=0
 for case in case_plot:
     if isinstance(t_ave,float):
-        root['OUTPUTS'][case]=OMFITgyro_nonlin(root['OUTPUTS'][case].filename,window=t_ave,t_end=t_end)
+        legacy_outputs(root, OMFITtree)[case]=OMFITgyro_nonlin(legacy_outputs(root, OMFITtree)[case].filename,window=t_ave,t_end=t_end)
     else:
-        root['OUTPUTS'][case] = OMFITgyro_nonlin(root['OUTPUTS'][case].filename, window=t_ave[ncount], t_end=t_end[ncount])
+        legacy_outputs(root, OMFITtree)[case] = OMFITgyro_nonlin(legacy_outputs(root, OMFITtree)[case].filename, window=t_ave[ncount], t_end=t_end[ncount])
     ncount=ncount+1

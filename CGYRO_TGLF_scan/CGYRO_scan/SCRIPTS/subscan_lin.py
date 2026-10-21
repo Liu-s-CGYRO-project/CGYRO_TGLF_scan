@@ -3,8 +3,8 @@
 The project orchestrator calls this once per rho/isotope case. Point IDs keep
 their original array indices so failed subsets can be retried independently.
 """
-from builtins import (Exception, RuntimeError, TypeError, ValueError, all, any, bool, dict, enumerate, float,
-                      int, isinstance, iter, len, list, max, range, set, sorted, str, tuple, zip)
+from builtins import (Exception, OSError, RuntimeError, TypeError, ValueError, all, any, bool, dict, enumerate, float,
+                      int, isinstance, iter, len, list, max, range, set, sorted, str, sum, tuple, zip)
 import numpy as np
 import copy
 import hashlib
@@ -22,8 +22,10 @@ from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolv
 from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, submission_pending, text_output as output_to_text
 from OMFITlib_cgyro_queue import advancing_batch, collection_done, pending_runs, save_current, wait_current
 from OMFITlib_cgyro_retry import execute_submission, retry_limit
-from OMFITlib_cgyro_continue import continuation_plan, prepare_point, restart_files
+from OMFITlib_cgyro_continue import archived_case, continuation_plan, point_result, prepare_point, restart_files
 from OMFITlib_cgyro_storage import compact_storage, result_view
+from OMFITlib_cgyro_db import run_cases, set_run_cases
+from OMFITlib_cgyro_scratch import clean_stage, directory_bytes, ensure_capacity
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -241,11 +243,14 @@ if continuation:
     scan_dimensions = int(continuation['info'].get('scan_dimensions', continuation['info']['dimensions']))
 caseName = continuation['case_tag'] if continuation else physics['case_tag']
 compact_storage(root, OMFITtree)
-caseRoot = root['Cases']
-previous_cases = result_view(root, caseRoot.get(caseName, OMFITtree()))
+previous_cases = result_view(root, run_cases(root))
 restart_mode = 0 if continuation else int(physics['restart_mode'])
 if restart_mode not in (0, 1):
     raise ValueError('restart_mode must be 0 or 1')
+if restart_mode == 1 and not previous_cases:
+    # Completed points are owned by the public scan, not a lingering Cases copy.
+    _, _, archived = archived_case(root, root.get('RUN_MANIFEST', {}).get('run_token', ''))
+    previous_cases = {point: point_result(archived, row) for point, row in archived['__TASKS__'].items()}
 previous_manifest = root.get('RUN_MANIFEST', {})
 if submission_pending(previous_manifest):
     raise ValueError('The previous submission is unconfirmed. Synchronize its saved submission log before submitting again.')
@@ -355,6 +360,7 @@ for new_dir, overrides, point_metadata in points:
     elif restart_mode:
         if new_dir not in previous_cases:
             raise ValueError('Restart point missing: %s; use a fresh run for new points' % new_dir)
+        ensure_capacity(stage, directory_bytes(previous_cases[new_dir].filename))
         previous_cases[new_dir].deploy(stage)
         old_input_path = os.path.join(stage, 'input.cgyro')
         if not os.path.isfile(old_input_path):
@@ -362,12 +368,15 @@ for new_dir, overrides, point_metadata in points:
         validate_restart_input(OMFITgacode(old_input_path), current_input)
         packed_names = restart_files(stage, current_input)
     os.makedirs(stage, exist_ok=True)
+    size_inputs = [current_input] + ([] if continuation else [inputs_node[name] for name in input_names[1:]])
+    ensure_capacity(stage, sum(os.path.getsize(node.filename) for node in size_inputs if os.path.isfile(node.filename)))
     current_input.deploy(os.path.join(stage, 'input.cgyro'))
     for name in input_names[1:]:
         if not continuation:
             inputs_node[name].duplicate().deploy(os.path.join(stage, name))
     prepared = OMFITtree()
     zip_path = os.path.join(submit_workdir, new_dir + '.zip')
+    ensure_capacity(zip_path, sum(os.path.getsize(os.path.join(stage, name)) for name in packed_names) + 1048576)
     checksums = {}
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as archive:
         for name in packed_names:
@@ -388,6 +397,13 @@ for new_dir, overrides, point_metadata in points:
     dir_list.append(new_dir)
     input_checksums[new_dir] = checksums
     point_table[new_dir] = point_metadata
+    # The ZIP and its checksums replace the reproducible expanded checkpoint.
+    # Never remove a path still used by the base input reader.
+    try:
+        clean_stage(submit_workdir, run_token, new_dir, zip_path, checksums,
+                    protected=[base_input.filename])
+    except (OSError, ValueError) as exc:
+        print('Staging retained: ' + str(exc))
 
 manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': max(1, scan_dimensions),
             'scan_dimensions': scan_dimensions,
@@ -568,14 +584,14 @@ if previous_manifest or previous_cases:
         root['RUN_HISTORY'][history_key].pop('cases', None)
     elif previous_failed or not previous_manifest:
         old_tag = previous_manifest.get('case_tag', caseName)
-        root['RUN_HISTORY'][history_key]['cases'] = copy.deepcopy(caseRoot.get(old_tag, OMFITtree()))
+        set_run_cases(root, previous_manifest, run_cases(root, previous_manifest), OMFITtree)
     root['RUN_HISTORY'][history_key]['manifest'] = archived_manifest
 if not batch_id:
     root['RUN_BATCH'] = OMFITtree()
 run_manifest = OMFITtree()
 run_manifest.update(manifest)
 root['RUN_MANIFEST'] = run_manifest
-caseRoot[caseName] = prepared_cases
+set_run_cases(root, run_manifest, prepared_cases, OMFITtree)
 save_current(root, OMFITtree)
 if setup['irun']==1:
     # sub jobs

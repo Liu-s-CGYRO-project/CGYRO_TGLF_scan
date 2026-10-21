@@ -1,5 +1,6 @@
 from OMFITlib_cgyro_storage import result_view
-_stored_output = result_view(root, root['OUTPUTScan'])
+from OMFITlib_cgyro_archive import latest_output
+_stored_output = result_view(root, latest_output(root))
 # this script is used to plot the status of the linear calculation
 # linear converge: 0
 # linear terminated at max time: 1

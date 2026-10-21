@@ -21,7 +21,7 @@ from OMFITlib_cgyro_checkpoint import select_checkpoint
 SEP = ' <-:-:-> '
 CHUNK = 4 * 1024 * 1024
 REF = '__RESULT_REF__'
-STORE = 'RESULT_STORE'
+STORE = '__STORE__'
 
 
 def location(text):
@@ -102,7 +102,7 @@ def compact(source, output, code_project, report_path):
     module_path = '/'.join(module)
     with zipfile.ZipFile(source) as archive, zipfile.ZipFile(code_project) as code:
         released = rows(code.read('OMFITsave.txt'))
-        for library in ('OMFITlib_cgyro_checkpoint', 'OMFITlib_cgyro_storage', 'OMFITlib_cgyro_storage_files'):
+        for library in ('OMFITlib_cgyro_checkpoint', 'OMFITlib_cgyro_storage', 'OMFITlib_cgyro_storage_files', 'OMFITlib_cgyro_db', 'OMFITlib_cgyro_recover', 'OMFITlib_cgyro_scratch'):
             path = 'CGYRO_TGLF_scan/LIB/' + library + '.py'
             if (('CGYRO_TGLF_scan', 'LIB', library) not in released
                     or code.read(path) != (Path(__file__).resolve().parents[1] / path).read_bytes()):
@@ -117,11 +117,23 @@ def compact(source, output, code_project, report_path):
         tree = rows(archive.read(infos['OMFITsave.txt']))
         if module not in tree or tree[module][1] != 'OMFITmodule':
             raise ValueError('Expected the unified CGYRO_TGLF_scan/CGYRO_scan project')
-        if module + (STORE,) in tree:
+        if module + ('RUN_DB', STORE,) in tree:
             raise ValueError('Project already has indexed storage; use its in-app optimization action')
+        legacy = ('Cases', 'OUTPUTScan', 'OUTPUTS', 'RESULT_STORE', 'RESULT_STORAGE',
+                  'LEGACY_UNCLASSIFIED', 'RUN_INDEX', '_PLOT_CACHE')
+        obsolete = []
+        for key, fields in tree.items():
+            if key[:2] == module and len(key) > 2 and key[2] in legacy:
+                if fields[1] != 'OMFITtree' or fields[2]:
+                    raise ValueError('Run Command Box compact_cgyro_storage first; legacy results must be consolidated into RUN_DB')
+                obsolete.append(key)
+        for key in obsolete:
+            del tree[key]
         owners = OrderedDict()
         for key, fields in tree.items():
             if key[:2] == module and fields[1] == 'OMFITcgyro':
+                if key[2] != 'RUN_DB':
+                    raise ValueError('Solver outputs outside RUN_DB require in-app consolidation')
                 if not fields[2].startswith('./'):
                     raise ValueError('External CGYRO directory: ' + fields[0])
                 directory = name(fields[2][2:])
@@ -174,12 +186,12 @@ def compact(source, output, code_project, report_path):
                 print(json.dumps(dict(phase='hash', bytes_checked=checked, unique_results=len(groups))), flush=True)
                 last = checked
         # Every result directory remains native OMFITcgyro, but has one owner.
-        tree[module + (STORE,)] = entry(module + (STORE,))
-        tree[module + ('RESULT_STORAGE',)] = entry(module + ('RESULT_STORAGE',))
-        tree[module + ('RESULT_STORAGE', 'version')] = entry(module + ('RESULT_STORAGE', 'version'), 'int', '_2')
-        tree[module + ('RESULT_STORAGE', 'checkpoint_policy')] = entry(module + ('RESULT_STORAGE', 'checkpoint_policy'), 'int', '_1')
-        tree[module + ('RESULT_STORAGE', 'bytes')] = entry(module + ('RESULT_STORAGE', 'bytes'))
-        tree[module + ('RESULT_STORAGE', 'checkpoints')] = entry(module + ('RESULT_STORAGE', 'checkpoints'))
+        tree[module + ('RUN_DB', STORE,)] = entry(module + ('RUN_DB', STORE,))
+        tree[module + ('RUN_DB', '__STORAGE__',)] = entry(module + ('RUN_DB', '__STORAGE__',))
+        tree[module + ('RUN_DB', '__STORAGE__', 'version')] = entry(module + ('RUN_DB', '__STORAGE__', 'version'), 'int', '_4')
+        tree[module + ('RUN_DB', '__STORAGE__', 'checkpoint_policy')] = entry(module + ('RUN_DB', '__STORAGE__', 'checkpoint_policy'), 'int', '_1')
+        tree[module + ('RUN_DB', '__STORAGE__', 'bytes')] = entry(module + ('RUN_DB', '__STORAGE__', 'bytes'))
+        tree[module + ('RUN_DB', '__STORAGE__', 'checkpoints')] = entry(module + ('RUN_DB', '__STORAGE__', 'checkpoints'))
         for owner in owners.values():
             for key in owner['keys']:
                 if any(other[:len(key)] == key and len(other) > len(key) for other in tree):
@@ -187,13 +199,13 @@ def compact(source, output, code_project, report_path):
                 tree[key] = entry(key)
                 tree[key + (REF,)] = entry(key + (REF,), 'str', '_' + repr(owner['identity']))
         for identity, owner in groups.items():
-            prefix = module_path + '/' + STORE + '/' + identity + '/result'
+            prefix = module_path + '/RUN_DB/' + STORE + '/' + identity + '/result'
             owner['target'] = prefix
-            tree[module + (STORE, identity)] = entry(module + (STORE, identity), 'OMFITcgyro', './' + prefix, owner['fields'][3])
+            tree[module + ('RUN_DB', STORE, identity)] = entry(module + ('RUN_DB', STORE, identity), 'OMFITcgyro', './' + prefix, owner['fields'][3])
             size = sum(row[1] for row in owner['inventory'])
-            key = module + ('RESULT_STORAGE', 'bytes', identity)
+            key = module + ('RUN_DB', '__STORAGE__', 'bytes', identity)
             tree[key] = entry(key, 'int', '_' + str(size))
-            key = module + ('RESULT_STORAGE', 'checkpoints', identity)
+            key = module + ('RUN_DB', '__STORAGE__', 'checkpoints', identity)
             tree[key] = entry(key, 'str', '_' + repr(json.dumps(owner['checkpoint'], sort_keys=True)))
         # Install published code only. Existing inputs, settings, results,
         # custom code nodes and pickle blobs are preserved as data, never run.
@@ -216,7 +228,7 @@ def compact(source, output, code_project, report_path):
         for key, fields in rows(metadata).items():
             if key[:2] == module and key[-1] == REF:
                 identity = ast.literal_eval(fields[2][1:])
-                if tree.get(module + (STORE, identity), ['', ''])[1] != 'OMFITcgyro':
+                if tree.get(module + ('RUN_DB', STORE, identity), ['', ''])[1] != 'OMFITcgyro':
                     raise ValueError('Unresolved output result reference')
         expected = {}
         output.parent.mkdir(parents=True, exist_ok=True)

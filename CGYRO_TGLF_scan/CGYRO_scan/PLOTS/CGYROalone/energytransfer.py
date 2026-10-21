@@ -1,3 +1,4 @@
+from OMFITlib_cgyro_db import legacy_outputs
 """Plot triad transfer with per-case windows and actual result dimensions."""
 import numpy as np
 import matplotlib.pyplot as plt
@@ -65,7 +66,7 @@ if int(n_split) != n_split:
 n_split = int(n_split)
 loader = 'collect.py' if root['SETTINGS']['SETUP']['icgyro']==1 else 'collect_gyro.py'
 root['PLOTS']['CGYROalone']['assist'][loader].run()
-outputs = result_view(root, root['OUTPUTS']['NonLinear'])
+outputs = result_view(root, legacy_outputs(root)['NonLinear'])
 case_names = list(settings['case_plot'])
 if not case_names:
     raise ValueError('Select at least one nonlinear case')

@@ -1,3 +1,4 @@
+from OMFITlib_cgyro_db import legacy_outputs
 """Compare flux spectra with field amplitude; species settings are 1-based.
 
 For i_field=-1, total flux is compared with phi amplitude. Potentials with
@@ -22,7 +23,7 @@ def _ratio(numerator, denominator):
 
 settings = root['SETTINGS']['PLOTS']['nl']
 case_name = settings['case_t_trace']
-case = resolve_result(root, root['OUTPUTS']['NonLinear'][case_name])
+case = resolve_result(root, legacy_outputs(root)['NonLinear'][case_name])
 channels = settings['channel']
 field = int(settings['i_field'])
 if field not in (-1, 0, 1, 2):

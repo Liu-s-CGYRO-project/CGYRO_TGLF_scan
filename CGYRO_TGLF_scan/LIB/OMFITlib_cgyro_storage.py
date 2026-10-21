@@ -13,12 +13,16 @@ import os
 import re
 from omfit_classes.omfit_gacode import OMFITcgyro
 from OMFITlib_cgyro_checkpoint import select_checkpoint
+from OMFITlib_cgyro_db import (POOL, STATE, ensure_layout, metadata_value,
+                              result_pool, run_cases, run_records, storage_state)
+from OMFITlib_cgyro_recover import recover_archives
+from OMFITlib_cgyro_scratch import clean_stage, ensure_capacity
 from OMFITlib_cgyro_storage_files import (FILE_STORE, SubmissionFiles,
                                          file_reference_id, native_kind, resolve_file)
 
-STORE = 'RESULT_STORE'
+STORE = POOL
 REF = '__RESULT_REF__'
-BRANCHES = ('RUN_DB', 'Cases', 'RUN_HISTORY', 'OUTPUTScan', 'RUN_INDEX', 'LEGACY_UNCLASSIFIED', 'OUTPUTS')
+REFERENCE_WALK_VERSION = 2  # RUN_DB-only owners, persisted metadata and sequences.
 
 
 def is_result(node):
@@ -35,9 +39,10 @@ def _file_node(node):
 
 
 def reference_id(node):
+    node = metadata_value(node)
     if _file_node(node) or not hasattr(node, 'items') or REF not in node:
         return None
-    key = node[REF]
+    key = metadata_value(node[REF])
     if len(node) != 1 or not isinstance(key, str) or re.fullmatch(r'[0-9a-f]{64}', key) is None:
         raise ValueError('Invalid CGYRO result reference')
     return key
@@ -45,10 +50,11 @@ def reference_id(node):
 
 def resolve_result(module, node):
     """Accept both the former native object and the new on-disk index."""
+    node = metadata_value(node)
     key = reference_id(node)
     if key is None:
         return node
-    result = module.get(STORE, {}).get(key, None)
+    result = result_pool(module).get(key, None)
     if result is None or not is_result(result):
         raise ValueError('Missing physical CGYRO result: ' + key)
     return result
@@ -56,6 +62,10 @@ def resolve_result(module, node):
 
 def result_view(module, node):
     """Return plain runtime scaffolding; never attach this view to the tree."""
+    node = metadata_value(node)
+    if isinstance(node, (list, tuple)):
+        values = [result_view(module, item) for item in node]
+        return tuple(values) if isinstance(node, tuple) else values
     if file_reference_id(node) is not None:
         return resolve_file(module, node)
     key = reference_id(node)
@@ -73,10 +83,8 @@ def submission_file(module, manifest, name, point=None):
     that upload them must deploy to the requested point basename explicitly.
     """
     token = manifest.get('run_token', '')
-    candidates = []
-    if token and module.get('RUN_MANIFEST', {}).get('run_token', '') == token:
-        candidates.append(module.get('Cases', {}).get(manifest.get('case_tag', ''), {}))
-    candidates.append(module.get('RUN_HISTORY', {}).get(token, {}).get('cases', {}))
+    record = run_records(module).get(str(token), {})
+    candidates = [record.get('inputs', {}), run_cases(module, manifest)]
     for cases in candidates:
         node = cases.get(point, {}) if point is not None else cases
         if not _file_node(node) and hasattr(node, 'get'):
@@ -166,6 +174,7 @@ def _physical_copy(result, files):
     owned = OMFITcgyro('', **properties)
     if os.path.realpath(owned.filename) == os.path.realpath(result.filename):
         raise RuntimeError('Native result copy unexpectedly shares its source directory')
+    ensure_capacity(owned.filename, sum(row[1] for row in files))
     for relative, size, expected in files:
         source = os.path.join(result.filename, relative)
         target = os.path.join(owned.filename, relative)
@@ -189,25 +198,25 @@ def _reference(key, factory):
 
 def store_result(module, result, factory=dict):
     """Freeze a verified downloaded point before installing any public view."""
+    ensure_layout(module, factory)
     old = reference_id(result)
     if old is not None:
         resolve_result(module, result)
         return _reference(old, factory)
     if not is_result(result):
         raise ValueError('Only native CGYRO output objects enter result storage')
-    pool = module.get(STORE, {})
+    pool = result_pool(module, factory)
     for key in pool:
         if pool[key] is result:
             return _reference(key, factory)
     files, checkpoint = archive_inventory(result.filename)
     key = content_key(files)
-    pool = module.setdefault(STORE, factory())
     if key not in pool:
         pool[key] = _physical_copy(result, files)
     if not is_result(pool[key]):
         raise ValueError('Invalid physical CGYRO result: ' + key)
-    state = module.setdefault('RESULT_STORAGE', factory())
-    state.update(dict(version=3, checkpoint_policy=1))
+    state = storage_state(module, factory)
+    state.update(dict(version=4, checkpoint_policy=1))
     state.setdefault('bytes', factory())[key] = sum(row[1] for row in files)
     state.setdefault('checkpoints', factory())[key] = json.dumps(checkpoint, sort_keys=True)
     return _reference(key, factory)
@@ -220,8 +229,9 @@ def compact_storage(module, factory=dict):
     receives the same references as published scans and remains restartable.
     No solver directory or prior project ZIP is deleted by this operation.
     """
-    pool = module.get(STORE, {})
-    previous_state = module.get('RESULT_STORAGE', {})
+    db = ensure_layout(module, factory)
+    pool = result_pool(module)
+    previous_state = storage_state(module)
     sizes = dict(previous_state.get('bytes', {}))
     checkpoints = dict(previous_state.get('checkpoints', {}))
     additions, plans, paths, remapped = {}, {}, {}, {}
@@ -249,6 +259,10 @@ def compact_storage(module, factory=dict):
 
     def convert(node):
         nonlocal raw_bytes, raw_copies
+        node = metadata_value(node)
+        if isinstance(node, (list, tuple)):
+            values = [convert(item) for item in node]
+            return tuple(values) if isinstance(node, tuple) else values
         file_key = file_reference_id(node)
         if file_key is not None:
             resolve_file(module, node)
@@ -267,6 +281,10 @@ def compact_storage(module, factory=dict):
             return deepcopy(node)
         if submissions.pending(node):
             return submissions.convert_bundle(node, convert)
+        if not has_raw(node):
+            # Preserve ordinary metadata dictionaries, whose keys may be full
+            # file paths. Native OMFITtree keys prohibit slashes.
+            return deepcopy(node)
         result = factory()
         for key, value in node.items():
             result[key] = convert(value)
@@ -274,6 +292,9 @@ def compact_storage(module, factory=dict):
 
     # Fast path: indexed projects need no directory reads on every queue update.
     def has_raw(node):
+        node = metadata_value(node)
+        if isinstance(node, (list, tuple)):
+            return any(has_raw(item) for item in node)
         if is_result(node):
             return True
         if file_reference_id(node) is not None:
@@ -288,14 +309,14 @@ def compact_storage(module, factory=dict):
             return True
         return any(has_raw(value) for value in node.values())
 
-    for branch in BRANCHES:
-        if branch in module and has_raw(module[branch]):
-            plans[branch] = convert(module[branch])
+    for branch, value in db.items():
+        if branch not in (STORE, STATE) and has_raw(value):
+            plans[branch] = convert(value)
     submissions.verify_sources()
-    original = {branch: module[branch] for branch in plans}
-    previous_sizes = module.get('RESULT_STORAGE', None)
-    created_pool = STORE not in module
-    target = module.setdefault(STORE, factory())
+    original = {branch: db[branch] for branch in plans}
+    previous_sizes = db.get(STATE, None)
+    created_pool = STORE not in db
+    target = result_pool(module, factory)
     created_files = FILE_STORE not in target
     try:
         for key, value in additions.items():
@@ -305,14 +326,15 @@ def compact_storage(module, factory=dict):
             for key, value in submissions.additions.items():
                 files[key] = value
         for branch, replacement in plans.items():
-            module[branch] = replacement
+            db[branch] = replacement
         state = factory()
-        state.update(dict(version=3, checkpoint_policy=1, bytes=sizes, checkpoints=checkpoints,
+        state.update(deepcopy(dict(previous_state)))
+        state.update(dict(version=4, checkpoint_policy=1, bytes=sizes, checkpoints=checkpoints,
                           file_bytes=submissions.sizes))
-        module['RESULT_STORAGE'] = state
+        db[STATE] = state
     except BaseException:
         for branch, value in original.items():
-            module[branch] = value
+            db[branch] = value
         for key in additions:
             target.pop(key, None)
         for key in submissions.additions:
@@ -320,11 +342,11 @@ def compact_storage(module, factory=dict):
         if created_files:
             target.pop(FILE_STORE, None)
         if created_pool:
-            module.pop(STORE, None)
+            db.pop(STORE, None)
         if previous_sizes is None:
-            module.pop('RESULT_STORAGE', None)
+            db.pop(STATE, None)
         else:
-            module['RESULT_STORAGE'] = previous_sizes
+            db[STATE] = previous_sizes
         raise
     reports = [json.loads(value) for key, value in checkpoints.items() if key in target]
     return dict(converted_copies=raw_copies, physical_results=len(target) - int(FILE_STORE in target),
@@ -341,10 +363,18 @@ def compact_storage(module, factory=dict):
 
 def prune_storage(module):
     """Drop unreachable pool entries from the saved tree, never delete files."""
-    pool = module.get(STORE, {})
+    db = ensure_layout(module)
+    pool = result_pool(module)
     used, used_files = set(), set()
 
     def visit(node):
+        # Resolve reopened metadata before classifying native file leaves.
+        # Otherwise an unopened old scan can look unreachable and be pruned.
+        node = metadata_value(node)
+        if isinstance(node, (list, tuple)):
+            for item in node:
+                visit(item)
+            return
         file_key = file_reference_id(node)
         if file_key is not None:
             resolve_file(module, node)
@@ -359,15 +389,16 @@ def prune_storage(module):
             for value in node.values():
                 visit(value)
 
-    for key, value in module.items():
-        if key not in (STORE, 'RESULT_STORAGE'):
+    for key, value in db.items():
+        if key not in (STORE, STATE):
             visit(value)
     stale = [key for key in pool if key != FILE_STORE and key not in used]
     files = pool.get(FILE_STORE, {})
     stale_files = [key for key in files if key not in used_files]
-    sizes = module.get('RESULT_STORAGE', {}).get('bytes', {})
-    checkpoints = module.get('RESULT_STORAGE', {}).get('checkpoints', {})
-    file_sizes = module.get('RESULT_STORAGE', {}).get('file_bytes', {})
+    state = storage_state(module)
+    sizes = state.get('bytes', {})
+    checkpoints = state.get('checkpoints', {})
+    file_sizes = state.get('file_bytes', {})
     for key in stale:
         del pool[key]
         sizes.pop(key, None)
@@ -376,3 +407,62 @@ def prune_storage(module):
         del files[key]
         file_sizes.pop(key, None)
     return len(stale) + len(stale_files)
+
+
+def consolidate_storage(module, factory=dict):
+    """The explicit migration/compaction command; no scheduler operation."""
+    ensure_layout(module, factory)
+    # Free verified expansions before allocating new physical owners. Otherwise
+    # an old project near its /tmp quota could not start compaction at all.
+    staged = clean_staging(module, factory)
+    cleanup = deepcopy(dict(storage_state(module).get('scratch_cleanup', {})))
+    report = compact_storage(module, factory)
+    recovery = recover_archives(module, resolve_result, factory)
+    storage_state(module, factory)['recovery'] = recovery
+    report['recovered_archives'] = len(recovery['recovered'])
+    report['unresolved_archives'] = len(recovery['unresolved'])
+    report['unreferenced_results'] = prune_storage(module)
+    report['staging_bytes_removed'] = staged + clean_staging(module, factory)
+    cleanup['bytes_removed'] = report['staging_bytes_removed']
+    cleanup['warnings'] = list(cleanup.get('warnings', [])) + list(storage_state(module).get('scratch_cleanup', {}).get('warnings', []))
+    storage_state(module, factory)['scratch_cleanup'] = cleanup
+    return report
+
+
+def clean_staging(module, factory=dict):
+    """Only frozen, checksummed expansions can be removed from /tmp runs."""
+    removed, warnings = 0, []
+    protected = []
+    def protect(node):
+        node = metadata_value(node)
+        if _file_node(node):
+            protected.append(getattr(node, 'filename', ''))
+        elif isinstance(node, (list, tuple)):
+            for child in node:
+                protect(child)
+        elif hasattr(node, 'items'):
+            for child in node.values():
+                protect(child)
+    # Include old, not-yet-compacted owners and editable input readers too.
+    for name in ('RUN_DB', 'INPUTS', 'BATCH_INPUTS'):
+        protect(module.get(name, {}))
+    records = dict(run_records(module))
+    current = module.get('RUN_MANIFEST', {})
+    token = str(current.get('run_token', ''))
+    if token:
+        records[token] = dict(manifest=current)
+    for token, entry in records.items():
+        manifest = entry.get('manifest', {})
+        workdir = manifest.get('source_local_workDir', manifest.get('local_workDir', ''))
+        if not workdir:
+            continue
+        for point, hashes in manifest.get('input_sha256', {}).items():
+            if not os.path.isdir(os.path.join(workdir, 'staging', str(point))):
+                continue
+            try:
+                packed = submission_file(module, manifest, 'zip', point=point)
+                removed += clean_stage(workdir, token, point, packed, hashes, protected)
+            except (OSError, ValueError) as exc:
+                warnings.append(str(point) + ': ' + str(exc))
+    storage_state(module, factory)['scratch_cleanup'] = dict(bytes_removed=removed, warnings=warnings)
+    return removed
