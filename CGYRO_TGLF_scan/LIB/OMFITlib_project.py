@@ -995,10 +995,13 @@ class ProjectActions:
                     continue
                 activate_run(node, token)
                 try:
-                    self.call('等待已提交的 CGYRO 案例', MODULES['cgyro'] + ('SCRIPTS', 'wait_current_run.py'))
+                    # Manual collection reads finished runs immediately. Active
+                    # jobs are reported by downsync; never wait or submit here.
+                    if automatic:
+                        self.call('等待已提交的 CGYRO 案例', MODULES['cgyro'] + ('SCRIPTS', 'wait_current_run.py'))
                     setup['idownsync'] = 1
                     self.call('收集并归档 CGYRO 批量结果', MODULES['cgyro'] + ('SCRIPTS', 'CGYROScan.py'),
-                              collect_stopped=True)
+                              collect_stopped=True, allow_solver_retries=automatic)
                     if node['RUN_MANIFEST'].get('status', '') == 'published':
                         completed.append(node['RUN_MANIFEST']['case_id'])
                 except Exception as exc:
@@ -1112,7 +1115,8 @@ class ProjectActions:
         old_run, old_download = setup.get('irun', None), setup.get('idownsync', None)
         try:
             setup['irun'], setup['idownsync'] = 0, 1
-            return self.call('收集并归档 CGYRO 结果', MODULES['cgyro'] + ('SCRIPTS', 'CGYROScan.py'), collect_stopped=True)
+            return self.call('收集并归档 CGYRO 结果', MODULES['cgyro'] + ('SCRIPTS', 'CGYROScan.py'),
+                             collect_stopped=True, allow_solver_retries=False)
         finally:
             setup['irun'], setup['idownsync'] = old_run, old_download
 

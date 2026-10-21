@@ -294,7 +294,10 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
     save_current(root, factory)
 
 
-def collect_current(root, ui, factory, path_reader, ascii_reader):
+def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_retries=False):
+    """Read saved outputs; only an explicit run action may enable solver retries."""
+    if not allow_solver_retries:
+        print('Collecting existing CGYRO outputs only; solver retries are disabled.')
     collection_retries = 0
     while True:
         try:
@@ -307,6 +310,10 @@ def collect_current(root, ui, factory, path_reader, ascii_reader):
                 time.sleep(collection_retries)
                 continue
             raise
+        # Read retries above handle transport/reader failures. They do not grant
+        # permission to submit a solver, regardless of the configured retry count.
+        if not allow_solver_retries:
+            return
         manifest = root['RUN_MANIFEST']
         points = retryable_points(root)
         if not points:

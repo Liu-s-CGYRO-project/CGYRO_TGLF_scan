@@ -7,9 +7,13 @@ from OMFITlib_cgyro_retry import collect_current
 from OMFITlib_cgyro_continue import continuation_case, point_result
 from OMFITlib_cgyro_queue import save_current
 from OMFITlib_cgyro_storage import compact_storage, prune_storage, store_result
-defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False, continuation=None)
+defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False, continuation=None,
+            allow_solver_retries=None)
 
 setup = root['SETTINGS']['SETUP']
+# Direct legacy run entries inherit their run intent. A collection-only entry
+# defaults to no submissions; queued run orchestration passes its intent explicitly.
+retry_enabled = setup['irun'] == 1 if allow_solver_retries is None else allow_solver_retries
 if setup['icgyro'] != 1:
     raise RuntimeError('Legacy GYRO submission is unavailable in this repaired CGYRO package')
 dimensions = int(setup['idimrun'])
@@ -22,7 +26,8 @@ if setup['irun'] == 1:
 if (wait_for_completion and (setup['idownsync'] == 1 or root.get('RUN_MANIFEST', {}).get('auto_collect_requested', False))
         and (collect_stopped or root.get('RUN_MANIFEST', {}).get('auto_collect_requested', False)
              or not root.get('RUN_MANIFEST', {}).get('stop_requested', False))):
-    collect_current(root, OMFITx, OMFITtree, OMFITpath, OMFITascii)
+    collect_current(root, OMFITx, OMFITtree, OMFITpath, OMFITascii,
+                    allow_solver_retries=retry_enabled)
 
 
 def result_path(manifest, point_id):
