@@ -251,8 +251,6 @@ if submission_pending(previous_manifest):
     raise ValueError('The previous submission is unconfirmed. Synchronize its saved submission log before submitting again.')
 if not batch_id and pending_runs(root):
     raise ValueError('The queued CGYRO batch still needs synchronization or collection before another run.')
-if not batch_id:
-    root['RUN_BATCH'] = OMFITtree()
 previous_status = previous_manifest.get('status', None)
 previous_failed = previous_status in ('failed', 'cancelled') or (
     previous_status == 'submitted_or_finished' and bool(previous_manifest.get('failed_points', [])))
@@ -390,21 +388,6 @@ for new_dir, overrides, point_metadata in points:
     input_checksums[new_dir] = checksums
     point_table[new_dir] = point_metadata
 
-# Commit the prepared run only after every point passes validation and packaging.
-if previous_manifest or previous_cases:
-    history_key = root.get('RUN_MANIFEST', {}).get('run_token', 'imported-' + run_token)
-    if 'RUN_HISTORY' not in root:
-        root['RUN_HISTORY'] = OMFITtree()
-    if history_key not in root['RUN_HISTORY']:
-        root['RUN_HISTORY'][history_key] = OMFITtree()
-    archived_manifest = copy.deepcopy(previous_manifest)
-    if previous_status == 'published':
-        archived_manifest.pop('point_table', None)  # Permanent task rows live once in RUN_DB.
-        root['RUN_HISTORY'][history_key].pop('cases', None)
-    elif previous_failed or not previous_manifest:
-        old_tag = previous_manifest.get('case_tag', caseName)
-        root['RUN_HISTORY'][history_key]['cases'] = copy.deepcopy(caseRoot.get(old_tag, OMFITtree()))
-    root['RUN_HISTORY'][history_key]['manifest'] = archived_manifest
 manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': max(1, scan_dimensions),
             'scan_dimensions': scan_dimensions,
             'points': dir_list, 'server': remote_server, 'tunnel': remote_tunnel,
@@ -427,12 +410,6 @@ if continuation:
                          continuation={key: copy.deepcopy(continuation[key]) for key in
                              ('source_token', 'source_runid', 'source_case_id', 'additional_time', 'points',
                               'stopped_run', 'source_points')}))
-run_manifest = OMFITtree()
-run_manifest.update(manifest)
-root['RUN_MANIFEST'] = run_manifest
-caseRoot[caseName] = prepared_cases
-with open(os.path.join(submit_workdir, 'manifest.json'), 'w') as handle:
-    json.dump(manifest, handle, indent=2)
 environment=script_fragment(required_cfg(server_setup, 'environment'))
 executable=script_fragment(required_cfg(server_setup, 'executable')).strip()
 scheduler=cfg_str(server_setup, 'scheduler', '').lower()
@@ -443,8 +420,8 @@ if local_submit != (scheduler == 'local'):
 cpus_per_task = int(cfg_get(server_setup, 'cpus_per_task', cfg_get(setup, 'cpus_per_task', 1)))
 if cpus_per_task < 1:
     config_error('cpus_per_task must be a positive integer')
-root['RUN_MANIFEST']['scheduler'] = scheduler
-root['RUN_MANIFEST']['cpus_per_task'] = cpus_per_task
+manifest['scheduler'] = scheduler
+manifest['cpus_per_task'] = cpus_per_task
 pbs_file=os.path.join(submit_workdir, 'scan.pbs')
 ps_name='cgyro'
 dirlist_num=len(dir_list)
@@ -569,10 +546,35 @@ exit "$result"
 
 with open(pbs_file,'w') as f1:
     f1.write(bash_head+'\n'+bash_helpers+'\n'+bash_content)
+with open(pbs_file, 'rb') as handle:
+    manifest['submit_script_sha256'] = hashlib.sha256(handle.read()).hexdigest()
 pbs_name = path_basename(pbs_file)
-caseRoot[caseName][pbs_name]=OMFITascii(pbs_file)
+prepared_cases[pbs_name] = OMFITascii(pbs_file)
+inputs.append(prepared_cases[pbs_name])
+with open(os.path.join(submit_workdir, 'manifest.json'), 'w') as handle:
+    json.dump(manifest, handle, indent=2)
 
-inputs.append(caseRoot[caseName][pbs_name])
+# Commit the prepared run only after every point passes validation and packaging.
+if previous_manifest or previous_cases:
+    history_key = root.get('RUN_MANIFEST', {}).get('run_token', 'imported-' + run_token)
+    if 'RUN_HISTORY' not in root:
+        root['RUN_HISTORY'] = OMFITtree()
+    if history_key not in root['RUN_HISTORY']:
+        root['RUN_HISTORY'][history_key] = OMFITtree()
+    archived_manifest = copy.deepcopy(previous_manifest)
+    if previous_status == 'published':
+        archived_manifest.pop('point_table', None)  # Permanent task rows live once in RUN_DB.
+        root['RUN_HISTORY'][history_key].pop('cases', None)
+    elif previous_failed or not previous_manifest:
+        old_tag = previous_manifest.get('case_tag', caseName)
+        root['RUN_HISTORY'][history_key]['cases'] = copy.deepcopy(caseRoot.get(old_tag, OMFITtree()))
+    root['RUN_HISTORY'][history_key]['manifest'] = archived_manifest
+if not batch_id:
+    root['RUN_BATCH'] = OMFITtree()
+run_manifest = OMFITtree()
+run_manifest.update(manifest)
+root['RUN_MANIFEST'] = run_manifest
+caseRoot[caseName] = prepared_cases
 save_current(root, OMFITtree)
 if setup['irun']==1:
     # sub jobs

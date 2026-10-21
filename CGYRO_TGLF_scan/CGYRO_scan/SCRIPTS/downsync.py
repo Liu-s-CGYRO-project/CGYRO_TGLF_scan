@@ -210,7 +210,9 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
     manifest['solver_errors'] = solver_errors
     manifest['missing_outputs'] = absent
     if scheduler_record is not None:
-        for point, state in scheduler_record.get('point_states', {}).items():
+        # The newest allocation covers only the retried subset. Earlier OOM,
+        # timeout/cancellation states still belong to their original points.
+        for point, state in point_scheduler_states(manifest).items():
             if state and state != 'COMPLETED':
                 failed.add(point)
     manifest['complete_output_points'] = [point for point in parentdir if point in complete]

@@ -2,6 +2,10 @@
 
 ## 提交时 Abort 后
 
+工程 1.22.36 也将上传 / 提交窗口的 Kill local 接入停止流程：保存停止意图，找回已接受的作业后取消本批已确认任务并收集；回执不明时保留保护，可稍后同步。原生 Abort 仍中断本地脚本，不等于取消 Slurm。直接关闭整个 OMFIT 无法自动收集，重开后先同步再收集。
+
+重复收集部分结果时中断，原恢复入口仍保留；跨重试保留各点取消 / OOM 状态。旧记录无提交脚本摘要时禁止自动重提，可明确选择点续算。完整审查与限制见 [流程审查](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/blob/main/WORKFLOW_AUDIT.md)。
+
 输入上传与调度提交分开记录。“上传输入中”阶段只传文件，不执行 sbatch / qsub；此时 Abort 可直接重新运行。提交阶段中断仍保留回执和原目录。失败点重试若未提交成功，恢复上次已确认的作业与结果来源，不把成功点指向空重试目录。
 
 点击“同步作业状态”先读取原目录日志；缺少回执时按原服务器、原 WorkDir 查询当前队列及最近七天账目。仅恢复唯一匹配的数组主作业号；多匹配、查询失败或旧记录无匹配时继续保护。此查找遵循 [squeue](https://slurm.schedmd.com/squeue.html) 的工作目录 / 数组主号字段和 [sacct](https://slurm.schedmd.com/sacct.html) 的 WorkDir 字段。

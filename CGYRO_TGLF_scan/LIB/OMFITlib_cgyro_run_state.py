@@ -3,7 +3,7 @@
 This layer never submits work. Queue orchestration selects the saved manifest;
 all queries and cancellation use that manifest's endpoint and job identity.
 """
-from builtins import (Exception, RuntimeError, ValueError, any, bool, dict, enumerate,
+from builtins import (Exception, RuntimeError, ValueError, all, any, bool, dict, enumerate,
                       getattr, int, isinstance, len, list, print, range, set, str, tuple, zip)
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -332,7 +332,25 @@ def stop_run(root, ui, expected_job_id, expected_run_token):
 
 @contextmanager
 def linked_kill_local(run_root, ui, job_id, run_token, stop_callback=None):
-    """Rebind only this wait dialog's existing Kill local; do not patch OMFIT.
+    """Cancel the saved allocation before ending its native local waiter."""
+    _, stamp = stop_marker(job_id, run_token)
+    manifest = run_root['RUN_MANIFEST']
+
+    def stop():
+        if stop_callback is None:
+            stop_run(run_root, ui, job_id, run_token)
+        else:
+            stop_callback()
+        manifest['auto_collect_requested'] = True
+        print(stop_message(manifest))
+
+    with linked_local_action(ui, stamp, (stamp, 'CGYRO_WAIT_STOPPED'), stop):
+        yield
+
+
+@contextmanager
+def linked_local_action(ui, stamp, markers, action):
+    """Rebind only the identified native dialog, without patching OMFIT.
 
     Native OMFIT places its command-details Text and button row in one panel.
     The unique wait stamp identifies the panel, including embedded run windows.
@@ -341,7 +359,6 @@ def linked_kill_local(run_root, ui, job_id, run_token, stop_callback=None):
     import tkinter as tk
     from tkinter import messagebox
 
-    _, stamp = stop_marker(job_id, run_token)
     aux = getattr(ui, '_aux', {})
     tk_root = aux.get('rootGUI', None)
     if not isinstance(tk_root, tk.Misc):
@@ -359,8 +376,6 @@ def linked_kill_local(run_root, ui, job_id, run_token, stop_callback=None):
                 attach(event.widget)
         tk_root._cgyro_stop_map_binding = tk_root.bind_class('TButton', '<Map>', mapped, add='+')
     linked = {}
-    needle = stamp
-    wait_manifest = run_root.get('RUN_MANIFEST', {})
 
     def attach(button):
         if button in linked:
@@ -369,8 +384,7 @@ def linked_kill_local(run_root, ui, job_id, run_token, stop_callback=None):
             if str(button.cget('text')).strip() != 'Kill local':
                 return
             panel = button.master.master
-            if not any(isinstance(widget, tk.Text) and needle in widget.get('1.0', 'end-1c')
-                       and 'CGYRO_WAIT_STOPPED' in widget.get('1.0', 'end-1c')
+            if not any(isinstance(widget, tk.Text) and all(marker in widget.get('1.0', 'end-1c') for marker in markers)
                        for widget in panel.winfo_children()):
                 return
             original = str(button.cget('command'))
@@ -380,12 +394,7 @@ def linked_kill_local(run_root, ui, job_id, run_token, stop_callback=None):
             def stop():
                 try:
                     button.configure(state='disabled')
-                    if stop_callback is None:
-                        stop_run(run_root, ui, job_id, run_token)
-                    else:
-                        stop_callback()
-                    wait_manifest['auto_collect_requested'] = True
-                    print(stop_message(wait_manifest))
+                    action()
                     # The marker may already have ended the wait during the query.
                     if button.winfo_exists():
                         button.tk.call(original)

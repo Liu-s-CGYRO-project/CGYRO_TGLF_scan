@@ -873,6 +873,7 @@ class ProjectActions:
         scheduler = remote.get(str(remote.get('serverPicker', '') or ''), {}).get('scheduler', '')
         queued = str(scheduler).lower() in ('slurm', 'pbs')
         batch_id = uuid.uuid4().hex if queued else ''
+        original_batch = copy.deepcopy(node.get('RUN_BATCH', self.factory()))
         if queued:
             batch = self.factory()
             batch.update(dict(batch_id=batch_id, case_ids=[item['case_id'] for item in plan],
@@ -892,6 +893,7 @@ class ProjectActions:
         original_physics = {key: physics[key] for key in physics.keys()}
         record = self._record('CGYRO 批量扫描', status='running', combinations=copy.deepcopy(plan))
         completed = []
+        collecting = False
         try:
             setup['irun'], setup['idownsync'] = 1, 0 if queued else 1
             for item in plan:
@@ -912,6 +914,9 @@ class ProjectActions:
                            wait_for_completion=not queued, batch_id=batch_id)
                 manifest = node.get('RUN_MANIFEST', {})
                 if manifest.get('stop_requested', False):
+                    if queued:
+                        collecting = True
+                        completed = self._collect_cgyro_queue(automatic=True)
                     record.update(dict(status='cancelled', completed=completed,
                                        stopped_case=item['case_id'], remote_status=manifest.get('status', '')))
                     self.settings['message'] = stop_message(manifest)
@@ -920,6 +925,7 @@ class ProjectActions:
                     completed.append(item['case_id'])
             if queued:
                 node['RUN_BATCH']['status'] = 'submitted'
+                collecting = True
                 completed = self._collect_cgyro_queue(automatic=True)
                 if node['RUN_BATCH'].get('stop_requested', False):
                     record.update(dict(status='cancelled', completed=completed))
@@ -944,8 +950,22 @@ class ProjectActions:
                 save_current(node, self.factory)
                 node['RUN_BATCH'].update(dict(status='partial', error=str(exc)))
                 completed = list(node['RUN_BATCH'].get('completed', completed))
+                if not node['RUN_BATCH'].get('tokens', []) and manifest.get('batch_id', '') != batch_id:
+                    node['RUN_BATCH'] = original_batch  # Preparation failed before any new run was committed.
             record.update(dict(status='cancelled' if isinstance(exc, KeyboardInterrupt) else 'failed',
                                completed=completed, error=str(exc)))
+            if (queued and not collecting and node.get('RUN_BATCH', {}).get('stop_requested', False)
+                    and node['RUN_BATCH'].get('batch_id', '') == batch_id and isinstance(exc, Exception)):
+                # Kill during upload may leave earlier H/D cases accepted. Sync
+                # honors the saved stop intent, then collect every confirmed job.
+                try:
+                    self.call('确认已停止的提交', MODULES['cgyro'] + ('SCRIPTS', 'refresh_run_status.py'))
+                except Exception as sync_error:
+                    record['stop_sync_error'] = str(sync_error)
+                completed = self._collect_cgyro_queue(automatic=True)
+                record.update(dict(status='cancelled', completed=completed))
+                self.settings['message'] = queue_summary(node) + ' 提交已停止，已有输出已收集。'
+                return completed
             raise
         finally:
             setup['irun'], setup['idownsync'] = previous['irun'], previous['idownsync']

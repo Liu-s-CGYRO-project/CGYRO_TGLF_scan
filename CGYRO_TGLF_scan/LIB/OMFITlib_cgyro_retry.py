@@ -4,7 +4,7 @@ Transport recovery never resubmits; it can seal a gated attempt before it starts
 A solver retry uses verified inputs in a new directory and retains successful
 points. A failed upload restores the previous confirmed attempt.
 """
-from builtins import BaseException, Exception, KeyboardInterrupt, RuntimeError, ValueError, any, bool, dict, enumerate, int, isinstance, iter, len, list, print, range, str
+from builtins import BaseException, Exception, KeyboardInterrupt, RuntimeError, ValueError, any, bool, dict, enumerate, int, isinstance, iter, len, list, print, range, set, str
 from copy import deepcopy
 from datetime import datetime, timezone
 import hashlib
@@ -14,8 +14,8 @@ import re
 import time
 import uuid
 import zipfile
-from OMFITlib_cgyro_queue import save_current, shell_quote, wait_current
-from OMFITlib_cgyro_run_state import submitted_job_id, text_output
+from OMFITlib_cgyro_queue import collection_done, save_current, shell_quote, stop_queue, wait_current
+from OMFITlib_cgyro_run_state import linked_local_action, stop_run, submitted_job_id, text_output
 from OMFITlib_cgyro_submission import PROTOCOL, discover_submission, seal_unstarted, submit_command
 
 
@@ -39,6 +39,7 @@ def network_error(error):
 def no_submission(root, factory, reason, error='', interrupted=False):
     """Keep an unsuccessful retry from hiding the last confirmed allocation."""
     manifest = root['RUN_MANIFEST']
+    stop_requested = manifest.get('submission_stop_requested', False)
     failure = dict(workDir=manifest['workDir'], nonce=manifest.get('submission_nonce', ''),
         reason=reason, error=str(error), at=datetime.now(timezone.utc).isoformat())
     parent = manifest.pop('submission_parent', None)
@@ -48,8 +49,10 @@ def no_submission(root, factory, reason, error='', interrupted=False):
         manifest.update(parent)
         manifest['retry_count'] = count
         manifest['retry_submission_failures'] = list(manifest.get('retry_submission_failures', [])) + [failure]
-        if interrupted:
+        if interrupted or stop_requested:
             manifest['stop_requested'] = True
+        if stop_requested:
+            manifest['submission_stop_requested'] = True
     else:
         manifest.update(dict(status='failed', terminal_reason=reason, submit_error=str(error)))
     manifest['submission_uncertain'] = False
@@ -114,7 +117,57 @@ def recover_submission(root, ui, factory=dict):
     return True
 
 
+def stop_submitted(root, ui, factory=dict):
+    """Finish a saved submission-time Kill once its allocation is known."""
+    manifest = root['RUN_MANIFEST']
+    if not manifest.get('submission_stop_requested', False) or not manifest.get('job_id', ''):
+        return
+    if manifest.get('scheduler', '') != 'slurm':
+        raise RuntimeError('Submission stopped locally; cancel the recorded PBS job before collecting.')
+    batch = root.get('RUN_BATCH', {})
+    try:
+        if manifest.get('batch_id', '') and manifest['batch_id'] == batch.get('batch_id', ''):
+            stop_queue(root, ui, manifest['job_id'], manifest['run_token'], factory)
+        else:
+            stop_run(root, ui, manifest['job_id'], manifest['run_token'])
+        manifest['auto_collect_requested'] = True
+    finally:
+        save_current(root, factory)
+
+
 def execute_submission(root, ui, factory, ascii_reader, inputs, local, command):
+    """Record Kill local intent even before the scheduler reply is available."""
+    manifest = root['RUN_MANIFEST']
+    token, directory = manifest['run_token'], manifest['workDir']
+
+    def request_stop():
+        current = root['RUN_MANIFEST']
+        if current.get('run_token', '') != token or current.get('workDir', '') != directory:
+            raise ValueError('This submission window belongs to an earlier attempt.')
+        current.update(dict(stop_requested=True, submission_stop_requested=True))
+        batch = root.get('RUN_BATCH', {})
+        if current.get('batch_id', '') and current['batch_id'] == batch.get('batch_id', ''):
+            batch.update(dict(stop_requested=True, status='cancel_requested'))
+        save_current(root, factory)
+
+    # Native transfer and submit details contain this immutable run directory.
+    # The callback only records intent; recovery below resolves/cancels the job.
+    with linked_local_action(ui, 'submit:' + token, (token,), request_stop):
+        try:
+            job_id = _execute_submission(root, ui, factory, ascii_reader, inputs, local, command)
+        except Exception:
+            current = root['RUN_MANIFEST']
+            if (not current.get('submission_stop_requested', False)
+                    or current.get('submission_uncertain', False) or not current.get('job_id', '')):
+                raise
+            # A killed retry upload restored its confirmed parent. Collect that
+            # parent's results; never pretend that the new retry was submitted.
+            job_id = current['job_id']
+    stop_submitted(root, ui, factory)
+    return job_id
+
+
+def _execute_submission(root, ui, factory, ascii_reader, inputs, local, command):
     """Upload without a scheduler command, then perform one gated submission."""
     manifest = root['RUN_MANIFEST']
     manifest.update(dict(submission_protocol=PROTOCOL, submission_nonce=uuid.uuid4().hex,
@@ -134,6 +187,11 @@ def execute_submission(root, ui, factory, ascii_reader, inputs, local, command):
         # This phase cannot create an allocation: the remote command is only ':'.
         no_submission(root, factory, 'input_transfer_interrupted', exc, isinstance(exc, KeyboardInterrupt))
         raise
+    if manifest.get('submission_stop_requested', False):
+        # Kill can race with a successful transfer return. The local intent is
+        # authoritative even when rsync / the harmless ':' returned zero.
+        no_submission(root, factory, 'input_transfer_stopped')
+        raise RuntimeError('CGYRO upload stopped; this attempt was not submitted.')
     output, errors = [], []
     manifest.update(dict(status='submitting', submission_uncertain=True))
     save_current(root, factory)
@@ -211,7 +269,8 @@ def retryable_points(root):
         return []  # Never duplicate a job with an unconfirmed terminal state.
     if manifest.get('scheduler', '') == 'pbs' and not manifest.get('wait_completed', False):
         return []
-    if not manifest.get('input_sha256', {}) or any(re.fullmatch(r'p[0-9]{6,}', str(point)) is None for point in manifest['points']):
+    if (not manifest.get('input_sha256', {}) or not manifest.get('submit_script_sha256', '')
+            or any(re.fullmatch(r'p[0-9]{6,}', str(point)) is None for point in manifest['points'])):
         return []  # Old unindexed/imported runs cannot be reconstructed safely.
     solver = manifest.get('solver_errors', {})
     # Current probes attribute fatal errors to individual points. Keep the
@@ -242,8 +301,11 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
     local = os.path.join(original_local, suffix)
     remote = posixpath.join(original_remote, suffix)
     os.makedirs(local)
-    with open(os.path.join(original_local, 'scan.pbs'), encoding='utf-8') as stream:
-        script = stream.read()
+    with open(os.path.join(original_local, 'scan.pbs'), 'rb') as stream:
+        script_bytes = stream.read()
+    if hashlib.sha256(script_bytes).hexdigest() != manifest['submit_script_sha256']:
+        raise ValueError('Original submission script changed; retry was not submitted.')
+    script = script_bytes.decode('utf-8')
     scheduler = manifest['scheduler']
     indices = [index for index, point in enumerate(manifest['points']) if point in points]
     if scheduler == 'slurm':
@@ -265,6 +327,9 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
     for point in points:
         path = os.path.join(original_local, point + '.zip')
         with zipfile.ZipFile(path) as archive:
+            expected_names = manifest['input_sha256'][point]
+            if len(archive.namelist()) != len(expected_names) or set(archive.namelist()) != set(expected_names):
+                raise ValueError('Original retry archive member list changed: ' + point)
             for name, expected in manifest['input_sha256'][point].items():
                 digest = hashlib.sha256()
                 with archive.open(name) as member:
@@ -286,11 +351,11 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
     manifest.update(dict(attempts=attempts, source_workDir=original_remote, source_local_workDir=original_local,
         retry_count=number, active_points=list(points), point_workdirs=locations, workDir=remote,
         job_id='', status='submitting', submission_uncertain=True, wait_completed=False,
+        collection_status='pending', loaded_points=[], partial_points=[], skipped_points=[], failed_points=[],
         scheduler_sync={}, scheduler_status='', submit_output='', submit_error='',
         retry_at=datetime.now(timezone.utc).isoformat()))
     save_current(root, factory)
     execute_submission(root, ui, factory, ascii_reader, inputs, local, command)
-    manifest['failed_points'], manifest['partial_points'] = [], []
     save_current(root, factory)
 
 
@@ -300,16 +365,33 @@ def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_r
         print('Collecting existing CGYRO outputs only; solver retries are disabled.')
     collection_retries = 0
     while True:
+        manifest = root['RUN_MANIFEST']
+        # Re-reading a finished partial archive is transactional. An Abort or
+        # failed read must not remove its resume entry or mix old rows/new files.
+        preserved = None
+        if collection_done(manifest):
+            preserved = (deepcopy(manifest), deepcopy(root['Cases'][manifest['case_tag']]))
         try:
             root['SCRIPTS']['downsync.py'].run()
-        except Exception as exc:
+        except BaseException as exc:
             manifest = root['RUN_MANIFEST']
+            read_error = bool(manifest.get('load_errors', {}))
+            if preserved is not None:
+                manifest.clear()
+                manifest.update(preserved[0])
+                root['Cases'][manifest['case_tag']] = preserved[1]
+            else:
+                manifest['collection_status'] = 'incomplete'
+            manifest['collection_error'] = str(exc) or 'Local collection interrupted.'
+            save_current(root, factory)
             # A download/query failure gets another read; it never launches a solver.
-            if collection_retries < 2 and (network_error(exc) or manifest.get('load_errors', {})):
+            if isinstance(exc, Exception) and collection_retries < 2 and (network_error(exc) or read_error):
                 collection_retries += 1
                 time.sleep(collection_retries)
                 continue
             raise
+        root['RUN_MANIFEST'].pop('collection_error', None)
+        save_current(root, factory)
         # Read retries above handle transport/reader failures. They do not grant
         # permission to submit a solver, regardless of the configured retry count.
         if not allow_solver_retries:

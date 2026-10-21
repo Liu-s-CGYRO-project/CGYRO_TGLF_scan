@@ -78,6 +78,11 @@ def stopped_context(module, token):
         # An unchanged point may have been inherited from an earlier segment.
         for point, row in case['__TASKS__'].items():
             rows.setdefault(point, copy.deepcopy(dict(row)))
+    planned = set(manifest.get('continuation', {}).get('source_points', manifest.get('points', [])))
+    if planned - set(rows) or (planned - unfinished) - set(results):
+        # A full rescan can replace a published ancestor while leaving an old
+        # empty/partial child in history. Do not rebuild a smaller "full" scan.
+        raise ValueError('Continuation ancestry was replaced or is incomplete. Select the latest retained scan.')
     info = copy.deepcopy(dict(case['__INFO__'] if case is not None else manifest))
     info.update(dict(source_nr=manifest['nr'], ion_case=manifest['mass'],
                      runid=manifest['runid'], points=len(rows)))
@@ -312,7 +317,7 @@ def prepare_point(module, plan, point_id, stage, reader):
     else:
         os.makedirs(stage)
         with zipfile.ZipFile(origin['zip']) as archive:
-            if set(archive.namelist()) != set(origin['sha256']):
+            if len(archive.namelist()) != len(origin['sha256']) or set(archive.namelist()) != set(origin['sha256']):
                 raise ValueError('Original input archive member list changed: ' + point_id)
             for name, expected in origin['sha256'].items():
                 if not name or name in ('.', '..') or '/' in name or '\\' in name:

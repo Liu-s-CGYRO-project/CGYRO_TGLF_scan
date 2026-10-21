@@ -27,20 +27,21 @@ def queue_records(root):
 
 def save_current(root, factory=dict):
     """Checkpoint the active case; drop duplicate payloads only after publish."""
-    compact_storage(root, factory)
     manifest = root.get('RUN_MANIFEST', {})
+    if not manifest.get('run_token', '') or 'Cases' not in root:
+        return  # Metadata-only scheduler views already refer to the saved entry.
+    compact_storage(root, factory)
     batch = root.get('RUN_BATCH', {})
-    if not batch.get('batch_id', '') or manifest.get('batch_id', '') != batch['batch_id']:
-        return
     token = manifest['run_token']
-    if token not in batch['tokens']:
+    if (batch.get('batch_id', '') and manifest.get('batch_id', '') == batch['batch_id']
+            and token not in batch['tokens']):
         batch['tokens'] = list(batch['tokens']) + [token]
     entry = root.setdefault('RUN_HISTORY', factory()).setdefault(token, factory())
     saved = deepcopy(manifest)
     if manifest.get('status', '') == 'published':
         saved.pop('point_table', None)
         entry.pop('cases', None)
-    else:
+    elif manifest['case_tag'] in root['Cases']:
         entry['cases'] = deepcopy(root['Cases'][manifest['case_tag']])
     entry['manifest'] = saved
 
@@ -100,6 +101,12 @@ def refresh_queue(root, ui, factory=dict, recover=None):
             if not manifest.get('job_id', '') and manifest.get('status', '') == 'failed':
                 manifest.pop('sync_error', None)
                 continue  # A definite rejection did not create a server job.
+            if root.get('RUN_BATCH', {}).get('stop_requested', False) and manifest.get('scheduler', '') == 'slurm':
+                # A submission-time Kill can precede the current receipt. Once
+                # recovered, honor that same batch stop for all known jobs.
+                if not manifest.get('batch_id', '') or manifest['batch_id'] != root['RUN_BATCH'].get('batch_id', ''):
+                    raise ValueError('The saved job belongs to another batch; it was not cancelled.')
+                stop_run(record_root, ui, manifest.get('job_id', ''), token)
             refresh_run_state(record_root, ui)
             manifest.pop('sync_error', None)
         except Exception as exc:
@@ -107,7 +114,9 @@ def refresh_queue(root, ui, factory=dict, recover=None):
             errors.append(str(manifest.get('case_id', token)) + ': ' + str(exc))
         finally:
             if token == current:
-                root['RUN_MANIFEST'].update(deepcopy(manifest))
+                synchronized = deepcopy(manifest)
+                root['RUN_MANIFEST'].clear()
+                root['RUN_MANIFEST'].update(synchronized)
     if errors:
         raise RuntimeError('\n'.join(errors))
     return queue_summary(root)
@@ -170,10 +179,19 @@ def wait_current(root, ui, factory=dict):
     manifest = root['RUN_MANIFEST']
     if collection_done(manifest):
         return
+    batch = root.get('RUN_BATCH', {})
+    if (batch.get('stop_requested', False) and manifest.get('batch_id', '') == batch.get('batch_id', '')
+            and manifest.get('scheduler', '') == 'slurm'):
+        try:
+            stop_run(root, ui, manifest.get('job_id', ''), manifest['run_token'])
+        finally:
+            save_current(root, factory)
     if manifest.get('stop_requested', False):
         try:
             if manifest.get('scheduler', '') == 'slurm':
                 wait_for_stop(root, ui)
+            else:
+                raise RuntimeError('Local stop recorded; confirm the remote job has ended before collecting.')
         finally:
             save_current(root, factory)
         return
