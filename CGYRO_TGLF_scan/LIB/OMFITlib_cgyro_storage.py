@@ -112,7 +112,9 @@ def archive_inventory(directory):
     files = directory_inventory(directory, omitted)
     hashes = {row[0]: row[2] for row in files}
     for name, result in report['candidates'].items():
-        if result.get('sha256', hashes.get(name, None)) != hashes.get(name, None):
+        # An omitted damaged current file can still have a structural hash.
+        # Compare payloads we actually retain; stamps below cover both files.
+        if name not in omitted and result.get('sha256', hashes.get(name, None)) != hashes.get(name, None):
             raise RuntimeError('Checkpoint changed during validation: ' + name)
     for name, stamp in stamps.items():
         stat = os.stat(os.path.join(directory, name))

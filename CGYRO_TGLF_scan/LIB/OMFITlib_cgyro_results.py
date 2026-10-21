@@ -1,7 +1,7 @@
 """RUN_DB-backed CGYRO result browser for one-, two- and three-axis scans."""
 from OMFITlib_gui_fonts import configure_window_fonts, style_widget
 from OMFITlib_cgyro_archive import case_scans, latest_cases
-from OMFITlib_cgyro_continue import point_status, resume_source, stopped_context
+from OMFITlib_cgyro_continue import point_status, previous_final_time, resume_source, stopped_context
 from OMFITlib_cgyro_storage import resolve_result
 from OMFITlib_compare_core import cgyro_frequency_history
 from builtins import (Exception, TypeError, ValueError, abs, any, dict, float, int,
@@ -269,6 +269,9 @@ class ResultBrowser:
             return
         if entry.get('collection_status', '') == 'empty':
             self.ui.Label('本次没有新增时间样本；以下显示续算来源中已保留的结果。', align='left')
+        if entry.get('continuation_pending', {}):
+            self.ui.Label('{} 个续算点尚未超过旧末时刻，已单独保留；在时间曲线与续算窗口查看详情。'.format(
+                len(entry['continuation_pending'])), align='left', wraplength=600)
         axes = list(entry.get('scan_axes', []))
         tasks = list(entry.get('tasks', {}).values())
         dimensions = int(entry.get('dimensions', len(axes)))
@@ -363,17 +366,25 @@ class ResultBrowser:
                     status['reason'] = str(exc)
                     status['restartable'] = False
             statuses[str(point)] = status
+            warning = row.get('continuation_pending', '')
+            scheduler_state = row.get('scheduler_state', '')
+            state_label = '续算待推进' if warning else states[status['convergence']]
+            if scheduler_state and scheduler_state != 'COMPLETED':
+                state_label = scheduler_state
+            status['reason'] = '\n'.join(text for text in (status['reason'], warning,
+                scheduler_state if scheduler_state != 'COMPLETED' else '') if text)
             tag = status['checkpoint']
             table.insert('', 'end', iid=str(point), values=[point] + [
                 _number_text(row.get('values', {}).get(name, '—')) for name in names] + [
-                states[status['convergence']], last_time,
+                state_label, last_time,
                 _number_text(tag['time']) if tag else '原输入启动' if mode == 'fresh' else
                 '原检查点待校验' if mode == 'checkpoint_zip' else '不可重启'])
             effective = row.get('effective_time', {})
             try:
                 defaults.append(float(effective.get('MAX_TIME', 0)))
                 if tag:
-                    defaults.append(tag['last_time'] - tag['time'] +
+                    previous_final = previous_final_time(row, tag)
+                    defaults.append(previous_final - tag['time'] +
                                     float(effective.get('DELTA_T', 0)) * float(effective.get('PRINT_STEP', 1)))
             except (TypeError, ValueError):
                 pass

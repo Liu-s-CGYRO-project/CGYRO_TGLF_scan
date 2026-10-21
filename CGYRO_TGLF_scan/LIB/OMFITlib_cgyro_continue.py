@@ -56,7 +56,10 @@ def stopped_context(module, token):
                 readable[point] = copy.deepcopy(dict(row))
                 results[point] = point_result(archived, row)
         for point, row in record.get('point_table', {}).items():
-            rows[point] = copy.deepcopy(dict(row))
+            row = copy.deepcopy(dict(row))
+            row.update(dict(continuation_pending=record.get('continuation_pending', {}).get(point, ''),
+                            scheduler_state=record.get('point_states', {}).get(point, '')))
+            rows[point] = row
             sources[point] = (record, cases)
             node = cases.get(point, None)
             if (point in list(record.get('loaded_points', [])) + list(record.get('partial_points', []))
@@ -289,6 +292,15 @@ def restart_files(directory, source):
     return names
 
 
+def previous_final_time(metadata, tag):
+    """Keep the longest saved tail as the target across pending segments."""
+    restart = metadata.get('continuation', {})
+    previous = float(restart.get('previous_final_time', restart.get('checkpoint', {}).get('last_time', tag['last_time'])))
+    if not math.isfinite(previous):
+        raise ValueError('Invalid previous continuation final time')
+    return max(float(tag['last_time']), previous)
+
+
 def prepare_point(module, plan, point_id, stage, reader):
     """Copy to a new run directory and change only the segment duration."""
     row = plan['rows'][point_id]
@@ -330,13 +342,16 @@ def prepare_point(module, plan, point_id, stage, reader):
     tag = checkpoint_tag(stage)
     delta_t = float(source.get('DELTA_T', 0))
     print_step = int(source.get('PRINT_STEP', 0))
+    # A pending segment can have a shorter tail than its ancestor. Keep the
+    # original end-time target across further resumes; never lower the bar.
+    previous_final = previous_final_time(row, tag)
     # Require progress beyond the previous saved tail as well as one new sample.
     # The checkpoint may precede the last output; that tail is recalculated.
-    minimum = max(delta_t * print_step, tag['last_time'] - tag['time'] + delta_t * print_step)
+    minimum = max(delta_t * print_step, previous_final - tag['time'] + delta_t * print_step)
     if (not math.isfinite(delta_t) or delta_t <= 0 or print_step < 1
             or duration + 1e-10 * max(1., minimum) < minimum):
         raise ValueError('{}: additional time must be at least {:g} (checkpoint {:g}, last sample {:g})'.format(
-            point_id, minimum, tag['time'], tag['last_time']))
+            point_id, minimum, tag['time'], previous_final))
     packed_names = restart_files(stage, source)
     prefix_names = ['out.cgyro.time']
     if 'out.cgyro.freq' in packed_names:
@@ -349,26 +364,36 @@ def prepare_point(module, plan, point_id, stage, reader):
     metadata = copy.deepcopy(row)
     metadata['effective_time'] = {name: float(current[name]) for name in ('DELTA_T', 'MAX_TIME', 'PRINT_STEP')}
     metadata['continuation'] = dict(source_token=plan['source_token'], checkpoint=tag,
-                                    additional_time=duration, history_sha256=prefixes)
+                                    additional_time=duration, history_sha256=prefixes,
+                                    previous_final_time=previous_final)
     return current, metadata, packed_names
 
 
 def validate_continued_result(result, metadata):
-    """Reject a no-progress collection, preserving the previous published case."""
+    """Raise for damaged history; return a warning for a valid pending segment.
+
+    Replaying the tail after a checkpoint is readable work, not a download
+    error. Keep it in a separate partial archive, including its checkpoint,
+    without declaring the old scan complete or automatically rerunning it.
+    """
     restart = metadata.get('continuation', {})
     if not restart or not restart.get('checkpoint', None):
-        return
+        return ''
     tag = restart['checkpoint']
     expected = restart.get('history_sha256', {})
     if expected and history_prefix(result.filename, int(tag['sample_count']), expected) != expected:
         raise ValueError('Continuation changed the pre-checkpoint history; previous results are preserved')
     times = list(result['t'])
     count = int(tag['sample_count'])
-    if (len(times) <= count or any(not math.isfinite(float(value)) for value in times)
+    if (count < 1 or len(times) < count or any(not math.isfinite(float(value)) for value in times)
             or any(right <= left for left, right in zip(times, times[1:]))
             or not math.isclose(float(times[count - 1]), float(tag['time']),
-                                               rel_tol=1e-7, abs_tol=1e-10)
-            or float(times[-1]) <= float(tag['time'])):
-        raise ValueError('Continuation did not extend the saved time history; previous results are preserved')
-    if float(times[-1]) <= float(tag['last_time']) and point_status(result)['convergence'] != 'converged':
-        raise ValueError('Continuation has not passed the previous final time or converged; previous results are preserved')
+                                               rel_tol=1e-7, abs_tol=1e-10)):
+        raise ValueError('Continuation history is truncated or invalid; previous results are preserved')
+    previous_final = previous_final_time(metadata, tag)
+    if len(times) == count or (float(times[-1]) <= previous_final
+                              and point_status(result)['convergence'] != 'converged'):
+        return ('Continuation pending: final time {:g}, previous final time {:g}, source checkpoint {:g}. '
+                'Readable data retained separately; previous scans preserved.').format(
+                    float(times[-1]), previous_final, float(tag['time']))
+    return ''

@@ -8,6 +8,7 @@ import os
 import re
 from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, text_output as output_text
 from OMFITlib_cgyro_continue import validate_continued_result
+from OMFITlib_cgyro_retry import point_scheduler_states
 from OMFITlib_cgyro_storage import compact_storage, store_result
 
 
@@ -210,7 +211,7 @@ def probe_run_outputs(scheduler, job_id, scheduler_record=None):
     manifest['missing_outputs'] = absent
     if scheduler_record is not None:
         for point, state in scheduler_record.get('point_states', {}).items():
-            if state and state != 'COMPLETED' and point not in complete:
+            if state and state != 'COMPLETED':
                 failed.add(point)
     manifest['complete_output_points'] = [point for point in parentdir if point in complete]
     return unique_points([point for point in parentdir if point in failed])
@@ -241,6 +242,7 @@ if not manifest:
     raise ValueError('No run manifest. Prepare a run first; importing old result directories requires an explicit manifest.')
 manifest['load_errors'] = {}
 manifest['skipped_reasons'] = {}
+manifest['continuation_pending'] = {}
 manifest['collection_status'] = 'collecting'
 rmtserver = manifest['server']
 rmtworkdir = manifest['workDir']
@@ -270,6 +272,7 @@ if icgyro == 1:
             terminal_status = scheduler_record['outcome']
     failed_cases = probe_run_outputs(scheduler, str(manifest.get('job_id', '') or ''), scheduler_record)
     manifest['probe_failed_points'] = list(failed_cases)
+manifest['point_states'] = point_scheduler_states(manifest)
 for itemdir in parentdir:
     missing = manifest.get('missing_outputs', {}).get(itemdir, '')
     if missing:
@@ -303,17 +306,12 @@ for itemdir in parentdir:
             failed_cases.append(itemdir)
             manifest['skipped_reasons'][itemdir] = 'No time samples'
             continue
-        try:
-            validate_continued_result(candidate, manifest.get('point_table', {}).get(itemdir, {}))
-        except ValueError as exc:
-            if not manifest.get('stop_requested', False):
-                raise
-            skipped_cases.append(itemdir)
-            failed_cases.append(itemdir)
-            manifest['skipped_reasons'][itemdir] = str(exc)
-            continue
+        warning = validate_continued_result(candidate, manifest.get('point_table', {}).get(itemdir, {}))
         caseRoot[caseTag][itemdir] = store_result(root, candidate, OMFITtree) if icgyro == 1 else candidate
-        if itemdir in failed_cases:
+        if warning:
+            manifest['continuation_pending'][itemdir] = warning
+            print(itemdir + ': ' + warning)
+        if itemdir in failed_cases or warning:
             partial_cases.append(itemdir)  # Readable samples, never a completed calculation.
         else:
             loaded_cases.append(itemdir)
@@ -336,6 +334,9 @@ elif failed_cases:
     print(failure_report(failed_cases) + '\nPrevious archived results are preserved.')
 else:
     root['RUN_MANIFEST']['status'] = 'loaded'
+if manifest['continuation_pending']:
+    print('{} continuation points remain pending; their readable data will be archived as partial results. '
+          'No automatic rerun is requested.'.format(len(manifest['continuation_pending'])))
 if manifest['load_errors']:
     # Missing files were handled above. Transport/reader corruption remains an
     # error; retry a read without treating it as an empty solver calculation.

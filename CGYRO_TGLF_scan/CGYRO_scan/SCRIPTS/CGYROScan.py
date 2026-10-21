@@ -147,6 +147,8 @@ def publish_loaded_run(root):
         row['result_workDir'] = manifest.get('point_workdirs', {}).get(point_id, manifest['workDir'])
         row['run_token'] = manifest['run_token']
         row['resume_pending'] = point_id in partial
+        row['continuation_pending'] = manifest.get('continuation_pending', {}).get(point_id, '')
+        row['scheduler_state'] = manifest.get('point_states', {}).get(point_id, '')
         task_rows[point_id] = row
     for row in task_rows.values():
         row.update(dict(runid=run_id, case_id=case_key))
@@ -169,6 +171,8 @@ def publish_loaded_run(root):
                      source_runid=manifest['runid'], collection_status='complete' if complete else 'partial',
                      planned_points=list(continuation.get('source_points', expected) if continuation else expected),
                      skipped_points=list(manifest.get('skipped_points', [])),
+                     continuation_pending={point: row['continuation_pending'] for point, row in task_rows.items()
+                                           if row.get('continuation_pending', '')},
                      status='published'))
     if source_case is not None:
         continuations = copy.deepcopy(source_case['__INFO__'].get('continuations', []))
