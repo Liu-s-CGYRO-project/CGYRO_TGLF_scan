@@ -80,7 +80,9 @@ def check_manager_update(client, current_version=MANAGER_VERSION):
     result.update(latest=version, available=key > current, packages=packages,
                   incremental=dict(manifest=manifest, assets=incremental_assets) if manifest is not None else None,
                   url='https://github.com/' + client.repo + '/releases/tag/' + parse.quote(release['tag_name'], safe=''),
-                  notes=str(release.get('body') or '')[:20000])
+                  # Normalize GitHub bodies before Tk receives them. OMFIT's
+                  # text adapter can render Windows carriage returns as \\r.
+                  notes=str(release.get('body') or '').replace('\r\n', '\n').replace('\r', '\n')[:20000])
     return result
 
 
