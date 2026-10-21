@@ -116,9 +116,11 @@ class NativeLayout:
         self.background = background
         red, green, blue = content.winfo_rgb(background)
         light = (red + green + blue) > 3 * 32768
-        self.heading_color = '#274b63' if light else '#a5cfe8'
-        self.muted_color = '#52616b' if light else '#becbd4'
+        self.light_background = light
+        self.heading_color = '#363636' if light else '#eeeeee'
+        self.muted_color = '#5b5b5b' if light else '#cccccc'
         self.rows = []
+        self.inline_rows = []
         self.labels = []
         self.notebooks = []
         self.panels = []
@@ -197,7 +199,7 @@ class NativeLayout:
                     if role == 'note':
                         child.configure(padding=(0, self.gap, 0, self.gap * 2))
                 elif role == 'pending':
-                    child.configure(foreground='#185a9d' if self.heading_color == '#274b63' else '#8bc7fa')
+                    child.configure(foreground='#3f3f3f' if self.light_background else '#eeeeee')
                 if self.compact:
                     child.configure(wraplength=self.width - 80)
             elif kind in ('TEntry', 'TCombobox'):
@@ -220,9 +222,9 @@ class NativeLayout:
                 self._style_name(child, self.bold if primary else self.normal, padding=(6, self.gap))
                 if pending:
                     name = str(child.cget('style'))
-                    self.style.configure(name, background='#2568a0', foreground='#ffffff')
+                    self.style.configure(name, background='#515151', foreground='#ffffff')
                     self.style.map(name,
-                        background=[('disabled', self.background), ('pressed', '#17466e'), ('active', '#337cb6')],
+                        background=[('disabled', self.background), ('pressed', '#333333'), ('active', '#666666')],
                         foreground=[('disabled', self.muted_color), ('!disabled', '#ffffff')])
                 child.configure(width=0)
             elif kind == 'TNotebook':
@@ -255,12 +257,11 @@ class NativeLayout:
             for child in children:
                 child.pack_forget()
             if getattr(parent, '_cgyro_inline', False):
-                # A single parameter row: caption uses spare space; the short
-                # numeric field keeps its natural width and aligns at the right.
-                parent.columnconfigure(0, weight=1)
-                parent.columnconfigure(1, weight=0)
-                for index, child in enumerate(children):
-                    child.grid(row=0, column=index, sticky='ew', padx=5, pady=self.gap // 2)
+                # Long parameter names must not squeeze out value/reset/help.
+                # Reflow the native row frames, keeping their callbacks intact.
+                self.inline_rows.append((parent, children))
+                parent.bind('<Configure>', lambda event, frame=parent, items=children:
+                            self._inline_row(frame, items), add='+')
             else:
                 self.rows.append((parent, children))
                 parent.bind('<Configure>', lambda event, frame=parent, items=children: self._row(frame, items), add='+')
@@ -488,6 +489,35 @@ class NativeLayout:
     def reflow(self):
         for frame, items in self.rows:
             self._row(frame, items)
+        for frame, items in self.inline_rows:
+            self._inline_row(frame, items)
+
+    def _inline_row(self, frame, items):
+        """Stack the caption above its controls when a parameter row is narrow.
+
+        Measure the unwrapped caption, so wrapping cannot alternate between
+        layouts. Controls keep native bindings and their original order.
+        """
+        if not frame.winfo_exists() or not items:
+            return
+        width = frame.winfo_width()
+        if width <= 1:
+            width = self.width - 40
+        captions = [child for child in items[0].winfo_children() if child.winfo_class() == 'TLabel']
+        caption_width = max((self.normal.measure(str(child.cget('text'))) for child in captions), default=0)
+        controls_width = sum(child.winfo_reqwidth() + 10 for child in items[1:])
+        stacked = caption_width + controls_width + 20 > width
+        if getattr(frame, '_cgyro_inline_stacked', None) == stacked:
+            return
+        frame._cgyro_inline_stacked = stacked
+        for index in range(len(items)):
+            frame.columnconfigure(index, weight=1 if index == 0 else 0, uniform='')
+        for index, child in enumerate(items):
+            child.grid_forget()
+            row, column = (0, 0) if index == 0 else ((1, index - 1) if stacked else (0, index))
+            child.grid(row=row, column=column, columnspan=max(1, len(items) - 1) if stacked and index == 0 else 1,
+                       sticky='ew', padx=5, pady=self.gap // 2)
+        self._queue_scroll()
 
     def refresh_font_metrics(self):
         """Re-measure after a GUI font/size change without rebuilding callbacks."""
@@ -500,5 +530,7 @@ class NativeLayout:
                                                    self.normal.measure('profiles_gen')) + 18)
         for frame, items in self.rows:
             frame._cgyro_columns = None
+        for frame, items in self.inline_rows:
+            frame._cgyro_inline_stacked = None
         self.reflow()
         self._queue_scroll()

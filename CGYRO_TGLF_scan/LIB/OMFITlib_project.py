@@ -41,21 +41,13 @@ from OMFITlib_cgyro_isotopes import remap_physics
 from OMFITlib_cgyro_run_state import stop_message, submission_pending
 from OMFITlib_cgyro_queue import activate_run, collection_done, pending_runs, queue_records, queue_summary, save_current
 from OMFITlib_cgyro_retry import retry_limit
+from OMFITlib_cgyro_workflow import collect_batch, collect_run
 from OMFITlib_cgyro_continue import continuation_plan
 from OMFITlib_cgyro_storage import compact_storage, prune_storage
 
-MODULES = {
-    'transfer': ('Transfer_tool',), 'cgyro': ('CGYRO_scan',),
-    'tglf': ('TGLF_scan', 'TGLF'), 'tgyro': ('TGLF_scan', 'TGYRO'),
-    'profiles': ('TGLF_scan', 'TGYRO', 'PROFILES_GEN'),
-}
-LABELS = {'transfer': '输入转换', 'cgyro': 'CGYRO', 'tglf': 'TGLF',
-          'tgyro': 'TGYRO', 'profiles': 'PROFILES_GEN'}
-PAGES = OrderedDict([
-    ('1 项目概览', 'overview'), ('2 环境配置与记录', 'run'),
-    ('3 输入准备与转换', 'transfer'), ('4 CGYRO 扫描', 'cgyro'),
-    ('5 TGLF 扫描', 'tglf'), ('6 绘图与对比', 'plots'), ('7 模板与 GitHub', 'templates'),
-])
+# Compatibility exports: saved scripts may still import these here.
+from OMFITlib_workbench_catalog import MODULES, LABELS, PAGES
+
 DEFAULTS = {'page': 'overview', 'runtime_module': 'cgyro', 'transfer_source': '',
             'cgyro_file': '', 'tglf_file': '', 'cgyro_source_mode': 'generated', 'cgyro_scan_page': 'input',
             'message': ''}
@@ -994,51 +986,14 @@ class ProjectActions:
                 report['converted_copies'], report['duplicate_bytes'] / 1e9, report['checkpoint_warnings'])
         return report
 
+    def _cgyro_script(self, title, name, **kwargs):
+        """Adapter used by cgyro_workflow; retain native logging/Abort semantics."""
+        return self.call(title, MODULES['cgyro'] + ('SCRIPTS', name), **kwargs)
+
     def _collect_cgyro_queue(self, automatic=False):
-        node = module(self.root, 'cgyro')
-        setup, batch = node['SETTINGS']['SETUP'], node['RUN_BATCH']
-        previous = setup.get('irun', None), setup.get('idownsync', None)
-        completed, errors = [], []
-        try:
-            setup['irun'], setup['idownsync'] = 0, 0
-            for token, entry in queue_records(node):
-                manifest = entry['manifest']
-                if manifest.get('status', '') == 'published':
-                    completed.append(manifest['case_id'])
-                    continue
-                if automatic and collection_done(manifest):
-                    continue
-                if not manifest.get('job_id', '') and manifest.get('status', '') == 'failed' and not submission_pending(manifest):
-                    continue  # A confirmed rejection has no results to collect.
-                if not manifest.get('job_id', '') or submission_pending(manifest):
-                    errors.append(str(manifest.get('case_id', token)) + ': submission is not confirmed')
-                    continue
-                activate_run(node, token)
-                try:
-                    # Manual collection reads finished runs immediately. Active
-                    # jobs are reported by downsync; never wait or submit here.
-                    if automatic:
-                        self.call('等待已提交的 CGYRO 案例', MODULES['cgyro'] + ('SCRIPTS', 'wait_current_run.py'))
-                    setup['idownsync'] = 1
-                    self.call('收集并归档 CGYRO 批量结果', MODULES['cgyro'] + ('SCRIPTS', 'CGYROScan.py'),
-                              collect_stopped=True, allow_solver_retries=automatic)
-                    if node['RUN_MANIFEST'].get('status', '') == 'published':
-                        completed.append(node['RUN_MANIFEST']['case_id'])
-                except Exception as exc:
-                    errors.append(str(manifest.get('case_id', token)) + ': ' + str(exc))
-                finally:
-                    save_current(node, self.factory)
-        finally:
-            setup['irun'], setup['idownsync'] = previous
-            batch.update(dict(completed=completed, errors=errors,
-                status='published' if len(completed) == len(batch['case_ids']) else
-                'cancel_requested' if batch.get('stop_requested', False) and (pending_runs(node) or errors) else
-                'cancelled' if batch.get('stop_requested', False) else 'partial'))
-        if errors:
-            # ASCII survives older OMFIT script serialization in error dialogs.
-            raise ValueError('Some CGYRO cases were not archived; submitted jobs and successful results are preserved.\n'
-                             + '\n'.join(errors))
-        return completed
+        """Compatibility entry; only run_cgyro may opt into waiting/retries."""
+        return collect_batch(module(self.root, 'cgyro'), self._cgyro_script,
+                             self.factory, automatic=automatic)
 
     def set_cgyro_ions(self, location=None):
         mode = self.settings.get('cgyro_ion_mode', 'original')
@@ -1130,15 +1085,7 @@ class ProjectActions:
             completed = self._collect_cgyro_queue()
             self.settings['message'] = queue_summary(node)
             return completed
-        node = module(self.root, 'cgyro')
-        setup = node['SETTINGS']['SETUP']
-        old_run, old_download = setup.get('irun', None), setup.get('idownsync', None)
-        try:
-            setup['irun'], setup['idownsync'] = 0, 1
-            return self.call('收集并归档 CGYRO 结果', MODULES['cgyro'] + ('SCRIPTS', 'CGYROScan.py'),
-                             collect_stopped=True, allow_solver_retries=False)
-        finally:
-            setup['irun'], setup['idownsync'] = old_run, old_download
+        return collect_run(node, self._cgyro_script)
 
     def sync_cgyro_run(self):
         issues = sync_run_issues(self.root)

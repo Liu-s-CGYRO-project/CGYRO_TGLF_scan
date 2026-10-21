@@ -2,11 +2,18 @@
 
 本工程是保存在 OMFIT 数据树中的模块集合，不是普通的 Python 安装包。界面和脚本由 OMFIT 执行，支持库通过当前模块的 `LIB` 加载。修改库时需要同时考虑调用代码、数据树路径和两个层级的 `OMFITsave.txt`。
 
+新增页面、程序、扫描参数和绘图入口的步骤及接口签名见 [维护与扩展接口](MAINTAINER_GUIDE.md)。`tools/check_workbench.py` 是不导入应用的静态接口检查，构建安装包时自动执行。
+
 ## 按职责找代码
 
 | 要修改的功能 | 主要入口 | 职责边界 |
 | --- | --- | --- |
 | 工程导航、操作历史、输入交接 | `CGYRO_TGLF_scan/LIB/OMFITlib_project.py` | `ProjectActions` 执行用户动作、保存结果和恢复临时设置；保留旧导入入口 |
+| 页面登记与公共上下文 | `LIB/OMFITlib_workbench_catalog.py`、`OMFITlib_project_ui.py` | 稳定页面键、模块路径、状态文案；ProjectUI 组合页面并保留旧方法 |
+| CGYRO / 运行环境 / 转换页面 | `LIB/OMFITlib_workbench_cgyro_ui.py`、`OMFITlib_workbench_runtime_ui.py`、`OMFITlib_workbench_transfer_ui.py` | 渲染和事件绑定；动作交给 ProjectActions |
+| 共用扫描字段 | `LIB/OMFITlib_workbench_scan_ui.py` | CGYRO、TGLF 共享取值控件；不读大结果、不提交任务 |
+| CGYRO 收集接口 | `LIB/OMFITlib_cgyro_workflow.py` | collect_run / collect_batch；注入原生脚本执行器，手动默认禁止等待和补算 |
+| CGYRO 显示元数据 | `LIB/OMFITlib_cgyro_present.py` | 短名和完整详情分离；相同显示名消歧，token 不变 |
 | 输入校验、摘要、差异比较 | `LIB/OMFITlib_project_inputs.py` | 读取与校验数据；不提交任务、不写文件、不替换输入 |
 | CGYRO 半径、H/D/T 和扫描计划 | `LIB/OMFITlib_cgyro_plan.py` | 选择迁移、输入副本转换、运行前校验；不提交作业 |
 | CGYRO 参数与取值 | `LIB/OMFITlib_cgyro_parameters.py`、`OMFITlib_cgyro_scan_values.py`、`OMFITlib_cgyro_parameter_help.py` | 参数定义、取值解析、离线帮助；预览和提交共用 |
@@ -61,10 +68,14 @@
 
 7. Tk 变量必须显式使用 `master=`，初值和 Tcl 名称用 `value=` / `name=`。OMFIT 将 StringVar / BooleanVar 封装为 `(name=None, **kw)`，不能按标准 Tk 把窗口作为首个位置参数。打包的 API 与保存树检查通过 AST 核对构造器及导入别名，不导入 Tk。
 
+8. 页面 mixin 不定义构造函数，不覆盖其他页面方法。新增页通过 catalog 登记，并在 ProjectUI 顶部导入；收集动作使用 cgyro_workflow 公开接口。长参数行由 NativeLayout 根据字体和宽度把标题移到控件上方，不手动切断参数名或改动数值。缩略结果名只用于显示，完整身份通过帮助窗口查看。
+
 ## 校验与发布
 
 当前维护约定只执行静态和安装包校验，未经用户要求不启动测试、GUI、绘图、求解器或集群任务。Python 3.9 AST、符号检查、原生 API 和清单依赖校验不能代替实际服务器验证；发布说明需明确这一点。
 
 每次发布冻结源文件及包的 SHA-256，校验包内文件与源文件一致。两个代码安装包均小于 1,000,000 字节，完整字体通过独立资源包缓存，不能通过裁剪或改写字体满足大小限制。开发文档和完整历史保留在 GitHub，安装包只纳入运行所需文件及现有用户文档。
+
+管理器的 TESTS 便利节点已从分发树移除，测试源码继续保留在仓库 `OMFITtemplates/tests`。构建时排除此开发目录，并拒绝残留的直接测试文件注册；未更改管理器运行代码或字体资源。
 
 归档去重的完整设计、旧项目流程及 .old 风险见 [RESULT_STORAGE_DESIGN.md](RESULT_STORAGE_DESIGN.md)。

@@ -16,7 +16,7 @@ from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, SCEN
 
 TABS = OrderedDict([('scan', '输入与扫描'), ('parameters', '计算参数'),
                     ('results', '结果与记录'), ('multi', '多个剖面对比')])
-SCAN_TABS = OrderedDict([('input', '输入准备'), ('settings', '扫描设置'), ('run', '运行')])
+from OMFITlib_workbench_catalog import SCAN_TABS  # Shared with CGYRO; retained public alias.
 
 
 from OMFITlib_tglf_records import record_summary

@@ -238,7 +238,14 @@
 ['LIB']['OMFITlib_project_inputs'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_inputs.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_plan'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_plan.py <-:-:-> {}
 ['LIB']['OMFITlib_project_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_ui.py <-:-:-> {}
+['LIB']['OMFITlib_workbench_cgyro_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_workbench_cgyro_ui.py <-:-:-> {}
+['LIB']['OMFITlib_workbench_runtime_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_workbench_runtime_ui.py <-:-:-> {}
+['LIB']['OMFITlib_workbench_transfer_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_workbench_transfer_ui.py <-:-:-> {}
+['LIB']['OMFITlib_workbench_scan_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_workbench_scan_ui.py <-:-:-> {}
+['LIB']['OMFITlib_workbench_catalog'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_workbench_catalog.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_workflow'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_workflow.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_results'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_results.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_present'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_present.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_parameters.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_parameter_help'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_parameter_help.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_isotopes'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_isotopes.py <-:-:-> {}

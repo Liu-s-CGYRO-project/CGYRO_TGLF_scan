@@ -3,6 +3,7 @@ from OMFITlib_gui_fonts import configure_window_fonts, style_widget
 from OMFITlib_cgyro_archive import case_scans, latest_cases
 from OMFITlib_cgyro_continue import point_status, previous_final_time, resume_source, stopped_context
 from OMFITlib_cgyro_storage import resolve_result
+from OMFITlib_cgyro_present import record_options, record_details
 from OMFITlib_compare_core import cgyro_frequency_history
 from builtins import (Exception, TypeError, ValueError, abs, any, dict, float, int,
                       len, list, max, min, range, set, sorted, str, tuple, zip)
@@ -33,7 +34,6 @@ def _run_options(root):
     module = root.get('CGYRO_scan', {})
     run_db = module.get('RUN_DB', {})
     records = OrderedDict()
-    options = OrderedDict()
     covered = set()
     for runid in _stable_keys(run_db):
         if str(runid).startswith('__'):
@@ -57,8 +57,7 @@ def _run_options(root):
                 entry.update(dict(runid=runid, case_id=case_id, tasks=tasks,
                                   destination=[runid, case_id]))
                 records[token] = entry
-                label = '{} | {} | {} | {}'.format(runid, case_id, scan, token[:8])
-                options[label] = token
+                entry.setdefault('scan_key', scan)  # View metadata only; never rename archived branches.
         covered.update((str(runid), str(key)) for key, target in aliases.items() if target in active)
 
     # Pre-1.13 records remain readable, while new records use RUN_DB only.
@@ -66,13 +65,11 @@ def _run_options(root):
     for token in _stable_keys(legacy):
         if token in records:
             continue
-        entry = legacy[token]
+        entry = dict(legacy[token])
+        entry['legacy_record'] = True
         if (str(entry.get('runid', '')), str(entry.get('case_id', ''))) in covered:
             continue
         records[token] = entry
-        label = '{} | {} | {}（旧记录）'.format(
-            entry.get('runid', '未命名'), entry.get('case_id', '未知案例'), str(token)[:8])
-        options[label] = token
     saved = {str(token): entry.get('manifest', {}) for token, entry in module.get('RUN_HISTORY', {}).items()}
     current = module.get('RUN_MANIFEST', {})
     if current.get('run_token', ''):
@@ -86,17 +83,12 @@ def _run_options(root):
             entry = dict(records.get(token, manifest))
             entry['resume_error'] = str(exc)
             records[token] = entry
-            if token not in options.values():
-                options['{} | {} (续算记录待核对)'.format(manifest['runid'], token[:8])] = token
             continue
         entry = dict(context['info'])
         entry.update(dict(tasks=context['view']['__TASKS__'], resume_tasks=context['rows'],
                           resume_view=context['view'], resume_context=context, stopped_run=True))
         records[token] = entry
-        if token not in options.values():
-            options['{} | {} | {} ({})'.format(manifest['runid'], manifest['case_id'], token[:8],
-                    '无新结果，可恢复' if manifest['collection_status'] == 'empty' else '部分结果')] = token
-    return records, options
+    return records, record_options(records)
 
 
 def _number_text(value):
@@ -258,7 +250,8 @@ class ResultBrowser:
         except ValueError as exc:
             self.ui.Label(str(exc), align='left')
             return
-        self.ui.ComboBox(self.prefix + "['run_token']", options, '结果记录', updateGUI=True)
+        self.ui.ComboBox(self.prefix + "['run_token']", options, '结果记录', state='readonly',
+                         updateGUI=True, help=record_details(entry, token))
         if entry.get('resume_error', ''):
             self.ui.Label('续算记录需要核对：' + entry['resume_error'], align='left')
             return
@@ -299,9 +292,11 @@ class ResultBrowser:
                 description += '，{} 由上方切片选择'.format(names[2])
             description += '，ky 由上方切片选择'
         self.anchor = self.ui.Label('{}；{} 个已读取计算点。'.format(description, len(tasks)), align='left')
-        self.ui.Button('查看当前数值表', self._show_table)
-        self.ui.Button('绘制当前结果（可选）', lambda: self.root['PLOTS']['CGYRO_results'].plot())
-        self.ui.Button('ω、γ 随时间变化 / 选择 ky 续算…', self._show_points)
+        with self.ui.same_row():
+            self.ui.Button('查看数值表', self._show_table)
+            self.ui.Button('绘制当前结果', lambda: self.root['PLOTS']['CGYRO_results'].plot())
+        self.ui.Button('时间曲线 / 选择点续算…', self._show_points,
+                       help='打开计算点列表，查看 ω、γ 随时间变化。只有点击窗口内的续算按钮才提交计算。')
         self.ui.Label('数值表显示参数、ky、平均 ω/γ 与相对波动，并标出当前范围的最大 γ。',
                       align='left', wraplength=600)
 

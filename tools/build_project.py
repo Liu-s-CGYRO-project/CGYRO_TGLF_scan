@@ -8,6 +8,7 @@ import sys
 import zipfile
 from omfit_help import validate_module_help, validate_module_settings
 from check_omfit_api import validate_project_api, validate_tk_variable_calls
+from check_workbench import validate_workbench
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'OMFITtemplates/LIB'))
@@ -182,16 +183,22 @@ def build(output):
                 validate_tgyro_seed(target.read_bytes(), row.ref)
             selected.add(row.ref)
         elif target.is_dir():
-            contents = [path for path in target.rglob('*') if path.is_file() and '__pycache__' not in path.parts]
+            # Development suites stay in Git. They are not runtime resources;
+            # direct tree references must be removed too (checked below).
+            contents = [path for path in target.rglob('*') if path.is_file() and '__pycache__' not in path.parts
+                        and not path.relative_to(ROOT).as_posix().startswith('OMFITtemplates/tests/')]
             selected.update(path.relative_to(ROOT).as_posix() for path in contents)
             if not contents:
                 directories.add(row.ref)
         else:
             raise TemplateError('缺少工程引用：' + row.ref)
+    if any(name.startswith('OMFITtemplates/tests/') for name in selected):
+        raise TemplateError('运行包仍有测试文件引用，请从保存树移到仓库开发入口')
     if any((ROOT / name).is_symlink() for name in selected):
         raise TemplateError('分发工程不允许符号链接')
     validate_library_imports(rows, ROOT)
     module_root = ROOT / 'CGYRO_TGLF_scan'
+    workbench_review = validate_workbench(module_root)
     python_refs = {(ROOT / row.ref).resolve() for row in rows
                    if row.ref and row.kind.startswith('OMFITpython')
                    and module_root in (ROOT / row.ref).resolve().parents}
@@ -233,7 +240,7 @@ def build(output):
                 raise TemplateError('ZIP CRC 校验失败')
     return {'output': str(output), 'files': len(selected), 'bytes': output.stat().st_size,
             'sha256': hashlib.sha256(output.read_bytes()).hexdigest(), 'calculation_data_files': 0,
-            'modules': project.roots, 'api_compatibility': api_review}
+            'modules': project.roots, 'api_compatibility': api_review, 'workbench_contracts': workbench_review}
 
 
 if __name__ == '__main__':

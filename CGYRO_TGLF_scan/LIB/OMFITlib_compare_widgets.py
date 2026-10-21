@@ -1,6 +1,7 @@
 """Reusable OMFIT selectors and one native Tk legend editor."""
 from OMFITlib_gui_fonts import configure_window_fonts
-from OMFITlib_cgyro_archive import canonical_case_key, case_parts as archived_case_parts
+from OMFITlib_cgyro_archive import case_parts as archived_case_parts
+from OMFITlib_cgyro_present import case_caption
 
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
@@ -95,13 +96,8 @@ class ComparisonWidgets:
         return archived_case_parts(value)
 
     def _case_caption(self, value):
-        """Short display text only; never replace stored case identifiers."""
-        parts = self._case_parts(value)
-        if parts is None:
-            return canonical_case_key(value)
-        nr, rho, ion = parts
-        radius = 'nr=' + nr if rho == 'unknown' else 'ρ=' + rho
-        return '{} · {}'.format(radius, '原始' if ion == 'BASE' else ion)
+        """Compatibility wrapper; shared display labels never become archive keys."""
+        return case_caption(value)
 
     def _choice_label(self, value):
         text = str(value)
