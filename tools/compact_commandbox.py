@@ -20,7 +20,7 @@ TOOL_VERSION = '1.3.2'
 PROJECT_VERSION = '1.24.3'
 REPOSITORY = 'Liu-s-CGYRO-project/CGYRO_TGLF_scan'
 DEFAULT_PROXY = 'http://47.102.120.146:18889'
-PACKAGES = {'code': {'name': 'CGYRO_TGLF_scan_code_only_1.24.3.zip', 'bytes': 994381, 'sha256': 'b312de9ff8d5cd004399be651ede6971a46462dde8b85460b279ff59a218f9c4'}, 'template': {'name': 'tdxy-liu__cgyro-tglf__1.24.3.omfittpl.zip', 'bytes': 993535, 'sha256': '7b158a3601d2abb6a1cd456a5b2acbf176889e2b6b6dabd620c2f51d2fa09afa'}}
+PACKAGES = {'code': {'name': 'CGYRO_TGLF_scan_code_only_1.24.3.zip', 'bytes': 994041, 'sha256': 'c7ed815cd961cf9b8f598989a4cef26ade901a655d2ab2fcab1cfaa2e166acc2'}, 'template': {'name': 'tdxy-liu__cgyro-tglf__1.24.3.omfittpl.zip', 'bytes': 993213, 'sha256': 'ee8349380bff5dd4ec2f5e1201da5be5434a57d9e60e574d2b17f7c2a8f168b8'}}
 
 REQUIRED = {
     (): ('OMFITlib_cgyro_db', 'OMFITlib_cgyro_recover', 'OMFITlib_cgyro_scratch', 'OMFITlib_cgyro_storage', 'OMFITlib_cgyro_storage_files', 'OMFITlib_cgyro_checkpoint', 'OMFITlib_cgyro_continue',
