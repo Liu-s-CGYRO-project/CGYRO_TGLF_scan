@@ -26,6 +26,7 @@ from OMFITlib_cgyro_continue import archived_case, continuation_plan, point_resu
 from OMFITlib_cgyro_storage import compact_storage, result_view
 from OMFITlib_cgyro_db import run_cases, set_run_cases
 from OMFITlib_cgyro_scratch import check_start_capacity, clean_stage, directory_bytes, ensure_capacity
+from OMFITlib_cgyro_launch import launch_spec, slurm_guard, validate_checkpoint_runtime
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -236,6 +237,10 @@ retry_limit(root)
 rmt_setup = root['SETTINGS']['REMOTE_SETUP']
 server_setup = selected_remote_config(rmt_setup)
 local_submit = cfg_str(rmt_setup, 'serverPicker', '') == 'localhost'
+# Resolve the launch before copying point/checkpoint data. Slurm array elements
+# each own this full allocation; a saved literal -n must never underfill it.
+execution = (launch_spec(server_setup, setup)
+             if cfg_str(server_setup, 'scheduler', '').lower() in ('slurm', 'local') else None)
 if continuation:
     # Re-resolve the dialog's frozen identity before reading or changing state.
     continuation = continuation_plan(root, continuation['source_token'],
@@ -298,13 +303,16 @@ if not local_submit and 'server' not in server_setup and remote_server.split('@'
 remote_workdir = submit_workdir if local_submit else posixpath.join(remote_base, 'runs', run_token)
 runtime = {key: cfg_get(server_setup, key, None) for key in
            ('environment', 'executable', 'nodes', 'ntasks_per_node', 'ppn', 'cpus_per_task')}
+if execution is not None:
+    runtime.update(dict(executable=execution['executable'], mpi_ranks=execution['mpi_ranks'],
+                        cpus_per_task=execution['threads']))
 if continuation:
     if continuation['server'] and continuation['server'] != remote_server:
         raise ValueError('Continuation requires the original server: ' + str(continuation['server']))
-    changed_runtime = [key for key, value in continuation['runtime'].items()
-                       if value is not None and runtime.get(key, None) != value]
-    if changed_runtime:
-        raise ValueError('Restore the original checkpoint execution configuration: ' + ', '.join(changed_runtime))
+    has_checkpoint = any(origin['mode'] == 'checkpoint' for origin in continuation['sources'].values())
+    validate_checkpoint_runtime(continuation['runtime'], runtime, has_checkpoint=has_checkpoint)
+elif restart_mode:
+    validate_checkpoint_runtime(previous_manifest.get('runtime', {}), runtime)
 inputs_node = root['INPUTS']
 if continuation:
     first_point = continuation['points'][0]
@@ -426,6 +434,9 @@ manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': max(1, s
             'scale_time_with_ky': bool(physics['scale_time_with_ky']),
             'input_sha256': input_checksums, 'status': 'prepared', 'batch_id': batch_id}
 manifest['runtime'] = runtime
+if execution is not None:
+    manifest['launch'] = {key: execution[key] for key in
+                          ('nodes', 'mpi_per_node', 'mpi_ranks', 'threads', 'total_cpus', 'executable')}
 if continuation:
     source_info = continuation['info']
     manifest.update(dict(runid=continuation['source_runid'], nr=source_info['source_nr'],
@@ -437,6 +448,8 @@ if continuation:
                               'stopped_run', 'source_points')}))
 environment=script_fragment(required_cfg(server_setup, 'environment'))
 executable=script_fragment(required_cfg(server_setup, 'executable')).strip()
+if execution is not None:
+    executable = execution['executable']
 scheduler=cfg_str(server_setup, 'scheduler', '').lower()
 if scheduler not in ['local', 'pbs', 'slurm']:
     config_error('Selected scheduler must be local, pbs, or slurm')
@@ -475,6 +488,7 @@ else:
         r'#SBATCH -o %A_%a.out'+'\n' +\
         r'#SBATCH -e %A_%a.err'+'\n' +\
         r'#SBATCH --nodes='+str(num_nodes)+'\n' +\
+        r'#SBATCH --ntasks='+str(execution['mpi_ranks']) +'\n' +\
         r'#SBATCH --ntasks-per-node='+str(ntasks_per_node) +'\n' +\
         r'#SBATCH --cpus-per-task='+str(cpus_per_task) +'\n' +\
         r'#SBATCH --array=0-'+str(dirlist_num-1)+'%'+str(array_parallel)+'\n' +\
@@ -513,7 +527,9 @@ prepare_case_dir() {
 }
 """
 bash_helpers += ('\nexport OMP_NUM_THREADS=' + str(cpus_per_task)
-                 + '\nexport OMP_THREAD_LIMIT=' + str(cpus_per_task) + '\n')
+                 + '\nexport OMP_THREAD_LIMIT=' + str(cpus_per_task) + '\nexport OMP_DYNAMIC=false\n')
+if scheduler == 'slurm':
+    bash_helpers += slurm_guard(execution)
 bash_helpers += r"""
 run_case() (
   set -e

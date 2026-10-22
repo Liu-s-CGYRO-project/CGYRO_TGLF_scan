@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.1。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.2。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 先找到修改层
 
@@ -13,6 +13,7 @@
 | 转换页面和输入编辑器 | `LIB/OMFITlib_workbench_transfer_ui.py` | 编辑副本，摘要复核通过后才保存 |
 | CGYRO / TGLF 共用扫描字段 | `LIB/OMFITlib_workbench_scan_ui.py` | 取值列表、区间、倍率；不提交作业 |
 | CGYRO 收集编排 | `LIB/OMFITlib_cgyro_workflow.py` | 原生脚本执行由调用方注入 |
+| CGYRO 并行资源 | `LIB/OMFITlib_cgyro_launch.py` | Slurm 申请、MPI / OpenMP 参数、冻结重试及检查点实际布局 |
 | 短名称、状态、记录详情 | `LIB/OMFITlib_cgyro_present.py` | 仅读取元数据；不能读取数组或联网 |
 | 控件与自适应排版 | `LIB/OMFITlib_gui_api.py`、`OMFITlib_gui_layout.py` | 保留原生回调、重置、帮助和绑定 |
 | 用户动作和输入交接 | `LIB/OMFITlib_project.py` | 校验 → 调用 → 保存记录；错误继续传播 |
@@ -121,6 +122,12 @@ OMFITlib_cgyro_storage_files.SubmissionFiles 只计划新所有者与索引，�
 ## RUN_DB 唯一存储接口（1.24.0）
 
 新增 CGYRO 写入使用 cgyro_db.run_cases / set_run_cases；冻结输入使用 freeze_run_inputs，结果安装使用 store_result。作业快照使用 save_current，外部 RUN_HISTORY 仅保留元数据。绘图仅通过 RUN_DB 和 resolve_result 读取，不创建持久结果缓存。迁移入口 consolidate_storage 统一旧数据、恢复索引、检查引用后清理。store_scan 按全部参数坐标与 ky 更新点，validate_preserved_scans 在安装前保护未重算坐标及其他扫描。持久路径是 runid / nr=..._rho=... / ion；catalog_runs 仅返回不保存的逻辑案例视图，case_destination 解析实际路径。新增读者不能把 case_id 直接拼到 RUN_DB 后。停止作业读取原始点表，不能从合并后的点号重建提交顺序。详见 RESULT_STORAGE_DESIGN.md。
+
+## CGYRO Slurm 资源一致性（1.24.2）
+
+`cgyro_launch.command_template()` 将旧命令的固定 `-n` / `-nomp` 改为 `{mpi}` / `{threads}`，保留非并行参数，NUMA 放置交给所选平台。`launch_spec()` 在打包前生成每点 MPI、线程、CPU 预算和实际命令；Slurm 每个数组元素独占这一份申请。自定义启动器接入时需要扩展此解析层，不能绕过资源检查或只更改 SBATCH 行。
+
+`validate_slurm_script()` 用于冻结脚本重试；`validate_checkpoint_runtime()` 对比旧命令的实际布局。只有选中点确实包含检查点时才限制 MPI / OpenMP 数；取消后从未开始的点可用原冻结输入和新的资源数开始。服务器、输入身份、停止标志和收集权限仍由原流程负责。
 
 ## 启动与临时空间（1.24.1）
 

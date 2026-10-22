@@ -21,6 +21,7 @@ from OMFITlib_cgyro_run_state import linked_local_action, stop_run, submitted_jo
 from OMFITlib_cgyro_submission import PROTOCOL, discover_submission, seal_unstarted, submit_command
 from OMFITlib_cgyro_storage import submission_file
 from OMFITlib_cgyro_db import run_cases, set_run_cases
+from OMFITlib_cgyro_launch import validate_slurm_script
 
 
 NON_RETRYABLE_STATES = {'CANCELLED', 'TIMEOUT', 'OUT_OF_MEMORY', 'DEADLINE'}
@@ -317,6 +318,9 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
     scheduler = manifest['scheduler']
     indices = [index for index, point in enumerate(manifest['points']) if point in points]
     if scheduler == 'slurm':
+        # Retries reuse immutable scripts. Do not repeat a pre-fix allocation
+        # that reserved 32 CPUs but actually started only 16 MPI processes.
+        validate_slurm_script(script)
         cap = re.search(r'^#SBATCH --array=.*%([0-9]+)\s*$', script, re.MULTILINE)
         if cap is None:
             raise ValueError('Original Slurm array concurrency is missing.')

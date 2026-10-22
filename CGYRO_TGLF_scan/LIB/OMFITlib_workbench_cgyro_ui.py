@@ -218,9 +218,10 @@ class CgyroPage:
                 plan['cases'], plan['points_per_case'], plan['total_points']))
         remote = node['SETTINGS'].get('REMOTE_SETUP', {})
         config = remote.get(str(remote.get('serverPicker', '') or ''), {})
-        self.label('服务器：{}\n队列：{} · 每任务 {} 节点 × {} MPI'.format(
+        self.label('服务器：{}\n队列：{} · 每任务 {} 节点 × {} MPI/节点 × {} 线程/MPI'.format(
             remote.get('serverPicker', '未配置'), config.get('queue', '未配置'),
-            config.get('nodes', '—'), config.get('ntasks_per_node', '—')))
+            config.get('nodes', '—'), config.get('ntasks_per_node', '—'),
+            config.get('cpus_per_task', node['SETTINGS'].get('SETUP', {}).get('cpus_per_task', 1))))
         if config.get('scheduler', '') in ('slurm', 'pbs'):
             self.label('所有半径 / 离子先提交排队，再等待并收集；实际并行由队列资源决定。')
             if config.get('scheduler', '') == 'slurm':

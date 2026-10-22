@@ -4,6 +4,7 @@ from collections import OrderedDict
 import copy
 import re
 from pathlib import PurePosixPath
+from OMFITlib_cgyro_launch import command_template
 from OMFITlib_gacode_installations import (INSTALL_DEFAULTS, initialize_installations,
     installation_issues, program_environment, sync_environment)
 
@@ -18,7 +19,7 @@ TARGETS = OrderedDict([
 DEFAULTS = dict(serverPicker='', server='', tunnel='', workDir='', environment='',
     scheduler='slurm', queue='', wall_time='24:00:00', nodes=1, cores=16,
     cpus_per_task=1, array_parallel=40,
-    cgyro_command='cgyro -e . -n {mpi}', tglf_command='tglf -e .',
+    cgyro_command='cgyro -e . -n {mpi} -nomp {threads}', tglf_command='tglf -e .',
     tgyro_command='tgyro -e . -n {n_radii}', prepare_command='tgyro -t . -n {n_radii}')
 DEFAULTS.update(INSTALL_DEFAULTS)
 
@@ -70,6 +71,12 @@ def initialize_runtime(root, factory=dict):
     initialize_installations(result, factory)
     for key, value in DEFAULTS.items():
         result.setdefault(key, copy.deepcopy(value))
+    try:
+        # Old projects copied a literal executable (-n 16) into this template.
+        # Keep resource edits authoritative instead of freezing that old count.
+        result['cgyro_command'] = command_template(result['cgyro_command'])
+    except ValueError:
+        pass  # Leave invalid text editable; validation supplies the explanation.
     sync_environment(result)
     return result
 
@@ -147,6 +154,10 @@ def validate_runtime(config):
     for key in ('cgyro_command', 'tglf_command', 'tgyro_command', 'prepare_command'):
         if not text(config, key):
             issues.append('运行命令不能为空：' + key)
+    try:
+        command_template(config.get('cgyro_command', ''))
+    except ValueError as error:
+        issues.append(str(error))
     return issues + installation_issues(config)
 
 
@@ -175,6 +186,16 @@ def shared_issues(root):
         selected = remote.get(expected['serverPicker'], {})
         if any(text(selected, key) != value for key, value in expected.items()):
             return ['模块所选服务器配置与统一环境不一致，请重新应用：' + name]
+        if name == 'cgyro':
+            try:
+                command = command_template(applied['cgyro_command']).replace('{mpi}',
+                    str(int(applied['nodes']) * int(applied['cores']))).replace('{threads}', str(applied['cpus_per_task']))
+            except ValueError as error:
+                return ['CGYRO 启动命令需要修正：' + str(error)]
+            resources = dict(nodes=str(applied['nodes']), ntasks_per_node=str(applied['cores']),
+                             cpus_per_task=str(applied['cpus_per_task']), executable=command)
+            if any(text(selected, key) != value for key, value in resources.items()):
+                return ['CGYRO 并行资源或启动命令与统一配置不一致，请重新应用']
     return validate_runtime(config)
 
 
@@ -200,7 +221,8 @@ def apply_runtime(root, factory=dict):
     values = runtime_values(config)
     picker, server = str(values['serverPicker']).strip(), str(values['server']).strip()
     mpi = int(values['nodes']) * int(values['cores'])
-    cgyro_command = str(values['cgyro_command']).replace('{mpi}', str(mpi))
+    cgyro_command = command_template(values['cgyro_command']).replace('{mpi}', str(mpi))
+    cgyro_command = cgyro_command.replace('{threads}', str(values['cpus_per_task']))
     operations, backups = [], factory()
     missing = object()
     for name, path in TARGETS.items():

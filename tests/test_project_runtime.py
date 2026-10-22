@@ -58,7 +58,7 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(remote['cluster']['environment'], applied_runtime(self.root)['environment'])
             paths.append(remote['workDir'])
         self.assertEqual(len(paths), len(set(paths)))
-        self.assertEqual(self.cg['SETTINGS']['REMOTE_SETUP']['cluster']['executable'], 'cgyro -e . -n 16')
+        self.assertEqual(self.cg['SETTINGS']['REMOTE_SETUP']['cluster']['executable'], 'cgyro -e . -n 16 -nomp 1')
         self.assertEqual(self.cg['SETTINGS']['SETUP']['workDir'], '/local/OMFITtmp/cgyro')
         self.assertIs(self.cg['Cases']['unsaved'], result)
         self.assertEqual(shared_issues(self.root), [])
@@ -73,6 +73,32 @@ class RuntimeTests(unittest.TestCase):
             apply_runtime(self.root)
         self.assertEqual(self.cg['SETTINGS'], previous)
         self.assertIsNone(applied_runtime(self.root))
+
+    def test_old_literal_command_follows_new_allocation_and_threads(self):
+        selected = self.cg['SETTINGS']['REMOTE_SETUP']['cluster']
+        selected['executable'] = 'cgyro -e . -n 16 -nomp 1 -mpinuma 16'
+        config = initialize_runtime(self.root)
+        self.assertEqual(config['cgyro_command'], 'cgyro -e . -n {mpi} -nomp {threads}')
+        config.update(dict(nodes=1, cores=32, cpus_per_task=1))
+        apply_runtime(self.root)
+        selected = self.cg['SETTINGS']['REMOTE_SETUP']['cluster']
+        self.assertEqual(selected['executable'], 'cgyro -e . -n 32 -nomp 1')
+        self.assertEqual(selected['ntasks_per_node'], 32)
+        config.update(dict(cores=16, cpus_per_task=2))
+        apply_runtime(self.root)
+        self.assertEqual(self.cg['SETTINGS']['REMOTE_SETUP']['cluster']['executable'],
+                         'cgyro -e . -n 16 -nomp 2')
+
+    def test_shared_check_detects_resource_or_command_drift(self):
+        initialize_runtime(self.root)
+        apply_runtime(self.root)
+        selected = self.cg['SETTINGS']['REMOTE_SETUP']['cluster']
+        selected['executable'] = 'cgyro -e . -n 8 -nomp 1'
+        self.assertTrue(shared_issues(self.root))
+        apply_runtime(self.root)
+        self.assertEqual(shared_issues(self.root), [])
+        self.cg['SETTINGS']['REMOTE_SETUP']['cluster']['ntasks_per_node'] = 32
+        self.assertTrue(shared_issues(self.root))
 
     def test_applied_config_and_backups_are_independent_of_draft(self):
         initialize_runtime(self.root)

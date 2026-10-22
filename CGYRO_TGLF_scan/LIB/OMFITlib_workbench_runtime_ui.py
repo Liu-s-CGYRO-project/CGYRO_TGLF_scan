@@ -151,7 +151,7 @@ class RuntimePage:
         for key, caption in [('cgyro_command', 'CGYRO'), ('tglf_command', 'TGLF'),
                              ('tgyro_command', 'TGYRO'), ('prepare_command', '多剖面输入生成')]:
             self.runtime_entry(prefix + "[{!r}]".format(key), caption, wide=True, multiline=True, updateGUI=True)
-        self.runtime_note('{mpi}：总 MPI 数；{n_radii}：TGYRO 实际径向任务数。')
+        self.runtime_note('{mpi}：总 MPI 数；{threads}：每 MPI 线程数；{n_radii}：TGYRO 径向任务数。')
         transfer = read(self.root, MODULES['transfer'])
         if transfer is not None:
             self.runtime_entry(location(MODULES['transfer'] + ('SETTINGS', 'SETUP', 'p_tgyro')),
