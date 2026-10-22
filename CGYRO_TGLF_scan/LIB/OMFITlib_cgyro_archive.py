@@ -530,13 +530,15 @@ def case_parts(value):
     return None if match is None else (match.group(1), 'unknown', match.group(2))
 
 
-def latest_cases(module, runid):
+def latest_cases(module, runid, catalog=None):
     """Return actual readable keys and alias lookup; never delete old results.
 
     Former publishers inserted RUN_HISTORY and RUN_DB entries in publication
     order. Use that recorded order, never the random UUID's lexical order.
     """
-    run = catalog_runs(module).get(runid, {})
+    # A caller rendering several selectors can reuse its current metadata view.
+    # The optional snapshot must not outlive that render or be saved in RUN_DB.
+    run = (catalog_runs(module) if catalog is None else catalog).get(runid, {})
     history = module.get('RUN_HISTORY', {})
     order = {str(token): index for index, token in enumerate(history.keys())}
     current = module.get('RUN_MANIFEST', {})

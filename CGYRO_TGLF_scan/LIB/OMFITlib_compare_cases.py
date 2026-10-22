@@ -6,6 +6,7 @@ from OMFITlib_plot_sources import run_choices, source_dimension, tglf_results
 from builtins import (
     ValueError,
     any,
+    delattr,
     dict,
     enumerate,
     getattr,
@@ -14,6 +15,7 @@ from builtins import (
     str,
 )
 from collections import Counter, OrderedDict
+from contextlib import contextmanager
 from OMFITlib_cgyro_archive import latest_cases, remap_case_selection, remap_pair_flags
 from OMFITlib_cgyro_scan_view import multiaxis_scans, axis_values
 from OMFITlib_compare_widgets import (
@@ -28,6 +30,27 @@ from OMFITlib_compare_state import (
 
 
 class CaseSelection(ComparisonWidgets):
+    @contextmanager
+    def _catalog_scope(self, catalog=None):
+        """Share one metadata catalog while constructing sibling selectors.
+
+        The GUI is synchronous. Clear the snapshot even if rendering is
+        aborted, so the next update sees newly collected/replaced archives.
+        Only this transient controller attribute holds the view; the project
+        tree and result owners are never changed or copied.
+        """
+        previous = getattr(self, '_cgyro_catalog', None)
+        if catalog is None:
+            catalog = previous if previous is not None else catalog_runs(self.root.get('CGYRO_scan', {}))
+        self._cgyro_catalog = catalog
+        try:
+            yield catalog
+        finally:
+            if previous is None:
+                delattr(self, '_cgyro_catalog')
+            else:
+                self._cgyro_catalog = previous
+
     def _multi_axis_entries(self, state, path, run, radii, name, selected, nr=None):
         """Select each real axis; the remaining fixed coordinates form slices."""
         scans = [multiaxis_scans(run[case]).get(str(name), None) for case in radii if case in run]
@@ -166,14 +189,16 @@ class CaseSelection(ComparisonWidgets):
         state[selected_key] = selected_items(flags, cases)
 
     def _choose_cgyro(self, state, path, select_radii=True, legacy=False):
-        runs = catalog_runs(self.root.get('CGYRO_scan', {}))
+        runs = getattr(self, '_cgyro_catalog', None)
+        if runs is None:
+            runs = catalog_runs(self.root.get('CGYRO_scan', {}))
         state.setdefault('runid', '')
         self.ui.Separator('CGYRO 数据来源')
         self.ui.ComboBox(path('runid'), stable_keys(runs), '运行记录', default='', updateGUI=True,
                          width=28, kwlabel={'width': 16, 'anchor': 'w'})
         runid = state['runid']
         activate_source(state, str(runid))
-        visible, self._cgyro_case_aliases = latest_cases(self.root.get('CGYRO_scan', {}), runid)
+        visible, self._cgyro_case_aliases = latest_cases(self.root.get('CGYRO_scan', {}), runid, catalog=runs)
         radii = stable_keys(dict.fromkeys(visible))
         if not radii:
             self.ui.Label('请选择包含已保存线性扫描结果的运行记录。', align='left')

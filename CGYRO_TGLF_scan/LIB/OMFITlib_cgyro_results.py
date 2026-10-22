@@ -11,6 +11,7 @@ from OMFITlib_plot_window import fit_figure_window
 from builtins import (Exception, TypeError, ValueError, abs, any, dict, float, int,
                       len, list, max, min, range, set, sorted, str, tuple, zip)
 from collections import OrderedDict
+import math
 import numpy as np
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -33,7 +34,7 @@ def _view_settings(root):
     return view
 
 
-def _run_options(root):
+def _run_options(root, resolve_stopped=True):
     module = root.get('CGYRO_scan', {})
     run_db = catalog_runs(module)
     records = OrderedDict()
@@ -42,7 +43,7 @@ def _run_options(root):
         if str(runid).startswith('__'):
             continue
         run = run_db[runid]
-        cases, aliases = latest_cases(module, runid)
+        cases, aliases = latest_cases(module, runid, catalog=run_db)
         active = set()
         for case_id in cases:
             if str(case_id).startswith('__'):
@@ -87,6 +88,19 @@ def _run_options(root):
         # Keep only the current empty-job entry when it needs a resume action.
         if token not in records and token != str(current.get('run_token', '')):
             continue
+        indexed_or_empty = (token in records or not (
+            manifest.get('collection_status', '') == 'partial' or manifest.get('loaded_points', [])
+            or manifest.get('partial_points', []) or manifest.get('continuation', {}).get('source_token', '')))
+        if not resolve_stopped and indexed_or_empty:
+            # Ordinary control changes need only labels and indexed coordinates.
+            # Joining continuation ancestry resolves physical result owners and
+            # can open many lazy files. Indexed records defer that to a data
+            # action. The single unindexed current job retains the legacy path
+            # so inherited results and their slice controls stay accessible.
+            entry = dict(records.get(token, manifest))
+            entry['stopped_run'] = True
+            records[token] = entry
+            continue
         try:
             context = stopped_context(module, token)
         except (KeyError, ValueError) as exc:
@@ -110,13 +124,18 @@ def _number_text(value):
 
 
 def _unique_numeric(rows, name):
-    values = []
+    values, seen = [], set()
     for row in rows:
         try:
             value = float(row.get('values', {}).get(name, None))
         except (TypeError, ValueError):
             continue
-        if np.isfinite(value) and not any(np.isclose(value, item, rtol=1e-10, atol=1e-12) for item in values):
+        if not math.isfinite(value) or value in seen:
+            continue
+        seen.add(value)
+        # A scalar comparison avoids allocating numpy temporaries for every
+        # repeated coordinate. Retain np.isclose's asymmetric tolerance/order.
+        if not any(abs(value - item) <= 1e-12 + 1e-10 * abs(item) for item in values):
             values.append(value)
     return sorted(values)
 
@@ -131,9 +150,9 @@ def _select_numeric(text, choices, label):
     return min(choices, key=lambda value: abs(value - requested))
 
 
-def selected_record(root):
+def selected_record(root, resolve_stopped=True):
     view = _view_settings(root)
-    records, options = _run_options(root)
+    records, options = _run_options(root, resolve_stopped=resolve_stopped)
     if not options:
         raise ValueError('尚无已收集的 CGYRO 扫描结果。')
     token = view.get('run_token', '')
@@ -259,7 +278,7 @@ class ResultBrowser:
         if title:
             self.ui.TitleGUI('CGYRO · 扫描结果浏览')
         try:
-            view, token, entry, options = selected_record(self.root)
+            view, token, entry, options = selected_record(self.root, resolve_stopped=False)
         except ValueError as exc:
             self.ui.Label(str(exc), align='left')
             return

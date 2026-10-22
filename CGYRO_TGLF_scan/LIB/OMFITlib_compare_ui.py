@@ -42,6 +42,10 @@ CONTROL_TABS = OrderedDict([
 
 class ComparisonUI(CaseSelection):
     def render(self, open_templates=None):
+        with self._catalog_scope():
+            return self._render(open_templates)
+
+    def _render(self, open_templates):
         self.physics = initialize_settings(self.root)
         selected = self.physics['compare_mode']
         self.ui.TitleGUI('CGYRO / TGLF · 对比绘图')
@@ -55,8 +59,9 @@ class ComparisonUI(CaseSelection):
             panes.append(pane)
             # A native CompoundGUI gives each mode its own inner Notebook.
             # All modes remain mounted, so tab switches need no GUI redraw.
-            self.ui.CompoundGUI(self.root['GUIS']['Compare_controls'], title='',
-                                comparison=pane, mode=mode, open_templates=open_templates)
+            with pane._catalog_scope(self._cgyro_catalog):
+                self.ui.CompoundGUI(self.root['GUIS']['Compare_controls'], title='',
+                                    comparison=pane, mode=mode, open_templates=open_templates)
         self.ui.Tab('全局样式')
         render_style(self.root, self.ui)
         self.ui.Tab('')
@@ -84,6 +89,14 @@ class ComparisonUI(CaseSelection):
                 return
 
     def render_controls(self, mode, open_templates=None):
+        if mode == 'TGLF_vs_TGLF':
+            return self._render_controls(mode, open_templates)
+        # CompoundGUI may rebuild this child without rerunning the outer GUI.
+        # In that case obtain a fresh catalog, rather than retaining a prior one.
+        with self._catalog_scope():
+            return self._render_controls(mode, open_templates)
+
+    def _render_controls(self, mode, open_templates):
         physics = initialize_settings(self.root)
         self.mode = mode
         self.state = physics[self.mode]

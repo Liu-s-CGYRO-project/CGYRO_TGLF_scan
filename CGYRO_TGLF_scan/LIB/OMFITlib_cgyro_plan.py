@@ -4,7 +4,7 @@ This layer describes work without submitting it. Selection helpers may migrate
 WORKBENCH settings; transformations always return independent solver inputs.
 ProjectActions owns installation of prepared inputs and all execution effects.
 """
-from builtins import abs, any, bool, dict, enumerate, float, int, len, list, next, range, set, sorted, str, sum
+from builtins import abs, any, bool, dict, enumerate, float, int, len, list, next, range, set, sorted, str, sum, zip
 from collections import OrderedDict
 import copy
 import math
@@ -116,7 +116,6 @@ def cgyro_sources(root):
             if str(key) == 'input.cgyro' or str(key).startswith('input.cgyro_')]
     keys = sorted(keys, key=lambda key: (_cgyro_radius_number(key, 1), str(key)))
     for fallback, key in enumerate(keys, 1):
-        value = branch[key]
         nr = _cgyro_radius_number(key, fallback)
         if mode == 'current' and str(key) == 'input.cgyro':
             stored = read(root, CGYRO_PATH + ('SETTINGS', 'PHYSICS'), {})
@@ -131,7 +130,9 @@ def cgyro_sources(root):
                                     str(key), 'rho'))
                          if prefix == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen') else None)
             if rho_value is None:
-                rho_value = value.get('rho', None)  # Read legacy metadata before sanitizing the run copy.
+                # Generated inputs already have radius metadata. Do not open
+                # every lazy input file just to redraw the radius selector.
+                rho_value = branch[key].get('rho', None)
             if mode == 'current' and str(key) == 'input.cgyro' and rho_value is None:
                 rho_value = stored.get('rho', None)
             rho = float(rho_value)
@@ -256,7 +257,14 @@ def cgyro_plan_issues(root):
         radial_ids = [row['nr'] for row in selected]
         if len(set(radial_ids)) != len(radial_ids):
             raise ValueError('所选输入的 nr 编号重复，请保留一个输入或修改文件的半径编号。')
-        sources = [read(root, row['path']) for row in selected]
+        # This validator runs while GUI tabs are rebuilt. Native file-backed
+        # inputs implement duplicate() by writing/reloading physical files;
+        # preflight needs only independent parameter values, not those files.
+        # Copy values too: arrays/lists must not alias the user's source card.
+        # Actual preparation still passes the native input to
+        # _cgyro_case_input(), retaining its required file isolation.
+        sources = [{key: copy.deepcopy(source[key]) for key in source.keys()}
+                   for source in (read(root, row['path']) for row in selected)]
         physics = read(root, CGYRO_PATH + ('SETTINGS', 'PHYSICS'))
         initialize_parameters(physics, sources[0])
         validated_overrides(physics, sources, scan_parameter_names(physics, dimensions))
@@ -264,8 +272,7 @@ def cgyro_plan_issues(root):
         if rows[0]['path'][:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
             if previous is None or input_digest(chosen) != input_digest(previous):
                 raise ValueError('粒子方案或半径设置已变化，请重新运行 Transfer_tool。')
-        for row in selected:
-            source = read(root, row['path'])
+        for row, source in zip(selected, sources):
             for ion_case in ION_CASES:
                 if not ion_cases.get(ion_case, False):
                     continue

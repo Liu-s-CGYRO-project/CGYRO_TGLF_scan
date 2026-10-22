@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.4。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.9。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 先找到修改层
 
@@ -141,3 +141,25 @@ OMFITlib_cgyro_storage_files.SubmissionFiles 只计划新所有者与索引，�
 ## 启动与临时空间（1.24.1）
 
 check_start_capacity 只检查启动时已有占用；check_temp_start 通过三个原生脚本传递，批量仅首案例为 True，直接运行和新续算默认为 True。ensure_capacity 只检查真实剩余空间，禁止在逐点打包或保存输入时遍历整个 /tmp。该标志只作本次调用参数，不能写入 SETTINGS 作为持久跳过开关。准备进度按案例与计算点打印，取得作业号后单独输出记录状态；没有进度不能推断已经提交。
+
+## GUI 刷新性能（1.24.8）
+
+控件 updateGUI 会重新执行原生 GUI 和库导入。预检查只使用深拷贝的普通参数值；不得调用文件对象 duplicate，后者会创建临时文件。实际提交仍使用原生副本。半径标签优先读 Particle_processing.local_inputs 的 rho 元数据。
+
+CaseSelection._catalog_scope 仅在一次同步渲染中共享 catalog_runs 视图，finally 释放；独立子页刷新必须建立新目录。latest_cases 可接收该目录。不要以运行名、点数或对象 id 作为跨刷新有效性依据，不把目录或结果缓存写入 SETTINGS。
+
+ResultBrowser.render 以 resolve_stopped=False 读取选择项；有公开索引的停止任务只读索引，数据动作仍用 selected_record 的默认完整解析。没有公开索引的当前 partial/续算任务保留完整回退，以维持未归档结果的切片与操作入口。
+
+configure_window_fonts 在同一字体配置下只注册一次；显式导入字体或调整字号使用 refresh=True。Map 处理新增控件；FONT_PROFILE 变化及主题变化重扫现有控件。缓存只挂 Tk 对象，既不改变全局命名字体，也不保存到工程。字体查询必须观察原命名字体的实时变化。
+
+## 控件刷新范围（1.24.9）
+
+通过 OMFITlib_gui_api.adapt 构造本工程控件。普通 updateGUI=True 被替换为 _DeferredGUIRefresh 策略对象：原生代码在提交后测试其布尔值时，请求所属窗口并返回 False，阻止全局 <<update_GUI>>。不要提前 bool()、序列化或复制该对象到工程树。绑定按控件祖先查找 _GUIs，不能依赖全局最后绘制的 topGUI。每次 GUI 脚本渲染构造新的适配器，不跨渲染缓存构造函数快照。
+
+定时器用 after 而非 after_idle，避免原生 update_idletasks 在当前回调内删除控件；合并同一窗口的请求，save lock 期间重排定时器，Destroy 取消。更新仍在 Tk 主线程执行，范围是整个所属原生 GUI，不是局部控件重绘。
+
+原生 Button 的非全局分支仍会安排 250 ms 后重新启用。仅跟踪该按钮实例的 after 回调，Destroy 时取消；按钮已因任务内部刷新被删除时不再安排回调。不能扫描或清理全局定时器，否则会影响其他窗口。测试必须捕获 Tcl bgerror，单看 Python report_callback_exception 会漏报此类失效命令。
+
+保持原生参数校验、postcommand 和 reset 语义。不要用统一 postcommand 包装器代替原生刷新判断：norm 会覆盖它，delete_if_default 可能在构造时调用它，Entry 的重置只暂填文字而不提交。Entry 原生 showText 硬编码 True，必须通过仅替换 _Text 的本次构造函数副本转发请求；副本沿用原生代码与默认值，不重写输入编辑逻辑。ObjectPicker/ModulePicker 同样将内部控件导向适配器。
+
+适配器 UpdateGUI() 默认刷新捕获的所有者；top 指定一个目标，all_windows=True 显式请求原生全局行为。确有跨窗口依赖时应单独描述：ShotTimeDevice 每次写 MainSettings、模板 apply/undo 的事务校验、实际任务结束以及模块载入保留原生刷新。不得为缩小范围而改变计算、归档或事务验证行为。

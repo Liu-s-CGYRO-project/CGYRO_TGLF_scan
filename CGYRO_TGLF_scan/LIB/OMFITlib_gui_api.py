@@ -1,9 +1,153 @@
-"""Local OMFIT widget adapter: full help text without global tooltip patches."""
+"""Project-local controls, help and deferred refresh; no global OMFIT patches."""
 from OMFITlib_gui_fonts import configure_window_fonts, gui_font, style_checkbox, style_widget
 from builtins import callable, dict, enumerate, getattr, isinstance, list, max, min, repr, set, str, tuple
 import inspect
+from functools import update_wrapper
+from types import FunctionType
 import tkinter as tk
 from tkinter import ttk
+
+
+class _DeferredGUIRefresh:
+    """Refresh one native GUI after its control callback has returned.
+
+    Native controls test updateGUI after committing their value/action.
+    That destroys/recreates controls inside their own selection callback and
+    also rebuilds unrelated windows. A normal timer, unlike after_idle, cannot
+    run inside OMFIT's update_idletasks while that callback is still active.
+    """
+    def __init__(self, api, gui, registry):
+        self.api, self.gui, self.registry = api, gui, registry
+        self.top = gui.top
+        self.pending = None
+        self.running = self.dirty = self.closed = False
+        self.top.bind('<Destroy>', self._closed, add='+')
+
+    def __bool__(self):
+        """Replace the native redraw branch, not its value/validation callback.
+
+        OMFIT passes updateGUI through helpers, then evaluates it at the end of
+        a successful edit (or Button's finally). Request the owner and decline
+        the global event. This also preserves norm, delete_if_default and reset
+        semantics that would be lost by wrapping/replacing postcommand.
+        """
+        self.request()
+        return False
+
+    def request(self):
+        if self.closed or self.registry.get(str(self.top), None) is not self.gui:
+            return
+        self.dirty = True
+        if self.pending is None and not self.running:
+            self.pending = self.top.after(1, self.flush)
+
+    def flush(self):
+        self.pending = None
+        if self.closed or self.registry.get(str(self.top), None) is not self.gui:
+            return
+        # Saving owns the session tree. Keep processing Tk events while it
+        # finishes instead of nesting another module redraw in its wait loop.
+        session = getattr(self.api, 'OMFITaux', {}).get('GUI', None)
+        if getattr(session, 'lockSave', False):
+            self.pending = self.top.after(100, self.flush)
+            return
+        self.dirty, self.running = False, True
+        try:
+            self.gui.update()
+        finally:
+            self.running = False
+            if self.dirty:
+                self.request()
+
+    def _closed(self, event):
+        if event.widget is self.top:
+            self.closed = True
+            if self.pending is not None:
+                self.top.after_cancel(self.pending)
+                self.pending = None
+
+
+def _deferred_gui_refresh(api, parent):
+    """Locate the GUI by ancestry, never by OMFIT's last-rendered GUI global."""
+    registry = getattr(api, '_GUIs', None)
+    if not isinstance(registry, dict):
+        return None
+    while isinstance(parent, tk.Misc):
+        gui = registry.get(str(parent), None)
+        if gui is not None:
+            refresh = getattr(gui, '_cgyro_deferred_refresh', None)
+            if refresh is None:
+                refresh = gui._cgyro_deferred_refresh = _DeferredGUIRefresh(api, gui, registry)
+            return refresh
+        parent = parent.master
+    return None
+
+
+def _constructor_copy(function, helpers):
+    """Substitute private helper calls for one render, leaving OMFIT untouched."""
+    namespace = dict(function.__globals__)
+    namespace.update(helpers)
+    constructor = FunctionType(function.__code__, namespace, function.__name__,
+                               function.__defaults__, function.__closure__)
+    constructor.__kwdefaults__ = function.__kwdefaults__
+    return update_wrapper(constructor, function)
+
+
+def _local_entry(function, text_function, refresh):
+    """Keep the native Entry body, localizing its hardcoded multiline refresh.
+
+    Entry's showText closure passes True to _Text even when updateGUI is False.
+    A render-local constructor copy substitutes only that helper. The original
+    functions/globals are untouched; native resolved locations, normalization,
+    locks, editor contents and postcommand closures are passed through intact.
+    Do not cache this globals snapshot across GUI renders or code upgrades.
+    """
+    def local_text(*args, **kwargs):
+        bound = inspect.signature(text_function).bind_partial(*args, **kwargs)
+        if bound.arguments.get('updateGUI', False) is not False:
+            bound.arguments['updateGUI'] = refresh
+        return text_function(*bound.args, **bound.kwargs)
+
+    return _constructor_copy(function, {'_Text': local_text})
+
+
+def _own_button_timers(button):
+    """Cancel only this button's callbacks when a local redraw destroys it.
+
+    The native non-global branch schedules re-enable at 250 ms. Its Tcl
+    command would otherwise disappear during our earlier redraw, leaving a
+    dangling timer and a Tk background error. Preserve native Button behavior.
+    """
+    if getattr(button, '_cgyro_owned_timers', None) is not None:
+        return
+    pending = button._cgyro_owned_timers = set()
+    destroyed = [False]
+    original_after, original_cancel = button.after, button.after_cancel
+
+    def after(ms, func=None, *args):
+        if func is None:
+            return original_after(ms)
+        # A task may have already redrawn the GUI inside the native command,
+        # before Button's finally attempts its re-enable timer.
+        if destroyed[0]:
+            return None
+        timer = [None]
+        def call():
+            pending.discard(timer[0])
+            return func(*args)
+        timer[0] = original_after(ms, call)
+        pending.add(timer[0])
+        return timer[0]
+
+    def closed(event):
+        if event.widget is button:
+            destroyed[0] = True
+            for timer in list(pending):
+                original_cancel(timer)
+            pending.clear()
+
+    button.after = after
+    button.bind('<Destroy>', closed, add='+')
 
 
 def set_checkbox_value(control, value):
@@ -146,25 +290,71 @@ class ProjectWidgets:
     def __init__(self, api):
         self._api = api
         self._project_widget_adapter = True
+        self._owner = getattr(api, '_aux', {}).get('parentGUI', None)
+        self._entry_functions = {}
+        self._helper_functions = {}
+
+    def UpdateGUI(self, top=None, all_windows=False):
+        """Refresh the captured owner, or an explicit target, after callbacks.
+
+        all_windows is an explicit escape hatch for callers that truly change
+        every GUI. Native template apply/undo uses its own synchronous updates.
+        """
+        if all_windows:
+            return self._api.UpdateGUI(top=top)
+        refresh = _deferred_gui_refresh(self._api, top if top is not None else self._owner)
+        if refresh is not None:
+            refresh.request()
+        elif top is not None:
+            return self._api.UpdateGUI(top=top)
+
+    updateGUI = UpdateGUI
 
     def __getattr__(self, name):
         function = getattr(self._api, name)
-        if name not in ('Entry', 'ComboBox', 'Button', 'CheckBox', 'FilePicker', 'RadioButtons') or not callable(function):
+        # These native selectors construct controls internally, bypassing the
+        # public adapter (ObjectPicker even hardcodes updateGUI=True).
+        # ShotTimeDevice is intentionally excluded: edits propagate to shared
+        # MainSettings and must update modules inheriting those values.
+        helpers = {'ObjectPicker': ('Button', 'FilePicker'), 'ModulePicker': ('ComboBox',)}
+        if name in helpers and isinstance(function, FunctionType):
+            if function not in self._helper_functions:
+                self._helper_functions[function] = _constructor_copy(
+                    function, {key: getattr(self, key) for key in helpers[name]})
+            return self._helper_functions[function]
+        if name not in ('Entry', 'ComboBox', 'Button', 'CheckBox', 'FilePicker',
+                        'EditASCIIobject', 'ListEditor', 'TreeLocationPicker', 'Slider', 'RadioButtons') or not callable(function):
             return function
 
         def create(*args, **kwargs):
             parent = getattr(self._api, '_aux', {}).get('parentGUI', None)
             arguments = dict(kwargs)
+            bound = None
             if args:
                 arguments.setdefault('location', args[0])
             # Respect native positional signatures; never rewrite entry values.
             try:
-                arguments.update(inspect.signature(function).bind_partial(*args, **kwargs).arguments)
+                bound = inspect.signature(function).bind_partial(*args, **kwargs)
+                arguments.update(bound.arguments)
             except (TypeError, ValueError):
                 pass
+            constructor = function
+            refresh = _deferred_gui_refresh(self._api, parent)
+            if refresh is not None:
+                if arguments.get('updateGUI', False) and bound is not None:
+                    bound.arguments['updateGUI'] = refresh
+                    args, kwargs = bound.args, bound.kwargs
+                text_function = getattr(self._api, '_Text', None)
+                if name == 'Entry' and isinstance(function, FunctionType) and callable(text_function):
+                    key = (function, refresh)
+                    if key not in self._entry_functions:
+                        self._entry_functions[key] = _local_entry(function, text_function, refresh)
+                    constructor = self._entry_functions[key]
             help_text = arguments.get('help', '')
             before = set(parent.winfo_children()) if isinstance(parent, tk.Misc) else set()
-            result = function(*args, **kwargs)
+            result = constructor(*args, **kwargs)
+            if name == 'Button' and refresh is not None and isinstance(result, tk.Misc):
+                _own_button_timers(result)
             added = []
             if isinstance(parent, tk.Misc):
                 for frame in parent.winfo_children():

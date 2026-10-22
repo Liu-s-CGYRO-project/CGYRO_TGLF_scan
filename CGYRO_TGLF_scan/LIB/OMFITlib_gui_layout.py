@@ -4,9 +4,9 @@ from contextlib import contextmanager
 import hashlib
 import threading
 import tkinter as tk
-from tkinter import font as tkfont, ttk
+from tkinter import ttk
 from OMFITlib_gui_context import bind_actions
-from OMFITlib_gui_fonts import configure_window_fonts, fit_field_height, font_size, gui_font
+from OMFITlib_gui_fonts import FONT_PROFILE, configure_window_fonts, fit_field_height, font_size, gui_font
 
 
 @contextmanager
@@ -87,12 +87,18 @@ def fix_console_layout(anchor=None):
                 if isinstance(event.widget, console_type):
                     root._cgyro_style_console(event.widget)
             root._cgyro_console_map_binding = root.bind_class('Text', '<Map>', mapped, add='+')
+        # Existing consoles need a scan on first use/live upgrade only. Later
+        # output windows pass through the Map hook; a page refresh must not walk
+        # every widget in every open OMFIT window just to find those consoles.
+        if getattr(root, '_cgyro_console_scan_profile', None) == FONT_PROFILE:
+            return
         pending = [root]
         while pending:
             widget = pending.pop()
             if isinstance(widget, console_type):
                 _style_console(widget)
             pending.extend(widget.winfo_children())
+        root._cgyro_console_scan_profile = FONT_PROFILE
     except tk.TclError:
         return
 
@@ -188,7 +194,8 @@ class NativeLayout:
                 self.labels.append(child)
                 role = getattr(child, '_cgyro_role', '')
                 current = child.cget('font') or self.style.lookup(child.cget('style') or 'TLabel', 'font') or 'TkDefaultFont'
-                bold = role in ('heading', 'pending') or tkfont.Font(root=child, font=current).actual('weight') == 'bold'
+                bold = role in ('heading', 'pending') or str(child.tk.call(
+                    'font', 'actual', current, '-displayof', str(child), '-weight')) == 'bold'
                 child.configure(font=self.bold if bold else self.normal, width=0,
                                 padding=(0, self.gap if bold else self.gap // 2))
                 if role == 'heading':

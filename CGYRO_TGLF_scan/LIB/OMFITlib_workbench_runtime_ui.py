@@ -210,12 +210,9 @@ class RuntimePage:
             raise
         finally:
             if top.winfo_exists() and gui is not None:
-                def refresh():
-                    if registry.get(str(top), None) is gui and top.winfo_exists():
-                        self.ui.UpdateGUI(top=top)
-                # Let the native button/error callbacks return before clearing
-                # controls. Do not emit OMFIT's global <<update_GUI>> event.
-                top.after_idle(refresh)
+                # The project adapter coalesces this with other owner requests.
+                # after_idle can run inside the native button's tree refresh.
+                self.ui.UpdateGUI(top=top)
 
     def shared_gacode_install(self, config):
         installs = config['gacode_installs']

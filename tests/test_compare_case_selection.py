@@ -3,11 +3,13 @@ from pathlib import Path
 from contextlib import nullcontext
 import sys
 import unittest
+from unittest.mock import patch
 
 LIB = Path(__file__).resolve().parents[1] / 'CGYRO_TGLF_scan/LIB'
 sys.path.insert(0, str(LIB))
 import OMFITlib_compare_state as state
 import OMFITlib_compare_cases as cases_module
+import OMFITlib_cgyro_archive as archive
 modules = {'cases': cases_module}
 
 
@@ -29,6 +31,66 @@ class FakeUI:
 
 
 class CaseSelectionTest(unittest.TestCase):
+    def test_sibling_selectors_share_one_catalog_only_during_render(self):
+        class Tasks(dict):
+            visits = 0
+
+            def values(self):
+                for row in super().values():
+                    self.visits += 1
+                    yield row
+
+        tasks = Tasks({'p{:06d}'.format(i): {'result_path': ['N_THETA', '16', 'lin', str(i / 100)]}
+                       for i in range(100)})
+        info = {'scan_axes': [{'name': 'N_THETA', 'values': [16]}], 'run_token': 'old'}
+        radial = {'N_THETA': {}, '__SCANS__': {'N_THETA': {'info': info, 'tasks': tasks}},
+                  '__INFO__': info, '__TASKS__': tasks}
+        root = {'CGYRO_scan': {'RUN_DB': {'Jet': {'nr=1_rho=0.5': radial}}}}
+        outer = cases_module.CaseSelection(root, FakeUI(root))
+        children = [cases_module.CaseSelection(root, FakeUI(root)) for _ in range(3)]
+        with patch.object(cases_module, 'catalog_runs', wraps=archive.catalog_runs) as build:
+            with outer._catalog_scope() as catalog:
+                for child in children:
+                    with child._catalog_scope(catalog):
+                        # Native CompoundGUI's child entry creates a nested
+                        # render scope, which must reuse its outer snapshot.
+                        with child._catalog_scope():
+                            run, radii = child._choose_cgyro({'runid': 'Jet'}, lambda *k: '', select_radii=False)
+                            self.assertEqual(radii, ['nr=1__rho=0.5__ion=BASE'])
+                            self.assertIs(run[radii[0]]['__TASKS__'], tasks)
+            self.assertEqual(build.call_count, 1)
+        self.assertEqual(tasks.visits, 100)
+        self.assertFalse(hasattr(outer, '_cgyro_catalog'))
+        self.assertTrue(all(not hasattr(child, '_cgyro_catalog') for child in children))
+
+        # Replacement after collection must appear on the next render, even
+        # when the run name, number of radii and number of points are unchanged.
+        root['CGYRO_scan']['RUN_DB']['Jet'] = {'nr=2_rho=0.6': radial}
+        with children[0]._catalog_scope():
+            _, radii = children[0]._choose_cgyro({'runid': 'Jet'}, lambda *k: '', select_radii=False)
+        self.assertEqual(radii, ['nr=2__rho=0.6__ion=BASE'])
+        self.assertEqual(tasks.visits, 200)
+        self.assertEqual(set(root), {'CGYRO_scan'})
+        self.assertEqual(set(root['CGYRO_scan']), {'RUN_DB'})
+
+    def test_catalog_scope_does_not_survive_abort(self):
+        root = {'CGYRO_scan': {'RUN_DB': {'Jet': {}}}}
+        app = cases_module.CaseSelection(root, FakeUI(root))
+        with self.assertRaises(KeyboardInterrupt):
+            with app._catalog_scope():
+                raise KeyboardInterrupt()
+        self.assertFalse(hasattr(app, '_cgyro_catalog'))
+        root['CGYRO_scan']['RUN_DB'] = {'New run': {}}
+        with app._catalog_scope() as catalog:
+            self.assertEqual(list(catalog), ['New run'])
+
+    def test_standalone_selector_does_not_rebuild_catalog_for_aliases(self):
+        root = {'CGYRO_scan': {'RUN_DB': {'Jet': {}}}}
+        app = cases_module.CaseSelection(root, FakeUI(root))
+        with patch.object(archive, 'catalog_runs', side_effect=AssertionError('duplicate traversal')):
+            app._choose_cgyro({'runid': 'Jet'}, lambda *k: '', select_radii=False)
+        self.assertFalse(hasattr(app, '_cgyro_catalog'))
+
     def test_single_isotope_radii_need_no_second_selection(self):
         cases = ['nr={}__rho={}__ion=BASE'.format(i, rho)
                  for i, rho in enumerate((.5, .5875, .675, .7625, .85), 1)]

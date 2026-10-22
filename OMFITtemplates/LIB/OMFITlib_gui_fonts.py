@@ -26,7 +26,7 @@ _library = None
 _registration_source = ''
 # Loader changes must invalidate old interpreter caches even when the original
 # font file stays identical across project releases.
-FONT_PROFILE = 'gui-metrics-v6:' + FONT_SHA256
+FONT_PROFILE = 'gui-metrics-v7:' + FONT_SHA256
 DEFAULT_SIZE = 11
 MIN_SIZE = 9
 MAX_SIZE = 18
@@ -192,7 +192,7 @@ def refresh_window_fonts(parent):
     while stack:
         widget = stack.pop()
         if getattr(widget, '_project_cjk_default_font', None) is not None:
-            configure_window_fonts(widget)
+            configure_window_fonts(widget, refresh=True)
         metrics = getattr(widget, '_project_cjk_metrics_handler', None)
         if callable(metrics):
             metrics()
@@ -207,7 +207,15 @@ def refresh_window_fonts(parent):
 
 def gui_font(widget, base='TkDefaultFont', **overrides):
     """Keep weight/slant and normalize GUI sizes; retain each named Tk font."""
-    options = tkfont.Font(root=widget, font=base or 'TkDefaultFont').actual()
+    # Query the existing description directly. Cloning a temporary named font
+    # for every widget sends create/actual/delete commands through Tk and makes
+    # repeated page rebuilds expensive on remote displays. A fresh actual query
+    # still observes live edits to named base fonts, unlike a persistent cache.
+    values = widget.tk.splitlist(widget.tk.call('font', 'actual', base or 'TkDefaultFont',
+                                               '-displayof', str(widget)))
+    options = {str(values[index])[1:]: values[index + 1] for index in range(0, len(values), 2)}
+    for key in ('size', 'underline', 'overstrike'):
+        options[key] = int(options[key])
     family = font_family(widget)
     if family:
         options['family'] = family
@@ -497,9 +505,18 @@ def style_widgets(parent):
             style_widgets(child)
 
 
-def configure_window_fonts(window):
-    """Register a project window without changing Tk's global named fonts."""
+def configure_window_fonts(window, refresh=False):
+    """Register once per appearance; Map handles controls added on later pages.
+
+    Explicit font import/size refresh and code-profile/theme changes rescan
+    existing controls, including hidden tabs. Ordinary nested page finishes
+    must not restyle the entire owning window again.
+    """
     if not isinstance(window, tk.Misc):
+        return
+    window._project_cjk_style_handler = style_widget
+    appearance = (FONT_PROFILE, font_size(window), ttk.Style(window).theme_use())
+    if not refresh and getattr(window, '_project_cjk_appearance', None) == appearance:
         return
     if getattr(window, '_project_cjk_profile', None) != FONT_PROFILE:
         font_family(window)
@@ -528,4 +545,5 @@ def configure_window_fonts(window):
         window._project_cjk_binding_profile = FONT_PROFILE
     # A Map hook alone misses controls already visible when code is upgraded.
     style_widgets(window)
+    window._project_cjk_appearance = appearance
 
