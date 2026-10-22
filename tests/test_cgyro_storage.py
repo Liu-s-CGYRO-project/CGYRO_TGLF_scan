@@ -159,6 +159,211 @@ class StorageCases(unittest.TestCase):
         archive_api.store_scan(case, case, info, tasks)
         return case
 
+    def reference_scan(self, module, token):
+        source = self.indexed_scan(module, token, 'BASE', values=(32,), ky_count=2)
+        info = copy.deepcopy(source['__INFO__'])
+        info['scan_dimensions'] = 0
+        info['scan_axes'][0]['fixed'] = True
+        result = {}
+        archive_api.store_scan(result, source, info, source['__TASKS__'])
+        return result
+
+    def publisher(self):
+        path = REPO / 'CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/CGYROScan.py'
+        definitions = [node for node in ast.parse(path.read_text(encoding='utf-8')).body
+                       if isinstance(node, ast.FunctionDef)]
+        namespace = dict(copy=copy, datetime=datetime, timezone=timezone, OMFITtree=dict,
+                         continuation_case=continuation.continuation_case,
+                         point_result=continuation.point_result, save_current=queue_api.save_current,
+                         compact_storage=storage.compact_storage, prune_storage=storage.prune_storage,
+                         store_result=storage.store_result, resolve_result=storage.resolve_result,
+                         run_cases=db_api.run_cases, recover_archives=storage.recover_archives)
+        for name in ('canonical_case_key', 'catalog_runs', 'clean_run_id', 'combine_cases',
+                     'grouped_case_path', 'install_case', 'matching_cases', 'output_final_time',
+                     'scan_key', 'store_scan', 'validate_preserved_scans'):
+            namespace[name] = getattr(archive_api, name)
+        exec(compile(ast.Module(body=definitions, type_ignores=[]), str(path), 'exec'), namespace)
+        return namespace['publish_loaded_run']
+
+    def result_readers(self):
+        from collections import OrderedDict
+        path = REPO / 'CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_results.py'
+        definitions = [node for node in ast.parse(path.read_text(encoding='utf-8')).body
+                       if isinstance(node, ast.FunctionDef) and node.name in ('_stable_keys', '_run_options', '_result_node')]
+        namespace = dict(OrderedDict=OrderedDict, catalog_runs=archive_api.catalog_runs,
+                         latest_cases=archive_api.latest_cases, case_scans=archive_api.case_scans,
+                         case_destination=archive_api.case_destination, legacy_branch=db_api.legacy_branch,
+                         run_records=db_api.run_records, storage_state=storage.storage_state,
+                         stopped_context=continuation.stopped_context,
+                         resolve_result=storage.resolve_result, record_options=lambda records: dict(records))
+        exec(compile(ast.Module(body=definitions, type_ignores=[]), str(path), 'exec'), namespace)
+        return namespace
+
+    def test_original_scans_move_out_of_base_and_only_reference_stays(self):
+        root = {}
+        theta = self.indexed_scan(root, 'base_theta', 'BASE', values=(16, 32), ky_count=2)
+        energy = self.indexed_scan(root, 'base_energy', 'BASE', 'N_ENERGY', (8,), 2)
+        reference = self.reference_scan(root, 'base_reference')
+        group = {'BASE': archive_api.combine_cases([theta, energy, reference])}
+        for ion in ('H', 'D', 'T'):
+            group[ion] = self.indexed_scan(root, 'same_'+ion, ion, values=(16,), ky_count=1)
+        root['RUN_DB']['Jet'] = {'nr=1_rho=0.33': group}
+        owners = set(storage.result_pool(root))
+        cid = theta['__INFO__']['case_id']
+        self.assertEqual(archive_api.case_destination(root, 'Jet', cid, theta['__INFO__']),
+                         ['Jet', 'nr=1_rho=0.33', 'BASE'])
+        storage.consolidate_storage(root)
+        group = root['RUN_DB']['Jet']['nr=1_rho=0.33']
+        self.assertEqual({key for key in group if not key.startswith('__')},
+                         {'N_THETA', 'N_ENERGY', 'BASE', 'H', 'D', 'T'})
+        self.assertEqual(set(group['__SCANS__']), {'N_THETA', 'N_ENERGY'})
+        self.assertEqual({key for key in group['BASE'] if not key.startswith('__')}, {'KY_ONLY'})
+        case = archive_api.catalog_runs(root)['Jet'][cid]
+        self.assertEqual(set(case['__SCANS__']), {'N_THETA', 'N_ENERGY', 'KY_ONLY'})
+        self.assertNotIn('H', case)
+        self.assertEqual(archive_api.case_destination(root, 'Jet', cid), ['Jet', 'nr=1_rho=0.33'])
+        readers = self.result_readers()
+        records, _ = readers['_run_options']({'CGYRO_scan': root})
+        self.assertEqual(records['base_reference']['destination'], ['Jet', 'nr=1_rho=0.33', 'BASE'])
+        self.assertEqual(records['base_theta']['destination'], ['Jet', 'nr=1_rho=0.33'])
+        before = {}
+        for scan, info, tasks in archive_api.case_scans(case):
+            before[scan] = {archive_api.point_coordinate(row): continuation.point_result(case, row)
+                            for row in tasks.values()}
+            for row in tasks.values():
+                self.assertIsInstance(readers['_result_node']({'CGYRO_scan': root}, records[info['run_token']], row), OMFITcgyro)
+        storage.consolidate_storage(root)
+        repeated = archive_api.catalog_runs(root)['Jet'][cid]
+        self.assertEqual({scan: {archive_api.point_coordinate(row): continuation.point_result(repeated, row)
+                                for row in tasks.values()} for scan, _, tasks in archive_api.case_scans(repeated)}, before)
+        self.assertEqual(set(storage.result_pool(root)), owners)
+
+    def test_ordinary_original_scan_without_reference_has_no_base_child(self):
+        root = {}
+        case = self.indexed_scan(root, 'original_only', 'BASE', values=(16,), ky_count=2)
+        cid = case['__INFO__']['case_id']
+        root['RUN_DB']['Jet'] = {'nr=1_rho=0.33': {'BASE': case}}
+        storage.consolidate_storage(root)
+        group = root['RUN_DB']['Jet']['nr=1_rho=0.33']
+        self.assertNotIn('BASE', group)
+        self.assertIn('N_THETA', group)
+        self.assertEqual(archive_api.grouped_case_path(cid, case['__INFO__']), ['nr=1_rho=0.33'])
+        self.assertEqual(archive_api.case_destination(root, 'Jet', cid), ['Jet', 'nr=1_rho=0.33'])
+
+    def test_direct_layout_honors_native_mapping_get_update_contract(self):
+        from omfit_mapping import OMFITMapping, treeify
+        root = {}
+        theta = self.indexed_scan(root, 'native_base', 'BASE', values=(16,), ky_count=1)
+        reference = self.reference_scan(root, 'native_reference')
+        root['RUN_DB']['Jet'] = {'nr=1_rho=0.33': {'BASE':archive_api.combine_cases([theta, reference])}}
+        root = treeify(root, OMFITMapping)
+        storage.recover_archives(root, storage.resolve_result, OMFITMapping)
+        case = archive_api.catalog_runs(root)['Jet'][theta['__INFO__']['case_id']]
+        self.assertEqual(set(case['__SCANS__']), {'N_THETA', 'KY_ONLY'})
+        self.assertEqual(archive_api.case_destination(root, 'Jet', theta['__INFO__']['case_id'],
+                                                    theta['__INFO__']), ['Jet', 'nr=1_rho=0.33'])
+        self.assertIsInstance(root['RUN_DB']['Jet']['nr=1_rho=0.33'], OMFITMapping)
+
+    def test_legacy_original_scan_suffix_resolves_before_migration(self):
+        root = {}
+        case = self.indexed_scan(root, 'base_suffix', 'BASE', values=(16,), ky_count=1)
+        case['N_THETA_BASE'] = case.pop('N_THETA')
+        for row in case['__TASKS__'].values():
+            row['result_path'][0] = 'N_THETA_BASE'
+        root['RUN_DB']['Jet'] = {'nr=1_rho=0.33': {'BASE':case}}
+        cid = case['__INFO__']['case_id']
+        self.assertEqual(archive_api.case_destination(root, 'Jet', cid, case['__INFO__']),
+                         ['Jet', 'nr=1_rho=0.33', 'BASE'])
+        storage.consolidate_storage(root)
+        self.assertIn('N_THETA', root['RUN_DB']['Jet']['nr=1_rho=0.33'])
+        self.assertNotIn('BASE', root['RUN_DB']['Jet']['nr=1_rho=0.33'])
+
+    def test_unopened_base_metadata_migrates_without_losing_owners(self):
+        root = {}
+        case = self.indexed_scan(root, 'lazy_base', 'BASE', values=(16,), ky_count=1)
+        group = {'BASE':OMFITlazyLoad(case)}
+        root['RUN_DB']['Jet'] = {'nr=1_rho=0.33':OMFITlazyLoad(group)}
+        owners = set(storage.result_pool(root))
+        storage.consolidate_storage(root)
+        self.assertIn('N_THETA', root['RUN_DB']['Jet']['nr=1_rho=0.33'])
+        self.assertNotIn('BASE', root['RUN_DB']['Jet']['nr=1_rho=0.33'])
+        self.assertEqual(set(storage.result_pool(root)), owners)
+
+    def test_base_migration_abort_restores_old_catalog_and_references(self):
+        root = {}
+        case = self.indexed_scan(root, 'abort_base', 'BASE', values=(16,), ky_count=2)
+        original = {'nr=1_rho=0.33': {'BASE':case}}
+        class FailOnce(dict):
+            fail = True
+            def __setitem__(self, key, value):
+                if key == 'Jet' and self.fail:
+                    self.fail = False
+                    raise KeyboardInterrupt('Abort during BASE migration')
+                super().__setitem__(key, value)
+        db = FailOnce(root['RUN_DB'])
+        dict.__setitem__(db, 'Jet', original)
+        root['RUN_DB'] = db
+        owners = set(storage.result_pool(root))
+        with self.assertRaises(KeyboardInterrupt):
+            storage.recover_archives(root, storage.resolve_result)
+        self.assertIs(db['Jet'], original)
+        self.assertEqual(set(storage.result_pool(root)), owners)
+        for row in case['__TASKS__'].values():
+            self.assertIsInstance(storage.resolve_result(root, continuation.point_result(case, row)), OMFITcgyro)
+
+    def test_mixed_old_base_and_direct_scan_consolidate_all_coordinates(self):
+        root = {}
+        direct = self.indexed_scan(root, 'direct_old', 'BASE', values=(16,), ky_count=2)
+        nested = self.indexed_scan(root, 'nested_old', 'BASE', values=(32,), ky_count=2)
+        group = dict(direct, BASE=nested)
+        root['RUN_DB']['Jet'] = {'nr=1_rho=0.33': group}
+        owners = set(storage.result_pool(root))
+        with self.assertRaisesRegex(ValueError, 'consolidation'):
+            archive_api.catalog_runs(root)
+        storage.consolidate_storage(root)
+        group = root['RUN_DB']['Jet']['nr=1_rho=0.33']
+        self.assertNotIn('BASE', group)
+        self.assertEqual(set(group['N_THETA']), {'16', '32'})
+        self.assertEqual(len(group['__SCANS__']['N_THETA']['tasks']), 4)
+        self.assertEqual(set(storage.result_pool(root)), owners)
+
+    def test_actual_collection_keeps_direct_scans_reference_isotopes_and_new_ky(self):
+        root, publish = {}, self.publisher()
+        def collect(token, names, ky=.1, ion='BASE', reference=False):
+            values = dict(zip(names, (16, 32, 48)))
+            path = []
+            for name in names:
+                path.extend([name, str(values[name])])
+            path.extend(['lin', str(ky)])
+            axes = [dict(name=name, values=[values[name]], linked=[], fixed=reference) for name in names]
+            root['RUN_MANIFEST'] = dict(run_token=token, status='loaded', collection_status='ready',
+                dimensions=len(names), scan_dimensions=0 if reference else len(names), scan_axes=axes,
+                case_tag='case', case_id='nr=1__rho=0.33__ion='+ion, nr=1, rho=.33, mass=ion, runid='Jet',
+                workDir='/runs/'+token, server='fixture', points=['p000001'], loaded_points=['p000001'],
+                point_table={'p000001':dict(values=dict(values, KY=ky), result_path=path)})
+            root['Cases'] = {'case': {'p000001':self.result(token, token.encode())}}
+            publish(root)
+        collect('normal_theta', ['N_THETA'])
+        collect('original_reference', ['N_THETA'], reference=True)
+        collect('normal_two', ['N_ENERGY', 'N_XI'])
+        collect('normal_three', ['N_ENERGY', 'N_XI', 'N_RADIAL'])
+        collect('isotope_d', ['N_THETA'], ion='D')
+        collect('normal_extra_ky', ['N_THETA'], ky=.2)
+        group = root['RUN_DB']['Jet']['nr=1_rho=0.33']
+        self.assertEqual(set(group['__SCANS__']), {'N_THETA', 'N_ENERGY__N_XI', 'N_ENERGY__N_XI__N_RADIAL'})
+        self.assertEqual(set(group['BASE']['__SCANS__']), {'KY_ONLY'})
+        self.assertEqual(set(group['D']['__SCANS__']), {'N_THETA'})
+        self.assertEqual({row['values']['KY'] for row in group['__SCANS__']['N_THETA']['tasks'].values()}, {.1, .2})
+        self.assertEqual(len(storage.result_pool(root)), 6)
+        readers = self.result_readers()
+        records, _ = readers['_run_options']({'CGYRO_scan':root})
+        for token, entry in records.items():
+            for row in entry.get('tasks', {}).values():
+                self.assertIsInstance(readers['_result_node']({'CGYRO_scan':root}, entry, row), OMFITcgyro)
+        for token in ('original_reference', 'normal_two', 'normal_three', 'isotope_d', 'normal_extra_ky'):
+            _, _, view = continuation.archived_case(root, token)
+            self.assertTrue(view['__TASKS__'])
+
     def test_recover_user_unclassified_hdt_scans_into_run_db_only(self):
         source = {}
         h = self.indexed_scan(source, 'h_energy', 'H', 'N_ENERGY', (8, 16, 24, 32), 15)
@@ -238,8 +443,8 @@ class StorageCases(unittest.TestCase):
         storage.consolidate_storage(root)
         self.assertEqual(coordinates(), before)
         self.assertEqual(set(storage.result_pool(root)), owners)
-        self.assertEqual(storage.storage_state(root)['case_layout'], 'radius-ion')
-        self.assertEqual(storage.storage_state(root)['version'], 5)
+        self.assertEqual(storage.storage_state(root)['case_layout'], 'radius-scans')
+        self.assertEqual(storage.storage_state(root)['version'], 6)
 
     def test_partial_aliases_keep_the_most_advanced_readable_coordinate(self):
         root = {}
@@ -489,7 +694,7 @@ class StorageCases(unittest.TestCase):
                          compact_storage=storage.compact_storage, prune_storage=storage.prune_storage,
                          store_result=storage.store_result, resolve_result=storage.resolve_result,
                          run_cases=db_api.run_cases, recover_archives=storage.recover_archives)
-        for name in ('canonical_case_key', 'catalog_runs', 'clean_run_id', 'combine_cases', 'grouped_case_path', 'matching_cases', 'output_final_time', 'scan_key', 'store_scan', 'validate_preserved_scans'):
+        for name in ('canonical_case_key', 'catalog_runs', 'clean_run_id', 'combine_cases', 'grouped_case_path', 'install_case', 'matching_cases', 'output_final_time', 'scan_key', 'store_scan', 'validate_preserved_scans'):
             namespace[name] = getattr(archive_api, name)
         exec(compile(ast.Module(body=selected, type_ignores=[]), str(path), 'exec'), namespace)
         root = {}

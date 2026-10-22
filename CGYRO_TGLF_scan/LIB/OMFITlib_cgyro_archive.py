@@ -15,7 +15,11 @@ def clean_run_id(value):
 
 
 def grouped_case_path(value, info=None):
-    """Return the persistent radius / isotope hierarchy for a logical case ID."""
+    """Ordinary original-species scans live directly under their radius.
+
+    BASE is a storage child only for a fixed-input, ky-only reference run.
+    Logical case IDs retain ion=BASE so old job identities remain usable.
+    """
     info = {} if info is None else info
     parts = case_parts(canonical_case_key(value, info))
     if parts is None:
@@ -32,38 +36,87 @@ def grouped_case_path(value, info=None):
     nr, rho, ion = parts
     if any('/' in str(part) or str(part).startswith('__') for part in parts):
         raise ValueError('Unsafe archived radius/isotope identity')
-    return ['nr={}_rho={}'.format(nr, rho), ion]
+    path = ['nr={}_rho={}'.format(nr, rho)]
+    fallback = (list(info.get('parameters', [])) or [''])[0]
+    if ion != 'BASE' or scan_key(info, fallback) == 'KY_ONLY':
+        path.append(ion)
+    return path
 
 
-def catalog_runs(module):
-    """Unsaved flat adapter for readers; RUN_DB itself remains radius/ion trees.
+def case_sources(module):
+    """Enumerate physical case nodes, keeping old BASE and direct scans apart.
 
-    The logical case ID stays stable for job manifests and saved GUI choices.
-    Values are existing nodes, not copied result payloads or a saved cache.
+    Recovery validates every source independently before moving any branch.
+    Views here contain references to existing indexes, never result copies.
     """
     runs = OrderedDict()
     for rid, source in module.get('RUN_DB', {}).items():
         if str(rid).startswith('__'):
             continue
-        run = OrderedDict()
+        entries = runs.setdefault(rid, [])
         source = metadata_value(source)
         if any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(source).__mro__) or not hasattr(source, 'items'):
-            runs[rid] = run
             continue
-        for key, node in metadata_value(source).items():
+        for key, node in source.items():
             if str(key).startswith('__'):
                 continue
             node = metadata_value(node)
-            metadata = (not any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad')
+            radial = re.fullmatch(r'nr=(.+)_rho=([^_/]+)', str(key))
+            mapping = (not any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad')
                                for base in type(node).__mro__) and hasattr(node, 'items'))
-            if (metadata and re.fullmatch(r'nr=.+_rho=[^_/]+', str(key))
-                    and not any(name in node for name in ('__INFO__', '__SCANS__', '__TASKS__'))):
-                radial = re.fullmatch(r'nr=(.+)_rho=(.+)', str(key))
-                for ion, case in node.items():
-                    if not str(ion).startswith('__'):
-                        run['nr={}__rho={}__ion={}'.format(radial.group(1), radial.group(2), ion)] = case
-            else:
-                run[key] = node
+            if radial is None or not mapping:
+                entries.append((key, node, [key]))
+                continue
+            records = case_scans(node)
+            owned = {scan_branch(node, info, tasks) for _, info, tasks in records}
+            if records:
+                direct = OrderedDict((name, child) for name, child in node.items()
+                                     if name in owned or name in ('__INFO__', '__SCANS__', '__TASKS__'))
+                cid = 'nr={}__rho={}__ion=BASE'.format(*radial.groups())
+                entries.append((cid, direct, [key]))
+            for ion, case in node.items():
+                if not str(ion).startswith('__') and ion not in owned:
+                    cid = 'nr={}__rho={}__ion={}'.format(*radial.groups(), ion)
+                    entries.append((cid, case, [key, ion]))
+    return runs
+
+
+def _case_union(first, second):
+    """Combine disjoint scan indexes for a temporary logical case view."""
+    for source in (first, second):
+        if (any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(source).__mro__)
+                or not hasattr(source, 'items')):
+            raise ValueError('Ambiguous original case requires archive consolidation')
+    view = OrderedDict(first.items())
+    for key, child in second.items():
+        if not str(key).startswith('__'):
+            if key in view:
+                raise ValueError('Overlapping original scans require archive consolidation: ' + str(key))
+            view[key] = child
+    records = OrderedDict()
+    for source in (first, second):
+        for key, info, tasks in case_scans(source):
+            if key in records:
+                raise ValueError('Overlapping original scan indexes require archive consolidation: ' + str(key))
+            records[key] = dict(info=info, tasks=tasks)
+    if records:
+        view['__SCANS__'] = records
+        last = list(records.values())[-1]
+        view['__INFO__'], view['__TASKS__'] = last['info'], last['tasks']
+    return view
+
+
+def catalog_runs(module):
+    """Unsaved flat adapter for radius scans, references and isotope cases.
+
+    The logical case ID stays stable for job manifests and saved GUI choices.
+    Values are existing nodes, not copied result payloads or a saved cache.
+    """
+    runs = OrderedDict()
+    for rid, sources in case_sources(module).items():
+        run = OrderedDict()
+        for key, node, _ in sources:
+            run[key] = _case_union(run[key], node) if key in run else node
         runs[rid] = run
     return runs
 
@@ -73,7 +126,24 @@ def case_destination(module, runid, caseid, info=None):
     run = module.get('RUN_DB', {}).get(runid, {})
     if caseid in run:
         return [runid, caseid]
-    return [runid] + grouped_case_path(caseid, info)
+    path = grouped_case_path(caseid, info)
+    radial = metadata_value(run.get(path[0], {}))
+    # Pre-change projects keep all original scans under radius/BASE. Prefer
+    # the actual indexed scan location while they await explicit migration.
+    parts = case_parts(canonical_case_key(caseid, info))
+    if parts is not None and parts[2] == 'BASE':
+        info = {} if info is None else info
+        branch = scan_key(info, (list(info.get('parameters', [])) or [''])[0])
+        radial_scans = {scan_key(saved, key) for key, saved, _ in case_scans(radial)}
+        if not branch and radial_scans:
+            return [runid, path[0]]
+        if branch and (branch in radial or branch in radial_scans):
+            return [runid, path[0]]
+        old = metadata_value(radial.get('BASE', {}))
+        old_scans = {scan_key(saved, key) for key, saved, _ in case_scans(old)}
+        if 'BASE' in radial and (not branch or branch in old or branch in old_scans):
+            return [runid, path[0], 'BASE']
+    return [runid] + path
 
 
 def output_final_time(result):
@@ -306,6 +376,65 @@ def combine_cases(cases, factory=dict):
         for _, info, tasks in records:
             store_scan(destination, case, info, tasks, factory)
     return destination
+
+
+def install_case(run, caseid, case, factory=dict):
+    """Install one logical case without replacing neighboring isotope scans.
+
+    An original-species case can contain ordinary scans and a fixed-input
+    reference together. Partition their indexes off-tree before installing
+    the radial node once; payloads remain references to the RUN_DB owners.
+    """
+    records = case_scans(case)
+    if not records:
+        raise ValueError('Cannot install an unindexed CGYRO case')
+    first_info = records[0][1]
+    cid = canonical_case_key(caseid, first_info)
+    parts = case_parts(cid)
+    if parts is None:
+        raise ValueError('Missing archived case identity')
+    radial = grouped_case_path(cid, first_info)[0]
+    existing = metadata_value(run.get(radial, {}))
+    if (any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(existing).__mro__)
+            or not hasattr(existing, 'items')):
+        raise ValueError('Cannot replace an unclassified radial node')
+    group = factory()
+    group.update(dict(existing))
+    if parts[2] != 'BASE':
+        group[parts[2]] = case
+        run[radial] = group
+        return
+    ordinary, reference = factory(), factory()
+    owned = set()
+    for _, info, tasks in records:
+        owned.add(scan_branch(case, info, tasks))
+        saved = deepcopy(dict(info))
+        saved['case_path'] = grouped_case_path(cid, saved)
+        destination = reference if len(saved['case_path']) == 2 else ordinary
+        store_scan(destination, case, saved, tasks, factory)
+    if any(not str(key).startswith('__') and key not in owned for key in case):
+        raise ValueError('Unindexed original scans must be classified before installation')
+    # Remove only the prior original-case scaffolding, keeping H/D/T nodes
+    # and unrelated private metadata. Recovery preserves uncertain sources.
+    for _, info, tasks in case_scans(existing):
+        group.pop(scan_branch(existing, info, tasks), None)
+    for key in ('__INFO__', '__SCANS__', '__TASKS__'):
+        group.pop(key, None)
+    if 'BASE' in group:
+        old = metadata_value(group['BASE'])
+        if (any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(old).__mro__)
+                or not hasattr(old, 'items')):
+            raise ValueError('Unclassified BASE contents are preserved; consolidate the archive first')
+        old_owned = {scan_branch(old, info, tasks) for _, info, tasks in case_scans(old)}
+        if any(key not in old_owned and key not in ('__INFO__', '__SCANS__', '__TASKS__') for key in old):
+            raise ValueError('Unclassified BASE contents are preserved; consolidate the archive first')
+        group.pop('BASE')
+    if any(not str(key).startswith('__') and key in group for key in ordinary):
+        raise ValueError('Original scan name conflicts with an isotope node')
+    group.update(ordinary)
+    if reference:
+        group['BASE'] = reference
+    run[radial] = group
 
 
 def validate_preserved_scans(cases, destination, replaced_scan, incoming_tasks=None):

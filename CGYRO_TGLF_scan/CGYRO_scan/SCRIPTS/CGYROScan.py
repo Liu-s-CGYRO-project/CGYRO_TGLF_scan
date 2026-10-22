@@ -3,7 +3,7 @@ import copy
 from builtins import ValueError, any, dict, int, len, list, set, str
 from datetime import datetime, timezone
 from OMFITlib_cgyro_archive import (canonical_case_key, catalog_runs, clean_run_id, combine_cases,
-                                  grouped_case_path, matching_cases, output_final_time,
+                                  grouped_case_path, install_case, matching_cases, output_final_time,
                                   scan_key, store_scan, validate_preserved_scans)
 from OMFITlib_cgyro_retry import collect_current
 from OMFITlib_cgyro_continue import continuation_case, point_result
@@ -191,8 +191,7 @@ def publish_loaded_run(root):
     if run_id not in root['RUN_DB']:
         root['RUN_DB'][run_id] = OMFITtree()
     run = root['RUN_DB'][run_id]
-    radial, ion = info['case_path']
-    run.setdefault(radial, OMFITtree())[ion] = destination
+    install_case(run, case_key, destination, OMFITtree)
     for key in old_keys:
         if key in run:
             del run[key]
@@ -205,7 +204,7 @@ def publish_loaded_run(root):
     prune_storage(root)
     print('Collected {} complete and {} partial points; {} points skipped. {}'.format(
         len(loaded), len(partial), len(manifest.get('skipped_points', [])),
-        'Results merged into RUN_DB / {} / {} / {}.'.format(run_id, radial, ion)))
+        'Results merged into RUN_DB / {} / {}.'.format(run_id, ' / '.join(info['case_path']))))
 
 
 if wait_for_completion:

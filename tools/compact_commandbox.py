@@ -16,11 +16,11 @@ import time
 from urllib import error, request
 import zipfile
 
-TOOL_VERSION = '1.3.3'
-PROJECT_VERSION = '1.24.5'
+TOOL_VERSION = '1.3.4'
+PROJECT_VERSION = '1.24.6'
 REPOSITORY = 'Liu-s-CGYRO-project/CGYRO_TGLF_scan'
 DEFAULT_PROXY = 'http://47.102.120.146:18889'
-PACKAGES = {'code': {'name': 'CGYRO_TGLF_scan_code_only_1.24.5.zip', 'bytes': 995399, 'sha256': '0dcea81793b82c52e15fbe029a37e3fdbbe98f5548da97117478ccb4b87a85cb'}, 'template': {'name': 'tdxy-liu__cgyro-tglf__1.24.5.omfittpl.zip', 'bytes': 994474, 'sha256': 'ed821ee0bd7fd8d92cb489ea6b711ce90aae8fea333a5f338c049f8d680d6396'}}
+PACKAGES = {'code': {'name': 'CGYRO_TGLF_scan_code_only_1.24.6.zip', 'bytes': 997059, 'sha256': '85df37844052f98b89ba96e9afeed6835d55d09fc7ca8a857b8ccdbac465c2c9'}, 'template': {'name': 'tdxy-liu__cgyro-tglf__1.24.6.omfittpl.zip', 'bytes': 996192, 'sha256': 'b66c7f56964f76ce987fc7762b57880e1e7f3744e06962e3be68eccde034d8f3'}}
 
 REQUIRED = {
     (): ('OMFITlib_cgyro_db', 'OMFITlib_cgyro_recover', 'OMFITlib_cgyro_scratch', 'OMFITlib_cgyro_storage', 'OMFITlib_cgyro_storage_files', 'OMFITlib_cgyro_checkpoint', 'OMFITlib_cgyro_continue',
@@ -48,7 +48,7 @@ def ready(omfit):
         if not all(name in libraries for name in names):
             return False
         api = libraries['OMFITlib_cgyro_storage'].importCode(_relLoc=dict(root=node))
-        if getattr(api, 'REFERENCE_WALK_VERSION', 0) < 3:
+        if getattr(api, 'REFERENCE_WALK_VERSION', 0) < 4:
             return False  # Grouped archives need matching plot/resume readers.
         scratch = libraries['OMFITlib_cgyro_scratch'].importCode(_relLoc=dict(root=node))
         if getattr(scratch, 'START_LIMIT_POLICY_VERSION', 0) < 1:

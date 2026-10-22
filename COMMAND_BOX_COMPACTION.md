@@ -1,18 +1,18 @@
 # 在 OMFIT Command Box 整理当前工程
 
-先更新模板管理器到 1.10.23、工程到 1.24.1，关闭旧结果窗口。在 Command Box 执行下面完整的一行：
+先更新模板管理器到 1.10.23、工程到 1.24.6，关闭旧结果窗口。在 Command Box 执行下面完整的一行：
 
 ```python
 OMFIT['CGYRO_TGLF_scan']['SCRIPTS']['compact_cgyro_storage'].run()
 ```
 
-它把旧的 `Jet [partial ...]`、`Jet [recovered ...]` 和 `Jet [legacy revision ...]` 合并回 `Jet`，实际目录变为 `RUN_DB/Jet/nr=1_rho=0.33/H`（或 D、T），各离子下保存扫描结果。状态只记在内部。旧结果和冻结输入都留在 `CGYRO_scan/RUN_DB`，按文件名称、长度和 SHA-256 去重，核对后恢复旧扫描索引。`N_THETA`、`N_ENERGY` 及多轴扫描独立保存；相同参数组按全部坐标和 ky 合并。不同 ky 追加，完全相同坐标的新结果更新对应点。
+它把旧的 `Jet [partial ...]`、`Jet [recovered ...]` 和 `Jet [legacy revision ...]` 合并回 `Jet`。普通扫描移到 `RUN_DB/Jet/nr=1_rho=0.33/N_THETA` 等参数组下，BASE 仅保留原始参数固定的基准结果；H/D/T 扫描仍各用离子目录。状态只记在内部。旧结果和冻结输入都留在 `CGYRO_scan/RUN_DB`，按文件名称、长度和 SHA-256 去重，核对后恢复旧扫描索引。`N_THETA`、`N_ENERGY` 及多轴扫描独立保存；相同参数组按全部坐标和 ky 合并。不同 ky 追加，完全相同坐标的新结果更新对应点。
 
 可核实的未分类记录按其原 runid、case_id、scan_axes 和 result_path 恢复。无法核实或缺少数据的记录保留在 `RUN_DB/__UNCLASSIFIED__`，不会根据当前界面设置猜测其身份。整理报告在 `RUN_DB/__STORAGE__/recovery`。这不是重新提交或补算操作。
 
 整理完成后使用 OMFIT“另存为”保存新的工程 ZIP，保存后体积才会变化。原 ZIP、来源目录和服务器文件不删除。哈希与复制可能需要数分钟和临时磁盘空间。关闭旧窗口后重新打开结果浏览，确保回调使用新版代码。
 
-如果旧工程缺少脚本或出现 `KeyError: OMFITlib_cgyro_storage`，从 1.24.1 Release 下载 `omfit-cgyro-compact.py`，在 Command Box 执行文件内容。工具 1.3.1 会检查父、子模块完整依赖和读取接口；需要时下载固定版本代码包，核对大小、SHA-256 和 ZIP CRC，使用管理器的事务接口更新代码，再整理数据。输入和设置采用 keep 策略；独立旧模块由迁移器识别。工具不调用 OMFIT.load()。
+如果旧工程缺少脚本或读取接口过旧，从对应版本更新包使用 `omfit-cgyro-compact.py`，在 Command Box 执行文件内容。工具检查父、子模块完整依赖和读取接口；需要时下载固定版本代码包，核对大小、SHA-256 和 ZIP CRC，使用管理器的事务接口更新代码，再整理数据。输入和设置采用 keep 策略；独立旧模块由迁移器识别。工具不调用 OMFIT.load()。
 
 完整文件可用单行命令执行（路径改为下载位置）：
 

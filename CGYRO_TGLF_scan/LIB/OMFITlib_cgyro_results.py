@@ -65,7 +65,7 @@ def _run_options(root):
     # Pre-1.13 records remain readable, while new records use RUN_DB only.
     # The grouped catalog already contains every verified scan. Old indexes
     # retain obsolete directory paths and must not recreate duplicate choices.
-    legacy = ({} if storage_state(module).get('case_layout', '') == 'radius-ion'
+    legacy = ({} if storage_state(module).get('case_layout', '') in ('radius-ion', 'radius-scans')
               else legacy_branch(module, 'RUN_INDEX'))
     for token in _stable_keys(legacy):
         if token in records:

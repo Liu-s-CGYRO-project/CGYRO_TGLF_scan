@@ -22,7 +22,7 @@ from OMFITlib_cgyro_storage_files import (FILE_STORE, SubmissionFiles,
 
 STORE = POOL
 REF = '__RESULT_REF__'
-REFERENCE_WALK_VERSION = 3  # RUN_DB-only owners with radius/isotope readers.
+REFERENCE_WALK_VERSION = 4  # Direct radius scans and separate BASE references.
 
 
 def is_result(node):

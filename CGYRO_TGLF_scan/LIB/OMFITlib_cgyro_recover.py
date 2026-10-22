@@ -2,15 +2,16 @@
 
 Uncertain sources remain under RUN_DB/__UNCLASSIFIED__. A complete metadata
 index and every physical point must validate before the original is removed.
-Different parameter axes and ky merge into one radius/isotope hierarchy.
+Ordinary scans live at radius level; BASE contains only fixed-input references.
+H/D/T scans keep their isotope branches, with full parameter/ky coordinates.
 """
 from builtins import (BaseException, KeyError, TypeError, ValueError, any, dict, enumerate,
-                      float, hasattr, len, list, object, set, sorted, str, type, vars)
+                      float, hasattr, len, list, max, object, set, sorted, str, type, vars)
 from copy import deepcopy
 import math
 import re
-from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, catalog_runs, clean_run_id,
-                                   grouped_case_path, output_final_time, scan_branch, store_scan)
+from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, case_sources, clean_run_id,
+                                   grouped_case_path, install_case, output_final_time, scan_branch, store_scan)
 from OMFITlib_cgyro_db import PENDING, STATE, ensure_layout, metadata_value, run_records
 
 
@@ -109,7 +110,7 @@ def _indexed_case(case, resolve, module, factory):
 
 
 def recover_archives(module, resolve, factory=dict, exclude_token=''):
-    """Consolidate all proven results into run / radius / isotope / scans.
+    """Consolidate ordinary scans at radius level and references under BASE.
 
     State and provenance stay in task metadata. No public partial, recovered or
     revision folders are created. The complete replacement is validated before
@@ -117,10 +118,10 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
     """
     db = ensure_layout(module, factory)
     pending = dict(metadata_value(db.get(PENDING, {})))
-    grouped_before = db.get(STATE, {}).get('case_layout', '') == 'radius-ion'
+    grouped_before = db.get(STATE, {}).get('case_layout', '') == 'radius-scans'
     candidates = []
     public = [key for key in db if not str(key).startswith('__')]
-    for rid, run in catalog_runs(module).items():
+    for rid, sources in case_sources(module).items():
         _retain_private(pending, rid, db[rid])
         source = metadata_value(db[rid])
         if not any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(source).__mro__) and hasattr(source, 'items'):
@@ -128,9 +129,10 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
                 if re.fullmatch(r'nr=.+_rho=[^_/]+', str(key)):
                     _retain_private(pending, str(rid) + ' / ' + str(key), value,
                                     ('__INFO__', '__SCANS__', '__TASKS__'))
-        for cid, case in run.items():
-            candidates.append((str(rid) + ' / ' + str(cid), case, False, str(rid), str(cid)))
-        if not run:
+        for cid, case, path in sources:
+            candidates.append((str(rid) + ' / ' + ' / '.join(str(key) for key in path),
+                               case, False, str(rid), str(cid)))
+        if not sources:
             source = db[rid]
             # A malformed or unindexed root is preserved internally, never
             # guessed into the visible Jet hierarchy.
@@ -184,13 +186,13 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
                 cid = canonical_case_key(info.get('case_id', '') or cid_hint, info)
                 if not rid or rid.startswith(('__', 'Legacy ')) or not cid or '/' in rid or '/' in cid:
                     raise ValueError('Missing original run/case identity')
-                radial, ion = grouped_case_path(cid, info)
-                info.update(dict(runid=rid, case_id=cid, source_runid=rid, case_path=[radial, ion]))
+                info.update(dict(runid=rid, case_id=cid, source_runid=rid,
+                                 case_path=grouped_case_path(cid, info)))
                 for row in tasks.values():
                     row.update(dict(runid=rid, case_id=cid))
                 preference = 2 if rid_hint and clean_run_id(rid_hint) == rid_hint else 1 if rid_hint else 0
                 validated.append((str(info.get('published_at', '') or ''), preference, order,
-                                  rid, cid, radial, ion, normalized, info, tasks))
+                                  rid, cid, normalized, info, tasks))
             if remove_source:
                 pending.pop(label, None)
                 recovered.append(label)
@@ -198,12 +200,15 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
             if rid_hint:
                 _retain_pending(pending, label, source)
             issues.append(dict(source=label, reason=str(exc)))
-    plans = {}
-    for stamp, _, _, rid, cid, radial, ion, source, info, tasks in sorted(validated, key=lambda item: item[:3]):
-        run = plans.setdefault(rid, factory())
-        group = run.setdefault(radial, factory())
-        destination = group.setdefault(ion, factory())
+    combined = {}
+    for stamp, _, _, rid, cid, source, info, tasks in sorted(validated, key=lambda item: item[:3]):
+        destination = combined.setdefault(rid, {}).setdefault(cid, factory())
         store_scan(destination, source, info, tasks, factory, prefer_progress=not stamp)
+    plans = {}
+    for rid, cases in combined.items():
+        run = plans.setdefault(rid, factory())
+        for cid, case in cases.items():
+            install_case(run, cid, case, factory)
     # All source records and references validated above. Installation never
     # renames physical files and can roll back even after OMFIT Abort.
     missing = object()
@@ -219,7 +224,7 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
         db[PENDING] = retained
         state = factory()
         state.update(dict({} if old_state is missing else old_state))
-        state.update(dict(version=5, case_layout='radius-ion'))
+        state.update(dict(version=max(6, state.get('version', 0)), case_layout='radius-scans'))
         db[STATE] = state
     except BaseException:
         for key in plans:

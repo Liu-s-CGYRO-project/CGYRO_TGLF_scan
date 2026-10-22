@@ -1,4 +1,4 @@
-# RUN_DB 单一结果存储设计（1.24.1）
+# RUN_DB 单一结果存储设计（1.24.6）
 
 ## 持久化布局
 
@@ -8,6 +8,9 @@
 RUN_DB/
   Jet/
     nr=1_rho=0.33/
+      N_THETA | N_ENERGY | N_ENERGY__N_XI | ...  # 普通原物种参数扫描
+      __SCANS__/<scan>/{info,tasks}
+      BASE/KY_ONLY/                    # 原始参数固定的基准结果，存在才创建
       H | D | T/
         N_THETA | N_ENERGY | N_ENERGY__N_XI | ...
         __SCANS__/<scan>/{info,tasks}
@@ -35,7 +38,9 @@ RUN_DB/
 
 `recover_archives` 验证原 runid、case_id、轴、每一点路径及输出引用；可核实后再删除未分类来源。partial、recovered、legacy revision 后缀归回原结果名，再按半径 / 离子合并完整坐标。同坐标优先采用有明确发布时间的新记录；没有可靠时间顺序时比较实际末时刻并保护完整结果，不生成可见修订目录。无法验证的内容留在 __UNCLASSIFIED__。`prune_storage` 先检查全部引用再移除不可达所有者的树条目，不删除磁盘源文件。
 
-`store_result`、`resolve_result`、`run_cases`、`freeze_run_inputs` 是写入、读取、运行点和冻结输入接口。`grouped_case_path` 给出实际半径 / 离子路径；`catalog_runs` 为旧比较接口提供不保存的扁平逻辑视图，值引用现有案例节点。`case_id` 保持原逻辑身份，不能直接把它当作实际树路径。`case_destination` 用于表格读取。停止作业的续算按 __RUNS__ 中的原点表取源；合并时连未开始的原点号也预留，防止被其他结果占用。临时 result_view 不能写回保存树。普通元数据映射可用完整路径作为键，不强制转换成禁止斜杠的 OMFITtree。
+`store_result`、`resolve_result`、`run_cases`、`freeze_run_inputs` 是写入、读取、运行点和冻结输入接口。`grouped_case_path(case_id, info)` 按扫描元数据确定实际路径，原物种普通扫描为半径，固定参数基准为半径/BASE，同位素扫描为半径/H、D、T。`install_case` 在树外分配普通扫描与基准，再一次安装半径节点，保留其他离子分支。
+
+`case_sources` 独立枚举迁移来源；`catalog_runs` 为比较接口提供不保存的扁平逻辑视图，只合并元数据和现有结果索引，不能写回保存树。原物种逻辑 case_id 仍含 `ion=BASE`，但目录 BASE 仅表示基准；`case_destination` 必须使用当前扫描 info 解析物理位置。旧 BASE 与新直接扫描均兼容，冲突来源先整理后读取。停止作业的续算按 __RUNS__ 中原点表取源；合并时预留未开始的原点号，防止其他结果占用。普通元数据映射可用完整路径作为键，不强制转换成禁止斜杠的 OMFITtree。
 
 旧工程推荐 [Command Box 脚本](COMMAND_BOX_COMPACTION.md) 并另存。离线工具只读 ZIP 与字面 OMFITsave 行，不执行 pickle；不具备原生元数据读取能力时拒绝处理旧分散结果，要求先用应用内入口迁移。
 
