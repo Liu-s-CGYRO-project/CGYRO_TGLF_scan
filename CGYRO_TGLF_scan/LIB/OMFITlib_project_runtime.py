@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 from OMFITlib_cgyro_launch import command_template
 from OMFITlib_gacode_installations import (INSTALL_DEFAULTS, initialize_installations,
     installation_issues, program_environment, sync_environment)
+from OMFITlib_server_capabilities import matching_profile, resource_issues
 
 
 TARGETS = OrderedDict([
@@ -170,6 +171,7 @@ def shared_issues(root):
     if applied is None:
         return []  # Existing projects retain their old setup until Apply.
     config = root['SETTINGS'].get('GACODE_RUNTIME', {})
+    profile = matching_profile(config, root.get('PROJECT_STATE', {}).get('gacode_detection', {}))
     if runtime_values(config) != dict(applied):
         return ['统一环境配置已修改，请先在“环境配置”页应用']
     for name, path in TARGETS.items():
@@ -187,6 +189,8 @@ def shared_issues(root):
         if any(text(selected, key) != value for key, value in expected.items()):
             return ['模块所选服务器配置与统一环境不一致，请重新应用：' + name]
         if name == 'cgyro':
+            if profile and selected.get('server_capabilities', {}) != profile:
+                return ['服务器检测结果已更新，请重新应用运行配置']
             try:
                 command = command_template(applied['cgyro_command']).replace('{mpi}',
                     str(int(applied['nodes']) * int(applied['cores']))).replace('{threads}', str(applied['cpus_per_task']))
@@ -196,7 +200,7 @@ def shared_issues(root):
                              cpus_per_task=str(applied['cpus_per_task']), executable=command)
             if any(text(selected, key) != value for key, value in resources.items()):
                 return ['CGYRO 并行资源或启动命令与统一配置不一致，请重新应用']
-    return validate_runtime(config)
+    return validate_runtime(config) + resource_issues(config, profile)
 
 
 def shared_multi_settings(root, settings):
@@ -215,7 +219,8 @@ def target_program(name):
 
 def apply_runtime(root, factory=dict):
     config = initialize_runtime(root, factory)
-    issues = validate_runtime(config)
+    profile = matching_profile(config, root.get('PROJECT_STATE', {}).get('gacode_detection', {}))
+    issues = validate_runtime(config) + resource_issues(config, profile)
     if issues:
         raise ValueError('；'.join(issues))
     values = runtime_values(config)
@@ -247,6 +252,10 @@ def apply_runtime(root, factory=dict):
                         n=mpi, batch=values['scheduler'] != 'local'))
         if name == 'cgyro':
             selected['executable'] = cgyro_command
+            if profile:
+                selected['server_capabilities'] = copy.deepcopy(profile)
+            else:
+                selected.pop('server_capabilities', None)
         elif name == 'tglf':
             selected['executable'] = str(values['tglf_command'])
         operations.append((settings, 'REMOTE_SETUP', remote))

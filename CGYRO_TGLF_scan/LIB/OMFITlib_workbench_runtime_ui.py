@@ -12,6 +12,7 @@ from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared
 from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choices, installation_issues
 from OMFITlib_project import MODULES, collect_issues, location, read, text_value, sync_run_issues
 from OMFITlib_cgyro_present import run_caption, collection_caption, record_details
+from OMFITlib_server_capabilities import matching_profile, resource_issues, summary as capability_summary
 
 
 class RuntimePage:
@@ -166,6 +167,7 @@ class RuntimePage:
         pending = applied_runtime(self.root) is None or bool(shared_issues(self.root))
         detection = self.root.get('PROJECT_STATE', {}).get('gacode_detection', {})
         issues = (validate_runtime(config) + installation_issues(config, detection)
+                  + resource_issues(config, matching_profile(config, detection))
                   + self.actions.runtime_server_issues(match_connection=True))
         if draft is not None:
             issues = ['请先保存或取消新增服务器']
@@ -241,7 +243,12 @@ class RuntimePage:
                          ['请先保存或取消编辑'] if draft is not None or server_draft else [])
             self.guarded('新增路径', self.actions.begin_gacode_install,
                          ['请先保存或取消编辑'] if draft is not None else [])
-        self.runtime_note('检测 Gacode* 文件夹中的程序；不启动计算。')
+        self.runtime_note('同时检测程序权限、队列资源和进程限制；不启动计算。')
+        self.runtime_section('服务器能力')
+        for line in capability_summary(config, matching_profile(config, detection)):
+            self.runtime_note(line)
+        self.runtime_note('工具列表仅反映当前登录环境；作业加载所选环境后检查平台启动器。')
+        self.runtime_note('草稿调整后点击“应用到整个工程”；作业启动时再次核对实际限制。')
         self.runtime_section('选用安装')
         self.shared_gacode_install(config)
         self.runtime_note('选择后立即同步环境脚本，运行前点击“应用到整个工程”。')

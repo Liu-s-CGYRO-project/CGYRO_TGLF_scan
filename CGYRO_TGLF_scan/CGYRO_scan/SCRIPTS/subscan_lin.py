@@ -26,7 +26,8 @@ from OMFITlib_cgyro_continue import archived_case, continuation_plan, point_resu
 from OMFITlib_cgyro_storage import compact_storage, result_view
 from OMFITlib_cgyro_db import run_cases, set_run_cases
 from OMFITlib_cgyro_scratch import check_start_capacity, clean_stage, directory_bytes, ensure_capacity
-from OMFITlib_cgyro_launch import launch_spec, slurm_guard, validate_checkpoint_runtime
+from OMFITlib_cgyro_launch import (launch_spec, slurm_guard, slurm_process_limits,
+                                  validate_checkpoint_runtime)
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -493,8 +494,7 @@ else:
         r'#SBATCH --cpus-per-task='+str(cpus_per_task) +'\n' +\
         r'#SBATCH --array=0-'+str(dirlist_num-1)+'%'+str(array_parallel)+'\n' +\
         r'set -e'+'\n' +\
-        r'ulimit -n 65535'+'\n' +\
-        r'ulimit -s unlimited'+'\n' +\
+        slurm_process_limits() +\
         environment
     else:
         bash_head= \

@@ -1,4 +1,4 @@
-工程 1.24.2：修复 Slurm 申请 32 MPI 却沿用旧命令启动 16 MPI 的资源不一致。MPI 与 OpenMP 参数随资源配置同步，NUMA 放置交由平台决定；启动前核对 Slurm 分配，重试拦截旧的不一致脚本，续算保留检查点原实际布局。更新后重新应用运行环境配置。
+工程 1.24.3：“自动检测”同时扫描 GACODE 程序权限、Slurm 队列的 CPU / 内存 / 时限、可见调度和 MPI 工具，以及登录会话的进程限制。保留合法的资源设置，超出队列上限的 MPI × 线程数和时限自动修正到草稿；点击“应用到整个工程”后用于新脚本。作业启动时重新读取实际上限，只调整软限制，修复神马 ulimit 被拒绝后提前退出的问题；旧任务重试也会修复原生成前缀。
 
 操作与 .old 风险见 [归档去重说明](CGYRO_TGLF_scan/DOCS/RESULT_STORAGE.md)，取消与续算见 [操作说明](CGYRO_TGLF_scan/DOCS/CANCEL_RESUME.md)。历史修订见 [完整版本记录](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/blob/main/RELEASE_HISTORY.md)。
 
@@ -32,13 +32,15 @@ python3 omfit-deploy.py '/路径/旧工程.zip'
 
 用于 Linux 桌面的 OMFIT 工程，包含已审计、修复和整理的 CGYRO/TGLF 工具，以及项目内置的 **OMFIT GitHub 模板管理器**。
 
-当前工程版本为 **1.24.2**，管理器为 **1.10.23**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
+当前工程版本为 **1.24.3**，管理器为 **1.10.23**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
+
+运行与环境 → 选择服务器和队列 → **自动检测** → 核对“服务器能力”和资源草稿 → **应用到整个工程**。检测结果只用于原服务器和隧道；队列查询失败时保留资源设置并显示未知。内存值用于展示，不推算求解器需求；账户 / QOS 配额及实时空闲资源仍由调度器决定。旧检查点继续保留原 MPI / OpenMP 布局约束。
 
 管理器在 OMFIT 内更新当前工程的代码，保留案例、结果和设置；常规更新不调用整个工程的加载或保存。更新后照常另存工程。历史管理器修订已保存在上述完整版本记录。
 
 ## 在 OMFIT 打开
 
-推荐从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.24.2.zip`，在 OMFIT 中打开。
+推荐从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.24.3.zip`，在 OMFIT 中打开。
 
 也可直接加载本仓库的工程入口：
 

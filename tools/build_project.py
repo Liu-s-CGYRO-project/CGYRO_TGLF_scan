@@ -212,7 +212,9 @@ def build(output):
     metadata = json.loads((ROOT / 'PROJECT_CONTENTS.json').read_bytes())
     metadata['files'] = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in sorted(selected)}
     (ROOT / 'PROJECT_CONTENTS.json').write_bytes(json_bytes(metadata))
-    selected.update({'README.md', 'PROJECT_CONTENTS.json'})
+    # The repository walkthrough is not a native runtime reference. Keep it on
+    # GitHub; module help and deployment instructions remain in this archive.
+    selected.add('PROJECT_CONTENTS.json')
     with new_file(output) as temporary:
         with zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as archive:
             # Native OMFIT chooses the project directory from namelist()[0].

@@ -1,17 +1,26 @@
 """Resource regressions, including the observed 9788077 submission mismatch."""
 import ast
+from copy import deepcopy
+from datetime import datetime, timezone
+import hashlib
 import os
 from pathlib import Path
+import posixpath
+import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+import uuid
+import zipfile
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(REPO / 'CGYRO_TGLF_scan/LIB')]
 from OMFITlib_cgyro_launch import (command_template, launch_spec, command_layout,
-    slurm_guard, validate_slurm_script, validate_checkpoint_runtime)
+    slurm_guard, slurm_process_limits, upgrade_slurm_limits, validate_slurm_script,
+    validate_checkpoint_runtime)
 
 
 class LaunchTests(unittest.TestCase):
@@ -121,6 +130,128 @@ class LaunchTests(unittest.TestCase):
         self.assertNotIn('SOLVER_STARTED', result.stdout)
         self.assertIn('CGYRO resource mismatch', result.stdout)
 
+    def test_soft_limits_fit_restrictive_hard_limits_without_changing_them(self):
+        script = 'set -e\nulimit -Sn 1024\nulimit -Hn 4096\nulimit -Ss 4096\nulimit -Hs 8192\n'
+        script += slurm_process_limits()
+        script += 'printf "LIMITS %s %s %s %s\\n" "$(ulimit -Sn)" "$(ulimit -Hn)" "$(ulimit -Ss)" "$(ulimit -Hs)"\necho SOLVER_REACHED\n'
+        result = self.bash(script)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('LIMITS 4096 4096 8192 8192', result.stdout)
+        self.assertIn('SOLVER_REACHED', result.stdout)
+
+    def test_larger_inherited_soft_limit_is_preserved(self):
+        script = 'set -e\nulimit -Sn 65536\nulimit -Hn 131072\n'
+        script += slurm_process_limits()
+        script += 'printf "LIMITS %s %s\\n" "$(ulimit -Sn)" "$(ulimit -Hn)"\n'
+        result = self.bash(script)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('LIMITS 65536 131072', result.stdout)
+
+    def test_cluster_denial_is_advisory_under_set_e(self):
+        script = '''set -e
+ulimit -Sn 1024
+ulimit -Hn 4096
+ulimit -Ss 4096
+ulimit -Hs 8192
+ulimit() {
+  if [ "$#" -gt 1 ] && { [ "$1" = -Sn ] || [ "$1" = -Ss ]; }; then return 1; fi
+  builtin ulimit "$@"
+}
+'''
+        script += slurm_process_limits()
+        script += 'printf "LIMITS %s %s %s %s\\n" "$(ulimit -Sn)" "$(ulimit -Hn)" "$(ulimit -Ss)" "$(ulimit -Hs)"\necho SOLVER_REACHED\n'
+        result = self.bash(script)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('cannot raise soft limit', result.stdout)
+        self.assertIn('LIMITS 1024 4096 4096 8192', result.stdout)
+        self.assertIn('SOLVER_REACHED', result.stdout)
+
+    def test_old_retry_preamble_is_repaired_without_changing_original_or_mpi(self):
+        header = '#!/bin/bash\n#SBATCH --nodes=1\n#SBATCH --ntasks-per-node=32\n#SBATCH --cpus-per-task=1\n'
+        original = header + 'set -e\nulimit -n 65535\nulimit -s unlimited\ncgyro -e . -n 32 -nomp 1\n'
+        snapshot = original
+        fixed = upgrade_slurm_limits(original)
+        self.assertEqual(original, snapshot)
+        before, after = validate_slurm_script(original), validate_slurm_script(fixed)
+        self.assertEqual((before['mpi_ranks'], before['threads']),
+                         (after['mpi_ranks'], after['threads']))
+        self.assertEqual(upgrade_slurm_limits(fixed), fixed)
+        fixture = 'set -e\nulimit -Sn 1024\nulimit -Hn 4096\ncgyro() { echo SOLVER_REACHED; }\n'
+        failed = self.bash(fixture + original)
+        self.assertNotEqual(failed.returncode, 0, failed.stdout)
+        self.assertNotIn('SOLVER_REACHED', failed.stdout)
+        result = self.bash(fixture + fixed)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('SOLVER_REACHED', result.stdout)
+
+    def test_custom_limit_policy_is_not_rewritten_and_ambiguous_blocks_fail(self):
+        custom = 'set -e\nulimit -Sn 2048\ncgyro -e . -n 32\n'
+        self.assertEqual(upgrade_slurm_limits(custom), custom)
+        block = 'set -e\nulimit -n 65535\nulimit -s unlimited\n'
+        user_environment = '#!/bin/bash\n#SBATCH --nodes=1\nsource /user/setup\n' + block
+        self.assertEqual(upgrade_slurm_limits(user_environment), user_environment)
+        with self.assertRaisesRegex(ValueError, 'Ambiguous'):
+            upgrade_slurm_limits(block + block)
+
+    def test_advisory_limits_do_not_hide_a_real_solver_failure(self):
+        script = 'set -e\n' + slurm_process_limits()
+        script += 'cgyro() { return 7; }\ncgyro\necho AFTER_SOLVER\n'
+        result = self.bash(script)
+        self.assertEqual(result.returncode, 7, result.stdout)
+        self.assertNotIn('AFTER_SOLVER', result.stdout)
+
+    def test_actual_retry_preparation_repairs_limits_and_retains_frozen_inputs(self):
+        # Execute the real preparation function with isolated file/UI adapters.
+        # The scheduler boundary records the prepared files; no job is sent.
+        path = REPO / 'CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_retry.py'
+        tree = ast.parse(path.read_text(encoding='utf-8'))
+        function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                        and node.name == 'submit_retry')
+        original = ('#!/bin/bash\n#SBATCH --nodes=1\n#SBATCH --ntasks=16\n'
+                    '#SBATCH --ntasks-per-node=16\n#SBATCH --cpus-per-task=1\n'
+                    '#SBATCH --array=0-1%40\nset -e\nulimit -n 65535\nulimit -s unlimited\n'
+                    'cgyro -e . -n 16 -nomp 1\n')
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            source = base / 'scan.pbs'
+            source.write_bytes(original.encode('utf-8'))
+            packed = base / 'p000001.zip'
+            payload = b'N_ENERGY=8\n'
+            with zipfile.ZipFile(packed, 'w') as archive:
+                archive.writestr('input.cgyro', payload)
+            manifest = dict(local_workDir=str(base), workDir='/original/run', scheduler='slurm',
+                points=['p000001', 'p000002'], job_id='125749', status='failed',
+                input_sha256={'p000001': {'input.cgyro': hashlib.sha256(payload).hexdigest()}},
+                submit_script_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+            root, prepared = dict(RUN_MANIFEST=manifest), []
+
+            def executor(root, ui, factory, reader, inputs, local, command):
+                script = Path(inputs[0]).read_bytes()
+                self.assertEqual(hashlib.sha256(script).hexdigest(), manifest['retry_script_sha256'])
+                self.assertEqual(command, 'sbatch --array=0%40 scan.pbs')
+                self.assertIn(b'# OMFIT CGYRO soft process limits v1', script)
+                self.assertEqual(validate_slurm_script(script.decode())['mpi_ranks'], 16)
+                prepared.append(script)
+                manifest.update(job_id='next_job', status='submitted', submission_uncertain=False)
+
+            namespace = dict(os=os, posixpath=posixpath, tempfile=tempfile, uuid=uuid, hashlib=hashlib,
+                re=re, shutil=shutil, zipfile=zipfile, deepcopy=deepcopy, datetime=datetime, timezone=timezone,
+                validate_slurm_script=validate_slurm_script, upgrade_slurm_limits=upgrade_slurm_limits,
+                retryable_points=lambda root: ['p000001'], save_current=lambda *args: None,
+                execute_submission=executor,
+                submission_file=lambda root, manifest, kind, point=None: str(source if kind == 'scan.pbs' else packed))
+            exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), 'exec'), namespace)
+            for attempt in range(2):
+                namespace['submit_retry'](root, None, dict, str, str, ['p000001'])
+            self.assertEqual(source.read_bytes(), original.encode('utf-8'))
+            self.assertEqual(manifest['submit_script_sha256'], hashlib.sha256(source.read_bytes()).hexdigest())
+            self.assertEqual(manifest['retry_count'], 2)
+            self.assertEqual(manifest['point_workdirs']['p000002'], '/original/run')
+            self.assertEqual(manifest['attempts'][1]['script_sha256'], hashlib.sha256(prepared[0]).hexdigest())
+            self.assertEqual(prepared[0], prepared[1])
+            with zipfile.ZipFile(packed) as archive:
+                self.assertEqual(archive.read('input.cgyro'), payload)
+
     def test_actual_submission_script_matches_32_mpi_and_runs_one_array_element(self):
         path = REPO / 'CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin.py'
         tree = ast.parse(path.read_text(encoding='utf-8'))
@@ -139,7 +270,8 @@ class LaunchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             namespace = dict(os=os, server_setup=config, setup={}, manifest={}, local_submit=False,
                              execution=launch_spec(config), submit_workdir=temporary,
-                             dir_list=['p000001'], slurm_guard=slurm_guard)
+                             dir_list=['p000001'], slurm_guard=slurm_guard,
+                             slurm_process_limits=slurm_process_limits)
             exec(compile(ast.Module(body=definitions + selected, type_ignores=[]), str(path), 'exec'), namespace)
             script = (Path(temporary) / 'scan.pbs').read_text()
         self.assertIn('#SBATCH --ntasks=32\n', script)
@@ -150,6 +282,10 @@ TaskFixtureDir=$(mktemp -d /tmp/omfit-launch-test.XXXXXX)
 trap 'case "$TaskFixtureDir" in /tmp/omfit-launch-test.*) rm -rf -- "$TaskFixtureDir";; esac' EXIT
 cd "$TaskFixtureDir"
 export SLURM_NTASKS=32 SLURM_CPUS_PER_TASK=1 SLURM_ARRAY_TASK_ID=0
+ulimit -Sn 1024
+ulimit -Hn 4096
+ulimit -Ss 4096
+ulimit -Hs 8192
 unzip() { printf 'input fixture\\n' > "$4/input.cgyro"; }
 cgyro() {
   printf 'ARGV %s\\n' "$*"
@@ -158,10 +294,11 @@ cgyro() {
   printf 'time fixture\\n' > out.cgyro.time
 }
 '''
-        result = self.bash(fixture + script + '\ncat p000001/run_log\ncat p000001/cgyro.exit\n')
+        result = self.bash(fixture + script + '\ncat p000001/run_log\nprintf "LIMITS %s %s %s %s\\n" "$(ulimit -Sn)" "$(ulimit -Hn)" "$(ulimit -Ss)" "$(ulimit -Hs)"\ncat p000001/cgyro.exit\n')
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn('ARGV -e . -n 32 -nomp 1', result.stdout)
         self.assertIn('OMP 1 1', result.stdout)
+        self.assertIn('LIMITS 4096 4096 8192 8192', result.stdout)
         self.assertTrue(result.stdout.rstrip().endswith('0'), result.stdout)
 
 

@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.2。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.3。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 先找到修改层
 
@@ -10,10 +10,11 @@
 | 总控导航、通用按钮与说明 | `LIB/OMFITlib_project_ui.py` | `ProjectUI` 保留公共入口与界面上下文 |
 | CGYRO 页面 | `LIB/OMFITlib_workbench_cgyro_ui.py` | 输入、参数、运行入口、结果概览 |
 | 运行配置页面 | `LIB/OMFITlib_workbench_runtime_ui.py` | 编辑草稿，显式点击后才探测或应用 |
+| 服务器能力 | `LIB/OMFITlib_server_capabilities.py` | 只读探测、端点身份、Slurm 容量约束与草稿修正；不执行环境脚本或求解器 |
 | 转换页面和输入编辑器 | `LIB/OMFITlib_workbench_transfer_ui.py` | 编辑副本，摘要复核通过后才保存 |
 | CGYRO / TGLF 共用扫描字段 | `LIB/OMFITlib_workbench_scan_ui.py` | 取值列表、区间、倍率；不提交作业 |
 | CGYRO 收集编排 | `LIB/OMFITlib_cgyro_workflow.py` | 原生脚本执行由调用方注入 |
-| CGYRO 并行资源 | `LIB/OMFITlib_cgyro_launch.py` | Slurm 申请、MPI / OpenMP 参数、冻结重试及检查点实际布局 |
+| CGYRO 并行资源 | `LIB/OMFITlib_cgyro_launch.py` | Slurm 申请、MPI / OpenMP 参数、冻结重试及检查点实际布局；`slurm_process_limits` 只调软限制，`upgrade_slurm_limits` 仅修复重试副本中的旧生成前缀 |
 | 短名称、状态、记录详情 | `LIB/OMFITlib_cgyro_present.py` | 仅读取元数据；不能读取数组或联网 |
 | 控件与自适应排版 | `LIB/OMFITlib_gui_api.py`、`OMFITlib_gui_layout.py` | 保留原生回调、重置、帮助和绑定 |
 | 用户动作和输入交接 | `LIB/OMFITlib_project.py` | 校验 → 调用 → 保存记录；错误继续传播 |
@@ -81,6 +82,14 @@ collect_batch(cg, run_script, factory=OMFITtree)  # 读取整批；默认不等�
 5. 明确的结果读取、部分成功、取消、恢复和归档约定。不能直接复用 CGYRO 的文件名、重启格式或收敛判据。
 
 最小实现先提供“准备输入”和“查看计划”，再接提交。不同求解器之间不要共享可变运行记录；若共享调度适配，必须保留 server、workDir、token、job_id 四项身份。
+
+## 服务器检测接口
+
+`server_capabilities.probe_script()` 只生成有界只读 Bash；`parse_probe(stdout, config)` 校验完整标记后返回普通元数据。`matching_profile` 按 server / tunnel 隔离结果。`resource_issues` 供应用与生成前重复校验；`adapt_draft` 仅由显式“自动检测”动作调用，不能在页面渲染时改资源。扩展其他调度器时保留明确的未知状态，不把工具缺失、查询失败或登录节点 CPU 数当成队列容量。异构队列取此次读到的保守每节点容量。
+
+扫描记录保存在 PROJECT_STATE.gacode_detection.capabilities，应用后为 CGYRO 服务器配置保存独立副本；重检后需再应用。内存只展示，账户 / QOS 上限、闲置资源和计算所需内存不据此推测。实际分配中的进程限制由 `cgyro_launch.slurm_process_limits` 在启动时读取，仅调软限制；不要把登录会话限制写死到批处理。
+
+`gacode_installations.program_guard` 在环境加载后核对文件与平台启动器。修改其只读检查时，同时维护 `checkpoint_environment_identity` 的精确历史尾部匹配：只允许已知生成预检变化，保留用户环境和程序路径；不可用宽泛正则删除用户 shell 内容。新增版本的 MPI / OpenMP 数变化仍由检查点保护拦截。
 
 ## 参数、绘图和数据归属
 

@@ -9,7 +9,8 @@ import shlex
 
 
 PROGRAMS = OrderedDict([
-    ('cgyro', ('CGYRO', ('cgyro/bin/cgyro', 'cgyro/src/cgyro'))),
+    ('cgyro', ('CGYRO', ('cgyro/bin/cgyro', 'cgyro/src/cgyro', 'shared/bin/gacode_getversion',
+                       'shared/bin/gacode_printversion', 'shared/bin/gacode_sim_warn'))),
     ('tgyro', ('TGYRO', ('tgyro/bin/tgyro', 'tgyro/src/tgyro_main',
                          'tglf/bin/tglf', 'tglf/src/tglf_mpi'))),
     ('tglf', ('TGLF', ('tglf/bin/tglf', 'tglf/src/tglf'))),
@@ -168,6 +169,8 @@ def detection_is_current(config, detection, max_age=300):
         endpoint = {key: str(config.get(key, '') or '') for key in ('server', 'tunnel')}
         if detection.get('endpoint', {}) != endpoint:
             return False
+        if detection.get('probe_version', None) != 2:
+            return False  # Older inventories did not inspect required helpers.
         entries = detection.get('entries', {})
         for root in config.get('gacode_installs', {}).values():
             record = entries.get(str(root), {})
@@ -253,7 +256,7 @@ def merge_probe(config, records, factory=dict):
         known.add(root)
         added += 1
     detection = factory()
-    detection.update(dict(endpoint={key: str(config.get(key, '') or '') for key in ('server', 'tunnel')},
+    detection.update(dict(probe_version=2, endpoint={key: str(config.get(key, '') or '') for key in ('server', 'tunnel')},
                           checked=datetime.now(timezone.utc).isoformat(), entries=records))
     return added, detection
 
@@ -275,15 +278,48 @@ def choices(config, detection=None, program=None):
     return result
 
 
-def program_guard(program):
-    """Repeat file checks on the execution node, including legacy environments."""
-    label, files = PROGRAMS[program]
+def _file_guard(program, files):
+    label = PROGRAMS[program][0]
     lines = ['[ -n "${GACODE_ROOT:-}" ] || { echo "GACODE_ROOT is not set for ' + label + '." >&2; exit 1; }']
     for file in files:
         path = '"$GACODE_ROOT"/' + shlex.quote(file)
         lines.append('[ -f ' + path + ' ] && [ -x ' + path + ' ] || { printf "Missing ' + label
                      + ' executable: %s/' + file + '\\n" "$GACODE_ROOT" >&2; exit 1; }')
+    return lines
+
+
+def program_guard(program):
+    """Repeat file checks on the execution node, including legacy environments."""
+    lines = _file_guard(program, PROGRAMS[program][1])
+    if program == 'cgyro':
+        # Inspect only simple direct MPI commands in the selected platform
+        # launcher; never guess or execute it during detection.
+        lines.extend([
+            'case "${GACODE_PLATFORM:-}" in ""|*[!A-Za-z0-9_.-]*) echo "Invalid or unset GACODE_PLATFORM." >&2; exit 1;; esac',
+            'cgyro_platform="$GACODE_ROOT/platform/exec/exec.$GACODE_PLATFORM"',
+            '[ -f "$cgyro_platform" ] && [ -x "$cgyro_platform" ] || { echo "Missing executable platform launcher: $cgyro_platform" >&2; exit 1; }',
+            '''cgyro_mpi=$(awk '$1 ~ /^(mpiexec|mpirun|srun)$/ {print $1; exit} $1 == "exec" && $2 ~ /^(mpiexec|mpirun|srun)$/ {print $2; exit}' "$cgyro_platform")''',
+            '[ -z "$cgyro_mpi" ] || command -v "$cgyro_mpi" >/dev/null 2>&1 || { echo "Missing MPI launcher after environment setup: $cgyro_mpi" >&2; exit 1; }',
+            'unset cgyro_platform cgyro_mpi'])
     return '\n'.join(lines) + '\n'
+
+
+def checkpoint_environment_identity(script):
+    """Ignore only exact known generated preflights, retaining user setup.
+
+    Additional read-only executable checks must not invalidate a checkpoint
+    made with the same modules and GACODE_ROOT. Unknown/custom guard text is
+    still part of the identity; never strip it with a broad shell regex.
+    """
+    if script is None:
+        return None
+    value = str(script).rstrip()
+    legacy = '\n'.join(_file_guard('cgyro', ('cgyro/bin/cgyro', 'cgyro/src/cgyro')))
+    for guard in (program_guard('cgyro').rstrip(), legacy):
+        suffix = '\n' + guard
+        if value.endswith(suffix):
+            return value[:-len(suffix)]
+    return script
 
 
 def program_environment(config, program):

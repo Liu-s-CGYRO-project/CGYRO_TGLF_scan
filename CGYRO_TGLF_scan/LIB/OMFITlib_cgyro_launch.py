@@ -8,6 +8,8 @@ alongside a changed allocation. No solver, scheduler or filesystem is accessed.
 from builtins import ValueError, any, dict, enumerate, int, len, list, next, str, tuple
 import re
 import shlex
+from OMFITlib_server_capabilities import matching_profile, resource_issues
+from OMFITlib_gacode_installations import checkpoint_environment_identity
 
 
 _CALL = re.compile(r'''^\s*(?:(?:exec|command)\s+)?(?:"(?:[^"\n]*/)?cgyro"|'(?:[^'\n]*/)?cgyro'|(?:[^\s;&|]+/)?cgyro)(?=\s|$)''')
@@ -87,6 +89,10 @@ def launch_spec(config, setup=None):
     scheduler = str(config.get('scheduler', '')).lower()
     if scheduler not in ('slurm', 'local'):
         raise ValueError('Managed CGYRO launch resources require Slurm or local execution.')
+    profile = matching_profile(config, dict(capabilities=config.get('server_capabilities', {})))
+    issues = resource_issues(config, profile)
+    if issues:
+        raise ValueError('；'.join(issues))
     if scheduler == 'local' and 'nodes' not in config and 'ntasks_per_node' not in config:
         # A standalone localhost command has no scheduler allocation to enlarge.
         # Retain its explicit size until the shared resource settings are applied.
@@ -143,7 +149,8 @@ stay the same. Unknown legacy commands keep the previous conservative checks.
         raise ValueError('Checkpoint used {} MPI x {} threads; requested {} MPI x {} threads. '
                          'Restore its actual MPI/thread counts to continue; previous results are preserved.'.format(
                              old['mpi_ranks'], old['threads'], new['mpi_ranks'], new['threads']))
-    if old['identity'] != new['identity'] or previous.get('environment', None) != current.get('environment', None):
+    if (old['identity'] != new['identity'] or checkpoint_environment_identity(previous.get('environment', None))
+            != checkpoint_environment_identity(current.get('environment', None))):
         raise ValueError('Restore the original checkpoint executable and environment before continuing.')
 
 
@@ -164,6 +171,62 @@ def validate_slurm_script(script):
                          'Create a resource-aligned run instead of retrying this old script.'.format(
                              total, threads, actual['mpi_ranks'], actual['threads']))
     return actual
+
+
+def slurm_process_limits():
+    """Tune soft limits within the allocation's hard limits, without aborting.
+
+    Bash's plain ``ulimit -n`` changes both limits. A cluster can reject that
+    request before the solver starts, especially under ``set -e``. Keep hard
+    limits untouched and preserve any soft limit already above our preference.
+    These settings are advisory; solver and resource-allocation failures still
+    retain their normal nonzero status.
+    """
+    return r'''
+# OMFIT CGYRO soft process limits v1
+cgyro_soft_limit() {
+  local option="$1" wanted="$2" soft hard value
+  if ! soft=$(ulimit -S"$option" 2>/dev/null) || ! hard=$(ulimit -H"$option" 2>/dev/null); then
+    echo "CGYRO warning: cannot read process limit -$option; keeping inherited limits." >&2
+    return 0
+  fi
+  for value in "$soft" "$hard"; do
+    case "$value" in unlimited) ;; ''|*[!0-9]*)
+      echo "CGYRO warning: unrecognized process limit -$option; keeping inherited limits." >&2
+      return 0;;
+    esac
+  done
+  if [ "$hard" != unlimited ]; then
+    if [ "$wanted" = unlimited ] || [ "$wanted" -gt "$hard" ]; then wanted="$hard"; fi
+  fi
+  if [ "$soft" = unlimited ]; then return 0; fi
+  if [ "$wanted" != unlimited ] && [ "$soft" -ge "$wanted" ]; then return 0; fi
+  if ! ulimit -S"$option" "$wanted" 2>/dev/null; then
+    echo "CGYRO warning: cannot raise soft limit -$option to $wanted (hard=$hard); keeping inherited limit $soft." >&2
+  fi
+  return 0
+}
+cgyro_soft_limit n 65535
+cgyro_soft_limit s unlimited
+unset -f cgyro_soft_limit
+'''
+
+
+def upgrade_slurm_limits(script):
+    """Repair only the exact legacy generated preamble in a retry copy.
+
+    Frozen source scripts and their hashes remain unchanged. MPI arguments,
+    inputs and user environment text are not rewritten. New scripts already
+    contain the safe preamble and pass through unchanged.
+    """
+    legacy = re.compile(r'^set -e\r?\nulimit -n 65535\r?\nulimit -s unlimited\r?\n', re.MULTILINE)
+    matches = list(legacy.finditer(script))
+    if len(matches) > 1:
+        raise ValueError('Ambiguous legacy process limits; retry was not submitted.')
+    if matches and not re.fullmatch(r'#!/bin/bash[^\r\n]*\r?\n(?:#SBATCH[^\r\n]*\r?\n)+',
+                                    script[:matches[0].start()]):
+        return script  # A matching block in user environment text is not ours.
+    return legacy.sub(lambda match: 'set -e\n' + slurm_process_limits(), script)
 
 
 def slurm_guard(spec):

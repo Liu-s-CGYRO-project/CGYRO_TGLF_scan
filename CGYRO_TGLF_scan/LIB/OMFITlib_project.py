@@ -28,6 +28,8 @@ from collections import OrderedDict
 from OMFITlib_project_runtime import initialize_runtime, apply_runtime, applied_runtime, runtime_values, shared_issues
 from OMFITlib_gacode_installations import (PROGRAMS, detection_is_current, installation_issues, merge_probe,
     parse_probe, probe_script, sync_environment, valid_path)
+from OMFITlib_server_capabilities import (adapt_draft, matching_profile, parse_probe as parse_capabilities,
+    probe_script as capability_probe, resource_issues)
 from OMFITlib_transfer_workflow import (discard_legacy_outputs, generation_issues, initialize_generation,
                                       tgyro_batch_settings, tglf_input_format)
 from OMFITlib_tglf_workbench import (PROFILE_PATH, RADII, initialize as initialize_tglf,
@@ -782,12 +784,16 @@ class ProjectActions:
             raise ValueError('；'.join(issues))
         stdout, stderr = [], []
         os.environ.setdefault('SHELL', '/bin/bash')
-        code = self.remote_execute(str(config['server']), 'bash -c ' + shlex.quote(probe_script(config, scan)),
+        script = probe_script(config, scan) + (capability_probe() if scan else '')
+        code = self.remote_execute(str(config['server']), 'bash -c ' + shlex.quote(script),
                                    '.', tunnel=str(config.get('tunnel', '') or ''), std_out=stdout, std_err=stderr,
                                    quiet=True, ignoreReturnCode=True, use_bang_command=False)
         if code != 0:
             raise RuntimeError('GACODE 自动检测失败；原列表保留。\n' + '\n'.join(stderr)[-2000:])
         records = parse_probe(stdout)
+        # Parse everything before mutating settings; an interrupted capability
+        # scan must not replace a previously valid installation inventory.
+        profile = parse_capabilities(stdout, config) if scan else None
         added, detection = merge_probe(config, records, self.factory)
         state = self.root.setdefault('PROJECT_STATE', self.factory())
         previous = state.get('gacode_detection', {})
@@ -795,17 +801,30 @@ class ProjectActions:
             entries = dict(previous.get('entries', {}))
             entries.update(records)
             detection['entries'] = entries
+            if profile is None and previous.get('capabilities', {}):
+                detection['capabilities'] = copy.deepcopy(previous['capabilities'])
+        if profile is not None:
+            detection['capabilities'] = profile
         state['gacode_detection'] = detection
         if self.settings.get('gacode_entry', '') not in config['gacode_installs']:
             self.settings['gacode_entry'] = next(iter(config['gacode_installs']), '')
         return added, detection
 
     def detect_gacode(self):
+        if self.settings.get('server_draft', None) is not None:
+            raise ValueError('请先保存或取消正在编辑的服务器')
         if self.settings.get('gacode_draft', None) is not None:
             raise ValueError('请先保存或取消正在编辑的安装')
         added, detection = self._probe_gacode()
+        config = initialize_runtime(self.root, self.factory)
+        profile = matching_profile(config, detection)
+        changes = adapt_draft(config, profile)
+        if profile:
+            profile['draft_changes'] = changes
         self.settings['message'] = '检测完成：{} 套安装，新增 {} 套。选择各程序版本后应用。'.format(
             len(detection['entries']), added)
+        if changes:
+            self.settings['message'] += '资源草稿调整：' + '；'.join(changes) + '。应用后生效。'
         return detection
 
     def apply_runtime(self, progress=None):
@@ -820,6 +839,10 @@ class ProjectActions:
             self.settings['message'] = '；'.join(issues)
             return
         config = initialize_runtime(self.root, self.factory)
+        profile = matching_profile(config, self.root.get('PROJECT_STATE', {}).get('gacode_detection', {}))
+        issues = resource_issues(config, profile)
+        if issues:
+            raise ValueError('；'.join(issues))
         original = runtime_values(config)
         if config['gacode_installs']:
             detection = self.root.get('PROJECT_STATE', {}).get('gacode_detection', {})

@@ -21,7 +21,7 @@ from OMFITlib_cgyro_run_state import linked_local_action, stop_run, submitted_jo
 from OMFITlib_cgyro_submission import PROTOCOL, discover_submission, seal_unstarted, submit_command
 from OMFITlib_cgyro_storage import submission_file
 from OMFITlib_cgyro_db import run_cases, set_run_cases
-from OMFITlib_cgyro_launch import validate_slurm_script
+from OMFITlib_cgyro_launch import upgrade_slurm_limits, validate_slurm_script
 
 
 NON_RETRYABLE_STATES = {'CANCELLED', 'TIMEOUT', 'OUT_OF_MEMORY', 'DEADLINE'}
@@ -321,6 +321,9 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
         # Retries reuse immutable scripts. Do not repeat a pre-fix allocation
         # that reserved 32 CPUs but actually started only 16 MPI processes.
         validate_slurm_script(script)
+        # Keep the frozen source intact; repair optional limits in this attempt
+        # so a cluster's hard limit cannot repeat the pre-solver failure.
+        script = upgrade_slurm_limits(script)
         cap = re.search(r'^#SBATCH --array=.*%([0-9]+)\s*$', script, re.MULTILINE)
         if cap is None:
             raise ValueError('Original Slurm array concurrency is missing.')
@@ -333,7 +336,7 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
     else:
         raise ValueError('Automatic failed-point retries require Slurm or PBS.')
     script_path = os.path.join(local, 'scan.pbs')
-    with open(script_path, 'w', encoding='utf-8') as stream:
+    with open(script_path, 'w', encoding='utf-8', newline='\n') as stream:
         stream.write(script)
     inputs = [ascii_reader(script_path)]
     for point in points:
@@ -357,6 +360,7 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
     attempts = list(manifest.get('attempts', []))
     attempts.append(dict(job_id=manifest.get('job_id', ''), workDir=manifest['workDir'],
         points=list(manifest.get('active_points', manifest['points'])), status=manifest.get('status', ''),
+        script_sha256=manifest.get('retry_script_sha256', manifest['submit_script_sha256']),
         failed_points=list(manifest.get('failed_points', [])), scheduler_sync=deepcopy(manifest.get('scheduler_sync', {}))))
     locations = dict(manifest.get('point_workdirs', {}))
     for point in manifest['points']:
@@ -369,6 +373,7 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
         job_id='', status='submitting', submission_uncertain=True, wait_completed=False,
         collection_status='pending', loaded_points=[], partial_points=[], skipped_points=[], failed_points=[],
         scheduler_sync={}, scheduler_status='', submit_output='', submit_error='',
+        retry_script_sha256=hashlib.sha256(script.encode('utf-8')).hexdigest(),
         retry_at=datetime.now(timezone.utc).isoformat()))
     save_current(root, factory)
     execute_submission(root, ui, factory, ascii_reader, inputs, local, command)
