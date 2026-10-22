@@ -9,6 +9,7 @@ from builtins import (
     dict,
     enumerate,
     getattr,
+    len,
     list,
     str,
 )
@@ -108,7 +109,7 @@ class CaseSelection(ComparisonWidgets):
         return groups
 
     def _select_cgyro_cases(self, state, path, cases, selected_key='nr_selected'):
-        """Select radial inputs first, then the available isotope cases."""
+        """A single-case radius is sufficient; expose choices only when needed."""
         remap_case_selection(state, getattr(self, '_cgyro_case_aliases', {}))
         flags = sync_flags(state, 'nr_flag', cases, selected_key)
         groups = self._cgyro_radius_groups(cases)
@@ -118,28 +119,50 @@ class CaseSelection(ComparisonWidgets):
             state['cgyro_radius_selected'] = [key for key, group in groups.items()
                 if any(flags.get(case['index'], False) for case in group['cases'])]
         radius_flags = sync_flags(state, 'cgyro_radius_flag', keys, 'cgyro_radius_selected')
-        labels = {key: (group['caption'], '先选择半径，再选择该半径的离子；取消半径会取消其离子选择。')
+        labels = {key: (group['caption'], '单一离子随半径自动选择；多个离子可在下方全选或逐项调整。')
                   for key, group in groups.items()}
         self.ui.Label('1 选择 CGYRO 半径', align='left')
+        def select_radii(enabled):
+            for index, key in enumerate(keys):
+                radius_flags[index] = enabled
+            # The GUI refresh applies the radius selection to exact case keys.
+        if keys:
+            with self.ui.same_row():
+                self.ui.Button('全选半径', lambda: select_radii(True), updateGUI=True)
+                self.ui.Button('清空半径', lambda: select_radii(False), updateGUI=True)
         self._render_index_checkbox_grid(path('cgyro_radius_flag') + '[{idx}]', keys, labels=labels)
         state['cgyro_radius_selected'] = selected_items(radius_flags, keys)
-        if state['cgyro_radius_selected']:
+        choices = [groups[key] for key in state['cgyro_radius_selected']
+                   if len(groups[key]['cases']) > 1]
+        if choices:
             self.ui.Label('2 选择所选半径的离子', align='left')
-        elif cases:
-            self.ui.Label('选择半径后，在下方选择 H / D / T。', align='left')
+            def select_ions(enabled):
+                # Only groups with a real choice need isotope flags. A sole
+                # case remains controlled by its radius, including on clear.
+                for group in choices:
+                    for case in group['cases']:
+                        flags[case['index']] = enabled
+            with self.ui.same_row():
+                self.ui.Button('全选离子', lambda: select_ions(True), updateGUI=True)
+                self.ui.Button('清空离子', lambda: select_ions(False), updateGUI=True)
         for index, key in enumerate(keys):
             group = groups[key]
             if not radius_flags.get(index, False):
                 for case in group['cases']:
                     flags[case['index']] = False
                 continue
+            if len(group['cases']) == 1:
+                # Choosing a radius with only one available case already
+                # identifies the data; do not require the same choice twice.
+                flags[group['cases'][0]['index']] = True
+                continue
             self.ui.Separator(group['caption'])
             indices = {case['key']: case['index'] for case in group['cases']}
             ion_labels = {case['key']: (case['ion'], str(case['key'])) for case in group['cases']}
             self._render_key_checkbox_grid(lambda case: path('nr_flag', indices[case]),
                                            list(indices), labels=ion_labels)
-        # Plot readers continue to consume exact archived case keys. A radius
-        # without an isotope selection never silently selects all its cases.
+        # Readers retain exact archive identities; a multiple-case radius
+        # still requires its explicit individual or bulk isotope selection.
         state[selected_key] = selected_items(flags, cases)
 
     def _choose_cgyro(self, state, path, select_radii=True, legacy=False):

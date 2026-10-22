@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.24.4",
-  "parent_release": "1.24.3",
+  "version": "1.24.5",
+  "parent_release": "1.24.4",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -274,7 +274,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_storage_files.py": "f17dc7c4e7d3afe613a9672b275b77dd215688dd938598b35dec8199b76f60a8",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_submission.py": "202b9b0a699185d71cdffc22267e297462d1d85d19c5c456f7fde06d823355de",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_workflow.py": "f41c6e5efd2f5d2b7792b8b73e885db21429988785dfac5b95b25b82a6629f8e",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cases.py": "09a1f4419c7bcc9b516db8bce96711e9484fa61015bcb330a8c9be43cd6a6a0f",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cases.py": "2c89bb962d0f5254363e17d60661129352c7916cbbe293e9eeb490883fc31e15",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro.py": "0cfd158b32082363d51bddb70e5c81e591391abe1234c73b5679fad1916b62e4",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_data.py": "c9d0574c3019278c64f72e9e34e91c2a3dbdcf8cdd04c73fae5346b858faafdd",
     "CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_eigen.py": "bda32dd30f4741d14ff2307f664bee92f4f94021f91cc696608812fda362cdc2",
