@@ -22,7 +22,8 @@ from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolv
 from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, submission_pending, text_output as output_to_text
 from OMFITlib_cgyro_queue import advancing_batch, collection_done, pending_runs, save_current, wait_current
 from OMFITlib_cgyro_retry import execute_submission, retry_limit
-from OMFITlib_cgyro_continue import archived_case, continuation_plan, point_result, prepare_point, restart_files
+from OMFITlib_cgyro_continue import (archived_case, checkpoint_details, continuation_plan,
+                                   point_result, prepare_point, restart_files)
 from OMFITlib_cgyro_storage import compact_storage, result_view
 from OMFITlib_cgyro_db import run_cases, set_run_cases
 from OMFITlib_cgyro_scratch import check_start_capacity, clean_stage, directory_bytes, ensure_capacity
@@ -310,16 +311,17 @@ if execution is not None:
 if continuation:
     if continuation['server'] and continuation['server'] != remote_server:
         raise ValueError('Continuation requires the original server: ' + str(continuation['server']))
-    has_checkpoint = any(origin['mode'] == 'checkpoint' for origin in continuation['sources'].values())
-    validate_checkpoint_runtime(continuation['runtime'], runtime, has_checkpoint=has_checkpoint)
+    # Check solver/environment identity before copying. Resource changes are
+    # checked per point against its actual staged checkpoint, including ZIPs.
+    validate_checkpoint_runtime(continuation['runtime'], runtime, has_checkpoint=False)
 elif restart_mode:
-    validate_checkpoint_runtime(previous_manifest.get('runtime', {}), runtime)
+    validate_checkpoint_runtime(previous_manifest.get('runtime', {}), runtime, has_checkpoint=False)
 inputs_node = root['INPUTS']
 if continuation:
     first_point = continuation['points'][0]
     first_stage = os.path.join(submit_workdir, 'staging', first_point)
     os.makedirs(os.path.dirname(first_stage), exist_ok=True)
-    first_prepared = prepare_point(root, continuation, first_point, first_stage, OMFITgacode)
+    first_prepared = prepare_point(root, continuation, first_point, first_stage, OMFITgacode, runtime=runtime)
     base_input = first_prepared[0].duplicate()
 else:
     base_input = inputs_node['input.cgyro'].duplicate()
@@ -373,7 +375,7 @@ for point_number, (new_dir, overrides, point_metadata) in enumerate(points, 1):
             current_input, point_metadata, packed_names = first_prepared
         else:
             current_input, point_metadata, packed_names = prepare_point(
-                root, continuation, new_dir, stage, OMFITgacode)
+                root, continuation, new_dir, stage, OMFITgacode, runtime=runtime)
     elif restart_mode:
         if new_dir not in previous_cases:
             raise ValueError('Restart point missing: %s; use a fresh run for new points' % new_dir)
@@ -384,6 +386,9 @@ for point_number, (new_dir, overrides, point_metadata) in enumerate(points, 1):
             raise ValueError('Restart lacks input.cgyro: ' + new_dir)
         validate_restart_input(OMFITgacode(old_input_path), current_input)
         packed_names = restart_files(stage, current_input)
+        verified = checkpoint_details(stage)
+        validate_checkpoint_runtime(previous_manifest.get('runtime', {}), runtime,
+                                    checkpoint=verified['candidates']['bin.cgyro.restart'])
     os.makedirs(stage, exist_ok=True)
     size_inputs = [current_input] + ([] if continuation else [inputs_node[name] for name in input_names[1:]])
     ensure_capacity(stage, sum(os.path.getsize(node.filename) for node in size_inputs if os.path.isfile(node.filename)))

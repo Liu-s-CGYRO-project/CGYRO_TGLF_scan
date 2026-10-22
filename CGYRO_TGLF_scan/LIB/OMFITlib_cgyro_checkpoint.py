@@ -117,7 +117,9 @@ def _inspect(name, sizes, opener, grid):
             if total != expected:
                 raise ValueError('Checkpoint changed while reading')
         report.update(dict(status='valid', sha256=digest.hexdigest(), bytes=total,
-                           grid=dimensions, velocity_order=words[8], format=3))
+                           grid=dimensions, velocity_order=words[8], format=3,
+                           nt_loc=words[9], nv_loc=words[10],
+                           mpi_ranks=words[13] if words[13] > 0 else None))
     except (OSError, ValueError, UnicodeError, zipfile.BadZipFile) as error:
         report['reason'] = str(error)
     return report

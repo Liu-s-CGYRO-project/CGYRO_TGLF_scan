@@ -128,14 +128,16 @@ def command_layout(command):
     return dict(mpi_ranks=counts['-n'], threads=counts['-nomp'], identity='\n'.join(lines))
 
 
-def validate_checkpoint_runtime(previous, current, has_checkpoint=True):
-    """Compare actual MPI/OMP counts, not historically incorrect allocations.
+def validate_checkpoint_runtime(previous, current, has_checkpoint=True, checkpoint=None):
+    """Allow changed resources after validation of the staged v3 checkpoint.
 
-A run that requested 32 CPUs but launched 16 MPI ranks has a 16-rank execution
-identity. Reject a silent change to 32 during continuation. Correcting just the
-allocation to 16 is allowed when the executable/environment and actual layout
-stay the same. Unknown legacy commands keep the previous conservative checks.
-"""
+    CGYRO v3 records its disk blocks and redistributes them through
+    cgyro_read_restart_slow when the current MPI layout differs. Rank/thread
+    counts therefore are not an immutable execution identity. The caller must
+    supply the actual staged checkpoint report, rather than a saved UI flag.
+    Unknown formats/commands retain conservative checks; solver setup stays
+    unchanged and physical grids are checked against the original input.
+    """
     if not previous:
         return
     old_command, new_command = previous.get('executable', ''), current.get('executable', '')
@@ -146,9 +148,19 @@ stay the same. Unknown legacy commands keep the previous conservative checks.
             raise ValueError('Restore the original checkpoint execution configuration before continuing.')
         return
     if has_checkpoint and (old['mpi_ranks'] != new['mpi_ranks'] or old['threads'] != new['threads']):
-        raise ValueError('Checkpoint used {} MPI x {} threads; requested {} MPI x {} threads. '
-                         'Restore its actual MPI/thread counts to continue; previous results are preserved.'.format(
-                             old['mpi_ranks'], old['threads'], new['mpi_ranks'], new['threads']))
+        checkpoint = {} if checkpoint is None else checkpoint
+        if checkpoint.get('status', '') != 'valid' or checkpoint.get('format', None) != 3:
+            raise ValueError('Checkpoint used {} MPI x {} threads; requested {} MPI x {} threads. '
+                             'Changing resources requires a verified CGYRO v3 checkpoint; '
+                             'previous results are preserved.'.format(
+                                 old['mpi_ranks'], old['threads'], new['mpi_ranks'], new['threads']))
+        grid = checkpoint.get('grid', {})
+        cells = 1
+        for key in ('N_SPECIES', 'N_XI', 'N_ENERGY', 'N_TOROIDAL'):
+            cells *= _positive(grid.get(key, 0), 'checkpoint ' + key)
+        if cells % new['mpi_ranks']:
+            raise ValueError('Requested {} MPI does not divide the saved velocity/toroidal grid ({} cells). '
+                             'Choose a compatible MPI count; the physical grid is unchanged.'.format(new['mpi_ranks'], cells))
     if (old['identity'] != new['identity'] or checkpoint_environment_identity(previous.get('environment', None))
             != checkpoint_environment_identity(current.get('environment', None))):
         raise ValueError('Restore the original checkpoint executable and environment before continuing.')

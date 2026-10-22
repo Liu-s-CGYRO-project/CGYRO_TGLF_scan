@@ -18,6 +18,7 @@ from OMFITlib_cgyro_archive import case_scans, scan_branch, scan_key
 from OMFITlib_cgyro_storage import result_view
 from OMFITlib_cgyro_db import run_cases, run_records
 from OMFITlib_cgyro_checkpoint import directory_checkpoint
+from OMFITlib_cgyro_launch import validate_checkpoint_runtime
 from OMFITlib_cgyro_scratch import directory_bytes, ensure_capacity
 
 
@@ -211,14 +212,19 @@ def point_result(case, row):
     return node
 
 
-def checkpoint_tag(directory):
-    """Check the paired binary/tag and the saved time samples before submission."""
+def checkpoint_details(directory):
+    """Validate the actual binary/grid/tag together, retaining the v3 layout."""
     _, report = directory_checkpoint(directory)
     if not report['resume_ready']:
         detail = (report.get('warning', '') or report['candidates'].get('bin.cgyro.restart', {}).get('reason', '')
                   or 'bin.cgyro.restart is missing')
         raise ValueError('No verified current CGYRO checkpoint: ' + detail)
-    return report['tag']
+    return report
+
+
+def checkpoint_tag(directory):
+    """Keep the historical tag-only API for tables and continuation planning."""
+    return checkpoint_details(directory)['tag']
 
 
 def point_status(result):
@@ -336,7 +342,7 @@ def previous_final_time(metadata, tag):
     return max(float(tag['last_time']), previous)
 
 
-def prepare_point(module, plan, point_id, stage, reader):
+def prepare_point(module, plan, point_id, stage, reader, runtime=None):
     """Copy to a new run directory and change only the segment duration."""
     row = plan['rows'][point_id]
     origin = plan['sources'][point_id]
@@ -372,6 +378,8 @@ def prepare_point(module, plan, point_id, stage, reader):
             raise ValueError('Archived input disagrees with task {}: {}'.format(point_id, name))
     duration = plan['additional_time']
     if origin['mode'] == 'fresh':
+        if runtime is not None:
+            validate_checkpoint_runtime(plan['runtime'], runtime, has_checkpoint=False)
         current = source.duplicate()
         current['MAX_TIME'] = float(source['MAX_TIME']) + duration
         current.deploy(os.path.join(stage, 'input.cgyro'))
@@ -379,7 +387,11 @@ def prepare_point(module, plan, point_id, stage, reader):
         metadata['effective_time'] = {name: float(current[name]) for name in ('DELTA_T', 'MAX_TIME', 'PRINT_STEP')}
         metadata['continuation'] = dict(source_token=plan['source_token'], mode='fresh', additional_time=duration)
         return current, metadata, [name for name in origin['sha256'] if name.startswith('input.')]
-    tag = checkpoint_tag(stage)
+    verified = checkpoint_details(stage)
+    checkpoint = verified['candidates']['bin.cgyro.restart']
+    if runtime is not None:
+        validate_checkpoint_runtime(plan['runtime'], runtime, checkpoint=checkpoint)
+    tag = verified['tag']
     delta_t = float(source.get('DELTA_T', 0))
     print_step = int(source.get('PRINT_STEP', 0))
     # A pending segment can have a shorter tail than its ancestor. Keep the
@@ -404,6 +416,7 @@ def prepare_point(module, plan, point_id, stage, reader):
     metadata = copy.deepcopy(row)
     metadata['effective_time'] = {name: float(current[name]) for name in ('DELTA_T', 'MAX_TIME', 'PRINT_STEP')}
     metadata['continuation'] = dict(source_token=plan['source_token'], checkpoint=tag,
+                                    checkpoint_layout=copy.deepcopy(checkpoint),
                                     additional_time=duration, history_sha256=prefixes,
                                     previous_final_time=previous_final)
     return current, metadata, packed_names

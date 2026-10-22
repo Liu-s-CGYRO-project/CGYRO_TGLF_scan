@@ -16,11 +16,11 @@ import time
 from urllib import error, request
 import zipfile
 
-TOOL_VERSION = '1.3.2'
-PROJECT_VERSION = '1.24.3'
+TOOL_VERSION = '1.3.3'
+PROJECT_VERSION = '1.24.4'
 REPOSITORY = 'Liu-s-CGYRO-project/CGYRO_TGLF_scan'
 DEFAULT_PROXY = 'http://47.102.120.146:18889'
-PACKAGES = {'code': {'name': 'CGYRO_TGLF_scan_code_only_1.24.3.zip', 'bytes': 994041, 'sha256': 'c7ed815cd961cf9b8f598989a4cef26ade901a655d2ab2fcab1cfaa2e166acc2'}, 'template': {'name': 'tdxy-liu__cgyro-tglf__1.24.3.omfittpl.zip', 'bytes': 993213, 'sha256': 'ee8349380bff5dd4ec2f5e1201da5be5434a57d9e60e574d2b17f7c2a8f168b8'}}
+PACKAGES = {'code': {'name': 'CGYRO_TGLF_scan_code_only_1.24.4.zip', 'bytes': 995029, 'sha256': '4251aa717807621421005daa0c112ac5e001881a9a70da749322e5ab7fce84ab'}, 'template': {'name': 'tdxy-liu__cgyro-tglf__1.24.4.omfittpl.zip', 'bytes': 994162, 'sha256': '7980a287c9d6b7866f5ba16364e3b9d6236be2f04d0de5fe590a7cc345dcfa72'}}
 
 REQUIRED = {
     (): ('OMFITlib_cgyro_db', 'OMFITlib_cgyro_recover', 'OMFITlib_cgyro_scratch', 'OMFITlib_cgyro_storage', 'OMFITlib_cgyro_storage_files', 'OMFITlib_cgyro_checkpoint', 'OMFITlib_cgyro_continue',

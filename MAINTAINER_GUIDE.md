@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.3。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.4。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 先找到修改层
 
@@ -89,7 +89,7 @@ collect_batch(cg, run_script, factory=OMFITtree)  # 读取整批；默认不等�
 
 扫描记录保存在 PROJECT_STATE.gacode_detection.capabilities，应用后为 CGYRO 服务器配置保存独立副本；重检后需再应用。内存只展示，账户 / QOS 上限、闲置资源和计算所需内存不据此推测。实际分配中的进程限制由 `cgyro_launch.slurm_process_limits` 在启动时读取，仅调软限制；不要把登录会话限制写死到批处理。
 
-`gacode_installations.program_guard` 在环境加载后核对文件与平台启动器。修改其只读检查时，同时维护 `checkpoint_environment_identity` 的精确历史尾部匹配：只允许已知生成预检变化，保留用户环境和程序路径；不可用宽泛正则删除用户 shell 内容。新增版本的 MPI / OpenMP 数变化仍由检查点保护拦截。
+`gacode_installations.program_guard` 在环境加载后核对文件与平台启动器。修改其只读检查时，同时维护 `checkpoint_environment_identity` 的精确历史尾部匹配：只允许已知生成预检变化，保留用户环境和程序路径；不可用宽泛正则删除用户 shell 内容。MPI / OpenMP 变化需实际暂存检查点的 v3 校验报告，不能用 GUI 开关绕过校验。
 
 ## 参数、绘图和数据归属
 
@@ -136,7 +136,7 @@ OMFITlib_cgyro_storage_files.SubmissionFiles 只计划新所有者与索引，�
 
 `cgyro_launch.command_template()` 将旧命令的固定 `-n` / `-nomp` 改为 `{mpi}` / `{threads}`，保留非并行参数，NUMA 放置交给所选平台。`launch_spec()` 在打包前生成每点 MPI、线程、CPU 预算和实际命令；Slurm 每个数组元素独占这一份申请。自定义启动器接入时需要扩展此解析层，不能绕过资源检查或只更改 SBATCH 行。
 
-`validate_slurm_script()` 用于冻结脚本重试；`validate_checkpoint_runtime()` 对比旧命令的实际布局。只有选中点确实包含检查点时才限制 MPI / OpenMP 数；取消后从未开始的点可用原冻结输入和新的资源数开始。服务器、输入身份、停止标志和收集权限仍由原流程负责。
+`validate_slurm_script()` 用于冻结脚本重试，复用原申请；加核请走明确续算。`validate_checkpoint_runtime(previous, current, checkpoint=report)` 接收实际暂存 v3 检查点的有效候选报告，允许改变 MPI / OpenMP 数；仍核对程序环境并检查新 MPI 数能整除原速度 / 环向网格。`prepare_point(..., runtime=runtime)` 在目录和冻结 ZIP 两条路径均重新校验并保存原磁盘布局。首次检查仅核对程序环境，逐点格式、网格、时间标签和数据完整性检查必须在打包提交之前完成。取消后从未开始的点继续使用原冻结输入。服务器、停止标志和收集权限由原流程负责。
 
 ## 启动与临时空间（1.24.1）
 
