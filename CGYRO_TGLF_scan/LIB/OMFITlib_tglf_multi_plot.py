@@ -1,5 +1,6 @@
 """Compare completed case records on their native TGLF ky grids."""
 from OMFITlib_plot_sources import spectrum_arrays
+from OMFITlib_plot_window import fit_figure_window
 from builtins import enumerate, float, len, list, range, str
 import numpy as np
 
@@ -48,4 +49,5 @@ def plot_cases(root, notebook):
         axis.grid(alpha=.2)
     axes[0].legend(fontsize=8, loc='upper left', bbox_to_anchor=(1.01, 1.))
     fig.tight_layout()
+    fit_figure_window(fig)
     return fig

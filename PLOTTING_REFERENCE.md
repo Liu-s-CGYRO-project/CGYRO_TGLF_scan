@@ -6,6 +6,7 @@
 | --- | --- |
 | `LIB/OMFITlib_plot_sources.py` | 把 TGLF 运行记录转换为只读绘图视图，兼容旧扫描缓存；统一谱数组维度 |
 | `LIB/OMFITlib_plot_style.py` | 全局外观设置、配色和绘图上下文 |
+| `LIB/OMFITlib_plot_window.py` | FigureNotebook 初始尺寸、工具栏空间与画布自适应；不修改 OMFIT 全局实现 |
 | `LIB/OMFITlib_plot_fonts.py` | 英文字体文件加载、旧版兼容、公式字体及延迟绘制 / 导出上下文 |
 | `LIB/OMFITlib_plot_labels.py` | 输出图英文词条、未知自定义标签映射及重绘 / 导出时的文字处理 |
 | `LIB/OMFITlib_plot_font_assets.py` | 随包思源宋体与 Liberation Sans 的校验、缓存及进程内注册 |
@@ -37,6 +38,10 @@ with plot_context(root):
 曲线优先使用默认颜色循环和线宽，避免在新脚本里写死 `color`、`linewidth` 和 `fontsize`。用 `ax.axhline` / `ax.axvline` 表示参考线；需要保留特殊宽度的数据线可以设置 `gid='reference'`。原生图中有物理含义的特殊颜色、热图色标及参考线不强制重染。默认字号、线宽、标记、轴线、画布尺寸和 DPI 由全局页控制。
 
 `apply_figure_style(figure, validated(root))` 可用于不经过 pyplot 注册的自建 Figure。更改全局样式后重新绘图；已打开的图不会被其他窗口的设置修改。
+
+FigureNotebook 的渲染器在最后一次尺寸和布局设置后调用 `fit_figure_window(fig)`（从 `OMFITlib_plot_window` 顶层导入）。对比图的 `apply_figure_layout` 已执行此步骤。窗口初始大小限制在屏幕内；Tk 先为原生工具栏分配空间，再将剩余区域交给画布。切换标签或增加新页不重置手动调整的窗口，原 Matplotlib 缩放、保存和 OMFIT 按钮回调继续使用。布局控制器只附着于当前 Tk Notebook，不进入工程数据树；非 Tk 画布不改变尺寸。新增消费模块需登记此库的 LIB 依赖。
+
+桌面回归为 `python3 -m unittest discover -s tests -p test_plot_window.py -v`。用完整源代码中的原生 FigureNotebook 类复核布局可执行 `python3 tools/validate_plot_window.py /path/to/OMFIT-source/omfit --output /path/to/report`；后者保留原生类方法，OMFIT 会话和应用工具栏动作为适配器，不能代表整机联调。
 
 输出图统一使用英文，默认 `Liberation Sans`，作为 Arial 的相近替代。首次使用下载或导入完整字体包，无需安装字体或填写路径；英文包含常规 / 斜体 / 粗体 / 粗斜体。既有思源宋体资源与完整 SIL OFL 1.1 许可保留在独立资源包，绘图不再需要登记中文字体，代码安装包保持小于 1 MB。来源、摘要及重建方法见 `DOCS/GUI_FONTS.md`、`DOCS/PLOT_FONTS_LICENSE.txt` 和 `tools/plot_fonts_sources.json`。
 

@@ -7,6 +7,7 @@ from OMFITlib_cgyro_storage import resolve_result
 from OMFITlib_cgyro_db import legacy_branch, run_records, storage_state
 from OMFITlib_cgyro_present import record_options, record_details
 from OMFITlib_compare_core import cgyro_frequency_history
+from OMFITlib_plot_window import fit_figure_window
 from builtins import (Exception, TypeError, ValueError, abs, any, dict, float, int,
                       len, list, max, min, range, set, sorted, str, tuple, zip)
 from collections import OrderedDict
@@ -578,6 +579,7 @@ def plot_time_traces(root, notebook, token, point_ids, legend_font_size=10, stop
                ncol=legend_columns, fontsize=legend_font_size)
     fig.suptitle(title)
     fig.tight_layout(rect=(0, bottom, 1, .94))
+    fit_figure_window(fig)
     return fig
 
 
@@ -637,4 +639,5 @@ def plot_selected(root, notebook):
             axes[1].plot(data['x'][best[1]], data['y'][best[0]], marker='x', color='white', markersize=9, markeredgewidth=2)
     fig.suptitle(title)
     fig.tight_layout(rect=(0, 0, 1, .94))
+    fit_figure_window(fig)
     return fig

@@ -4,6 +4,7 @@ Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
 from matplotlib import rcParams
 from OMFITlib_cgyro_archive import canonical_case_key, case_parts
+from OMFITlib_plot_window import fit_figure_window
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     Exception,
@@ -56,6 +57,7 @@ def apply_figure_layout(fig, ctx=None):
             ax.grid(True, alpha=.18)
         else:
             ax.grid(False)
+    fit_figure_window(fig)
 
 
 def enable_legend_picking(ax):

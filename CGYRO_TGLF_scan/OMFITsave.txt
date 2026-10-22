@@ -282,6 +282,7 @@
 ['LIB']['OMFITlib_compare_state'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_state.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_status'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_status.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_style'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_style.py <-:-:-> {}
+['LIB']['OMFITlib_plot_window'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_window.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_tglf'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_tglf.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_ui.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_widgets'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_widgets.py <-:-:-> {}
