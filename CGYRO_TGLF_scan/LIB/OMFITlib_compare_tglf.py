@@ -8,6 +8,9 @@ from builtins import (
     Exception,
     any,
     bool,
+    dict,
+    ValueError,
+    TypeError,
     float,
     hasattr,
     len,
@@ -34,6 +37,7 @@ from OMFITlib_compare_core import (
     collect_tglf2d_mode_curves,
     get_2d_scan_values,
     mode_titles,
+    prepare_spectrum_for_plot,
     resolve_2d_param_node,
     resolve_key,
     split_2d_param_name,
@@ -230,9 +234,9 @@ def plot_tglf_flux_2d(fn, root, ctx):
 
 
 def _plot_flux_spectrum_page(fn, panel_data, quantity_name, ctx, page_label=None, title_text=None):
+    """Create one standalone page for particle/energy flux-vs-ky."""
     if not ctx.get('show_flux_spectra', True):
         return
-    """Create one standalone page for particle/energy flux-vs-ky."""
     species_labels = panel_data.get('species_labels', [])
     field_labels = panel_data.get('field_labels', [])
     curves = panel_data.get('curves', {})
@@ -314,270 +318,153 @@ def _plot_flux_spectrum_page(fn, panel_data, quantity_name, ctx, page_label=None
     fig.suptitle(str(title_text), fontsize=ctx['fs1'] + 1)
 
 
-def plot_tglf_vs_tglf(root, ctx):
-    """
-    Entry for `TGLF_vs_TGLF` mode.
+def _flux_panels(collector, ctx, *args, **kwargs):
+    # Hidden flux controls must not force loading unrelated result files.
+    if not ctx.get('show_flux_spectra', True):
+        return {}
+    return {quantity: collector(*args, quantity_name=quantity, ctx=ctx, **kwargs)
+            for quantity in ('particle', 'energy')}
 
-    Dispatches between:
-    - Flux mode (`plot_tglf_flux_1d/2d`)
-    - Spectra mode (1D/2D omega-gamma and flux-spectrum pages)
-    """
-    tglf_state = ctx['tglf_state']
-    spectra_mode = tglf_state.get('spectra_mode', '1D')
-    tglf_mode = ctx.get('tglf_vs_tglf_mode', 'Spectra')
 
-    # New TGLF_vs_TGLF mode: flux-vs-parameter plotting (2D figures only).
-    if tglf_mode == 'Flux':
-        fn = FigureNotebook(0, 'TGLF_vs_TGLF')
-        if spectra_mode == '2D':
-            plot_tglf_flux_2d(fn, root, ctx)
-        else:
-            plot_tglf_flux_1d(fn, root, ctx)
-        return
-
-    if spectra_mode != '2D':
-        rho_selected = tglf_state.get('rho_selected', [])
-        tglf_selected_paras = tglf_state.get('selected_paras', {})
-        for rho in rho_selected:
-            curves_mode1 = collect_tglf_curves(
-                rho, tglf_selected_paras, root, ctx, mode_idx=1, include_rho_in_label=False
-            )
-            curves_mode2 = collect_tglf_curves(
-                rho, tglf_selected_paras, root, ctx, mode_idx=2, include_rho_in_label=False
-            )
-            if len(curves_mode1) == 0 and len(curves_mode2) == 0:
-                continue
-
-            # One notebook per rho; notebook title is exactly "rho=...".
-            fn_rho = FigureNotebook(0, f'rho={rho}')
-
-            # Page 1: omega/gamma
-            fig2d, ax_2d = fn_rho.subplots(
-                nrows=2,
-                ncols=2,
-                figsize=DEFAULT_FIGSIZE_2X2,
-                label='omega-gamma',
-                sharex=True,
-                sharey=False,
-                squeeze=False,
-            )
-            apply_figure_layout(fig2d, ctx)
-            plot_curves_no_error_2x2(ax_2d, ctx, curves_mode1, curves_mode2)
-
-            # Page 2/3: particle and energy flux-vs-ky.
-            particle_panel = collect_tglf_flux_spectrum_curves(
-                rho, tglf_selected_paras, root, quantity_name='particle', ctx=ctx
-            )
-            energy_panel = collect_tglf_flux_spectrum_curves(
-                rho, tglf_selected_paras, root, quantity_name='energy', ctx=ctx
-            )
-            _plot_flux_spectrum_page(fn_rho, particle_panel, 'particle', ctx)
-            _plot_flux_spectrum_page(fn_rho, energy_panel, 'energy', ctx)
-        return
-
-    # 2D spectra plotting
-    scan2d = context_results(root, ctx, 'Spectra')
-    rho_selected = tglf_state.get('rho_selected', [])
-    selected_paras_2d = tglf_state.get('selected_paras_2d', {})
-    plot_mode_2d = ctx.get('tglf2d_plot_mode', '2D')
-    x_axis = ctx.get('tglf2d_x_axis', 'para1')
-
-    for rho in rho_selected:
-        rho_key = resolve_key(scan2d, rho)
+def _selected_2d_grids(root, ctx):
+    """Resolve coordinates once; explicit empty axis selections stay empty."""
+    state = ctx['tglf_state']
+    saved = context_results(root, ctx, 'Spectra')
+    for rho in state.get('rho_selected', []):
+        rho_key = resolve_key(saved, rho)
         if rho_key is None:
             continue
-        # One notebook per rho for consistent grouping with 1D spectra mode.
-        fn_rho = FigureNotebook(0, f'rho={rho}')
-        rho_data = scan2d[rho_key]
-
-        for pname, cfg in selected_paras_2d.items():
-            if not hasattr(cfg, 'get'):
+        for parameter, config in state.get('selected_paras_2d', {}).items():
+            if not hasattr(config, 'get'):
                 continue
-            pname_key = resolve_key(rho_data, pname)
-            if pname_key is None:
+            key = resolve_key(saved[rho_key], parameter)
+            if key is None:
                 continue
-            param_node = rho_data[pname_key]
-
-            para1_values, para2_values = get_2d_scan_values(param_node, cfg)
-            if len(para1_values) == 0 or len(para2_values) == 0:
+            node = saved[rho_key][key]
+            first, second = get_2d_scan_values(node, config)
+            if not first or not second:
                 continue
-
-            p1_name, p2_name = split_2d_param_name(str(pname_key))
-            page_label = f'rho={rho}, {pname_key}'
-            use_para2 = (x_axis == 'para2') or (str(x_axis) == str(p2_name))
-            if not use_para2:
-                # outer loop = para2: fixed para2, loop para1
-                fixed_name = p2_name
-                fixed_values = para2_values
-                varying_name = p1_name
-                varying_values = para1_values
-                fixed_is_para2 = True
+            first_name, second_name = split_2d_param_name(str(key))
+            axis = ctx.get('tglf2d_x_axis', 'para1')
+            if axis == 'para2' or str(axis) == str(second_name):
+                yield rho, key, node, first, second, first_name, second_name, False
             else:
-                # outer loop = para1: fixed para1, loop para2
-                fixed_name = p1_name
-                fixed_values = para1_values
-                varying_name = p2_name
-                varying_values = para2_values
-                fixed_is_para2 = False
+                yield rho, key, node, second, first, second_name, first_name, True
 
-            if plot_mode_2d == '2D':
-                curves_raw_by_mode = collect_tglf2d_mode_curves(
-                    param_node,
-                    fixed_values,
-                    varying_values,
-                    fixed_is_para2,
-                    # Keep raw omega/gamma here; _plot_no_error_column will apply
-                    # divide_by_ky exactly once for 2D line plots.
-                    divide_by_ky=False,
-                    divide_by_ky2=False,
-                    normalize_main_ion=ctx.get('normalize_main_ion', False),
-                    ctx=ctx,
-                )
-                curves_mode1 = build_labeled_mode_curves(curves_raw_by_mode[1], varying_name, fixed_name)
-                curves_mode2 = build_labeled_mode_curves(curves_raw_by_mode[2], varying_name, fixed_name)
-                if len(curves_mode1) == 0 and len(curves_mode2) == 0:
-                    continue
 
-                fig2d, ax_2d = fn_rho.subplots(
-                    nrows=2,
-                    ncols=2,
-                    figsize=DEFAULT_FIGSIZE_2X2,
-                    label=f'omega-gamma ({pname_key})',
-                    sharex=True,
-                    sharey=False,
-                    squeeze=False,
-                )
-                apply_figure_layout(fig2d, ctx)
-                plot_curves_no_error_2x2(ax_2d, ctx, curves_mode1, curves_mode2)
+def collect_tglf_spectrum_pages(root, ctx):
+    """Prepare all selected spectrum pages before any GUI window is created.
 
-                particle_panel = collect_tglf2d_flux_spectrum_curves(
-                    param_node,
-                    fixed_values,
-                    varying_values,
-                    fixed_is_para2,
-                    quantity_name='particle',
-                    varying_name=varying_name,
-                    fixed_name=fixed_name,
-                    ctx=ctx,
-                )
-                energy_panel = collect_tglf2d_flux_spectrum_curves(
-                    param_node,
-                    fixed_values,
-                    varying_values,
-                    fixed_is_para2,
-                    quantity_name='energy',
-                    varying_name=varying_name,
-                    fixed_name=fixed_name,
-                    ctx=ctx,
-                )
-                _plot_flux_spectrum_page(
-                    fn_rho, particle_panel, 'particle', ctx,
-                    page_label=f'particle ({pname_key})',
-                    title_text=f'particle ({pname_key})',
-                )
-                _plot_flux_spectrum_page(
-                    fn_rho, energy_panel, 'energy', ctx,
-                    page_label=f'energy ({pname_key})',
-                    title_text=f'energy ({pname_key})',
-                )
+    Curves remain unscaled by ky here. Lines and surfaces each apply display
+    scaling once while rendering; no renderer reopens a result or selection.
+    """
+    state = ctx['tglf_state']
+    pages = []
+    if state.get('spectra_mode', '1D') != '2D':
+        selected = state.get('selected_paras', {})
+        for rho in state.get('rho_selected', []):
+            curves = {mode: collect_tglf_curves(rho, selected, root, ctx,
+                      mode_idx=mode, include_rho_in_label=False) for mode in (1, 2)}
+            if not any(curves.values()):
                 continue
+            panels = _flux_panels(collect_tglf_flux_spectrum_curves, ctx, rho, selected, root)
+            pages.append(dict(rho=rho, kind='lines', label='omega-gamma',
+                              curves=curves, panels=panels, suffix=''))
+        return pages
+    surface = ctx.get('tglf2d_plot_mode', '2D') != '2D'
+    for rho, key, node, fixed, varying, fixed_name, varying_name, fixed_second in _selected_2d_grids(root, ctx):
+        groups = [[value] for value in fixed] if surface else [fixed]
+        for group in groups:
+            curves = collect_tglf2d_mode_curves(node, group, varying, fixed_second,
+                divide_by_ky=False, divide_by_ky2=False,
+                normalize_main_ion=ctx.get('normalize_main_ion', False), ctx=ctx)
+            if not any(curves.values()):
+                continue
+            suffix = str(key) + (', {}={}'.format(fixed_name, _fmt_curve_value(group[0])) if surface else '')
+            if not surface:
+                curves = {mode: build_labeled_mode_curves(curves[mode], varying_name, fixed_name) for mode in (1, 2)}
+            panels = _flux_panels(collect_tglf2d_flux_spectrum_curves, ctx, node,
+                                 group, varying, fixed_second, varying_name=varying_name, fixed_name=fixed_name)
+            pages.append(dict(rho=rho, kind='surface' if surface else 'lines',
+                              label='omega-gamma ({})'.format(suffix), curves=curves,
+                              panels=panels, suffix=suffix, varying_name=varying_name))
+    return pages
 
-            # 3D mode: one surface per fixed outer-loop value.
-            for fixed_val in fixed_values:
-                spectra_curves_by_mode = collect_tglf2d_mode_curves(
-                    param_node,
-                    [fixed_val],
-                    varying_values,
-                    fixed_is_para2,
-                    divide_by_ky=ctx.get('divide_by_ky', True),
-                    divide_by_ky2=ctx.get('divide_by_ky2', False),
-                    normalize_main_ion=ctx.get('normalize_main_ion', False),
-                    ctx=ctx,
-                )
 
-                if len(spectra_curves_by_mode[1]) == 0 and len(spectra_curves_by_mode[2]) == 0:
-                    continue
+def _surface_axes(notebook, page):
+    try:
+        return notebook.subplots(nrows=2, ncols=2, figsize=DEFAULT_FIGSIZE_3D_GRID,
+            label=page['label'], squeeze=False, subplot_kw={'projection': '3d'})
+    except TypeError:
+        # Older FigureNotebook adapters reject subplot_kw. Do not hide data or
+        # rendering errors behind this compatibility branch.
+        figure, old_axes = notebook.subplots(nrows=2, ncols=2, figsize=DEFAULT_FIGSIZE_3D_GRID,
+                                            label=page['label'], squeeze=False)
+        for row in old_axes:
+            for axis in row:
+                axis.remove()
+        axes = array([[figure.add_subplot(2, 2, 1, projection='3d'), figure.add_subplot(2, 2, 2, projection='3d')],
+                      [figure.add_subplot(2, 2, 3, projection='3d'), figure.add_subplot(2, 2, 4, projection='3d')]], dtype=object)
+        return figure, axes
 
-                try:
-                    fig, ax = fn_rho.subplots(
-                        nrows=2, ncols=2, figsize=DEFAULT_FIGSIZE_3D_GRID,
-                        label=f'omega-gamma ({pname_key}, {fixed_name}={_fmt_curve_value(fixed_val)})',
-                        squeeze=False, subplot_kw={'projection': '3d'}
-                    )
-                except Exception:
-                    fig, ax2d = fn_rho.subplots(
-                        nrows=2, ncols=2, figsize=DEFAULT_FIGSIZE_3D_GRID,
-                        label=f'omega-gamma ({pname_key}, {fixed_name}={_fmt_curve_value(fixed_val)})',
-                        squeeze=False
-                    )
-                    try:
-                        for rr in range(2):
-                            for cc in range(2):
-                                ax2d[rr, cc].remove()
-                    except Exception:
-                        pass
-                    ax = array([
-                        [fig.add_subplot(2, 2, 1, projection='3d'), fig.add_subplot(2, 2, 2, projection='3d')],
-                        [fig.add_subplot(2, 2, 3, projection='3d'), fig.add_subplot(2, 2, 4, projection='3d')],
-                    ], dtype=object)
-                apply_figure_layout(fig, ctx)
 
-                for mode_idx, col_idx in [(1, 0), (2, 1)]:
-                    spectra_curves = spectra_curves_by_mode[mode_idx]
-                    if len(spectra_curves) == 0:
-                        continue
+def _render_surface_page(notebook, ctx, page):
+    figure, axes = _surface_axes(notebook, page)
+    apply_figure_layout(figure, ctx)
+    for mode, column in ((1, 0), (2, 1)):
+        display_curves = []
+        for curve in page['curves'][mode]:
+            ky, omega, gamma = prepare_spectrum_for_plot(curve['ky'], curve['omega'], curve['gamma'],
+                ctx.get('divide_by_ky', True), ctx.get('divide_by_ky2', False))
+            display_curves.append(dict(curve, ky=ky, omega=omega, gamma=gamma))
+        if not display_curves:
+            continue
+        ky, values, omega, gamma = build_surface_from_curves(display_curves)
+        if ky is None:
+            continue
+        x_values, x_label, log_ticks = build_3d_x_axis(ky, ctx.get('plot_log_x', False))
+        x_mesh, y_mesh = meshgrid(x_values, values)
+        titles = mode_titles(ctx, mode)
+        for row, field, color in ((0, omega, 'viridis'), (1, gamma, 'plasma')):
+            axis = axes[row, column]
+            axis.plot_surface(x_mesh, y_mesh, field, cmap=color, linewidth=0, antialiased=True)
+            axis.set_title(titles[row])
+            axis.set_xlabel(x_label)
+            axis.set_ylabel(page['varying_name'])
+        if log_ticks:
+            apply_3d_log_ticks(axes[0, column], axes[1, column], x_values, ky)
 
-                    title_omega, title_gamma = mode_titles(ctx, mode_idx)
 
-                    ky_base, var_axis, z_omega, z_gamma = build_surface_from_curves(spectra_curves)
-                    if ky_base is None:
-                        continue
+def render_tglf_spectrum_pages(pages, ctx):
+    """Render prepared pages; all result access belongs to the collector."""
+    notebooks = {}
+    for page in pages:
+        rho = page['rho']
+        if rho not in notebooks:
+            notebooks[rho] = FigureNotebook(0, 'rho={}'.format(rho))
+        notebook = notebooks[rho]
+        if page['kind'] == 'surface':
+            _render_surface_page(notebook, ctx, page)
+        else:
+            figure, axes = notebook.subplots(nrows=2, ncols=2, figsize=DEFAULT_FIGSIZE_2X2,
+                label=page['label'], sharex=True, sharey=False, squeeze=False)
+            apply_figure_layout(figure, ctx)
+            plot_curves_no_error_2x2(axes, ctx, page['curves'][1], page['curves'][2])
+        for quantity, panel in page['panels'].items():
+            options = {}
+            if page['suffix']:
+                options = dict(page_label='{} ({})'.format(quantity, page['suffix']),
+                               title_text='{} ({})'.format(quantity, page['suffix']))
+            _plot_flux_spectrum_page(notebook, panel, quantity, ctx, **options)
 
-                    x_vals_plot, x_label_3d, use_log_x_3d = build_3d_x_axis(
-                        ky_base, ctx.get('plot_log_x', False)
-                    )
-                    x_mesh, y_mesh = meshgrid(x_vals_plot, var_axis)
 
-                    ax[0, col_idx].plot_surface(x_mesh, y_mesh, z_omega, cmap='viridis', linewidth=0, antialiased=True)
-                    ax[1, col_idx].plot_surface(x_mesh, y_mesh, z_gamma, cmap='plasma', linewidth=0, antialiased=True)
-
-                    ax[0, col_idx].set_title(title_omega)
-                    ax[1, col_idx].set_title(title_gamma)
-                    ax[0, col_idx].set_xlabel(x_label_3d)
-                    ax[1, col_idx].set_xlabel(x_label_3d)
-                    ax[0, col_idx].set_ylabel(varying_name)
-                    ax[1, col_idx].set_ylabel(varying_name)
-                    if use_log_x_3d:
-                        apply_3d_log_ticks(ax[0, col_idx], ax[1, col_idx], x_vals_plot, ky_base)
-
-                particle_panel = collect_tglf2d_flux_spectrum_curves(
-                    param_node,
-                    [fixed_val],
-                    varying_values,
-                    fixed_is_para2,
-                    quantity_name='particle',
-                    varying_name=varying_name,
-                    fixed_name=fixed_name,
-                    ctx=ctx,
-                )
-                energy_panel = collect_tglf2d_flux_spectrum_curves(
-                    param_node,
-                    [fixed_val],
-                    varying_values,
-                    fixed_is_para2,
-                    quantity_name='energy',
-                    varying_name=varying_name,
-                    fixed_name=fixed_name,
-                    ctx=ctx,
-                )
-                page_suffix = f'{pname_key}, {fixed_name}={_fmt_curve_value(fixed_val)}'
-                _plot_flux_spectrum_page(
-                    fn_rho, particle_panel, 'particle', ctx,
-                    page_label=f'particle ({page_suffix})',
-                    title_text=f'particle ({page_suffix})',
-                )
-                _plot_flux_spectrum_page(
-                    fn_rho, energy_panel, 'energy', ctx,
-                    page_label=f'energy ({page_suffix})',
-                    title_text=f'energy ({page_suffix})',
-                )
+def plot_tglf_vs_tglf(root, ctx):
+    """Dispatch TGLF flux or collected spectrum pages through OMFIT."""
+    if ctx.get('tglf_vs_tglf_mode', 'Spectra') == 'Flux':
+        notebook = FigureNotebook(0, 'TGLF_vs_TGLF')
+        render = plot_tglf_flux_2d if ctx['tglf_state'].get('spectra_mode', None) == '2D' else plot_tglf_flux_1d
+        return render(notebook, root, ctx)
+    pages = collect_tglf_spectrum_pages(root, ctx)
+    if not pages:
+        raise ValueError('No valid selected TGLF spectra. Check radii and parameter values.')
+    return render_tglf_spectrum_pages(pages, ctx)

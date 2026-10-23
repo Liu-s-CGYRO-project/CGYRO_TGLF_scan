@@ -175,9 +175,19 @@ class Prepared:
                 self.entry.write_bytes(tree_bytes(rows))
                 if source.stamp() != source._stat:
                     raise TemplateError('校验期间模板包已改变，请重新预览')
-        except Exception:
+        except BaseException:
             self._cleanup()
             raise
+
+    def discard(self):
+        """Remove unclaimed staging files; never call after session adoption.
+
+        LivePlan/session storage owns successfully delivered instances because
+        lazy code nodes may continue reading these files. Only the task queue
+        may discard a prepared result which was cancelled before delivery.
+        The finalizer remains the fallback and makes this operation idempotent.
+        """
+        self._cleanup()
 
 
 class LivePlan:

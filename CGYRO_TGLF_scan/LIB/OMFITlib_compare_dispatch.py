@@ -125,15 +125,14 @@ def run_plot(root):
     if mode == 'CGYRO_vs_CGYRO':
         return root['PLOTS']['CGYRO_vs_CGYRO'].plot()
     try:
-        if mode == 'TGLF_vs_TGLF' and ctx.get('tglf_vs_tglf_mode', None) == 'Flux':
+        if mode == 'TGLF_vs_TGLF' and (ctx.get('tglf_vs_tglf_mode', None) == 'Flux'
+                or not ctx['mode_state'].get('comparison_export_now', False)):
             return plot_tglf_vs_tglf(root, ctx)
         pages = list(collect_comparison_pages(root, ctx))
         if not pages or not any(cg or tg for _, cg, tg in pages):
             raise ValueError('No valid selected spectra. Check the source, radii and parameter values.')
         if ctx['mode_state'].get('comparison_export_now', None):
             return export_comparison(root, ctx, pages)
-        if mode == 'TGLF_vs_TGLF':
-            return plot_tglf_vs_tglf(root, ctx)
         # Validate every page before creating any figure, avoiding partial comparisons.
         for title, cg, tg in pages:
             if not cg or not tg:

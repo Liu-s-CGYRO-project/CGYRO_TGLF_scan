@@ -8,6 +8,7 @@ import os
 import re
 from OMFITlib_cgyro_db import legacy_branch, metadata_value
 from OMFITlib_cgyro_reference import copy_result_tree
+from OMFITlib_cgyro_run_state import point_complete
 
 
 def clean_run_id(value):
@@ -318,8 +319,8 @@ def store_scan(destination, data, info, tasks, factory=dict, prefer_progress=Fal
         result = _at(data, path)
         if coordinate in points:
             old_point, old_row, old_result, _ = points[coordinate]
-            old_complete = old_row.get('status', 'loaded') == 'loaded' and not old_row.get('resume_pending', False)
-            new_complete = row.get('status', 'loaded') == 'loaded' and not row.get('resume_pending', False)
+            old_complete = point_complete(old_row, legacy_default=True)
+            new_complete = point_complete(row, legacy_default=True)
             old_time, new_time = old_row.get('final_time', None), row.get('final_time', None)
             if ((old_complete and not new_complete and
                     (old_time is None or new_time is None or float(new_time) <= float(old_time))) or

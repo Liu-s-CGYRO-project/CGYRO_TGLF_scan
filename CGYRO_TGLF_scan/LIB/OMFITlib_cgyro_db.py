@@ -8,9 +8,10 @@ branch; migration is an explicit preparation/compaction operation.
 from builtins import (ValueError, any, dict, getattr, hasattr, isinstance, len,
                       list, max, object, set, str, tuple, type)
 from copy import deepcopy
-from OMFITlib_cgyro_reference import REF, make_reference, metadata_value, validate_reference
+from OMFITlib_cgyro_reference import REF, is_native_file, make_reference, metadata_value, validate_reference
 
 POOL, STATE, RUNS = '__STORE__', '__STORAGE__', '__RUNS__'
+STORAGE_SCHEMA_VERSION = 4  # Direct radius scans; BASE is only a fixed reference.
 PENDING, LEGACY = '__UNCLASSIFIED__', '__LEGACY__'
 OLD_BRANCHES = ('RESULT_STORE', 'RESULT_STORAGE', 'Cases', 'OUTPUTScan', 'OUTPUTS',
                 'LEGACY_UNCLASSIFIED', 'RUN_INDEX', '_PLOT_CACHE')
@@ -32,7 +33,7 @@ def _tree(mapping, factory):
 
 def _native(value, factory):
     value = metadata_value(value)
-    if any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(value).__mro__):
+    if is_native_file(value):
         return value
     if hasattr(value, 'items'):
         if REF in value:
@@ -54,7 +55,7 @@ def _native(value, factory):
 
 
 def _rebind(value):
-    if hasattr(value, 'items') and not any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(value).__mro__):
+    if not is_native_file(value) and hasattr(value, 'items'):
         if REF in value:
             return  # Native assignment binds the index; data is not an owner.
         for key, child in list(value.items()):
@@ -64,7 +65,7 @@ def _rebind(value):
 
 def _has_payload(value):
     value = metadata_value(value)
-    if any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(value).__mro__):
+    if is_native_file(value):
         return True
     if hasattr(value, 'items'):
         if '__RESULT_REF__' in value or '__FILE_REF__' in value:
@@ -98,14 +99,14 @@ def ensure_layout(module, factory=dict):
     history = {} if old_history is _MISSING else _mapping(old_history)
     has_cases = any('cases' in _mapping(entry) or _has_payload(entry) for entry in history.values())
     current_state = metadata_value(db.get(STATE, {}))
-    if not any(key in module for key in OLD_BRANCHES) and not has_cases and current_state.get('version', 0) >= 4:
+    if not any(key in module for key in OLD_BRANCHES) and not has_cases and current_state.get('version', 0) >= STORAGE_SCHEMA_VERSION:
         if prior_db is _MISSING:
             module['RUN_DB'] = db
         return db
 
     original = {key: module[key] for key in OLD_BRANCHES if key in module}
     state = _tree(current_state, factory)
-    state['version'] = max(4, state.get('version', 0))
+    state['version'] = max(STORAGE_SCHEMA_VERSION, state.get('version', 0))
     plan = {STATE: state}
     if 'RESULT_STORE' in original:
         owners = _tree(db.get(POOL, {}), factory)
@@ -116,7 +117,7 @@ def ensure_layout(module, factory=dict):
         plan[POOL] = owners
     if 'RESULT_STORAGE' in original:
         state.update(dict(_mapping(original['RESULT_STORAGE']).items()))
-        state['version'] = max(4, state.get('version', 0))
+        state['version'] = max(STORAGE_SCHEMA_VERSION, state.get('version', 0))
         plan[STATE] = state
     if 'LEGACY_UNCLASSIFIED' in original:
         pending = _tree(db.get(PENDING, {}), factory)
@@ -247,7 +248,7 @@ def freeze_run_inputs(module, manifest, factory=dict):
     inputs = record.setdefault('inputs', factory())
     for key, node in list(cases.items()):
         node = metadata_value(node)
-        if any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(node).__mro__):
+        if is_native_file(node):
             if str(key).endswith(('.pbs', '.sh')) and key not in inputs:
                 inputs[key] = cases.pop(key)
         elif hasattr(node, 'get') and 'zip' in node and key not in inputs:

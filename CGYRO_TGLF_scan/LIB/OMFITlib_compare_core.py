@@ -31,7 +31,7 @@ from builtins import (
 
 import numpy as np
 import re
-from OMFITlib_compare_options import is_gamma_ratio_plot_mode
+from OMFITlib_compare_options import STAT_DEFAULTS, is_gamma_ratio_plot_mode
 from OMFITlib_compare_state import (
     STYLE_DEFAULTS,
 )
@@ -100,8 +100,8 @@ def build_context(root):
 
     plot_state = mode_state if compare_mode == 'CGYRO_vs_CGYRO' else ctx['plot_state']
     time_traces = compare_mode == 'CGYRO_vs_CGYRO' and plot_state.get('plot_mode', None) == 'Plot time traces'
-    ctx['ave_window'] = .02 if time_traces else float(plot_state.get('ave_window', 0.02))
-    ctx['effnum'] = plot_state.get('effnum', 5)
+    ctx['ave_window'] = STAT_DEFAULTS['ave_window'] if time_traces else float(plot_state.get('ave_window', STAT_DEFAULTS['ave_window']))
+    ctx['effnum'] = plot_state.get('effnum', STAT_DEFAULTS['effnum'])
     ctx['plot_mode'] = plot_state.get('plot_mode', 'Plot 2D')
     ctx['plot_gamma_ratio'] = is_gamma_ratio_plot_mode(ctx['plot_mode'])
     ctx['error_flag'] = plot_state.get('error_flag', 'CGYRO')
@@ -146,11 +146,11 @@ def build_context(root):
         plot_state.get('legend_order_text', '')
     )
     try:
-        ctx['error_tolerance'] = float(plot_state.get('error_tolerance', 0.01))
+        ctx['error_tolerance'] = float(plot_state.get('error_tolerance', STAT_DEFAULTS['error_tolerance']))
     except Exception:
-        ctx['error_tolerance'] = 0.01
+        ctx['error_tolerance'] = STAT_DEFAULTS['error_tolerance']
     if ctx['error_tolerance'] <= 0:
-        ctx['error_tolerance'] = 0.01
+        ctx['error_tolerance'] = STAT_DEFAULTS['error_tolerance']
 
     ctx['comparison_layout'] = plot_state.get('comparison_layout', 'Overlay')
     ctx['show_flux_spectra'] = plot_state.get('show_flux_spectra', True)

@@ -23,7 +23,7 @@
 | CGYRO 准备、下载、归档 | `CGYRO_scan/SCRIPTS/subscan_lin.py`、`downsync.py`、`CGYROScan.py`、`LIB/OMFITlib_cgyro_archive.py` | 原生 OMFIT 任务适配；按完整参数坐标与 ky 逐点合并相同扫描参数组 |
 | TGLF 工作台和多剖面 | `LIB/OMFITlib_tglf_workbench.py`、`OMFITlib_tglf_multi_run.py` | 准备计划和持久运行记录；底层执行在 `TGLF_scan/TGLF/SCRIPTS` |
 | Transfer 粒子处理 | `Transfer_tool/LIB/OMFITlib_transfer_particles.py`、`OMFITlib_transfer_equivalent.py`、`OMFITlib_transfer_zeff.py` | 原始副本准中性 → 完整组成 Zeff → 粒子方案 → 局部输入复查 |
-| CGYRO 单份结果归档 | `LIB/OMFITlib_cgyro_storage.py`、`tools/compact_cgyro_project.py` | 内容摘要唯一拥有原始结果；普通树索引持久化，读取才解析；保留独有历史；检查点验证择一保存 |
+| CGYRO 单份结果归档 | `LIB/OMFITlib_cgyro_storage.py`、`SCRIPTS/compact_cgyro_storage.py` | 内容摘要唯一拥有原始结果；普通树索引持久化，读取才解析；保留独有历史；检查点验证择一保存 |
 | 结果浏览引用与旧载荷清理 | `LIB/OMFITlib_cgyro_reference.py`、`LIB/OMFITlib_cgyro_retention.py` | 受控 data 表达式展开唯一所有者；按完整坐标、采样时间、检查点和续算依赖核对替代，清理与字节去重分离 |
 | CGYRO 多参数对比视图 | `LIB/OMFITlib_cgyro_scan_view.py` | 按任务坐标 / 原路径建立只读分组；任选变化轴，其余轴固定；不改归档或合并物理样本 |
 | 对比选择、配对、绘图 | `LIB/OMFITlib_compare_state.py`、`OMFITlib_compare_cases.py`、`OMFITlib_compare_*` | 选择状态、结果读取、曲线构造、渲染分开；图中文字为英文 |
@@ -76,7 +76,7 @@
 
 日常维护执行静态和安装包校验；涉及归档与数据保留时补充隔离文件/元数据测试。测试替身只验证文件保留和索引协议，不代表 OMFIT 原生保存/重开已实测；未经用户要求不启动 GUI、绘图、求解器或集群任务。Python 3.9 AST、符号检查、原生 API 和清单依赖校验不能代替实际服务器验证；发布说明需明确这一点。
 
-每次发布冻结源文件及包的 SHA-256，校验包内文件与源文件一致。两个代码安装包均小于 1,000,000 字节，完整字体通过独立资源包缓存，不能通过裁剪或改写字体满足大小限制。开发文档和完整历史保留在 GitHub，安装包只纳入运行所需文件及现有用户文档。
+每次发布冻结源文件及包的 SHA-256，校验包内文件与源文件一致。工程代码包和模板包均小于 2 MiB；独立管理器 bootstrap 包保持小于 1,000,000 字节。构建阈值集中在 `tools/release_policy.py`，完整字体通过独立资源包缓存，不能通过裁剪或改写字体满足大小限制。开发文档和完整历史保留在 GitHub，安装包只纳入运行所需文件及现有用户文档。
 
 管理器的 TESTS 便利节点已从分发树移除，测试源码继续保留在仓库 `OMFITtemplates/tests`。构建时排除此开发目录，并拒绝残留的直接测试文件注册；未更改管理器运行代码或字体资源。
 

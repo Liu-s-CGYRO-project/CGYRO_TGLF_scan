@@ -24,7 +24,7 @@ from copy import (
 )
 import math
 import re
-from OMFITlib_compare_options import parse_float_list_text, validate_options
+from OMFITlib_compare_options import STAT_DEFAULTS, parse_float_list_text, validate_options
 
 MODES = ['CGYRO_vs_TGLF', 'CGYRO_vs_CGYRO', 'TGLF_vs_TGLF', 'TGLF_vs_CGYRO']
 MODE_LABELS = {
@@ -155,11 +155,11 @@ def initialize_settings(root):
         settings.setdefault('plot_mode', 'Plot 2D')
         if settings['plot_mode'] == 'Plot 纬/纬_ref':
             settings['plot_mode'] = 'Plot γ/γ_ref'
-        settings.setdefault('ave_window', 0.02)
-        settings.setdefault('effnum', 5)
+        settings.setdefault('ave_window', STAT_DEFAULTS['ave_window'])
+        settings.setdefault('effnum', STAT_DEFAULTS['effnum'])
         settings.setdefault('divide_by_ky', physics.get('divide_by_ky', True))
         settings.setdefault('divide_by_ky2', physics.get('divide_by_ky2', False))
-        settings.setdefault('error_tolerance', 0.01)
+        settings.setdefault('error_tolerance', STAT_DEFAULTS['error_tolerance'])
         settings.setdefault('plot_log_x', False)
         settings.setdefault('plot_log_y', False)
         state.setdefault('legend_order_mode', settings.get('legend_order_mode', 'Plot order'))
@@ -220,7 +220,7 @@ def selection_check(root, mode=None):
                           else '请选择 CGYRO 半径。')
         if not time_traces:
             try:
-                window = float(settings.get('ave_window', 0.02))
+                window = float(settings.get('ave_window', STAT_DEFAULTS['ave_window']))
                 if not math.isfinite(window) or not 0 < window <= 1:
                     raise ValueError
             except (TypeError, ValueError):
@@ -250,7 +250,7 @@ def selection_check(root, mode=None):
         errors.extend(validate_options(settings))
     if not time_traces:
         try:
-            tol = float(settings.get('error_tolerance', 0.01))
+            tol = float(settings.get('error_tolerance', STAT_DEFAULTS['error_tolerance']))
             if not math.isfinite(tol) or tol <= 0:
                 raise ValueError
         except (TypeError, ValueError):

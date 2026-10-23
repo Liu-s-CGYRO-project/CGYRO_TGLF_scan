@@ -1,4 +1,5 @@
 """Native OMFIT comparison tabs with a shared check/plot action area."""
+from OMFITlib_compare_options import STAT_DEFAULTS
 from OMFITlib_plot_style_ui import render_style
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
@@ -247,7 +248,7 @@ class ComparisonUI(CaseSelection):
             self.ui.Label('绘制完整原始时间序列，横轴为时间，两个子图分别为频率和增长率；保留未收敛曲线。', align='left')
             return
         self.ui.Separator('统计与归一化')
-        self._entry('ave_window', '末段平均比例', .02, help='0.02 表示采用时间序列最后 2% 的数据；取值必须大于 0 且不超过 1。', width=10)
+        self._entry('ave_window', '末段平均比例', STAT_DEFAULTS['ave_window'], help='0.02 表示采用时间序列最后 2% 的数据；取值必须大于 0 且不超过 1。', width=10)
         if not eigen:
             self._check('normalize_main_ion', '按主离子归一化')
         self.ui.Separator('当前绘图选项')

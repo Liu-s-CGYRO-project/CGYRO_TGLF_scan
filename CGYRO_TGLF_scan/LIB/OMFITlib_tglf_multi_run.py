@@ -6,7 +6,7 @@ import os
 from pathlib import Path, PurePosixPath
 import uuid
 
-from OMFITlib_tglf_multi_data import case_plan, initialize, profile_digest, tgyro_input, tglf_text
+from OMFITlib_tglf_multi_data import case_plan, initialize, prepared_run_issues, profile_digest, tgyro_input, tglf_text
 from OMFITlib_project_runtime import shared_issues
 
 
@@ -112,7 +112,7 @@ class OMFITRunner:
             attempt['result'] = result
             attempt['status'] = 'complete'
         except BaseException as exc:
-            attempt.update(dict(status='cancelled' if isinstance(exc, KeyboardInterrupt) else 'failed', error=str(exc)))
+            attempt.update(dict(status='failed' if isinstance(exc, Exception) else 'cancelled', error=str(exc)))
             raise
         return attempt
 
@@ -145,8 +145,9 @@ def run_selected(root, runner, action='all', factory=dict, progress=None):
     instead of remaining visible as errors after a successful resumption.
     """
     settings, cases = initialize(root, factory)
-    if shared_issues(root):
-        raise ValueError('；'.join(shared_issues(root)))
+    runtime_problems = shared_issues(root)
+    if runtime_problems:
+        raise ValueError('；'.join(runtime_problems))
     if action not in ('all', 'prepare', 'run'):
         raise ValueError('未知运行操作。')
     selected = [(key, case) for key, case in cases.items() if case['enabled']]
@@ -159,12 +160,9 @@ def run_selected(root, runner, action='all', factory=dict, progress=None):
     if action == 'run':
         for key, case in selected:
             previous = case['runs'].get(case['selected_run'], None)
-            if previous is None or previous['status'] in ('preparing', 'prepare_failed', 'cancelled'):
-                raise ValueError(case['label'] + '：请先生成输入。')
-            if previous['plan'] != plans[key]:
-                raise ValueError(case['label'] + '：计算设置已变化，请重新生成输入。')
-            if previous['profile_digest'] != digests[key]:
-                raise ValueError(case['label'] + '：剖面已变化，请重新生成输入。')
+            problems = prepared_run_issues(previous, plans[key], digests[key])
+            if problems:
+                raise ValueError(case['label'] + '：' + '；'.join(problems))
     total_failed = 0
     for key, case in selected:
         if action != 'run':
@@ -172,7 +170,8 @@ def run_selected(root, runner, action='all', factory=dict, progress=None):
             run = factory()
             run.update(dict(id=run_id, label=case['label'], created=datetime.now(timezone.utc).isoformat(),
                        source=case['source'], sha256=case['sha256'], plan=plans[key], profile_digest=digests[key],
-                       settings=copy.deepcopy(dict(settings)), status='preparing', points=factory(), preparation=factory()))
+                       settings=copy.deepcopy(dict(settings)), status='preparing', preparation_status='pending',
+                       points=factory(), preparation=factory()))
             run['input.gacode'] = copy.deepcopy(case['input.gacode'])
             case['runs'][run_id] = run
             case['selected_run'] = run_id
@@ -180,13 +179,16 @@ def run_selected(root, runner, action='all', factory=dict, progress=None):
             run = case['runs'][case['selected_run']]
         try:
             if action != 'run':
+                run['preparation_status'] = 'running'
                 settings['status'] = '正在生成输入：' + case['label']
                 if progress:
                     progress(settings['status'])
                 try:
                     runner.prepare(case, run)
+                    run['preparation_status'] = 'complete'
                     run['status'] = 'ready'
                 except Exception as exc:
+                    run['preparation_status'] = 'failed'
                     run.update(dict(status='prepare_failed', error=str(exc)))
                     raise
             if action != 'prepare':
@@ -212,14 +214,22 @@ def run_selected(root, runner, action='all', factory=dict, progress=None):
                     run.pop('error', None)
                 if run['status'] == 'partial':
                     total_failed += 1
-        except KeyboardInterrupt:
-            run['status'] = 'cancelled'
-            for point in run['points'].values():
-                if point['status'] == 'running':
-                    point['status'] = 'cancelled'
-            settings['status'] = '运行已中止；已有输入、结果和日志保留。'
-            raise
-        except Exception as exc:
+        except BaseException as exc:
+            # OMFIT aborts and process-level interrupts must never be swallowed
+            # by continue_on_error. Their frozen inputs remain resumable only
+            # when preparation completed before the interruption.
+            if not isinstance(exc, Exception):
+                if run.get('preparation_status', None) == 'running':
+                    run['preparation_status'] = 'cancelled'
+                run['status'] = 'cancelled'
+                for point in run['points'].values():
+                    if point['status'] == 'running':
+                        point['status'] = 'cancelled'
+                settings['status'] = '运行已中止；已有输入、结果和日志保留。'
+                raise
+            if run.get('preparation_status', None) == 'running':
+                run['preparation_status'] = 'failed'
+                run['status'] = 'prepare_failed'
             total_failed += 1
             run['error'] = str(exc)
             if not settings['continue_on_error']:

@@ -1,6 +1,7 @@
 """CGYRO self-comparison: eigen helpers, independent of GUI globals."""
 
 # Explicit builtins protect against the OMFIT pylab execution namespace.
+from OMFITlib_compare_options import STAT_DEFAULTS
 from builtins import Exception, abs, complex, float, getattr, hasattr, int, len, sorted
 import numpy as np
 from numpy import argmax, argmin, argsort, array, imag, interp, iscomplexobj, linspace, ones, pi, real, unique, zeros
@@ -167,7 +168,7 @@ def select_eigen_entries(entries, ctx):
 
     candidates = [item for item in entries if np.isfinite(item['gamma_mean'])]
     if ctx.get('eigen_error_filter', False):
-        tol = ctx.get('error_tolerance', 0.01)
+        tol = ctx.get('error_tolerance', STAT_DEFAULTS['error_tolerance'])
         candidates = [
             item for item in candidates
             if item.get('omega_rel_err', 1.0e30) <= tol and item.get('gamma_rel_err', 1.0e30) <= tol

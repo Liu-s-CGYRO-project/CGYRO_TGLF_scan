@@ -8,7 +8,11 @@ import ast
 import math
 import re
 
-__all__ = ['is_gamma_ratio_plot_mode', 'parse_float_list_text', 'validate_options']
+# These are scientific/statistical defaults, shared by initialization, reset
+# widgets and legacy missing-key reads. Changing one must not change only a UI.
+STAT_DEFAULTS = {'ave_window': 0.02, 'effnum': 5, 'error_tolerance': 0.01}
+
+__all__ = ['STAT_DEFAULTS', 'is_gamma_ratio_plot_mode', 'parse_float_list_text', 'validate_options']
 
 
 def is_gamma_ratio_plot_mode(plot_mode):

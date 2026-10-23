@@ -5,6 +5,7 @@ Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 from OMFITlib_cgyro_archive import catalog_runs
 from OMFITlib_cgyro_scan_view import comparison_case_view, coordinate_label, linear_node, view_config
 from OMFITlib_cgyro_storage import result_view
+from OMFITlib_compare_cgyro_selection import iter_selected_parameter_items
 
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
@@ -95,63 +96,8 @@ def _read_cgyro_status_code(datadir):
 
 
 def _iter_selected_parameter_items_for_nr(mode_state, nr):
-    """
-    Yield (para, values) selected in CGYRO_vs_CGYRO mode.
-
-    Per-nr selections take precedence over merged global selection.
-    """
-    def _normalize_selected_values(values):
-        if values is None:
-            return []
-        if isinstance(values, str):
-            vals = to_float_list(values)
-            if len(vals) > 0:
-                return vals
-            tokens = [t.strip() for t in re.split(r'[\s,]+', values) if len(t.strip()) > 0]
-            return tokens
-        if hasattr(values, '__iter__'):
-            raw = list(values)
-        else:
-            raw = [values]
-
-        out = []
-        for item in raw:
-            if item is None:
-                continue
-            if isinstance(item, str):
-                item_s = item.strip()
-                if len(item_s) == 0:
-                    continue
-                parsed = to_float_list(item_s)
-                if len(parsed) > 0 and len(item_s) > 1:
-                    out.extend(parsed)
-                    continue
-                try:
-                    out.append(float(item_s))
-                except Exception:
-                    out.append(item_s)
-                continue
-            try:
-                out.append(float(item))
-            except Exception:
-                out.append(item)
-        return out
-
-    selected_map = mode_state.get('selected_paras', {})
-    selected_by_nr = mode_state.get('selected_paras_by_nr', {})
-    if hasattr(selected_by_nr, 'get'):
-        per_nr = selected_by_nr.get(str(nr), None)
-        if hasattr(per_nr, 'keys'):
-            selected_map = per_nr
-
-    if not hasattr(selected_map, 'keys'):
-        return
-
-    for para in selected_map:
-        vals = _normalize_selected_values(selected_map[para])
-        if len(vals) == 0:
-            continue
-        yield para, vals
+    """Compatibility entry: status and spectra must use identical selections."""
+    return iter_selected_parameter_items(mode_state, nr)
 
 
 def _collect_cgyro_output_status_curves(root, mode_state, runid, nr, para, values, allow_all_values_fallback=False):

@@ -1,6 +1,40 @@
 # 维护与扩展接口
 
-适用于工程 1.24.10。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.11。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+
+## 状态、选择与异常接口（1.24.11）
+
+修改状态判断前，先区分以下证据；不能用一个 `done` 或 `failed` 替代全部阶段：
+
+| 判断 | 统一入口 | 含义与限制 |
+| --- | --- | --- |
+| 调度器终态 | `cgyro_run_state.all_terminal` | 空状态表不证明作业结束；不能据此认定结果可用 |
+| 已记录收集结果 | `collection_recorded` | complete / partial / empty 均可记录；complete 还不证明已发布 |
+| 自动收集已结束 | `collection_finished` | 已发布，或已封存 partial / empty；不授予补算权限 |
+| 运行已稳定 | `run_settled` | 检查保存阶段及调度证据；仍须单独检查替代覆盖和续算依赖 |
+| 点可作为完整结果 | `point_complete` | loaded 且没有 resume_pending；只有旧公开扫描合并可显式使用历史默认值 |
+
+`cgyro_queue._commit_synced_manifest` 同步外部历史、RUN_DB 内部运行记录及当前清单。保存副本必须精确替换，不能用增量 update 留下旧提交字段。原生映射在写入或回滚中也可能抛 Abort：逐视图尝试恢复，将二次失败附在原异常的 `cgyro_rollback_errors`，继续传播原异常。不要把附带诊断解释为“回滚一定成功”。这仅保护进程内可捕获异常，不能承诺 kill -9 或掉电事务。
+
+输出探测必须一次验证整批点身份、结果标记及各可读点的字节统计。缺失、重复、负数或外来点记录都使探测失败，不能把它们解释成“该点没有结果”后继续发布。通过全部探测后才读取结果。等待节奏在 `cgyro_run_state` 的 `QUEUE_*` / `WAIT_*` / `STOP_*` 常量中维护；网络错误不等于终态，取消确认有次数上限。
+
+比较页面统一调用 `compare_cgyro_selection.iter_selected_parameter_items(ctx, nr)`。独立半径模式中没有选择就是空，不回退到全局已选参数；零值有效，重复值只产生一次曲线。旧私有名称保留别名供已有回调使用。统计默认值只在 `compare_options.STAT_DEFAULTS` 维护，不在界面、状态表和绘图各写一份。
+
+TGLF 来源解析使用 `plot_sources.selected_tglf_source`。明确保存的 result_source 优先；旧记录没有该字段时，按旧 spectra_mode 选择相应一维/二维来源。界面和纯读取入口共用解析，不在打开窗口时把二维选择改成一维。每次绘图的元数据视图缓存仅属于本次 ctx，不持久化，也不跨来源复用。
+
+TGLF 多剖面恢复先调用 `tglf_multi_data.prepared_run_issues(run, plan, digest)`，界面与执行入口共用。输入准备阶段和执行阶段有独立状态：准备中断后只保留部分半径时不能运行；完整输入后的计算中断可恢复并跳过已完成点。旧记录没有 preparation_status 时仍须检查全部半径和输入清单，不能单靠 cancelled 状态判断可恢复。
+
+运行环境的写入与一致性检查都使用 `project_runtime.module_runtime_fields`。新增字段先扩展该函数，再补写入和漂移检测的同一测试。TGYRO 将 `{n_radii}` 替换为实际半径数的运行命令是有意行为，只允许对应位置的正整数替换。应用事务同时覆盖各模块设置、共享设置和 applied 快照；最后一项失败也要恢复前面已写入的项。
+
+## 后台任务扩展（管理器 1.10.26）
+
+`OMFITlib_template_tasks.BackgroundTasks` 负责线程间传递，`TemplateManager` 负责主线程控件与动作。每个 channel 有独立 generation 和取消事件；旧任务的延迟结果不能更新新任务。进度按 channel 合并，轮询每次处理有上限，并在回调失败后继续调度。等待登录的消息不能挡住已完成的前台任务。
+
+新增任务沿 `TemplateManager._run(title, work, success, ...)` 接入。worker 不操作 Tk 或活 OMFIT 树，success / failure 在主线程执行。worker 的 BaseException 也必须送回主线程，释放 busy 状态；不能只捕获 Exception 后让界面永久等待。对新任务分别测正常完成、开始前取消、结束后取消、替换任务后的迟到消息和关闭窗口。
+
+只有已产生持久副作用的成功动作才传 `receipt`：如生成 ZIP、发布或安装。取消与成功同时到达时报告真实完成结果，取消后不再链式启动上传、连接或切换版本。准备、读取任务不要冒充已提交。`dispose` 只用于尚未交给 success 回调的暂存结果；交给会话管理的 Prepared 由会话持有，不能在普通任务清理时释放。取消不等于撤销远端已提交操作。
+
+构建入口统一使用 `tools/release_policy.py` 的大小约束。脚本和包先完整写入临时文件、校验再以独占目标发布；不覆盖已有产物。工程 ZIP 发布与仓库清单刷新是两个提交步骤，后一项失败时应报告已经生成的包，不能声称两者具备跨文件原子性。旧的字节级 ZIP 整理器已退役，维护走原生整理任务或配套离线脚本，避免出现第二套归档协议。
 
 ## 浏览引用与历史保留（1.24.10）
 
@@ -177,3 +211,22 @@ configure_window_fonts 在同一字体配置下只注册一次；显式导入字
 保持原生参数校验、postcommand 和 reset 语义。不要用统一 postcommand 包装器代替原生刷新判断：norm 会覆盖它，delete_if_default 可能在构造时调用它，Entry 的重置只暂填文字而不提交。Entry 原生 showText 硬编码 True，必须通过仅替换 _Text 的本次构造函数副本转发请求；副本沿用原生代码与默认值，不重写输入编辑逻辑。ObjectPicker/ModulePicker 同样将内部控件导向适配器。
 
 适配器 UpdateGUI() 默认刷新捕获的所有者；top 指定一个目标，all_windows=True 显式请求原生全局行为。确有跨窗口依赖时应单独描述：ShotTimeDevice 每次写 MainSettings、模板 apply/undo 的事务校验、实际任务结束以及模块载入保留原生刷新。不得为缩小范围而改变计算、归档或事务验证行为。
+
+## 重跑隔离回归
+
+在仓库根目录使用有 NumPy、Matplotlib 和 Tk 的 Python 环境运行；`--omfit-source` 指向原生 OMFIT 的 `omfit/` 源码目录（含 `omfit_classes/OMFITx.py` 和 `utils_tk.py`）。Linux 的真实 Tk 测试需要可用 `DISPLAY`，可在桌面终端或 Xvfb 中执行。缺少显示或原生源码时，相关套件明确失败，不计作通过。
+
+```bash
+python -B tools/run_regressions.py \
+  --omfit-source /path/to/omfit \
+  --font-file /path/to/NotoSansCJKsc-Regular.otf \
+  --adapters --log-dir /path/to/regression-logs --workers 3 --timeout 300
+```
+
+字体文件必须提前离线准备；运行器不会下载字体，并根据本仓库 `OMFITlib_gui_font_data.py` 中的 SHA-256 校验后复制到本次日志的独立缓存。可另传 `--font-sha256` 核对已知摘要，它仍须与仓库固定身份一致。每个测试文件使用独立子进程，避免原生模块替身互相污染。`--adapters` 复用存储测试的原生读取器替身，并把管理器自动启动发现限定到本地测试库；显式安装、更新、取消等操作仍调用生产处理函数。它不能代替真实 OMFIT 工程保存重开或集群作业验证。
+
+日志包含 `environment.json`、每套测试输出及执行命令、`summary.json` 和 `totals.json`；超时、环境不满足及零测试都导致非零退出码。可重复指定 `--suite` 只跑相关套件，管理器套件可用 `manager_test_ui` 等带前缀名称消除歧义。无 GUI 的构建冒烟不需要字体或 OMFIT 源码：
+
+```bash
+python -B tools/run_regressions.py --suite test_build_project --suite test_maintenance_tools --log-dir /path/to/build-test-logs
+```

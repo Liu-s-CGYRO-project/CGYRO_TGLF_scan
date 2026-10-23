@@ -4,10 +4,10 @@ import ast
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 sys.path[:0] = [str(Path(__file__).resolve().parents[1] / 'CGYRO_TGLF_scan/LIB')]
-from test_project import fixture, UI
+from test_project import fixture, UI, headless_runtime_controls
 from omfit_mapping import treeify
 from OMFITlib_project import ProjectActions, PAGES, runtime_issues
 from OMFITlib_project_runtime import (TARGETS, initialize_runtime, applied_runtime, apply_runtime,
@@ -55,7 +55,16 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(remote['serverPicker'], 'cluster')
             self.assertEqual(remote['server'], 'user@cluster')
             self.assertEqual(remote['cluster']['server'], 'user@cluster')
-            self.assertEqual(remote['cluster']['environment'], applied_runtime(self.root)['environment'])
+            # Program preflights were added after the shared-environment UI:
+            # retain the chosen setup, but do not require every program's
+            # generated checks to be identical to the editable draft.
+            environment = remote['cluster']['environment']
+            self.assertIn('export GACODE_ROOT=/shared/gacode', environment)
+            self.assertIn('source "$GACODE_ROOT/shared/bin/gacode_setup"', environment)
+            self.assertEqual(environment, remote['environment'])
+            if name in ('cgyro', 'tglf', 'tgyro', 'transfer', 'profiles', 'trxpl'):
+                self.assertIn('Missing ', environment)
+                self.assertIn('executable:', environment)
             paths.append(remote['workDir'])
         self.assertEqual(len(paths), len(set(paths)))
         self.assertEqual(self.cg['SETTINGS']['REMOTE_SETUP']['cluster']['executable'], 'cgyro -e . -n 16 -nomp 1')
@@ -134,17 +143,20 @@ class RuntimeTests(unittest.TestCase):
         resolver = Mock(return_value=dict(server='new@cluster', tunnel='jump'))
         actions = ProjectActions(self.root, resolve_server=resolver, workdir=Mock(return_value='/new/default'))
         actions.sync_runtime_endpoint()
-        resolver.assert_called_once_with('cluster')
+        # The first lookup validates the selection; the second reads the
+        # endpoint after that check so a changed personal registry is noticed.
+        self.assertEqual(resolver.call_args_list, [call('cluster'), call('cluster')])
         self.assertEqual(config['server'], 'new@cluster')
         self.assertEqual(config['workDir'], '/work/user/OMFITtmp/project')
         self.assertEqual(self.cg['SETTINGS']['REMOTE_SETUP']['server'], 'user@cluster')
 
     def test_menu_follows_workflow_and_environment_has_no_module_selector(self):
-        self.assertEqual(list(PAGES.values()), ['overview', 'run', 'transfer', 'review', 'cgyro', 'tglf', 'multi', 'plots', 'templates'])
+        self.assertEqual(list(PAGES.values()), ['overview', 'run', 'transfer', 'cgyro', 'tglf', 'plots', 'templates'])
         actions = ProjectActions(self.root)
         actions.settings['page'] = 'run'
         ui = UI(self.root)
-        ProjectUI(actions, ui).render()
+        with headless_runtime_controls():
+            ProjectUI(actions, ui).render()
         self.assertFalse(any(name == 'ComboBox' and "['runtime_module']" in args[0] for name, args, kw in ui.events))
         self.assertEqual(sum(name == 'Entry' and "['environment']" in args[0] for name, args, kw in ui.events), 1)
         ui.button('应用到整个工程')
@@ -165,22 +177,34 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(command.endswith('tgyro -e . -n 6'))
         self.assertIn('source "$GACODE_ROOT/shared/bin/gacode_setup"', command)
 
-    def test_transfer_rank_distribution_fits_shared_cpu_budget(self):
+    def test_transfer_uses_one_rank_per_radius_and_preserves_input(self):
+        class Input(dict):
+            def duplicate(self):
+                return copy.deepcopy(self)
+
         initialize_runtime(self.root)
         apply_runtime(self.root)
         transfer = self.root['Transfer_tool']
         transfer['SETTINGS']['SETUP']['p_tgyro'] = 3
+        transfer['SETTINGS']['SETUP']['workDir'] = '/tmp/synthetic-transfer'
+        transfer['INPUTS']['input.tgyro'] = Input(DIR={'previous': 8})
+        transfer['INPUTS']['input.tglf'] = Input(NS=2)
+        transfer['INPUTS']['input.gacode'] = Input()
         source = Path(__file__).resolve().parents[1] / 'CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/tgyro_tglf.py'
         nodes = ast.parse(source.read_text(encoding='utf-8')).body
         selected = []
         for node in nodes:
-            if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == 'run_input' for target in node.targets):
+            if isinstance(node, ast.FunctionDef) and node.name == 'job_log_tail':
                 break
             selected.append(node)
         namespace = {'root': transfer}
         exec(compile(ast.Module(body=selected, type_ignores=[]), str(source), 'exec'), namespace)
-        self.assertEqual(namespace['numcore'], 15)
-        self.assertEqual(namespace['coreppoint'], 5)
+        self.assertEqual(namespace['run_input']['DIR'], {'TGLF1': 1, 'TGLF2': 1, 'TGLF3': 1})
+        self.assertEqual(namespace['command'], 'tgyro -e . -n 3')
+        self.assertIn('export OMP_NUM_THREADS=1', namespace['executable'])
+        self.assertEqual(namespace['batch']['batch_type'], 'SLURM')
+        self.assertTrue(namespace['batch']['remotedir'].startswith('/work/user/OMFITtmp/project/transfer/'))
+        self.assertEqual(transfer['INPUTS']['input.tgyro']['DIR'], {'previous': 8})
 
 
 if __name__ == '__main__':

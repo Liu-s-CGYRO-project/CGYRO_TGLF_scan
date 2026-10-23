@@ -65,10 +65,14 @@ def fixture(mode='CGYRO_vs_TGLF'):
 
 
 class FakeUI:
-    """Honor OMFIT widget default/binding behavior and record the produced layout."""
+    """Honor native widget return values and each CompoundGUI's local tab scope."""
     def __init__(self, root):
         self.root, self.events = root, []
         self.tab = 'Header'
+        self._aux = {}
+        self.children = {}
+        # A real module carries its registered child script even without data.
+        root.setdefault('GUIS', {}).setdefault('Compare_controls', 'Compare_controls')
 
     def _ensure(self, path, default):
         if isinstance(path, list):
@@ -88,12 +92,27 @@ class FakeUI:
     def same_row(self):
         return nullcontext()
 
+    def CompoundGUI(self, source, **kwargs):
+        self.events.append((self.tab, 'CompoundGUI', (source,), kwargs))
+        if 'comparison' in kwargs:
+            child = FakeUI(self.root)
+            self.children[kwargs['mode']] = child
+            pane = kwargs['comparison']
+            pane.ui = child
+            pane.render_controls(kwargs['mode'], open_templates=kwargs.get('open_templates'))
+
     def __getattr__(self, name):
+        if name.startswith('_'):
+            raise AttributeError(name)
         def call(*args, **kwargs):
             if name=='Tab': self.tab=args[0]
             if name in ('Entry','CheckBox','ComboBox'):
                 self._ensure(args[0],kwargs.get('default'))
             self.events.append((self.tab,name,args,kwargs))
+            # OMFIT CheckBox returns a control sequence; Label returns its
+            # widget, whose row can be hidden by compatibility entry scripts.
+            widget = SimpleNamespace(master=SimpleNamespace(pack_forget=lambda: None))
+            return [widget] if name == 'CheckBox' else widget
         return call
 
 
@@ -123,7 +142,8 @@ class RefactorTest(unittest.TestCase):
         ui=FakeUI(root)
         app=modules['ui'].ComparisonUI(root,ui)
         app.render()
-        return app,ui
+        mode = root['SETTINGS']['PHYSICS']['compare_mode']
+        return app.panes[state.MODES.index(mode)], ui.children[mode]
 
     def test_import_graph_and_python39_syntax(self):
         for path in (MODULE/'LIB').glob('OMFITlib_compare_*.py'):
@@ -134,12 +154,19 @@ class RefactorTest(unittest.TestCase):
 
     def test_four_modes_have_same_ordered_tabs(self):
         for mode in state.MODES:
-            app,ui=self.render(fixture(mode))
-            tabs=[args[0] for _,name,args,_ in ui.events if name=='Tab']
-            self.assertEqual(tabs,['1 案例选择','2 绘图设置','3 图形样式','4 导出与检查',''])
-            self.assertTrue(any(tab=='' and name=='Button' and args[0]=='绘制所选数据'
-                                for tab,name,args,_ in ui.events))
-            self.assertFalse(state.selection_check(app.root)['errors'])
+            root = fixture(mode)
+            ui = FakeUI(root)
+            app = modules['ui'].ComparisonUI(root, ui)
+            app.render()
+            self.assertEqual([args[0] for _,name,args,_ in ui.events if name=='Tab'],
+                             ['CGYRO / TGLF', 'CGYRO 对比', 'TGLF 对比', 'TGLF / CGYRO', '全局样式', ''])
+            self.assertEqual(set(ui.children), set(state.MODES))
+            for child in ui.children.values():
+                tabs=[args[0] for _,name,args,_ in child.events if name=='Tab']
+                self.assertEqual(tabs,['案例选择','绘图设置','导出与检查',''])
+                self.assertTrue(any(tab=='' and name=='Button' and args[0]=='绘制所选数据'
+                                    for tab,name,args,_ in child.events))
+            self.assertFalse(state.selection_check(root)['errors'])
 
     def test_empty_project_panel_is_actionable(self):
         root={'SETTINGS':{'PHYSICS':{}}}
@@ -457,8 +484,9 @@ class RefactorTest(unittest.TestCase):
         omfit = {'OMFITtemplates': {'GUIS': {'main': manager_gui}}}
         entry = (MODULE / 'GUIS/CGYRO_vs_TGLF.py').read_text(encoding='utf-8')
         exec(compile(entry, 'CGYRO_vs_TGLF.py', 'exec'), {'root': root, 'OMFITx': ui, 'OMFIT': omfit})
-        buttons = [args for _, kind, args, _ in ui.events if kind == 'Button' and args[0] == '模板 / GitHub']
-        self.assertEqual(len(buttons), 1)
+        buttons = [args for child in ui.children.values() for _, kind, args, _ in child.events
+                   if kind == 'Button' and args[0] == '模板 / GitHub']
+        self.assertEqual(len(buttons), len(state.MODES))
         buttons[0][1]()
         manager_gui.run.assert_called_once_with()
 

@@ -4,7 +4,7 @@ References are ordinary native trees with a controlled native browser lookup.
 OMFIT saves the physical directory once and only expression text for the visible
 ``data`` child. Explicit program readers resolve the immutable owner directly.
 """
-from builtins import (OSError, RuntimeError, ValueError, any, dict, getattr, hasattr,
+from builtins import (BaseException, OSError, RuntimeError, ValueError, any, dict, getattr, hasattr,
                       int, isinstance, iter, len, list, max, open, set, sorted, str, sum, tuple, type)
 from copy import copy, deepcopy
 import hashlib
@@ -13,18 +13,18 @@ import os
 import re
 from omfit_classes.omfit_gacode import OMFITcgyro
 from OMFITlib_cgyro_checkpoint import select_checkpoint
-from OMFITlib_cgyro_db import (POOL, STATE, ensure_layout, metadata_value,
+from OMFITlib_cgyro_db import (POOL, STATE, STORAGE_SCHEMA_VERSION, ensure_layout, metadata_value,
                               result_pool, run_cases, run_records, storage_state)
 from OMFITlib_cgyro_recover import recover_archives
 from OMFITlib_cgyro_retention import retire_superseded
 from OMFITlib_cgyro_scratch import clean_stage, ensure_capacity
 from OMFITlib_cgyro_storage_files import (FILE_STORE, SubmissionFiles,
                                          file_reference_id, native_kind, resolve_file)
-from OMFITlib_cgyro_reference import (BROWSE, REF, copy_result_tree, make_reference,
+from OMFITlib_cgyro_reference import (BROWSE, REF, copy_result_tree, is_native_file, make_reference,
                                       validate_reference)
 
 STORE = POOL
-REFERENCE_WALK_VERSION = 4  # Direct radius scans and separate BASE references.
+CHECKPOINT_POLICY_VERSION = 1  # One verified restart, with old-file fallback.
 
 
 def is_result(node):
@@ -34,10 +34,7 @@ def is_result(node):
 
 
 def _file_node(node):
-    # OMFITtree also has .filename (usually ''). It must remain traversable;
-    # only native file readers are opaque leaves in the index scaffolding.
-    names = {base.__name__ for base in type(node).__mro__}
-    return 'OMFITobject' in names or 'OMFITlazyLoad' in names
+    return is_native_file(node)  # Compatibility name for existing storage callers.
 
 
 def reference_id(node):
@@ -223,10 +220,26 @@ def store_result(module, result, factory=dict):
     if not is_result(pool[key]):
         raise ValueError('Invalid physical CGYRO result: ' + key)
     state = storage_state(module, factory)
-    state.update(dict(version=max(4, state.get('version', 0)), checkpoint_policy=1))
+    state.update(dict(version=max(STORAGE_SCHEMA_VERSION, state.get('version', 0)),
+                      checkpoint_policy=CHECKPOINT_POLICY_VERSION))
     state.setdefault('bytes', factory())[key] = sum(row[1] for row in files)
     state.setdefault('checkpoints', factory())[key] = json.dumps(checkpoint, sort_keys=True)
     return _reference(key, factory)
+
+
+def _storage_totals(pool, result_sizes, file_sizes, checkpoints):
+    """Count only currently owned payloads, including after retirement.
+
+    Compaction has an off-tree plan while consolidation observes the committed
+    pool. Passing their explicit indexes keeps both reports on one definition
+    without causing metadata writes or rereading solver directories.
+    """
+    reports = [json.loads(value) for key, value in checkpoints.items() if key in pool]
+    return dict(physical_results=len(pool) - int(FILE_STORE in pool),
+                physical_bytes=sum(result_sizes.get(key, 0) for key in pool if key != FILE_STORE),
+                input_zip_bytes=sum(file_sizes.get(key, 0) for key in pool.get(FILE_STORE, {})),
+                checkpoint_warnings=sum(1 for report in reports if report.get('warning', '')),
+                backup_checkpoints=sum(1 for report in reports if report.get('selected', '') == 'bin.cgyro.restart.old'))
 
 
 def compact_storage(module, factory=dict, browse=False):
@@ -259,7 +272,7 @@ def compact_storage(module, factory=dict, browse=False):
 
     # Also accept an earlier indexed project: install new owners first, then
     # redirect its public indexes. Unreferenced old owners are pruned later.
-    if previous_state.get('checkpoint_policy', 0) != 1:
+    if previous_state.get('checkpoint_policy', 0) != CHECKPOINT_POLICY_VERSION:
         for old, node in pool.items():
             if old != FILE_STORE:
                 remapped[old] = plan_result(node)
@@ -322,20 +335,17 @@ def compact_storage(module, factory=dict, browse=False):
     submissions.verify_sources()
 
     def summary(target):
-        reports = [json.loads(value) for key, value in checkpoints.items() if key in target]
-        return dict(converted_copies=raw_copies, physical_results=len(target) - int(FILE_STORE in target),
+        report = _storage_totals(target, sizes, submissions.sizes, checkpoints)
+        report.update(dict(converted_copies=raw_copies,
                     converted_input_zips=submissions.converted, expanded_input_bytes=submissions.omitted_bytes,
                     retained_expanded_files=submissions.retained_files,
-                    input_zip_bytes=sum(submissions.sizes.get(key, 0) for key in target.get(FILE_STORE, {})),
                     duplicate_bytes=max(0, raw_bytes - sum(sizes[key] for key in additions)) +
                         max(0, submissions.raw_bytes - sum(submissions.sizes[key] for key in submissions.additions)) +
-                        submissions.omitted_bytes,
-                    physical_bytes=sum(sizes.get(key, 0) for key in target if key != FILE_STORE),
-                    checkpoint_warnings=sum(1 for report in reports if report.get('warning', '')),
-                    backup_checkpoints=sum(1 for report in reports if report.get('selected', '') == 'bin.cgyro.restart.old'))
+                        submissions.omitted_bytes))
+        return report
 
     if (not plans and not additions and not submissions.additions and
-            previous_state.get('checkpoint_policy', 0) == 1 and STORE in db):
+            previous_state.get('checkpoint_policy', 0) == CHECKPOINT_POLICY_VERSION and STORE in db):
         # Queue bookkeeping calls this repeatedly. A verified, already indexed
         # tree needs no commit: avoid deep-copying/replacing all saved size and
         # checkpoint metadata, which also invalidates native GUI/lazy views.
@@ -358,7 +368,8 @@ def compact_storage(module, factory=dict, browse=False):
             db[branch] = replacement
         state = factory()
         state.update(deepcopy(dict(previous_state)))
-        state.update(dict(version=max(4, previous_state.get('version', 0)), checkpoint_policy=1, bytes=sizes, checkpoints=checkpoints,
+        state.update(dict(version=max(STORAGE_SCHEMA_VERSION, previous_state.get('version', 0)),
+                          checkpoint_policy=CHECKPOINT_POLICY_VERSION, bytes=sizes, checkpoints=checkpoints,
                           file_bytes=submissions.sizes))
         db[STATE] = state
     except BaseException:
@@ -437,15 +448,26 @@ def prune_storage(module):
         for key in stale_files:
             del files[key]
             file_sizes.pop(key, None)
-    except BaseException:
+    except BaseException as original_error:
         # Abort can arrive between a deletion and its size/index update. Restore
-        # every planned key, including the interrupted operation's owner.
+        # every planned key, including the interrupted operation's owner. A
+        # native assignment may fail again during rollback: still restore the
+        # remaining owners and indexes, without replacing the original Abort.
+        errors = []
         for mapping, previous in journal:
             for key, value in previous.items():
-                if value is missing:
-                    mapping.pop(key, None)
-                else:
-                    mapping[key] = value
+                try:
+                    if value is missing:
+                        mapping.pop(key, None)
+                    else:
+                        mapping[key] = value
+                except BaseException as rollback_error:
+                    errors.append('storage ' + str(key) + ': ' + str(rollback_error))
+        if errors:
+            try:
+                original_error.cgyro_rollback_errors = list(getattr(original_error, 'cgyro_rollback_errors', [])) + errors
+            except BaseException:
+                pass  # An immutable exception must still propagate unchanged.
         raise
     return len(stale) + len(stale_files)
 
@@ -474,12 +496,7 @@ def consolidate_storage(module, factory=dict):
     # Report the committed archive, not compact_storage's pre-retirement pool.
     # Otherwise the GUI would still claim that removed historical owners exist.
     pool = result_pool(module)
-    report['physical_results'] = len(pool) - int(FILE_STORE in pool)
-    report['physical_bytes'] = sum(state.get('bytes', {}).get(key, 0) for key in pool if key != FILE_STORE)
-    report['input_zip_bytes'] = sum(state.get('file_bytes', {}).get(key, 0) for key in pool.get(FILE_STORE, {}))
-    checkpoints = [json.loads(value) for key, value in state.get('checkpoints', {}).items() if key in pool]
-    report['checkpoint_warnings'] = sum(1 for entry in checkpoints if entry.get('warning', ''))
-    report['backup_checkpoints'] = sum(1 for entry in checkpoints if entry.get('selected', '') == 'bin.cgyro.restart.old')
+    report.update(_storage_totals(pool, state.get('bytes', {}), state.get('file_bytes', {}), state.get('checkpoints', {})))
     report['staging_bytes_removed'] = staged + clean_staging(module, factory)
     cleanup['bytes_removed'] = report['staging_bytes_removed']
     cleanup['warnings'] = list(cleanup.get('warnings', [])) + list(storage_state(module).get('scratch_cleanup', {}).get('warnings', []))

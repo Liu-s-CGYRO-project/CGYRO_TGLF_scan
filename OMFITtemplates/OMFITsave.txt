@@ -4,6 +4,7 @@
 ['LIB']['OMFITlib_template_archive'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_archive.py <-:-:-> {}
 ['LIB']['OMFITlib_template_service'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_service.py <-:-:-> {}
 ['LIB']['OMFITlib_template_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_ui.py <-:-:-> {}
+['LIB']['OMFITlib_template_tasks'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_tasks.py <-:-:-> {}
 ['LIB']['OMFITlib_template_paths'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_paths.py <-:-:-> {}
 ['LIB']['OMFITlib_template_github'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_github.py <-:-:-> {}
 ['LIB']['OMFITlib_template_proxy'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_proxy.py <-:-:-> {}

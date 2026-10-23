@@ -3,19 +3,20 @@
 RUN_MANIFEST is the active job view. RUN_HISTORY holds metadata only; point
 payloads and frozen inputs belong to RUN_DB/__RUNS__/<token>/cases.
 """
-from builtins import Exception, RuntimeError, ValueError, any, dict, len, list, print, range, str
+from builtins import BaseException, Exception, RuntimeError, ValueError, any, dict, getattr, len, list, object, print, range, str
 from contextlib import nullcontext
 from copy import deepcopy
 import time
 from OMFITlib_cgyro_storage import compact_storage
 from OMFITlib_cgyro_db import ensure_layout, freeze_run_inputs, run_records
-from OMFITlib_cgyro_run_state import (linked_kill_local, pbs_wait, quote as shell_quote,
+from OMFITlib_cgyro_run_state import (STOP_POLL_ATTEMPTS, STOP_POLL_SECONDS, STOP_QUERY_ERROR_LIMIT,
+                                    collection_finished, linked_kill_local, pbs_wait, quote as shell_quote,
                                     refresh_run_state, slurm_wait, stop_message, stop_run, submission_pending)
 
 
 def collection_done(manifest):
     """Collection can finish after cancellation without a complete solver run."""
-    return manifest.get('status', '') == 'published' or manifest.get('collection_status', '') in ('partial', 'empty')
+    return collection_finished(manifest)
 
 
 def queue_records(root):
@@ -103,12 +104,67 @@ def queue_summary(root):
     return '批量案例：完整 {} / {}；部分结果 {}；无结果跳过 {}。'.format(done, total, partial, empty)
 
 
+def _commit_synced_manifest(root, token, manifest, factory):
+    """Commit one queried status to both metadata views, preserving payloads.
+
+    RUN_HISTORY drives the queue while RUN_DB/__RUNS__ drives continuation and
+    retention. Updating only the former leaves contradictory saved identities
+    after recovery/requeue. Query a detached manifest, then commit all views;
+    an Abort during native assignment must restore their preceding snapshots.
+    """
+    if str(manifest.get('run_token', '')) != str(token):
+        raise ValueError('Synchronized CGYRO manifest belongs to another run.')
+    history = root['RUN_HISTORY'][token]
+    records = run_records(root, factory)
+    missing = object()
+    record = records.get(str(token), missing)
+    created = record is missing
+    if created:
+        record = factory()
+    old_history, old_record = history.get('manifest', missing), record.get('manifest', missing)
+    current = root.get('RUN_MANIFEST', {})
+    current_matches = str(current.get('run_token', '')) == str(token)
+    old_current = dict(current) if current_matches else None
+    history_copy, record_copy, current_copy = deepcopy(manifest), deepcopy(manifest), deepcopy(manifest)
+    try:
+        if created:
+            records[str(token)] = record
+        history['manifest'], record['manifest'] = history_copy, record_copy
+        if current_matches:
+            current.clear()
+            current.update(current_copy)
+    except BaseException as original_error:
+        def restore(mapping, key, value):
+            if value is missing:
+                mapping.pop(key, None)
+            else:
+                mapping[key] = value
+        rollback = [('history', lambda: restore(history, 'manifest', old_history)),
+                    ('record', lambda: records.pop(str(token), None) if created else restore(record, 'manifest', old_record))]
+        if current_matches:
+            # Even an interrupted clear can mutate before raising. Attempt the
+            # update independently, and never skip the other saved view because
+            # one native mapping rejects its rollback assignment.
+            rollback.extend([('current clear', current.clear), ('current restore', lambda: current.update(old_current))])
+        errors = []
+        for label, operation in rollback:
+            try:
+                operation()
+            except BaseException as rollback_error:
+                errors.append(label + ': ' + str(rollback_error))
+        if errors:
+            try:
+                original_error.cgyro_rollback_errors = list(getattr(original_error, 'cgyro_rollback_errors', [])) + errors
+            except BaseException:
+                pass  # Preserve the original Abort even for an immutable exception.
+        raise
+
+
 def refresh_queue(root, ui, factory=dict, recover=None):
     save_current(root, factory)
-    current = root.get('RUN_MANIFEST', {}).get('run_token', '')
     errors = []
     for token, entry in queue_records(root):
-        manifest = entry['manifest']
+        manifest = deepcopy(entry['manifest'])
         if collection_done(manifest):
             continue
         try:
@@ -134,10 +190,7 @@ def refresh_queue(root, ui, factory=dict, recover=None):
             manifest['sync_error'] = str(exc)
             errors.append(str(manifest.get('case_id', token)) + ': ' + str(exc))
         finally:
-            if token == current:
-                synchronized = deepcopy(manifest)
-                root['RUN_MANIFEST'].clear()
-                root['RUN_MANIFEST'].update(synchronized)
+            _commit_synced_manifest(root, token, manifest, factory)
     if errors:
         raise RuntimeError('\n'.join(errors))
     return queue_summary(root)
@@ -178,7 +231,7 @@ def wait_for_stop(root, ui):
     manifest = root['RUN_MANIFEST']
     manifest['auto_collect_requested'] = True
     errors = 0
-    for attempt in range(20):
+    for attempt in range(STOP_POLL_ATTEMPTS):
         try:
             result = refresh_run_state(root, ui)
             errors = 0
@@ -188,10 +241,10 @@ def wait_for_stop(root, ui):
         except Exception as exc:
             errors += 1
             manifest['stop_sync_error'] = str(exc)
-            if errors >= 3:
+            if errors >= STOP_QUERY_ERROR_LIMIT:
                 raise
-        if attempt < 19:
-            time.sleep(2)
+        if attempt + 1 < STOP_POLL_ATTEMPTS:
+            time.sleep(STOP_POLL_SECONDS)
     raise RuntimeError('Slurm cancellation is still settling; automatic collection is pending. '
                        'The run is preserved. Synchronize and collect again after it reaches a terminal state.')
 

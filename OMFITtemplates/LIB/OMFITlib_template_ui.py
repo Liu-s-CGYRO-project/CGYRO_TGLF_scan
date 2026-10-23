@@ -1,5 +1,5 @@
 """One Tk interface shared by the OMFIT module and the standalone launcher."""
-from builtins import all, any, bool, dict, float, int, len, list, max, min, open, range, set, sorted, str, sum, tuple, zip
+from builtins import BaseException, Exception, all, any, bool, dict, float, int, len, list, max, min, open, range, set, sorted, str, sum, tuple, type, zip
 import os
 from pathlib import Path
 import queue
@@ -20,6 +20,7 @@ from OMFITlib_template_versions import MANAGER_VERSION, SORT_OPTIONS, sort_relea
 from OMFITlib_template_manager_ui import ManagerUpdateUI
 from OMFITlib_template_cli import CLI_REPOSITORY, ensure_cli
 from OMFITlib_template_live import Prepared
+from OMFITlib_template_tasks import BackgroundTasks
 from OMFITlib_template_service import (
     Cancelled, EXTENSION, Template, apply_update, inspect_project, list_library,
     plan_update, publish, read_history, release_name, transfer,
@@ -134,7 +135,7 @@ class TemplateManager(ManagerUpdateUI):
         self.live_plan = None
         self.releases = []
         self.selected_release = None
-        self.events = queue.Queue()
+        self.tasks = BackgroundTasks()
         self.cancel = threading.Event()
         self.widgets = []
         self.close_requested = False
@@ -393,7 +394,7 @@ class TemplateManager(ManagerUpdateUI):
         self.progress = ttk.Progressbar(footer, length=180, mode='determinate', maximum=100,
                                         style='TM.Horizontal.TProgressbar')
         self.progress.grid(row=0, column=1, padx=10)
-        self.cancel_button = ttk.Button(footer, text='取消操作', command=self.cancel.set, state='disabled',
+        self.cancel_button = ttk.Button(footer, text='取消操作', command=lambda: self.cancel.set(), state='disabled',
                                         style='TM.TButton', width=0)
         self.cancel_button.grid(row=0, column=2)
         footer.bind('<Configure>', lambda event: status_label.configure(wraplength=max(100,
@@ -732,23 +733,21 @@ class TemplateManager(ManagerUpdateUI):
         if not self.github_login:
             raise TemplateError('请先在“GitHub 版本”页登录并确认账号，再发布模板')
 
-    def _run(self, title, work, success, failure=None):
-        if self.busy:
+    def _run(self, title, work, success, failure=None, cancel=None, receipt='', dispose=None):
+        if self.busy or not self.alive or self.close_requested:
             return
-        self.cancel.clear()
+        self.cancel = cancel if cancel is not None else threading.Event()
         self._show_progress(title)
         self._set_busy(True)
-
-        def runner():
-            try:
-                result = work()
-                self.events.put(('success', success, result))
-            except Exception as exc:
-                self.events.put(('error', exc, failure))
-        threading.Thread(target=runner, name='omfit-template-worker', daemon=True).start()
+        try:
+            self.tasks.start('foreground', work, success, failure, self.cancel, receipt=receipt, dispose=dispose)
+        except BaseException:
+            self._finish_progress()
+            self._set_busy(False)
+            raise
 
     def _progress(self, label, done, total):
-        self.events.put(('progress', label, done, total))
+        self.tasks.progress(label, done, total)
 
     def _show_progress(self, label, done=0, total=0):
         """Update Tk on the main thread; unknown work shows activity, not a percent."""
@@ -772,46 +771,74 @@ class TemplateManager(ManagerUpdateUI):
         if not self.alive:
             return
         try:
-            while True:
-                event = self.events.get_nowait()
-                if event[0] == 'manager-check':
-                    self._automatic_manager_checked(*event[1:])
-                elif event[0] == 'login-check':
-                    if self.busy:
-                        self.events.put(event)
-                        break
-                    self._login_checked(*event[1:])
-                elif event[0] == 'progress':
-                    _, label, done, total = event
-                    if not self.close_requested:
-                        self._show_progress(label, done, total)
-                else:
-                    self._finish_progress(success=event[0] == 'success')
-                    self._set_busy(False)
-                    if self.close_requested:
-                        if (event[0] == 'error' and not isinstance(event[1], Cancelled)
-                                and (len(event) < 3 or event[2] is None)):
-                            self._error(event[1])
-                        self.close()
-                        return
-                    if event[0] == 'success':
-                        try:
-                            event[1](event[2])
-                            if not self.alive:
-                                return
-                        except Exception as exc:
-                            self._finish_progress()
-                            self._error(exc)
-                    elif isinstance(event[1], Cancelled):
-                        self.status.set(str(event[1]))
-                    elif len(event) > 2 and event[2] is not None:
-                        event[2](event[1])
-                    else:
-                        self._error(event[1])
-        except queue.Empty:
-            pass
-        if self.alive:
-            self._poll_after = self.window.after(100, self._poll)
+            for error in self.tasks.take_disposal_errors():
+                self._log('临时文件清理未完成：' + error)
+            # A busy producer must never monopolize Tk's event loop. Login
+            # outcomes wait for foreground work, without blocking its outcome.
+            for unused in range(100):
+                try:
+                    event = self.tasks.next_event(blocked=('login-check',) if self.busy else ())
+                except queue.Empty:
+                    break
+                accepted, cancelled = self.tasks.accept(event)
+                if not accepted:
+                    continue
+                self._task_event(event, cancelled)
+                if not self.alive:
+                    return
+        except Exception as exc:
+            self._error(exc)
+        finally:
+            # Even a failing callback or native Abort must leave future events
+            # deliverable; the foreground busy flag is released before dispatch.
+            if self.alive:
+                self._poll_after = self.window.after(100, self._poll)
+
+    def _task_event(self, event, cancelled):
+        foreground = event.channel == 'foreground'
+        if event.kind == 'progress':
+            if foreground and not self.close_requested and not cancelled:
+                self._show_progress(event.label, event.done, event.total)
+            return
+        if foreground:
+            self._finish_progress(success=event.kind == 'success' and not cancelled)
+            self._set_busy(False)
+        if self.close_requested:
+            if foreground:
+                try:
+                    if event.error is not None and not isinstance(event.error, Cancelled):
+                        self._error(event.error)
+                    elif event.kind == 'success' and event.receipt:
+                        self._log(event.receipt + str(event.result))
+                finally:
+                    self.tasks.discard(event)
+                    self.close()
+            else:
+                self.tasks.discard(event)
+            return
+        # Cancellation can arrive after work finished but before Tk sees its
+        # outcome. Durable commits still need their receipt; their callbacks
+        # acknowledge the result but must not launch another operation.
+        if cancelled and event.kind == 'success':
+            if event.receipt:
+                self._log(event.receipt + str(event.result))
+                self.status.set(event.receipt + str(event.result))
+            else:
+                self.tasks.discard(event)
+                if foreground:
+                    self.status.set('操作已取消。')
+                return
+        if event.error is not None:
+            if isinstance(event.error, Cancelled):
+                self.status.set(str(event.error))
+            elif event.callback is not None:
+                event.callback(event.error)
+            else:
+                error = event.error if isinstance(event.error, Exception) else TemplateError(
+                    '后台任务已中断：' + type(event.error).__name__)
+                self._error(error)
+        elif event.callback is not None:
+            event.callback(event.result)
 
     def refresh(self, automatic=False):
         if self.busy:
@@ -983,13 +1010,14 @@ class TemplateManager(ManagerUpdateUI):
     def _stop_login_check(self):
         self._login_generation += 1
         self._login_remaining = 0
+        self.tasks.invalidate('login-check')
         if self._login_after is not None:
             self.window.after_cancel(self._login_after)
             self._login_after = None
 
     def _check_login(self):
         self._login_after = None
-        if not self.alive or not self._login_remaining:
+        if not self.alive or self.close_requested or not self._login_remaining:
             return
         if self.busy:
             self._login_after = self.window.after(2500, self._check_login)
@@ -1000,16 +1028,13 @@ class TemplateManager(ManagerUpdateUI):
         except TemplateError as exc:
             self._login_checked(generation, '', exc)
             return
-        def work():
-            try:
-                user = GitHub(DEFAULT_REPOSITORY, proxy=proxy).current_login()
-                self.events.put(('login-check', generation, user, None))
-            except Exception as exc:
-                self.events.put(('login-check', generation, '', exc))
-        threading.Thread(target=work, name='omfit-github-login-check', daemon=True).start()
+        cancel = threading.Event()
+        self.tasks.start('login-check', lambda: GitHub(DEFAULT_REPOSITORY, proxy=proxy, cancel=cancel).current_login(),
+            lambda user: self._login_checked(generation, user, None),
+            lambda error: self._login_checked(generation, '', error), cancel)
 
     def _login_checked(self, generation, user, error):
-        if generation != self._login_generation:
+        if not self.alive or self.close_requested or generation != self._login_generation:
             return
         if error is not None:
             self._stop_login_check()
@@ -1048,8 +1073,13 @@ class TemplateManager(ManagerUpdateUI):
         content.configure(state='disabled')
         def confirmed():
             dialog.destroy()
+            def initialized(url):
+                self._log('空仓库已初始化：' + url)
+                self.status.set('空仓库已初始化：' + url)
+                if not self.cancel.is_set():
+                    self._connect()
             self._run('正在初始化 GitHub 空仓库…', lambda: GitHub(repo, cancel=self.cancel, proxy=proxy).initialize_empty(),
-                      lambda url: (self._log('空仓库已初始化：' + url), self._connect()))
+                      initialized, receipt='空仓库已初始化：')
         ttk.Button(dialog, text='确认创建 README 和首次提交', command=confirmed, style='TM.TButton').pack(pady=15)
         dialog.transient(self.window)
         dialog.grab_set()
@@ -1139,7 +1169,7 @@ class TemplateManager(ManagerUpdateUI):
                 proxy = self._selected_proxy()
                 self._run('正在拉取所选 GitHub 版本…',
                     lambda: GitHub(release['repository'], cancel=self.cancel, progress=self._progress, proxy=proxy).pull(release, library),
-                    self._use_path)
+                    self._use_path, receipt='模板已下载：')
             else:
                 self._run('正在校验模板…', lambda: self._verify_local_template(release['path']), self._use_path)
         except TemplateError as exc:
@@ -1151,6 +1181,8 @@ class TemplateManager(ManagerUpdateUI):
         return path
 
     def _use_path(self, path):
+        if self.cancel.is_set():
+            return
         with Template(path) as template:
             release = template.manifest
             self.template_path.set(path)
@@ -1168,12 +1200,13 @@ class TemplateManager(ManagerUpdateUI):
             with Template(source) as template:
                 target = directory / release_name(template.manifest)
             return transfer(source, target, self.cancel, self._progress)
-        self._run('正在校验并传输模板…', work, self._transferred)
+        self._run('正在校验并传输模板…', work, self._transferred, receipt='模板已写入：')
 
     def _transferred(self, result):
         self._log('模板已写入：' + result)
         self.status.set('模板已写入：' + result)
-        self.refresh()
+        if not self.cancel.is_set():
+            self.refresh()
 
     def _import(self):
         try:
@@ -1192,7 +1225,8 @@ class TemplateManager(ManagerUpdateUI):
             filename = filedialog.asksaveasfilename(parent=self.window, initialfile=release_name(release),
                 defaultextension=EXTENSION, filetypes=[('OMFIT 模板', '*' + EXTENSION)])
             if filename:
-                self._run('正在导出模板…', lambda: transfer(release['path'], filename, self.cancel, self._progress), self._transferred)
+                self._run('正在导出模板…', lambda: transfer(release['path'], filename, self.cancel, self._progress),
+                          self._transferred, receipt='模板已写入：')
         except TemplateError as exc:
             self._error(exc)
 
@@ -1255,7 +1289,8 @@ class TemplateManager(ManagerUpdateUI):
                 return
             data, settings = DATA_OPTIONS[self.data_policy.get()], SETTING_OPTIONS[self.settings_policy.get()]
             self._run('正在校验模板并准备当前会话更新…',
-                      lambda: Prepared(path, data, settings, cancel=self.cancel), self._live_prepared)
+                      lambda: Prepared(path, data, settings, cancel=self.cancel), self._live_prepared,
+                      dispose=Prepared.discard)
             return
         args = (self.current.get().strip(), self.template_path.get().strip(),
                 DATA_OPTIONS[self.data_policy.get()], SETTING_OPTIONS[self.settings_policy.get()])
@@ -1312,7 +1347,8 @@ class TemplateManager(ManagerUpdateUI):
         if not path:
             return
         plan = self.plan
-        self._run('正在生成新工程…', lambda: apply_update(plan, path, self._progress, self.cancel), self._applied)
+        self._run('正在生成新工程…', lambda: apply_update(plan, path, self._progress, self.cancel),
+                  self._applied, receipt='工程已生成：')
 
     def _applied(self, path):
         self.status.set('已生成新工程。' + ('可点击“备份并在 OMFIT 打开”。' if self.session else '请在 OMFIT 中打开此 ZIP。'))
@@ -1324,6 +1360,7 @@ class TemplateManager(ManagerUpdateUI):
 
     def _live_prepared(self, prepared):
         if self.cancel.is_set():
+            prepared.discard()
             return
         self.live_plan = self.session.preview_live(prepared)
         self._planned(self.live_plan.report())
@@ -1402,7 +1439,8 @@ class TemplateManager(ManagerUpdateUI):
             directory = self._directory()
             examples = self.include_examples.get()
             self._run('正在发布版本…', lambda: publish(source, directory, metadata, roots, examples,
-                                                       self._progress, self.cancel), self._package_built)
+                                                       self._progress, self.cancel), self._package_built,
+                      receipt='模板包已生成：')
         except TemplateError as exc:
             self._error(exc)
 
@@ -1424,6 +1462,9 @@ class TemplateManager(ManagerUpdateUI):
         self.package_path = path
         self._log('模板包已准备：' + path)
         self._set_busy(False)
+        if self.cancel.is_set():
+            self.status.set('模板包已生成：' + path + '；后续操作已取消。')
+            return
         if self.publish_destination.get() == 'GitHub':
             self._prepare_upload(path)
         else:
@@ -1510,12 +1551,14 @@ class TemplateManager(ManagerUpdateUI):
             self._set_busy(False)
             self._log('GitHub 版本已发布：' + url)
             self.status.set('GitHub 版本已发布。')
+            if self.cancel.is_set():
+                return
             self.tabs.select(self.pages[0])
             if self.view_source.get() != 'GitHub':
                 self.view_source.set('GitHub')
             else:
                 self.refresh()
-        self._run('正在上传并发布 GitHub 版本…', work, uploaded)
+        self._run('正在上传并发布 GitHub 版本…', work, uploaded, receipt='GitHub 版本已发布：')
 
     def _history(self):
         if self.session is not None:
@@ -1544,16 +1587,29 @@ class TemplateManager(ManagerUpdateUI):
         self._run('正在读取更新记录…', lambda: read_history(path), loaded)
 
     def close(self):
+        if not self.alive:
+            return
         self._manager_auto_cancel.set()
+        self.tasks.invalidate('manager-check')
+        self._stop_login_check()
         if self.busy:
             self.close_requested = True
             self.cancel.set()
             self.status.set('正在取消操作并清理临时文件…')
             return
+        # Preference I/O (including its temporary-file cleanup) can fail or be
+        # interrupted. Do it before stopping event delivery so the visible
+        # window remains usable and closing can be retried on any such failure.
+        try:
+            self._save_preferences()
+        except BaseException:
+            self.close_requested = False
+            raise
         self.alive = False
+        self.tasks.close()
+        for error in self.tasks.take_disposal_errors():
+            self._log('临时文件清理未完成：' + error)
         self.progress.stop()
-        self._stop_login_check()
-        self._save_preferences()
         for callback in (self._poll_after, self._refresh_after):
             if callback is None:
                 continue

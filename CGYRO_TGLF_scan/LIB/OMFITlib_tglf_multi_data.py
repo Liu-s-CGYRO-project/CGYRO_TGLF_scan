@@ -1,5 +1,5 @@
 """Case records and validated inputs for multi-profile TGLF calculations."""
-from builtins import all, any, bool, dict, enumerate, float, int, isinstance, len, list, max, min, range, set, sorted, str, tuple, zip
+from builtins import all, any, bool, dict, enumerate, float, hasattr, int, isinstance, len, list, max, min, range, set, sorted, str, tuple, zip
 import copy
 import hashlib
 import json
@@ -16,6 +16,37 @@ DEFAULTS = {
     'extra': '', 'continue_on_error': True, 'include_ions': 'all', 'status': '',
 }
 MODEL_KEYS = ('SAT_RULE', 'NKY', 'NMODES', 'USE_BPER', 'USE_BPAR')
+
+
+def prepared_run_issues(run, plan, digest):
+    """Validate resumability from frozen inputs, independently of cancellation.
+
+    A calculation Abort leaves preparation intact; a preparation Abort may
+    leave only some radii populated. Older records have no preparation_status,
+    so require the complete radius/input inventory before adopting them.
+    This metadata check does not open result files and is shared with the GUI.
+    """
+    if not hasattr(run, 'get') or not run or run.get('status', None) in ('preparing', 'prepare_failed', 'running'):
+        return ['请先完成输入生成；正在运行的记录不能重复启动']
+    preparation = run.get('preparation_status', None)
+    if preparation not in (None, 'complete'):
+        return ['请先生成完整输入']
+    if run.get('plan', None) != plan:
+        return ['计算设置已变化，请重新生成输入']
+    if run.get('profile_digest', None) != digest:
+        return ['剖面已变化，请重新生成输入']
+    points = run.get('points', {})
+    radii = plan.get('radii', [])
+    expected = {'r{:03d}'.format(index) for index in range(len(radii))}
+    if not hasattr(points, 'get') or not radii or set(points) != expected:
+        return ['已生成输入的半径不完整，请重新生成']
+    for index, radius in enumerate(radii):
+        point = points['r{:03d}'.format(index)]
+        if (not hasattr(point, 'get') or point.get('radius', None) != radius
+                or point.get('input.tglf', None) is None or point.get('localdump', None) is None
+                or point.get('status', None) == 'running'):
+            return ['已生成输入不完整或仍在运行，请检查运行记录']
+    return []
 
 
 def initialize(root, factory=dict):

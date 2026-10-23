@@ -207,7 +207,7 @@ class CGYROTest(unittest.TestCase):
     def test_raw_export_ignores_inactive_eigen_selection_and_restores_flag(self):
         self.settings.update(plot_mode='Plot eigen ball', eigen_ky_mode='single ky', eigen_ky_values='')
         app = modules['ui'].ComparisonUI(self.root, FakeUI(self.root))
-        app.render()
+        app.render_controls('CGYRO_vs_CGYRO')
         app._select_export_directory = lambda *args: None
         app._export()
         self.assertFalse(self.settings['linear_export_now'])
@@ -323,21 +323,21 @@ class CGYROTest(unittest.TestCase):
 
     def test_plot_panel_shows_self_specific_controls_in_relevant_modes(self):
         ui = FakeUI(self.root)
-        modules['ui'].ComparisonUI(self.root, ui).render()
+        modules['ui'].ComparisonUI(self.root, ui).render_controls('CGYRO_vs_CGYRO')
         self.assertTrue(any(name == 'ComboBox' and args[0].endswith("['error_flag']") for _, name, args, _ in ui.events))
         for enabled in (False, True):
             self.settings.update(error_filter=enabled, error_tolerance=.2)
             ui = FakeUI(self.root)
-            modules['ui'].ComparisonUI(self.root, ui).render()
+            modules['ui'].ComparisonUI(self.root, ui).render_controls('CGYRO_vs_CGYRO')
             entries = [(args, options) for _, name, args, options in ui.events
                        if name == 'Entry' and args[0].endswith("['error_tolerance']")]
             self.assertEqual(len(entries), 1)
-            self.assertIn('error', entries[0][0][1])
+            self.assertEqual(entries[0][0][1], '相对波动上限')
             self.assertNotEqual(entries[0][1].get('state'), 'disabled')
             self.assertEqual(self.settings['error_tolerance'], .2)
         self.settings['plot_mode'] = 'Plot 3D'
         ui = FakeUI(self.root)
-        modules['ui'].ComparisonUI(self.root, ui).render()
+        modules['ui'].ComparisonUI(self.root, ui).render_controls('CGYRO_vs_CGYRO')
         self.assertFalse(any(name == 'CheckBox' and args[0].endswith("['merge_all_nr_plot']") for _, name, args, _ in ui.events))
 
 

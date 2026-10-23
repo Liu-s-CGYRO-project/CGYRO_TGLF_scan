@@ -29,7 +29,7 @@ GROUP = 'CGYRO_TGLF_scan'
 LEGACY = ('CGYRO_scan', 'TGLF_scan', 'Transfer_tool')
 RUNTIME = ('OMFITlib_template_archive', 'OMFITlib_template_versions', 'OMFITlib_template_service')
 DEFAULT_PROXY = 'http://47.102.120.146:18889'
-LIMIT = 2 * 1024 * 1024
+LIMIT = None  # Filled from release_policy.py by build_deployer.py.
 
 
 class DeploymentError(ValueError):

@@ -1,14 +1,14 @@
-"""Dependency gates, explicit overwrite choices, and native-UI bindings."""
+"""Dependency gates, archived input replacement, and legacy choice compatibility."""
 import ast
 import copy
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 import json
 import numpy as np
 from pathlib import Path
 import sys
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from omfit_mapping import treeify
 
 REPO = Path(__file__).resolve().parents[1]
@@ -17,6 +17,31 @@ sys.path.insert(0, str(REPO / 'OMFITtemplates/LIB'))
 from OMFITlib_template_archive import parse_tree
 import OMFITlib_project as project
 from OMFITlib_project_ui import ProjectUI
+import OMFITlib_workbench_runtime_ui as runtime_ui
+
+
+@contextmanager
+def headless_runtime_controls():
+    """Mock only Tk construction; run runtime rows and draft callbacks normally."""
+    class Variable:
+        def __init__(self, master=None, value=''):
+            self.value, self.callbacks = value, {}
+        def get(self):
+            return self.value
+        def set(self, value):
+            self.value = value
+            for callback in self.callbacks.values():
+                callback()
+        def trace_add(self, mode, callback):
+            token = str(len(self.callbacks))
+            self.callbacks[token] = callback
+            return token
+        def trace_remove(self, mode, token):
+            self.callbacks.pop(token)
+    def entry(master, **kwargs):
+        return SimpleNamespace(master=master, pack=Mock(), bind=Mock(), **kwargs)
+    with patch.object(runtime_ui.tk, 'StringVar', Variable), patch.object(runtime_ui.ttk, 'Entry', entry):
+        yield
 
 
 def fixture():
@@ -37,8 +62,16 @@ def fixture():
     return root
 
 
+class CgyroInput(dict):
+    """The native input reader's copy boundary, without invoking a solver."""
+    def duplicate(self):
+        return copy.deepcopy(self)
+
+
 def cgyro():
-    return dict(N_SPECIES=2, N_RADIAL=16, N_THETA=24, Q=2., RMIN=.5, RMAJ=3.)
+    return CgyroInput(N_SPECIES=2, N_RADIAL=16, N_THETA=24, Q=2., RMIN=.5, RMAJ=3.,
+                      Z_1=1., Z_2=-1., MASS_1=1., MASS_2=.00027,
+                      DENS_1=1., DENS_2=1., TEMP_1=1., TEMP_2=1.)
 
 
 def tglf():
@@ -60,6 +93,7 @@ def resolve_path(root, path):
 class UI:
     def __init__(self, root):
         self.root, self.events = root, []
+        self._aux = {}  # Native OMFIT exposes a mapping, not a generated method.
     def same_row(self):
         return nullcontext()
     def __getattr__(self, name):
@@ -68,6 +102,17 @@ class UI:
                 parent, key = resolve_path(self.root, args[0])
                 parent.setdefault(key, copy.deepcopy(kwargs.get('default', None)))
             self.events.append((name, args, kwargs))
+            if name in ('Label', 'Button', 'ComboBox', 'Entry', 'FilePicker'):
+                return SimpleNamespace(master=SimpleNamespace())
+            if name == 'CheckBox':
+                return (SimpleNamespace(),)  # OMFIT returns a tuple of controls.
+            if name == 'CompoundGUI' and kwargs.get('workbench', None) is not None:
+                # These native child GUIs execute their host's tab renderer.
+                host = kwargs['workbench']
+                if args[0] is self.root['GUIS']['CGYRO_controls']:
+                    host.render_cgyro_scan_tabs()
+                elif args[0] is self.root['GUIS']['TGLF_controls']:
+                    host.render_scan_tabs()
         return record
     def button(self, label):
         return next((args[1], kwargs) for name, args, kwargs in self.events if name == 'Button' and args[0] == label)
@@ -96,17 +141,52 @@ class ProjectTest(unittest.TestCase):
         self.transfer['Transfer_file']['input.' + name] = cgyro() if name == 'cgyro' else tglf()
         source = ('Transfer_tool', 'Transfer_file', 'input.' + name)
         self.actions.settings['transfer_source'] = json.dumps(source)
+        if name == 'cgyro':
+            self.cg['SETTINGS']['EXPERIMENT']['runid'] = 'test'
+            # Native OMFITsettings decodes serialized arrays; this JSON-only
+            # fixture supplies an evaluated ky list explicitly.
+            self.cg['SETTINGS']['PHYSICS']['kyarr'] = [.1]
+            self.actions.settings['cgyro_source_mode'] = 'imported'
+            self.actions.settings['cgyro_ion_cases'] = dict(BASE=True, H=False, D=False, T=False)
         self.actions.handoff(name)
 
     def pending(self):
         return next(iter(project.pending_inputs(self.root).items()))
+
+    def legacy_choice(self, destination='tglf'):
+        """An old saved candidate; current imports intentionally do not create it.
+
+        1.17 removed the review page and archives inputs on explicit import.
+        Keep testing resolve_input using the actual pre-1.17 persisted record.
+        """
+        branch = 'FILES' if destination == 'tglf' else 'INPUTS'
+        current = project.read(self.root, project.MODULES[destination] + (branch, 'input.tglf'))
+        incoming = tglf()
+        source = ('Transfer_tool', 'Transfer_file', 'input.tglf')
+        self.transfer['Transfer_file']['input.tglf'] = copy.deepcopy(incoming)
+        record = self.actions._record('Legacy input choice', status='awaiting_choice',
+            current=copy.deepcopy(current), incoming=copy.deepcopy(incoming),
+            destination=destination, current_digest=project.input_digest(current),
+            incoming_digest=project.input_digest(incoming), source=list(source),
+            differences=project.input_difference(current, incoming))
+        return record['id'], record
+
+    def assert_no_scripts_run(self):
+        def visit(node):
+            if isinstance(node, SimpleNamespace):
+                node.run.assert_not_called()
+            elif hasattr(node, 'items'):
+                for value in node.values():
+                    visit(value)
+        visit(self.root)
 
     def render(self, page, name=None):
         self.actions.settings['page'] = page
         if name:
             self.actions.settings['runtime_module'] = name
         ui = UI(self.root)
-        ProjectUI(self.actions, ui, servers=['localhost', 'cluster']).render()
+        with headless_runtime_controls():
+            ProjectUI(self.actions, ui, servers=['localhost', 'cluster']).render()
         return ui
 
     def test_all_pages_render_empty_project_without_running_any_task(self):
@@ -127,39 +207,73 @@ class ProjectTest(unittest.TestCase):
         for name in project.MODULES:
             self.render('run', name)
 
-    def test_existing_cgyro_file_cannot_bypass_transfer(self):
+    def test_existing_cgyro_file_requires_explicit_source_selection(self):
         self.configure()
+        self.cg['SETTINGS']['EXPERIMENT']['runid'] = 'test'
         self.cg['INPUTS']['input.cgyro'] = cgyro()
         self.assertTrue(project.cgyro_input_issues(self.root))
-        with self.assertRaisesRegex(ValueError, 'Transfer'):
+        with self.assertRaisesRegex(ValueError, '选择 CGYRO 当前输入'):
             self.actions.run_cgyro()
         self.cg['SCRIPTS']['runCGYRO.py'].run.assert_not_called()
 
-    def test_successful_handoff_is_independent_and_preserves_previous_input(self):
+    def test_successful_handoff_is_independent_and_preserves_frozen_results(self):
         old = cgyro(); old['Q'] = 9.
         self.cg['INPUTS']['input.cgyro'] = old
+        # 1.15 prepares a batch on explicit selection. Published inputs/results
+        # belong to RUN_DB; an active editor card is not another archive.
+        frozen = self.cg['RUN_DB']['previous'] = {'input': old.duplicate(), 'result': [42]}
         self.send()
         self.assertEqual(project.cgyro_input_issues(self.root), [])
-        self.assertIsNot(self.cg['INPUTS']['input.cgyro'], self.transfer['Transfer_file']['input.cgyro'])
-        records = self.root['PROJECT_STATE']['activity'].values()
-        self.assertEqual(next(iter(records))['previous_inputs']["root['CGYRO_scan']['INPUTS']['input.cgyro']"]['Q'], 9.)
+        active = self.cg['INPUTS']['input.cgyro']
+        prepared = self.cg['BATCH_INPUTS']['1']['BASE']
+        self.assertIsNot(active, self.transfer['Transfer_file']['input.cgyro'])
+        self.assertIsNot(active, prepared)
+        active['Q'] = 7.
+        self.assertEqual(prepared['Q'], 2.)
+        self.assertEqual(self.transfer['Transfer_file']['input.cgyro']['Q'], 2.)
+        self.assertEqual(frozen, {'input': old, 'result': [42]})
+        self.assert_no_scripts_run()
 
-    def test_change_to_transfer_source_blocks_cgyro_again(self):
+    def test_changed_transfer_source_prepares_new_independent_batch(self):
         self.send(); self.configure()
+        previous = self.cg['BATCH_INPUTS']
+        frozen = self.cg['RUN_DB']['previous'] = {'input': previous['1']['BASE'].duplicate(), 'result': [42]}
         self.transfer['Transfer_file']['input.cgyro']['Q'] = 3.
-        with self.assertRaisesRegex(ValueError, 'Transfer 输入已经变化'):
-            self.actions.run_cgyro()
+        plan = self.actions.run_cgyro(prepare=True)
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(plan[0]['source'], ['Transfer_tool', 'Transfer_file', 'input.cgyro'])
+        self.assertEqual(plan[0]['case_id'], 'nr=1__rho=unknown__ion=BASE')
+        self.assertEqual(self.cg['BATCH_INPUTS']['1']['BASE']['Q'], 3.)
+        self.assertEqual(previous['1']['BASE']['Q'], 2.)
+        self.assertEqual(frozen['input']['Q'], 2.)
+        self.assertEqual(frozen['result'], [42])
+        self.assert_no_scripts_run()
 
-    def test_change_to_upstream_profile_invalidates_cgyro_handoff(self):
+    def test_upstream_profile_edit_does_not_relabel_explicit_imported_input(self):
         self.transfer['Transfer_file']['input.gacode'] = {'rho': [0., .5, 1.]}
         self.send()
+        old_batch = self.cg['BATCH_INPUTS']
         self.transfer['Transfer_file']['input.gacode']['rho'][1] = .4
-        self.assertIn('上游剖面', project.cgyro_input_issues(self.root)[0])
+        self.assertEqual(project.cgyro_input_issues(self.root), [])
+        plan = self.actions.run_cgyro(prepare=True)
+        self.assertEqual(self.cg['BATCH_INPUTS'], old_batch)
+        self.assertIsNot(self.cg['BATCH_INPUTS'], old_batch)
+        self.assertEqual(plan[0]['source'], ['Transfer_tool', 'Transfer_file', 'input.cgyro'])
+        self.assert_no_scripts_run()
 
-    def test_change_to_cgyro_destination_blocks_running(self):
-        self.send()
+    def test_changed_active_editor_is_restored_after_running_selected_source(self):
+        self.send(); self.configure()
         self.cg['INPUTS']['input.cgyro']['N_THETA'] = 32
-        self.assertIn('CGYRO 输入已经变化', project.cgyro_input_issues(self.root)[0])
+        editor = self.cg['INPUTS']['input.cgyro']
+        def run(**kwargs):
+            self.assertEqual(self.cg['INPUTS']['input.cgyro']['N_THETA'], 24)
+            self.assertIsNot(self.cg['INPUTS']['input.cgyro'], editor)
+            self.cg['RUN_MANIFEST'] = {'status': 'published'}
+        self.cg['SCRIPTS']['runCGYRO.py'].run.side_effect = run
+        self.actions.run_cgyro()
+        self.assertIs(self.cg['INPUTS']['input.cgyro'], editor)
+        self.assertEqual(editor['N_THETA'], 32)
+        self.assertEqual(self.transfer['Transfer_file']['input.cgyro']['N_THETA'], 24)
 
     def test_import_existing_cgyro_file_goes_through_transfer(self):
         self.actions.readers['cgyro'] = lambda filename: cgyro()
@@ -167,7 +281,9 @@ class ProjectTest(unittest.TestCase):
         self.actions.import_input('cgyro')
         self.assertIn('input.cgyro', self.transfer['Transfer_file'])
         self.assertNotIn('input.cgyro', self.cg['INPUTS'])
-        self.assertEqual(self.actions.settings['page'], 'transfer')
+        self.assertEqual(self.actions.settings['page'], 'cgyro')
+        self.assertEqual(self.actions.settings['cgyro_source_mode'], 'imported')
+        self.assert_no_scripts_run()
 
     def test_invalid_import_does_not_replace_input(self):
         self.cg['INPUTS']['input.cgyro'] = cgyro()
@@ -187,22 +303,35 @@ class ProjectTest(unittest.TestCase):
     def test_run_rechecks_and_restores_run_flag(self):
         self.send(); self.configure()
         setup = self.cg['SETTINGS']['SETUP']; setup['irun'] = 0
-        self.cg['SCRIPTS']['runCGYRO.py'].run.side_effect = lambda: self.assertEqual(setup['irun'], 1)
+        self.cg['SCRIPTS']['runCGYRO.py'].run.side_effect = lambda **kwargs: self.assertEqual(setup['irun'], 1)
         self.actions.run_cgyro()
         self.assertEqual(setup['irun'], 0)
 
-    def test_prepare_exception_restores_flag_and_records_failure(self):
+    def test_run_exception_restores_flags_input_and_records_failure(self):
         self.send(); self.configure()
-        setup = self.cg['SETTINGS']['SETUP']; setup['irun'] = 1
+        original = self.cg['INPUTS']['input.cgyro']
+        setup = self.cg['SETTINGS']['SETUP']; setup.update(dict(irun=0, idownsync=0))
         def fail(**kwargs):
-            self.assertEqual(setup['irun'], 0)
-            self.assertEqual(kwargs['scan_dimensions'], 1)
+            self.assertEqual((setup['irun'], setup['idownsync']), (1, 1))
+            self.assertTrue(kwargs['wait_for_completion'])
             raise RuntimeError('test failure')
-        self.cg['SCRIPTS']['subscan_lin.py'].run.side_effect = fail
+        self.cg['SCRIPTS']['runCGYRO.py'].run.side_effect = fail
         with self.assertRaises(RuntimeError):
-            self.actions.run_cgyro(prepare=True)
-        self.assertEqual(setup['irun'], 1)
+            self.actions.run_cgyro()
+        self.assertEqual((setup['irun'], setup['idownsync']), (0, 0))
+        self.assertIs(self.cg['INPUTS']['input.cgyro'], original)
         self.assertEqual(list(self.root['PROJECT_STATE']['activity'].values())[-1]['status'], 'failed')
+
+    def test_prepare_validation_failure_preserves_existing_batch_without_running(self):
+        self.send()
+        previous = self.cg['BATCH_INPUTS']
+        original = self.cg['INPUTS']['input.cgyro']
+        self.transfer['Transfer_file']['input.cgyro']['N_SPECIES'] = 0
+        with self.assertRaises(ValueError):
+            self.actions.run_cgyro(prepare=True)
+        self.assertIs(self.cg['BATCH_INPUTS'], previous)
+        self.assertIs(self.cg['INPUTS']['input.cgyro'], original)
+        self.assert_no_scripts_run()
 
     def test_collect_rejects_prepared_only_run(self):
         self.cg['RUN_MANIFEST'] = dict(status='prepared', points=['a'], workDir='/tmp/test')
@@ -213,48 +342,62 @@ class ProjectTest(unittest.TestCase):
     def test_collect_publishes_correct_dimension_without_resubmission(self):
         self.cg['RUN_MANIFEST'] = dict(status='submitted_or_finished', dimensions=2, points=['a'], workDir='/tmp/test')
         setup = self.cg['SETTINGS']['SETUP']; setup.update(dict(irun=1, idownsync=1, idimrun=1))
-        def download():
-            self.cg['RUN_MANIFEST']['status'] = 'loaded'
-        def publish():
-            self.assertEqual((setup['irun'], setup['idownsync']), (0, 0))
+        def collect(**kwargs):
+            self.assertEqual((setup['irun'], setup['idownsync']), (0, 1))
+            self.assertEqual(kwargs, dict(collect_stopped=True, allow_solver_retries=False))
+            self.assertEqual(self.cg['RUN_MANIFEST']['dimensions'], 2)
             self.cg['RUN_DB']['from_manifest'] = {'result': 1}
-        self.cg['SCRIPTS']['downsync.py'].run.side_effect = download
-        self.cg['SCRIPTS']['CGYROScan_2d.py'].run.side_effect = publish
+        self.cg['SCRIPTS']['CGYROScan.py'].run.side_effect = collect
         self.actions.collect()
         self.assertIn('from_manifest', self.cg['RUN_DB'])
         self.assertEqual((setup['irun'], setup['idownsync']), (1, 1))
         self.cg['SCRIPTS']['runCGYRO.py'].run.assert_not_called()
+        self.cg['SCRIPTS']['CGYROScan.py'].run.assert_called_once()
 
     def test_missing_prerequisites_disable_buttons_and_callbacks_recheck(self):
         ui = self.render('cgyro')
-        for label in ('仅生成输入', '运行配置的扫描', '收集当前结果'):
-            callback, options = ui.button(label)
-            self.assertEqual(options['state'], 'disabled')
-            with self.assertRaises(ValueError):
-                callback()
-
-    def test_transfer_missing_tgyro_results_blocks_local_input_generation(self):
-        ui = self.render('transfer')
-        _, options = ui.button('生成各半径局部输入')
+        callback, options = ui.button('运行所选扫描')
         self.assertEqual(options['state'], 'disabled')
-        self.assertIn('TGYRO', options['help'])
+        for action in (callback, self.actions.collect, lambda: self.actions.run_cgyro(prepare=True)):
+            with self.assertRaises(ValueError):
+                action()
+        self.assert_no_scripts_run()
 
-    def test_tglf_conflict_only_stages_diff(self):
+    def test_transfer_missing_profile_blocks_pipeline_execution(self):
+        ui = self.render('transfer')
+        _, options = ui.button('运行 Transfer_tool')
+        self.assertEqual(options['state'], 'disabled')
+        self.assertIn('input.gacode', options['help'])
+        self.assert_no_scripts_run()
+
+    def test_tglf_handoff_archives_previous_results_without_running(self):
         current = dict(tglf(), SAT_RULE=2, OLD=8)
         self.tg['FILES'] = {'input.tglf': current, 'old_result': [1, 2]}
         self.send('tglf')
-        self.assertEqual(self.tg['FILES']['input.tglf'], current)
-        _, pending = self.pending()
-        differences = {row[0]: row for row in pending['differences']}
-        self.assertEqual(differences['SAT_RULE'][1:], ('变化', '2', '0'))
-        self.assertEqual(differences['OLD'][1], '移除')
-        self.assertEqual(self.actions.settings['page'], 'review')
+        self.assertEqual(self.tg['FILES']['input.tglf'], tglf())
+        self.assertEqual(list(self.tg['FILES']), ['input.tglf'])
+        self.assertFalse(project.pending_inputs(self.root))
+        archive = list(self.root['PROJECT_STATE']['activity'].values())[-1]['previous_tglf_files']
+        self.assertEqual(archive, {'input.tglf': current, 'old_result': [1, 2]})
+        self.tg['FILES']['input.tglf']['SAT_RULE'] = 5
+        self.transfer['Transfer_file']['input.tglf']['SAT_RULE'] = 6
+        current['SAT_RULE'] = 9
+        self.assertEqual(archive['input.tglf']['SAT_RULE'], 2)
+        self.assert_no_scripts_run()
+
+    def test_same_tglf_input_keeps_results_without_duplicate_archive(self):
+        current = self.tg['FILES'] = {'input.tglf': tglf(), 'result': [7, 8]}
+        self.send('tglf')
+        self.send('tglf')
+        self.assertIs(self.tg['FILES'], current)
+        self.assertEqual(current['result'], [7, 8])
+        self.assertFalse(self.root['PROJECT_STATE'].get('activity', {}))
+        self.assert_no_scripts_run()
 
     def test_keep_current_tglf_preserves_its_entire_result_container(self):
         current = {'input.tglf': dict(tglf(), SAT_RULE=2), 'result': [7, 8]}
         self.tg['FILES'] = current
-        self.send('tglf')
-        key, record = self.pending()
+        key, record = self.legacy_choice()
         self.actions.resolve_input(key, False)
         self.assertIs(self.tg['FILES'], current)
         self.assertEqual(record['status'], 'kept_current')
@@ -263,8 +406,7 @@ class ProjectTest(unittest.TestCase):
     def test_accept_input_archives_old_results_without_relabelling(self):
         previous = {'input.tglf': dict(tglf(), SAT_RULE=2), 'result': [7, 8]}
         self.tg['FILES'] = previous
-        self.send('tglf')
-        key, record = self.pending()
+        key, record = self.legacy_choice()
         self.actions.resolve_input(key, True)
         self.assertEqual(list(self.tg['FILES']), ['input.tglf'])
         self.assertEqual(self.tg['FILES']['input.tglf']['SAT_RULE'], 0)
@@ -275,8 +417,7 @@ class ProjectTest(unittest.TestCase):
 
     def test_changed_target_cannot_accept_stale_diff(self):
         self.tg['FILES']['input.tglf'] = dict(tglf(), SAT_RULE=2)
-        self.send('tglf')
-        key, _ = self.pending()
+        key, _ = self.legacy_choice()
         self.tg['FILES']['input.tglf']['SAT_RULE'] = 5
         with self.assertRaisesRegex(ValueError, '当前 TGLF 输入'):
             self.actions.resolve_input(key, True)
@@ -284,40 +425,39 @@ class ProjectTest(unittest.TestCase):
 
     def test_changed_transfer_source_cannot_accept_stale_diff(self):
         self.tg['FILES']['input.tglf'] = dict(tglf(), SAT_RULE=2)
-        self.send('tglf')
-        key, _ = self.pending()
+        key, _ = self.legacy_choice()
         self.transfer['Transfer_file']['input.tglf']['KY'] = .6
         with self.assertRaisesRegex(ValueError, 'Transfer 源输入'):
             self.actions.resolve_input(key, True)
 
-    def test_pending_input_blocks_tglf_until_choice_is_made(self):
-        self.configure('tglf')
-        self.tg['FILES']['input.tglf'] = dict(tglf(), SAT_RULE=2)
-        self.send('tglf')
-        ui = self.render('tglf')
-        callback, options = ui.button('运行当前 input.tglf')
-        self.assertEqual(options['state'], 'disabled')
-        with self.assertRaisesRegex(ValueError, '待确认'):
-            callback()
-        key, _ = self.pending(); self.actions.resolve_input(key, False)
-        self.actions.run('tglf', 'runTGLF', (('FILES', 'input.tglf'),))
-        self.tg['SCRIPTS']['runTGLF'].run.assert_called_once()
+    def test_old_pending_input_migrates_to_kept_current_without_replacing_results(self):
+        current = self.tg['FILES'] = {'input.tglf': dict(tglf(), SAT_RULE=2), 'result': [42]}
+        key, record = self.legacy_choice()
+        project.ProjectActions(self.root, self.tree_factory)
+        self.assertIs(self.tg['FILES'], current)
+        self.assertEqual(record['status'], 'kept_current')
+        self.assertEqual(record['incoming']['SAT_RULE'], 0)
+        self.assertIn(key, self.root['PROJECT_STATE']['activity'])
+        self.assertFalse(project.pending_inputs(self.root))
+        self.assert_no_scripts_run()
 
-    def test_review_page_renders_actual_values_and_both_choices(self):
-        self.tg['FILES']['input.tglf'] = dict(tglf(), SAT_RULE=2)
-        self.send('tglf')
-        ui = self.render('review')
-        ui.button('保留当前 TGLF 输入')
-        ui.button('使用待传入输入，并保存原版本')
-        self.assertTrue(any(name == 'Label' and 'SAT_RULE' in args[0] for name, args, _ in ui.events))
+    def test_legacy_review_shortcut_opens_current_tglf_input_page(self):
+        self.actions.open_page('review')
+        self.assertEqual(self.actions.settings['page'], 'tglf')
+        self.assertEqual(self.actions.settings['tglf']['page'], 'scan')
+        self.assertEqual(self.actions.settings['tglf']['scan_page'], 'input')
+        self.assert_no_scripts_run()
 
-    def test_imported_tglf_also_requires_choice(self):
+    def test_imported_tglf_archives_previous_input_without_running(self):
         self.tg['FILES']['input.tglf'] = dict(tglf(), SAT_RULE=2)
         self.actions.readers['tglf'] = lambda filename: tglf()
         self.actions.settings['tglf_file'] = '/synthetic/input.tglf'
         self.actions.import_input('tglf')
-        self.assertTrue(project.pending_inputs(self.root))
-        self.assertEqual(self.tg['FILES']['input.tglf']['SAT_RULE'], 2)
+        self.assertFalse(project.pending_inputs(self.root))
+        self.assertEqual(self.tg['FILES']['input.tglf']['SAT_RULE'], 0)
+        archive = list(self.root['PROJECT_STATE']['activity'].values())[-1]['previous_tglf_files']
+        self.assertEqual(archive['input.tglf']['SAT_RULE'], 2)
+        self.assert_no_scripts_run()
 
     def test_profile_handoff_archives_old_scan_and_invalidates_local_inputs(self):
         scan = self.root['TGLF_scan']
@@ -351,28 +491,25 @@ class ProjectTest(unittest.TestCase):
 
     def test_ready_button_rechecks_upstream_input_at_click_time(self):
         self.send(); self.configure()
-        callback, options = self.render('cgyro').button('运行配置的扫描')
+        callback, options = self.render('cgyro').button('运行所选扫描')
         self.assertEqual(options['state'], 'normal')
-        self.transfer['Transfer_file']['input.cgyro']['Q'] = 4.
+        self.transfer['Transfer_file']['input.cgyro']['N_SPECIES'] = 0
         with self.assertRaises(ValueError):
             callback()
         self.cg['SCRIPTS']['runCGYRO.py'].run.assert_not_called()
 
-    def test_transfer_seed_has_its_own_choice_and_archives_old_tgyro(self):
+    def test_transfer_seed_replacement_archives_old_tgyro_without_running(self):
         self.transfer['INPUTS']['input.tglf'] = dict(tglf(), SAT_RULE=2)
         self.transfer['OUTPUTS']['TGYRO'] = {'old_flux': [7, 8]}
         self.actions.readers['tglf'] = lambda filename: tglf()
         self.actions.settings['transfer_tglf_file'] = '/synthetic/seed'
         self.actions.import_transfer_seed('tglf')
-        key, record = self.pending()
-        self.assertEqual(record['destination'], 'transfer')
-        self.assertFalse(project.pending_inputs(self.root, 'tglf'))
-        self.assertIn('TGYRO', self.transfer['OUTPUTS'])
-        self.actions.resolve_input(key, True)
+        self.assertFalse(project.pending_inputs(self.root))
         self.assertNotIn('TGYRO', self.transfer['OUTPUTS'])
         self.assertEqual(self.transfer['INPUTS']['input.tglf']['SAT_RULE'], 0)
         archives = self.root['PROJECT_STATE']['activity'].values()
         self.assertTrue(any(record.get('tgyro_result', None) == {'old_flux': [7, 8]} for record in archives))
+        self.assert_no_scripts_run()
 
     def test_transfer_tgyro_seed_invalidates_previous_generation(self):
         self.transfer['OUTPUTS']['TGYRO'] = {'old_flux': [7, 8]}
@@ -382,21 +519,16 @@ class ProjectTest(unittest.TestCase):
         self.assertIn('input.tgyro', self.transfer['INPUTS'])
         self.assertNotIn('TGYRO', self.transfer['OUTPUTS'])
 
-    def test_generated_tglf_requires_the_same_explicit_choice(self):
+    def test_generated_tglf_replacement_archives_prior_single_file(self):
         self.tg['FILES'] = {'input.tglf': dict(tglf(), SAT_RULE=2), 'result': [42]}
         self.root['TGLF_scan']['input.tglf'] = {.5: tglf()}
-        self.render('tglf').button('比较并传入当前 TGLF 单文件')[0]()
-        key, record = self.pending()
-        self.assertEqual(self.tg['FILES']['result'], [42])
-        self.assertEqual(record['source'], ['TGLF_scan', 'input.tglf', .5])
-        self.actions.resolve_input(key, False)
-        self.assertEqual(self.tg['FILES']['input.tglf']['SAT_RULE'], 2)
+        self.actions.settings['generated_tglf_source'] = json.dumps(['TGLF_scan', 'input.tglf', .5])
         self.actions.use_generated_tglf()
-        key, _ = self.pending()
-        self.actions.resolve_input(key, True)
+        self.assertFalse(project.pending_inputs(self.root))
         self.assertEqual(self.tg['FILES']['input.tglf']['SAT_RULE'], 0)
         self.assertTrue(any(r.get('previous_tglf_files', {}).get('result', None) == [42]
                             for r in self.root['PROJECT_STATE']['activity'].values()))
+        self.assert_no_scripts_run()
 
     def test_cached_local_generation_keeps_current_input_and_results(self):
         scan = self.root['TGLF_scan']

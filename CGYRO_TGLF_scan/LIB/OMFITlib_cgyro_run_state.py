@@ -8,14 +8,64 @@ from builtins import (Exception, RuntimeError, ValueError, all, any, bool, dict,
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import re
+from OMFITlib_cgyro_reference import metadata_value
 
 TERMINAL = {'COMPLETED', 'CANCELLED', 'FAILED', 'TIMEOUT', 'OUT_OF_MEMORY',
             'NODE_FAIL', 'BOOT_FAIL', 'DEADLINE', 'PREEMPTED', 'REVOKED'}
+COLLECTED_STATES = {'complete', 'partial', 'empty'}
+SETTLED_RUN_PHASES = {'published', 'failed', 'cancelled', 'loaded', 'submitted_or_finished'}
+SETTLED_OUTCOMES = {'published', 'completed', 'failed', 'cancelled'}
+
+QUEUE_POLL_SECONDS = 30
+WAIT_HEARTBEAT_SECONDS = 600
+STOP_POLL_SECONDS = 2
+STOP_POLL_ATTEMPTS = 20
+STOP_QUERY_ERROR_LIMIT = 3
 
 JOB_ID_RULES = {
     'slurm': r'(?i)submitted\s+batch\s+job\s+([0-9]+)',
     'pbs': r'(?m)^\s*([0-9]+(?:\.[A-Za-z0-9._-]+)?)\s*$',
 }
+
+
+def collection_finished(manifest):
+    """The automatic collector has nothing further to publish for this run.
+
+    Keep this separate from collection_recorded: ``complete`` is not itself
+    proof that publication finished, and neither predicate grants retry or
+    deletion permission. Scheduler COMPLETED is a different state dimension.
+    """
+    return manifest.get('status', '') == 'published' or manifest.get('collection_status', '') in ('partial', 'empty')
+
+
+def collection_recorded(manifest):
+    """A previous collection sealed complete, partial, or empty outputs."""
+    return manifest.get('status', '') == 'published' or manifest.get('collection_status', '') in COLLECTED_STATES
+
+
+def run_settled(manifest):
+    """Both saved phase and any scheduler evidence must permit retirement.
+
+    Unknown imported states and stale collection state after a requeue cannot
+    authorize cleanup. This does not decide coverage or continuation ancestry.
+    """
+    status = manifest.get('status', '')
+    if status not in SETTLED_RUN_PHASES:
+        return False
+    if status == 'published' and manifest.get('collection_status', '') not in ('', 'complete'):
+        return False
+    sync = metadata_value(manifest.get('scheduler_sync', {}))
+    return not sync or (not sync.get('active', False) and sync.get('terminal', None) is True
+                        and sync.get('outcome', '') in SETTLED_OUTCOMES)
+
+
+def point_complete(row, legacy_default=False):
+    """Loaded output is usable only after any continuation-pending flag clears.
+
+    Legacy public scans predate the status field; only their merge path opts
+    into the old loaded default. Cleanup and ancestry require explicit status.
+    """
+    return row.get('status', 'loaded' if legacy_default else '') == 'loaded' and not row.get('resume_pending', False)
 
 
 def saved_slurm_run(root):
@@ -230,18 +280,19 @@ while true; do
   queued=$(cgyro_queue_rows '%i|%T') || exit 1
   [ -n "$queued" ] || break
   tick=0
-  while [ "$tick" -lt 30 ]; do
+  while [ "$tick" -lt POLL_SECONDS ]; do
     check_stop
     sleep 1
     tick=$((tick+1))
   done
-  hb=$((hb+30))
-  if [ "$hb" -ge 600 ]; then
+  hb=$((hb+POLL_SECONDS))
+  if [ "$hb" -ge HEARTBEAT_SECONDS ]; then
     echo "[heartbeat] job JOB_ID still in queue/running at $(date)"; hb=0
   fi
 done
 echo "[heartbeat] job JOB_ID left the queue at $(date)"
-'''.replace('JOB_ID', str(job_id)).replace('STOP_FILE', quote(marker)).replace('STOP_STAMP', quote(stamp))
+'''.replace('JOB_ID', str(job_id)).replace('STOP_FILE', quote(marker)).replace('STOP_STAMP', quote(stamp)).replace(
+        'POLL_SECONDS', str(QUEUE_POLL_SECONDS)).replace('HEARTBEAT_SECONDS', str(WAIT_HEARTBEAT_SECONDS))
 
 
 def pbs_wait(job_id):
@@ -258,9 +309,9 @@ def pbs_wait(job_id):
   else
     printf '%s\\n' "$state" >&2; exit 1
   fi
-  sleep 30
+  sleep POLL_SECONDS
 done
-'''.replace('JOB_ID', str(job_id))
+'''.replace('JOB_ID', str(job_id)).replace('POLL_SECONDS', str(QUEUE_POLL_SECONDS))
 
 
 def stop_message(manifest):

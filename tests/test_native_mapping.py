@@ -2,6 +2,7 @@
 import ast
 import importlib.util
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -40,11 +41,19 @@ class NativeIntegrationTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             root.update(status='ready')
 
-    def test_real_main_entry_renders_saved_histories_and_pending_choice(self):
+    def test_real_main_entry_renders_histories_and_migrates_legacy_choice(self):
         root = self.tree(dashboard.fixture())
         actions = dashboard.project.ProjectActions(root, self.tree_factory)
         root['TGLF_scan']['TGLF']['FILES'] = self.tree({'input.tglf': dashboard.tglf(), 'result': [42]})
-        actions.propose_tglf(self.tree(dict(dashboard.tglf(), SAT_RULE=2)), 'candidate')
+        # Current imports archive-and-replace immediately. This integration
+        # case deliberately opens the persisted choice format from older ZIPs.
+        current = root['TGLF_scan']['TGLF']['FILES']['input.tglf']
+        candidate = self.tree(dict(dashboard.tglf(), SAT_RULE=2))
+        actions._record('candidate', status='awaiting_choice', destination='tglf',
+                        current=current, incoming=candidate,
+                        current_digest=dashboard.project.input_digest(current),
+                        incoming_digest=dashboard.project.input_digest(candidate),
+                        differences=dashboard.project.input_difference(current, candidate))
         root['CGYRO_scan']['RUN_MANIFEST'] = self.tree({'status': 'submitted', 'points': ['a'], 'workDir': '/tmp/run'})
         root['TGLF_CASES'] = self.tree({'saved': {'enabled': True, 'label': 'saved', 'selected_run': 'r1',
                                                 'runs': {'r1': {'status': 'complete'}}}})
@@ -55,13 +64,24 @@ class NativeIntegrationTest(unittest.TestCase):
             with self.subTest(page=page):
                 actions.settings['page'] = page
                 ui = dashboard.UI(root)
-                exec(compile(entry.read_text(encoding='utf-8'), str(entry), 'exec'),
-                     dict(root=root, OMFITtree=self.tree_factory, OMFITgacode=Mock(), OMFIT=session,
-                          OMFITx=ui, SERVER=SimpleNamespace(listServers=lambda: {'localhost': {}}), OMFITworkDir=Mock()))
+                # Registration is not invoked here; supply that native import
+                # and script defaults while exercising the actual main entry.
+                with patch.dict(sys.modules, {'omfit_classes.namelist': SimpleNamespace(NamelistName=str)}), \
+                     dashboard.headless_runtime_controls():
+                    exec(compile(entry.read_text(encoding='utf-8'), str(entry), 'exec'),
+                         dict(root=root, rootName='root', OMFITtree=self.tree_factory,
+                              OMFITgacode=Mock(), OMFIT=session, OMFITx=ui,
+                              defaultVars=lambda **kwargs: None, workbench_page=None, panel_only=False,
+                              SERVER=SimpleNamespace(listServers=lambda: {'localhost': {}}), OMFITworkDir=Mock()))
                 self.assertTrue(ui.events)
         self.assertEqual(dashboard.project.summary(root)['multi_selected'], 1)
         self.assertEqual(root['TGLF_scan']['TGLF']['FILES']['result'], [42])
-        self.assertEqual(len(dashboard.project.pending_inputs(root)), 1)
+        self.assertEqual(dashboard.project.pending_inputs(root), {})
+        legacy = next(record for record in root['PROJECT_STATE']['activity'].values()
+                      if record.get('title', '') == 'candidate')
+        self.assertEqual(legacy['status'], 'kept_current')
+        self.assertEqual(legacy['current'], current)
+        self.assertEqual(legacy['incoming'], candidate)
         session['OMFITtemplates']['GUIS']['main'].run.assert_not_called()
 
     def test_valid_native_runtime_fields_are_not_silently_treated_as_missing(self):
@@ -74,11 +94,19 @@ class NativeIntegrationTest(unittest.TestCase):
                 nodes=1, ppn=4, ntasks_per_node=4, array_parallel=2))
             self.assertEqual(dashboard.project.runtime_issues(root, 'cgyro'), [])
             remote['cluster']['nodes'] = 0
-            self.assertIn('nodes必须为正整数', dashboard.project.runtime_issues(root, 'cgyro'))
+            self.assertIn('节点数必须为正整数', dashboard.project.runtime_issues(root, 'cgyro'))
         for name in ('transfer', 'tglf', 'tgyro', 'profiles'):
             node = dashboard.project.module(root, name)
             node['SETTINGS']['REMOTE_SETUP']['server'] = 'localhost'
             node['SETTINGS']['SETUP']['executable'] = 'chosen-command'
+            if name == 'transfer':
+                # Scheduler preparation requires a compute-visible work root;
+                # the OMFIT-local /tmp directory is only for result staging.
+                remote = node['SETTINGS']['REMOTE_SETUP']
+                remote['serverPicker'] = 'cluster'
+                remote['cluster'] = self.tree(dict(server='cluster.example', scheduler='slurm',
+                    workDir='/shared/run', queue='debug', w='00:30:00'))
+                node['SETTINGS']['SETUP']['workDir'] = '/tmp/omfit-test'
             self.assertEqual(dashboard.project.runtime_issues(root, name), [])
 
     def test_input_lookup_keeps_lazy_loading_and_explicit_default(self):
@@ -94,8 +122,10 @@ class NativeIntegrationTest(unittest.TestCase):
             inputs.load()
         root = self.tree(dashboard.fixture())
         root['CGYRO_scan']['INPUTS'] = inputs
-        issues = dashboard.project.cgyro_input_issues(root)
-        self.assertIn('准备尚未确认', issues[0])
+        loaded = dashboard.project.read(root, ('CGYRO_scan', 'INPUTS', 'input.cgyro'))
+        self.assertEqual(loaded, dashboard.cgyro())
+        fallback = object()
+        self.assertIs(dashboard.project.read(root, ('CGYRO_scan', 'INPUTS', 'missing'), fallback), fallback)
         self.assertIn('input.cgyro', inputs)
 
     def test_comparison_pages_and_spectra_read_nested_native_trees(self):
@@ -148,7 +178,10 @@ class NativeIntegrationTest(unittest.TestCase):
                     if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Attribute):
                         continue
                     name = ast.unparse(call.func.value)
-                    # Tk Listbox.get(index) is a widget API, not a mapping.
+                    # Tk Listbox.get(index) and the stdlib environment object
+                    # do not use OMFITMapping's required-default signature.
+                    if name == 'os.environ':
+                        continue
                     if path.name == 'OMFITlib_compare_widgets.py' and name == 'box':
                         continue
                     if call.func.attr in ('get', 'setdefault') and len(call.args) == 1 and not call.keywords:

@@ -9,7 +9,7 @@ import re
 from numpy import array
 from OMFITlib_compare_state import STYLE_DEFAULTS, stable_keys
 from OMFITlib_compare_core import resolve_key as _resolve_mapping_key
-from OMFITlib_compare_options import is_gamma_ratio_plot_mode, parse_float_list_text, validate_options
+from OMFITlib_compare_options import STAT_DEFAULTS, is_gamma_ratio_plot_mode, parse_float_list_text, validate_options
 from OMFITlib_compare_style import cgyro_case_caption
 from OMFITlib_cgyro_scan_view import comparison_case_view, view_config
 
@@ -247,9 +247,9 @@ def build_context(root):
     ctx['selected_paras'], ctx['selected_paras_by_nr'] = _sanitize_selected_parameters(root, settings)
 
     ctx['error_flag'] = settings.get('error_flag', 'CGYRO')
-    ctx['effnum'] = settings.get('effnum', 5)
+    ctx['effnum'] = settings.get('effnum', STAT_DEFAULTS['effnum'])
     ctx['style'] = global_plot_style(root)
-    ctx['ave_window'] = settings.get('ave_window', 0.02)
+    ctx['ave_window'] = settings.get('ave_window', STAT_DEFAULTS['ave_window'])
 
     ctx['plot_log_x'] = settings.get('plot_log_x', False)
     ctx['plot_log_y'] = settings.get('plot_log_y', False)
@@ -269,11 +269,11 @@ def build_context(root):
     ctx['legend_order_mode'] = settings.get('legend_order_mode', 'Plot order')
     ctx['legend_order_text'] = settings.get('legend_order_text', '')
     try:
-        ctx['error_tolerance'] = float(settings.get('error_tolerance', 0.01))
+        ctx['error_tolerance'] = float(settings.get('error_tolerance', STAT_DEFAULTS['error_tolerance']))
     except Exception:
-        ctx['error_tolerance'] = 0.01
+        ctx['error_tolerance'] = STAT_DEFAULTS['error_tolerance']
     if ctx['error_tolerance'] <= 0:
-        ctx['error_tolerance'] = 0.01
+        ctx['error_tolerance'] = STAT_DEFAULTS['error_tolerance']
 
     ctx['ms'] = float(ctx['style']['marker_size'])
     ctx['lw'] = float(ctx['style']['line_width'])
@@ -333,7 +333,7 @@ def _nr_title_text(ctx, nr):
     return cgyro_case_caption(nr, include_radius=True)
 
 
-def _iter_selected_parameter_items(ctx, nr=None):
+def iter_selected_parameter_items(ctx, nr=None):
     """
     Yield `(para, para_values)` pairs that have at least one selected value.
 
@@ -399,6 +399,10 @@ def _iter_selected_parameter_items(ctx, nr=None):
         if len(para_values) == 0:
             continue
         yield para, para_values
+
+
+# Saved callbacks and external modules may retain the original private name.
+_iter_selected_parameter_items = iter_selected_parameter_items
 
 
 def _has_any_selected_parameters(ctx):

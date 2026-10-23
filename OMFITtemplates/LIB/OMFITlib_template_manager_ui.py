@@ -1,6 +1,6 @@
 """Manager update dialog shared by standalone Tk and the OMFIT module."""
 from OMFITlib_gui_fonts import configure_window_fonts
-from builtins import len, str
+from builtins import BaseException, Exception, dict, len, list, setattr, str, type
 from pathlib import Path
 import subprocess
 import sys
@@ -17,14 +17,28 @@ from OMFITlib_template_incremental import plan_incremental, install_incremental,
 from OMFITlib_template_service import Cancelled
 
 
+def _rollback_switch(error, steps):
+    """Try every rollback step without replacing the initiating exception."""
+    failures = []
+    for label, operation in steps:
+        try:
+            operation()
+        except BaseException as exc:
+            failures.append(dict(step=label, error=type(exc).__name__ + ': ' + str(exc)))
+    if failures:
+        setattr(error, 'template_rollback_errors', failures)
+    return failures
+
+
 class ManagerUpdateUI:
     def _check_manager_update(self, automatic=False):
-        if self.busy and not automatic:
+        if not self.alive or self.close_requested or self.busy and not automatic:
             return
         self._manager_check_generation += 1
         generation = self._manager_check_generation
         if not automatic:
             self._manager_auto_cancel.set()
+            self.tasks.invalidate('manager-check')
         try:
             proxy = self._selected_proxy()
             sources = self.session.manager_sources() if self.session is not None else {}
@@ -36,7 +50,9 @@ class ManagerUpdateUI:
             return
         if not automatic:
             self._save_preferences()
-        cancel = self._manager_auto_cancel if automatic else self.cancel
+        cancel = threading.Event()
+        if automatic:
+            self._manager_auto_cancel = cancel
         module_dir = Path(__file__).resolve().parents[1]
         def check():
             client = GitHub(DEFAULT_REPOSITORY, proxy=proxy, cancel=cancel)
@@ -51,16 +67,12 @@ class ManagerUpdateUI:
             return result
         if automatic:
             self.manager_version_info.set('管理器 ' + MANAGER_VERSION + ' · 正在检查更新')
-            def runner():
-                try:
-                    result = check()
-                    self.events.put(('manager-check', generation, result, None))
-                except Exception as exc:
-                    self.events.put(('manager-check', generation, None, exc))
-            threading.Thread(target=runner, name='omfit-manager-update-check', daemon=True).start()
+            self.tasks.start('manager-check', check,
+                lambda result: self._automatic_manager_checked(generation, result, None),
+                lambda error: self._automatic_manager_checked(generation, None, error), cancel)
         else:
             self._run('正在检查管理器自身更新并比较本地文件…', check, self._show_manager_update,
-                      failure=self._manual_manager_check_failed)
+                      failure=self._manual_manager_check_failed, cancel=cancel)
 
     def _manual_manager_check_failed(self, exc):
         self.manager_version_info.set('管理器 ' + MANAGER_VERSION + ' · 更新检查未完成')
@@ -163,7 +175,7 @@ class ManagerUpdateUI:
         self._fit_size(dialog, 680, 480)
 
     def _install_manager_update(self):
-        if self.busy or not self.manager_update_result.get('plan'):
+        if self.busy or not self.manager_update_result or not self.manager_update_result.get('plan'):
             return
         plan = self.manager_update_result['plan']
         try:
@@ -180,11 +192,12 @@ class ManagerUpdateUI:
                 if result.returncode:
                     raise TemplateError('新版启动检查失败，当前版本保留：' + result.stderr.decode('utf-8', errors='replace')[-1000:])
             return path
-        self._run('正在安装增量更新；当前版本保留…', install, self._manager_installed)
+        self._run('正在安装增量更新；当前版本保留…', install, self._manager_installed,
+                  receipt='管理器文件已安装：')
 
     def _manager_installed(self, path):
         if self.cancel.is_set():
-            self.status.set('已取消版本切换，当前管理器继续运行。')
+            self.status.set('管理器文件已安装：' + str(path) + '；版本切换已取消，当前管理器继续运行。')
             return
         path = Path(path)
         self._save_preferences()
@@ -194,23 +207,33 @@ class ManagerUpdateUI:
             if parent is None:
                 raise TemplateError('未找到 OMFIT 主窗口，当前模块保留，请从 OMFIT 重新打开管理器')
             previous = session.replace_manager(path / 'OMFITtemplates')
-            self.close()
             def reopen():
                 try:
                     session.reopen_manager()
-                except Exception as exc:
-                    session.restore_manager(previous)
+                except BaseException as exc:
+                    failures = _rollback_switch(exc, [('manager module', lambda: session.restore_manager(previous))])
+                    if failures or not isinstance(exc, Exception):
+                        raise
                     messagebox.showerror('Manager Update', '新版管理器未能打开，已恢复原模块：' + str(exc), parent=parent)
                     session.reopen_manager()
-            parent.after(100, reopen)
+            callback = None
+            try:
+                callback = parent.after(100, reopen)
+                self.close()
+            except BaseException as exc:
+                steps = [('manager module', lambda: session.restore_manager(previous))]
+                if callback is not None:
+                    steps.insert(0, ('manager reopen callback', lambda: parent.after_cancel(callback)))
+                _rollback_switch(exc, steps)
+                raise
         else:
             previous = activate_installation(path)
             try:
                 subprocess.Popen([sys.executable, str(path / 'OMFITtemplates/launch.py'),
                     '--library', self.library.get(), '--project', self.current.get()],
                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-            except OSError:
-                restore_activation(previous)
+            except BaseException as exc:
+                _rollback_switch(exc, [('manager activation', lambda: restore_activation(previous))])
                 raise
             self.close()
 
@@ -237,4 +260,5 @@ class ManagerUpdateUI:
                                 parent=self.manager_update_dialog or self.window)
         self._run('正在下载管理器安装包…',
             lambda: download_manager_package(GitHub(DEFAULT_REPOSITORY, proxy=proxy,
-                cancel=self.cancel, progress=self._progress), package, output), downloaded)
+                cancel=self.cancel, progress=self._progress), package, output), downloaded,
+            receipt='管理器安装包已下载：')

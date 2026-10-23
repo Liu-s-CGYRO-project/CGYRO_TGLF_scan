@@ -1,5 +1,5 @@
 """Main-thread OMFIT operations, including updates to the existing module tree."""
-from builtins import any, bool, dict, id, list, set, str, type
+from builtins import BaseException, any, bool, dict, id, list, set, setattr, str, type
 import copy
 from datetime import datetime
 from pathlib import Path
@@ -149,7 +149,17 @@ class OMFITSession:
             if key != 'MODULE':
                 new['SETTINGS'][key] = preserve(new['SETTINGS'].get(key, {}), value)
         new.filename = ''
-        self.omfit['OMFITtemplates'] = new
+        try:
+            self.omfit['OMFITtemplates'] = new
+        except BaseException as exc:
+            # Native assignment may install the value before an Abort is
+            # raised. Preserve the original interruption if rollback also fails.
+            try:
+                self.omfit['OMFITtemplates'] = current
+            except BaseException as rollback:
+                setattr(exc, 'template_rollback_errors', [dict(step='manager module',
+                    error=type(rollback).__name__ + ': ' + str(rollback))])
+            raise
         return current
 
     def restore_manager(self, previous):

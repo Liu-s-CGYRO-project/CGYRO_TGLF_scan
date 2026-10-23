@@ -3,7 +3,7 @@ from builtins import all, any, bool, dict, len, list, str, sum
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_gui_controls import checkbox
 from OMFITlib_project_runtime import shared_issues
-from OMFITlib_tglf_multi_data import DEFAULTS, case_plan, duplicate_case, initialize, profile_digest
+from OMFITlib_tglf_multi_data import DEFAULTS, case_plan, duplicate_case, initialize, prepared_run_issues, profile_digest
 from OMFITlib_tglf_multi_plot import flux_summary
 
 STATUS = {'ready': '输入已生成', 'preparing': '正在生成输入', 'prepare_failed': '生成失败',
@@ -89,10 +89,8 @@ class MultiInputUI:
         for case in selected_cases:
             run = case['runs'].get(case['selected_run'], None)
             try:
-                if not run or run['status'] in ('preparing', 'prepare_failed', 'cancelled') or not run.get('points', None):
-                    raise ValueError('请先生成输入')
-                if run['plan'] != case_plan(self.settings, case) or run['profile_digest'] != profile_digest(case['input.gacode']):
-                    raise ValueError('输入或参数已变化，请重新生成')
+                problems = prepared_run_issues(run, case_plan(self.settings, case), profile_digest(case['input.gacode']))
+                run_issues.extend(case['label'] + '：' + problem for problem in problems)
             except (KeyError, ValueError, TypeError) as exc:
                 run_issues.append(case['label'] + '：' + str(exc))
         with ui.same_row():

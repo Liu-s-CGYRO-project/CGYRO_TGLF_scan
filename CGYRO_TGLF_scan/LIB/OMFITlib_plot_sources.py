@@ -38,6 +38,23 @@ def source_dimension(root, source):
     return '2D' if record.get('mode', record.get('plan', {}).get('mode', None)) == '2d' else '1D'
 
 
+def selected_tglf_source(root, state, dimension=None, choices=None):
+    """Resolve pre-run-record selections without changing their saved dimension.
+
+    Older projects only saved spectra_mode. Both the GUI and readers must
+    migrate that setting before selecting the first available run, otherwise
+    opening a selector can turn a saved 2D comparison into 1D and prune axes.
+    Explicit sources remain explicit; callers decide how to show missing runs.
+    """
+    source = state.get('result_source', '')
+    if source:
+        return source
+    if choices is None:
+        choices = run_choices(root)
+    legacy = 'legacy:' + str(dimension or state.get('spectra_mode', '1D'))
+    return legacy if legacy in choices.values() else next(iter(choices.values()), '')
+
+
 def spectrum_arrays(spectrum):
     """Return mode-by-ky arrays from both native xarray and older named columns."""
     ky = np.asarray(spectrum['ky'], dtype=float).ravel()
@@ -90,11 +107,7 @@ class ResultView(Mapping):
 def tglf_results(root, state, target='Spectra', dimension=None):
     """Resolve one explicit saved run, falling back to legacy only when selected."""
     scan = root.get('TGLF_scan', {})
-    source = state.get('result_source', '')
-    if not source:
-        choices = run_choices(root)
-        legacy = 'legacy:' + str(dimension or state.get('spectra_mode', '1D'))
-        source = legacy if legacy in choices.values() else next(iter(choices.values()), '')
+    source = selected_tglf_source(root, state, dimension)
     if str(source).startswith('legacy:'):
         dimension = source_dimension(root, source)
         key = 'scanResults2D' if dimension == '2D' else 'scanResults'

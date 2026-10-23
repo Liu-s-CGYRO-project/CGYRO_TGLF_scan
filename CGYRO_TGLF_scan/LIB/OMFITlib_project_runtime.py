@@ -171,36 +171,45 @@ def shared_issues(root):
     if applied is None:
         return []  # Existing projects retain their old setup until Apply.
     config = root['SETTINGS'].get('GACODE_RUNTIME', {})
+    if not isinstance(config, dict) or not isinstance(applied, dict):
+        return ['Saved runtime configuration is invalid; apply the configuration again']
     profile = matching_profile(config, root.get('PROJECT_STATE', {}).get('gacode_detection', {}))
     if runtime_values(config) != dict(applied):
         return ['统一环境配置已修改，请先在“环境配置”页应用']
+    validation = validate_runtime(config) + resource_issues(config, profile)
+    if validation:
+        return validation
     for name, path in TARGETS.items():
         module = node_at(root, path)
         if module is None:
             continue
-        remote = module['SETTINGS'].get('REMOTE_SETUP', {})
-        expected = dict(serverPicker=str(applied['serverPicker']).strip(), server=str(applied['server']).strip(),
-                        tunnel=str(applied['tunnel']),
-                        workDir=str(PurePosixPath(str(applied['workDir'])) / name) + '/',
-                        environment=program_environment(applied, target_program(name)))
-        if any(text(remote, key) != value for key, value in expected.items()):
-            return ['模块连接配置与统一环境不一致，请重新应用统一配置：' + name]
-        selected = remote.get(expected['serverPicker'], {})
-        if any(text(selected, key) != value for key, value in expected.items()):
-            return ['模块所选服务器配置与统一环境不一致，请重新应用：' + name]
-        if name == 'cgyro':
-            if profile and selected.get('server_capabilities', {}) != profile:
-                return ['服务器检测结果已更新，请重新应用运行配置']
-            try:
-                command = command_template(applied['cgyro_command']).replace('{mpi}',
-                    str(int(applied['nodes']) * int(applied['cores']))).replace('{threads}', str(applied['cpus_per_task']))
-            except ValueError as error:
-                return ['CGYRO 启动命令需要修正：' + str(error)]
-            resources = dict(nodes=str(applied['nodes']), ntasks_per_node=str(applied['cores']),
-                             cpus_per_task=str(applied['cpus_per_task']), executable=command)
-            if any(text(selected, key) != value for key, value in resources.items()):
-                return ['CGYRO 并行资源或启动命令与统一配置不一致，请重新应用']
-    return validate_runtime(config) + resource_issues(config, profile)
+        settings = module['SETTINGS']
+        remote = settings.get('REMOTE_SETUP', {})
+        if not isinstance(remote, dict):
+            return ['Invalid module remote settings: ' + name]
+        try:
+            endpoint, selected_fields, setup_fields = module_runtime_fields(
+                applied, name, settings.get('SETUP', {}), profile)
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            return ['Invalid module runtime configuration ({}): {}'.format(name, exc)]
+        if name == 'tgyro':
+            # runTGYRObase expands this template using the actual DIR ranks.
+            # Accept only that positive-integer substitution, not arbitrary
+            # command/environment edits or a forced CGYRO allocation count.
+            template = endpoint['environment'] + '\n' + str(applied['tgyro_command'])
+            pattern = re.escape(template).replace(re.escape('{n_radii}'), r'[1-9][0-9]*')
+            if re.fullmatch(pattern, str(settings.get('SETUP', {}).get('executable', ''))) is None:
+                return ['TGYRO command differs from the applied template']
+            setup_fields.pop('executable')
+        selected = remote.get(endpoint['serverPicker'], {})
+        for actual, expected in ((remote, endpoint), (selected, selected_fields),
+                                 (settings.get('SETUP', {}), setup_fields)):
+            if not isinstance(actual, dict) or any(str(actual.get(key, None)).strip() != str(value).strip()
+                   for key, value in expected.items()):
+                return ['Module runtime differs from the applied configuration: ' + name]
+        if name == 'cgyro' and selected.get('server_capabilities', {}) != (profile or {}):
+            return ['Server capabilities changed; apply the runtime configuration again']
+    return []
 
 
 def shared_multi_settings(root, settings):
@@ -217,17 +226,56 @@ def target_program(name):
     return {'transfer': 'tgyro', 'trxpl': 'profiles'}.get(name, name)
 
 
+def module_runtime_fields(values, name, setup, profile=None):
+    """One runtime contract for both writing settings and checking drift.
+
+    ``cores`` is a persisted legacy key: it denotes MPI ranks per node, not
+    hardware cores including OpenMP threads. Transfer/TGYRO retain their
+    radius-count contracts instead of inheriting CGYRO's rank allocation.
+    """
+    mpi_ranks = int(values['nodes']) * int(values['cores'])
+    environment = program_environment(values, target_program(name))
+    endpoint = dict(serverPicker=str(values['serverPicker']).strip(),
+                    server=str(values['server']).strip(), tunnel=str(values['tunnel']),
+                    workDir=str(PurePosixPath(str(values['workDir'])) / name) + '/',
+                    environment=environment, scheduler=values['scheduler'],
+                    queue=values['queue'], w=values['wall_time'])
+    selected = dict(endpoint)
+    selected.update(dict(nodes=int(values['nodes']), ntasks_per_node=int(values['cores']),
+                         ppn=int(values['cores']), cpus_per_task=int(values['cpus_per_task']),
+                         array_parallel=int(values['array_parallel']), n=mpi_ranks,
+                         batch=values['scheduler'] != 'local'))
+    update = dict(num_nodes=int(values['nodes']), num_cores=int(values['cores']),
+                  wall_time=values['wall_time'], pbs_queue=values['queue'])
+    if name == 'cgyro':
+        selected['executable'] = command_template(values['cgyro_command']).replace(
+            '{mpi}', str(mpi_ranks)).replace('{threads}', str(values['cpus_per_task']))
+        update['cpus_per_task'] = int(values['cpus_per_task'])
+    elif name == 'transfer':
+        points = int(setup.get('p_tgyro', 3))
+        selected.update(dict(nodes=1, ntasks_per_node=points, ppn=points, n=points, cpus_per_task=1))
+        update.update(dict(num_nodes=1, num_cores=points, executable=environment,
+                           profiles_environment=program_environment(values, 'profiles'),
+                           gacode_shared=True, scheduler=values['scheduler']))
+    elif name == 'tglf':
+        selected['executable'] = str(values['tglf_command'])
+        update['executable'] = environment + '\n' + str(values['tglf_command'])
+    elif name == 'tgyro':
+        update['gacode_command'] = str(values['tgyro_command'])
+        update['executable'] = environment + '\n' + str(values['tgyro_command']).replace('{n_radii}', str(mpi_ranks))
+    elif name == 'profiles':
+        update['executable'] = environment + '\nprofiles_gen'
+    return endpoint, selected, update
+
+
 def apply_runtime(root, factory=dict):
+    """Prepare configuration-only changes, then commit them as one transaction."""
     config = initialize_runtime(root, factory)
     profile = matching_profile(config, root.get('PROJECT_STATE', {}).get('gacode_detection', {}))
     issues = validate_runtime(config) + resource_issues(config, profile)
     if issues:
-        raise ValueError('；'.join(issues))
+        raise ValueError('; '.join(issues))
     values = runtime_values(config)
-    picker, server = str(values['serverPicker']).strip(), str(values['server']).strip()
-    mpi = int(values['nodes']) * int(values['cores'])
-    cgyro_command = command_template(values['cgyro_command']).replace('{mpi}', str(mpi))
-    cgyro_command = cgyro_command.replace('{threads}', str(values['cpus_per_task']))
     operations, backups = [], factory()
     missing = object()
     for name, path in TARGETS.items():
@@ -236,77 +284,57 @@ def apply_runtime(root, factory=dict):
             continue
         settings = module['SETTINGS']
         current = settings.get('REMOTE_SETUP', {})
-        environment = program_environment(values, target_program(name))
-        # Copy only configuration, never module inputs, cases or result objects.
-        remote = copy.deepcopy(current)
-        directory = str(PurePosixPath(str(values['workDir'])) / name) + '/'
-        endpoint = dict(serverPicker=picker, server=server, tunnel=str(values['tunnel']),
-                        workDir=directory, environment=environment,
-                        scheduler=values['scheduler'], queue=values['queue'], w=values['wall_time'])
-        remote.update(endpoint)
-        selected = remote.setdefault(picker, factory())
-        selected.update(endpoint)
-        selected.update(dict(scheduler=values['scheduler'], queue=values['queue'], w=values['wall_time'],
-                        nodes=int(values['nodes']), ntasks_per_node=int(values['cores']), ppn=int(values['cores']),
-                        cpus_per_task=int(values['cpus_per_task']), array_parallel=int(values['array_parallel']),
-                        n=mpi, batch=values['scheduler'] != 'local'))
-        if name == 'cgyro':
-            selected['executable'] = cgyro_command
-            if profile:
-                selected['server_capabilities'] = copy.deepcopy(profile)
-            else:
-                selected.pop('server_capabilities', None)
-        elif name == 'tglf':
-            selected['executable'] = str(values['tglf_command'])
-        operations.append((settings, 'REMOTE_SETUP', remote))
         setup = settings.get('SETUP', None)
         if setup is None:
             setup = factory()
             operations.append((settings, 'SETUP', setup))
-        update = dict(num_nodes=int(values['nodes']), num_cores=int(values['cores']),
-                      wall_time=values['wall_time'], pbs_queue=values['queue'])
+        endpoint, selected_fields, setup_fields = module_runtime_fields(values, name, setup, profile)
+        # Copy only configuration, never module inputs, cases or result objects.
+        remote = copy.deepcopy(current)
+        remote.update(endpoint)
+        selected = remote.setdefault(endpoint['serverPicker'], factory())
+        selected.update(selected_fields)
         if name == 'cgyro':
-            update['cpus_per_task'] = int(values['cpus_per_task'])
-        elif name == 'transfer':
-            # Transfer generation follows command box 1: one rank per radius.
-            points = int(setup.get('p_tgyro', 3))
-            update.update(dict(num_nodes=1, num_cores=points))
-            # OMFIT SortedDict/NamelistName accepts a mapping, but unlike the
-            # built-in dict its update() does not accept keyword arguments.
-            selected.update(dict(nodes=1, ntasks_per_node=points, ppn=points,
-                                 n=points, cpus_per_task=1))
-            update['executable'] = environment
-            update['profiles_environment'] = program_environment(values, 'profiles')
-            update['gacode_shared'] = True
-            update['scheduler'] = values['scheduler']
-        elif name == 'tglf':
-            update['executable'] = environment + '\n' + str(values['tglf_command'])
-        elif name == 'tgyro':
-            # TGYRO's MPI count follows its actual DIR layout at execution time.
-            update['gacode_command'] = str(values['tgyro_command'])
-            update['executable'] = environment + '\n' + str(values['tgyro_command']).replace('{n_radii}', str(mpi))
-        elif name == 'profiles':
-            update['executable'] = environment + '\nprofiles_gen'
+            if profile:
+                selected['server_capabilities'] = copy.deepcopy(profile)
+            else:
+                selected.pop('server_capabilities', None)
+        operations.append((settings, 'REMOTE_SETUP', remote))
         backups[name] = dict(REMOTE_SETUP=copy.deepcopy(current),
-                             SETUP={key: copy.deepcopy(dict.get(setup, key, None)) for key in update})
-        operations.extend((setup, key, value) for key, value in update.items())
+                            SETUP={key: copy.deepcopy(dict.get(setup, key, None)) for key in setup_fields})
+        operations.extend((setup, key, value) for key, value in setup_fields.items())
+
+    # Include applied-state and multi-profile synchronization in the transaction:
+    # an Abort here must not leave modules changed but the applied snapshot old.
+    project_state = root.get('PROJECT_STATE', None)
+    if project_state is None:
+        project_state = factory()
+        operations.append((root, 'PROJECT_STATE', project_state))
+    runtime_state = copy.deepcopy(project_state.get('gacode_runtime', factory()))
+    runtime_state.update(dict(previous=backups, applied=copy.deepcopy(values)))
+    operations.append((project_state, 'gacode_runtime', runtime_state))
+    multi = root['SETTINGS'].get('TGLF_MULTI', None)
+    if multi is not None:
+        updated_multi = copy.deepcopy(multi)
+        shared_multi_settings({'PROJECT_STATE': {'gacode_runtime': runtime_state}}, updated_multi)
+        operations.extend((multi, key, value) for key, value in updated_multi.items())
     completed = []
     try:
         for parent, key, value in operations:
             old = dict.get(parent, key, missing)
             completed.append((parent, key, old))
             parent[key] = value
-    except BaseException:
+    except BaseException as original_error:
+        rollback_errors = []
         for parent, key, old in reversed(completed):
-            if old is missing:
-                parent.pop(key, None)
-            else:
-                parent[key] = old
+            try:
+                if old is missing:
+                    parent.pop(key, None)
+                else:
+                    parent[key] = old
+            except BaseException as rollback_error:
+                rollback_errors.append(str(rollback_error))
+        if rollback_errors:
+            original_error.runtime_rollback_errors = rollback_errors
         raise
-    state = root.setdefault('PROJECT_STATE', factory()).setdefault('gacode_runtime', factory())
-    state['previous'] = backups
-    state['applied'] = copy.deepcopy(values)
-    multi = root['SETTINGS'].get('TGLF_MULTI', None)
-    if multi is not None:
-        shared_multi_settings(root, multi)
     return list(backups)

@@ -1,7 +1,7 @@
 """Case and scan-value selection for the four comparison workflows."""
 from OMFITlib_cgyro_archive import catalog_runs
 from builtins import next, iter
-from OMFITlib_plot_sources import run_choices, source_dimension, tglf_results
+from OMFITlib_plot_sources import run_choices, source_dimension, selected_tglf_source, tglf_results
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     ValueError,
@@ -213,8 +213,8 @@ class CaseSelection(ComparisonWidgets):
         if not choices:
             self.ui.Label('尚无已完成的 TGLF 计算。', align='left')
             return {}, []
-        if state.get('result_source', None) not in choices.values():
-            state['result_source'] = next(iter(choices.values()))
+        source = selected_tglf_source(self.root, state, choices=choices)
+        state['result_source'] = source if source in choices.values() else next(iter(choices.values()))
         self.ui.ComboBox(path('result_source'), choices, '运行记录', updateGUI=True,
                          state='readonly', width=36, kwlabel={'width': 12, 'anchor': 'w'})
         dimension = source_dimension(self.root, state['result_source'])

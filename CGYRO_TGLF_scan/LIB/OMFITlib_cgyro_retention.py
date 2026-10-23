@@ -10,7 +10,7 @@ to one submission. Coverage uses run/case/scan/full coordinate (including signed
 ky). Uncertain metadata, uncollected jobs and live continuation sources survive.
 """
 from builtins import (BaseException, KeyError, TypeError, ValueError, any, bool, dict,
-                      float, isinstance, len, list, set, sorted, str, tuple)
+                      float, getattr, isinstance, len, list, set, sorted, str, tuple)
 from copy import deepcopy
 import json
 import math
@@ -19,6 +19,7 @@ from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, catalog_runs
                                    clean_run_id, output_final_time, point_coordinate, scan_key)
 from OMFITlib_cgyro_db import metadata_value, result_pool, run_records, storage_state
 from OMFITlib_cgyro_storage_files import FILE_STORE, file_reference_id, native_kind
+from OMFITlib_cgyro_run_state import collection_recorded, point_complete, run_settled
 
 
 def _at(node, path):
@@ -39,8 +40,7 @@ def _identity(manifest):
 def _collected(manifest):
     # A scheduler failure alone says nothing about successful download. Missing
     # collection state must keep the frozen inputs available for recollection.
-    return (manifest.get('status', '') == 'published' or
-            manifest.get('collection_status', '') in ('complete', 'partial', 'empty'))
+    return collection_recorded(manifest)
 
 
 def _settled(manifest):
@@ -50,16 +50,7 @@ def _settled(manifest):
     without clearing its collection status. Neither that stale status nor an
     unknown imported state can authorize discarding its frozen inputs.
     """
-    status = manifest.get('status', '')
-    if status not in ('published', 'failed', 'cancelled', 'loaded', 'submitted_or_finished'):
-        return False
-    if status == 'published' and manifest.get('collection_status', '') not in ('', 'complete'):
-        return False
-    sync = metadata_value(manifest.get('scheduler_sync', {}))
-    if sync and (sync.get('active', False) or sync.get('terminal', None) is not True or
-                 sync.get('outcome', '') not in ('published', 'completed', 'failed', 'cancelled')):
-        return False
-    return True
+    return run_settled(manifest)
 
 
 def _cyclic_ancestry(manifests):
@@ -83,16 +74,8 @@ def _cyclic_ancestry(manifests):
     return {token for token, cyclic in resolved.items() if cyclic}
 
 
-def retention_plan(module, resolve, reference):
-    """Read-only plan; validate every replacement before removing any payload.
-
-    Callers supply the storage resolver to avoid an import cycle. Time and
-    checkpoint probes are cached only for this call; no persistent cache can
-    hide an edited archive. Unknown branches are left for normal reachability
-    pruning, which must still traverse them before removing any physical owner.
-    """
-    records = run_records(module)
-    current = str(module.get('RUN_MANIFEST', {}).get('run_token', ''))
+def _public_coverage(module):
+    """Index exact coordinates and visible scan anchors without changing them."""
     public, ambiguous, public_anchors = {}, set(), set()
     for rid, cases in catalog_runs(module).items():
         for cid, case in cases.items():
@@ -111,6 +94,82 @@ def retention_plan(module, resolve, reference):
                     if coordinate in public:
                         ambiguous.add(coordinate)
                     public[coordinate] = (row, _at(case, row['result_path']))
+
+    return public, ambiguous, public_anchors
+
+
+def _replacement_evidence(token, entry, manifest, public, ambiguous, final_time, has_checkpoint, reference):
+    """Prove replacement of one whole run; uncertain fields reject retirement.
+
+    This function validates content coverage only. The caller separately keeps
+    active runs, public anchors and ancestors required by surviving children.
+    """
+    identity = _identity(manifest)
+    table = metadata_value(manifest.get('point_table', {}))
+    expected = set(manifest.get('points', []))
+    cases = metadata_value(entry.get('cases', {}))
+    if not expected or expected - set(table):
+        raise ValueError('Incomplete frozen point table')
+    # Unknown extra payloads must not be discarded with a known point
+    # map. Native submission scripts are retained in inputs by freeze.
+    if set(cases) - expected:
+        raise ValueError('Unclassified entries in frozen point map')
+    for name, value in metadata_value(entry.get('inputs', {})).items():
+        value = metadata_value(value)
+        if name in expected:
+            if set(value) != {'zip'} or file_reference_id(value['zip']) is None:
+                raise ValueError('Unclassified frozen point input')
+        elif name != 'scan.pbs' or not (file_reference_id(value) is not None or
+                native_kind(value, 'OMFITascii') or native_kind(value, 'OMFITpath')):
+            raise ValueError('Unclassified entry in frozen inputs')
+    replacements, changed = {}, False
+    for point in sorted(expected):
+        coordinate = identity + (point_coordinate(table[point]),)
+        if coordinate in ambiguous or coordinate not in public:
+            raise ValueError('Not every original coordinate is archived')
+        row, new_node = public[coordinate]
+        owner = str(row.get('run_token', ''))
+        if not owner or not point_complete(row):
+            raise ValueError('Replacement is unfinished or has unknown provenance')
+        new_key = reference(new_node)
+        if new_key is None:
+            raise ValueError('Replacement has not been indexed')
+        new_time = final_time(new_node, new_key)
+        if new_time is None or not math.isfinite(float(new_time)):
+            raise ValueError('Replacement has no validated final sample')
+        old_node = cases.get(point, None)
+        old_key = reference(old_node) if old_node is not None else None
+        if old_node is not None and old_key is None:
+            # A never-started point still owns its frozen ZIP. Complete
+            # public coverage alone does not prove this input identical.
+            raise ValueError('Frozen point is not an indexed result')
+        if old_key is not None and old_key != new_key:
+            old_time = final_time(old_node, old_key)
+            if old_time is None or float(new_time) < float(old_time):
+                raise ValueError('Replacement would lose sampled time')
+            old_restart, new_restart = has_checkpoint(old_key), has_checkpoint(new_key)
+            if old_restart is None or old_restart and new_restart is not True:
+                raise ValueError('Replacement would lose a checkpoint fallback')
+        if old_key is None and owner == token:
+            raise ValueError('Missing original payload is not a newer replacement')
+        changed = changed or owner != token
+        replacements[point] = dict(run_token=owner, task_id=row.get('task_id', ''), result=new_key)
+    if not changed:
+        raise ValueError('No newer run covers this snapshot')
+    return dict(reason='covered_by_current_archive', points=replacements)
+
+
+def retention_plan(module, resolve, reference):
+    """Read-only plan; validate every replacement before removing any payload.
+
+    Callers supply the storage resolver to avoid an import cycle. Time and
+    checkpoint probes are cached only for this call; no persistent cache can
+    hide an edited archive. Unknown branches are left for normal reachability
+    pruning, which must still traverse them before removing any physical owner.
+    """
+    records = run_records(module)
+    current = str(module.get('RUN_MANIFEST', {}).get('run_token', ''))
+    public, ambiguous, public_anchors = _public_coverage(module)
 
     times, checkpoints = {}, storage_state(module).get('checkpoints', {})
 
@@ -143,59 +202,8 @@ def retention_plan(module, resolve, reference):
             kept[token] = 'active, unknown or inconsistent run state'
             continue
         try:
-            identity = _identity(manifest)
-            table = metadata_value(manifest.get('point_table', {}))
-            expected = set(manifest.get('points', []))
-            cases = metadata_value(entry.get('cases', {}))
-            if not expected or expected - set(table):
-                raise ValueError('Incomplete frozen point table')
-            # Unknown extra payloads must not be discarded with a known point
-            # map. Native submission scripts are retained in inputs by freeze.
-            if set(cases) - expected:
-                raise ValueError('Unclassified entries in frozen point map')
-            for name, value in metadata_value(entry.get('inputs', {})).items():
-                value = metadata_value(value)
-                if name in expected:
-                    if set(value) != {'zip'} or file_reference_id(value['zip']) is None:
-                        raise ValueError('Unclassified frozen point input')
-                elif name != 'scan.pbs' or not (file_reference_id(value) is not None or
-                        native_kind(value, 'OMFITascii') or native_kind(value, 'OMFITpath')):
-                    raise ValueError('Unclassified entry in frozen inputs')
-            replacements, changed = {}, False
-            for point in sorted(expected):
-                coordinate = identity + (point_coordinate(table[point]),)
-                if coordinate in ambiguous or coordinate not in public:
-                    raise ValueError('Not every original coordinate is archived')
-                row, new_node = public[coordinate]
-                owner = str(row.get('run_token', ''))
-                if not owner or row.get('status', '') != 'loaded' or row.get('resume_pending', False):
-                    raise ValueError('Replacement is unfinished or has unknown provenance')
-                new_key = reference(new_node)
-                if new_key is None:
-                    raise ValueError('Replacement has not been indexed')
-                new_time = final_time(new_node, new_key)
-                if new_time is None or not math.isfinite(float(new_time)):
-                    raise ValueError('Replacement has no validated final sample')
-                old_node = cases.get(point, None)
-                old_key = reference(old_node) if old_node is not None else None
-                if old_node is not None and old_key is None:
-                    # A never-started point still owns its frozen ZIP. Complete
-                    # public coverage alone does not prove this input identical.
-                    raise ValueError('Frozen point is not an indexed result')
-                if old_key is not None and old_key != new_key:
-                    old_time = final_time(old_node, old_key)
-                    if old_time is None or float(new_time) < float(old_time):
-                        raise ValueError('Replacement would lose sampled time')
-                    old_restart, new_restart = has_checkpoint(old_key), has_checkpoint(new_key)
-                    if old_restart is None or old_restart and new_restart is not True:
-                        raise ValueError('Replacement would lose a checkpoint fallback')
-                if old_key is None and owner == token:
-                    raise ValueError('Missing original payload is not a newer replacement')
-                changed = changed or owner != token
-                replacements[point] = dict(run_token=owner, task_id=row.get('task_id', ''), result=new_key)
-            if not changed:
-                raise ValueError('No newer run covers this snapshot')
-            candidates[token] = dict(reason='covered_by_current_archive', points=replacements)
+            candidates[token] = _replacement_evidence(
+                token, entry, manifest, public, ambiguous, final_time, has_checkpoint, reference)
         except (KeyError, TypeError, ValueError) as exc:
             kept[token] = str(exc)
 
@@ -255,14 +263,34 @@ def retire_superseded(module, resolve, reference, prune=None):
             # The supplied pruner must itself roll back pool edits on failure.
             # Keep the old links alive until that reachability pass succeeds.
             plan['unreferenced_results'] = prune(module)
-    except BaseException:
+    except BaseException as original_error:
+        errors = []
         for mapping, previous in journal:
             for key, value in previous.items():
-                mapping[key] = value
+                try:
+                    mapping[key] = value
+                except BaseException as rollback_error:
+                    errors.append('owner ' + str(key) + ': ' + str(rollback_error))
         for token, values in original.items():
-            entry = records[token]
+            try:
+                entry = records[token]
+            except BaseException as rollback_error:
+                errors.append('run ' + str(token) + ': ' + str(rollback_error))
+                continue
+            # Restore independently: one rejected native assignment must not
+            # prevent another run's links or this run's other fields returning.
             for key in ('cases', 'inputs', 'payload_retired'):
-                entry.pop(key, None)
-            entry.update(values)
+                try:
+                    if key in values:
+                        entry[key] = values[key]
+                    else:
+                        entry.pop(key, None)
+                except BaseException as rollback_error:
+                    errors.append('run ' + str(token) + '/' + key + ': ' + str(rollback_error))
+        if errors:
+            try:
+                original_error.cgyro_rollback_errors = list(getattr(original_error, 'cgyro_rollback_errors', [])) + errors
+            except BaseException:
+                pass  # Keep the original Abort and any inner prune diagnostics.
         raise
     return plan

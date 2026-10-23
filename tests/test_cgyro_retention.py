@@ -286,6 +286,84 @@ class RetentionTests(unittest.TestCase):
         for ref in old_cases.values():
             self.assertIsNotNone(storage.resolve_result(root, ref))
 
+    def test_prune_rollback_attempts_other_owners_after_one_restore_fails(self):
+        root, old, old_cases, new, new_cases = self.pair()
+        retire_superseded(root, storage.resolve_result, storage.reference_id)
+        removed = [storage.reference_id(ref) for ref in old_cases.values()]
+        original_abort = KeyboardInterrupt('after deleting both owners')
+        class InterruptedPool(dict):
+            def __delitem__(self, key):
+                super().__delitem__(key)
+                if key == removed[-1]:
+                    raise original_abort
+            def __setitem__(self, key, value):
+                if key == removed[0]:
+                    raise RuntimeError('first owner restore rejected')
+                super().__setitem__(key, value)
+        original_pool = storage.result_pool(root)
+        root['RUN_DB'][db_api.POOL] = pool = InterruptedPool(original_pool)
+        previous_state = copy.deepcopy(dict(storage.storage_state(root)))
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            storage.prune_storage(root)
+        self.assertIs(caught.exception, original_abort)
+        self.assertNotIn(removed[0], pool)  # Report the rejected restore honestly.
+        self.assertIs(pool[removed[1]], original_pool[removed[1]])
+        self.assertEqual(dict(storage.storage_state(root)), previous_state)
+        self.assertIn('first owner restore rejected', original_abort.cgyro_rollback_errors[0])
+
+    def test_retirement_rollback_restores_links_after_one_owner_restore_fails(self):
+        root, old, old_cases, new, new_cases = self.pair()
+        blocked = storage.reference_id(old_cases['p000001'])
+        class InterruptedPool(dict):
+            fail = False
+            def __setitem__(self, key, value):
+                if self.fail and key == blocked:
+                    raise RuntimeError('owner restore rejected')
+                super().__setitem__(key, value)
+        original_pool = storage.result_pool(root)
+        root['RUN_DB'][db_api.POOL] = pool = InterruptedPool(original_pool)
+        records = db_api.run_records(root)
+        original_inputs = records['old']['inputs']
+        original_abort = KeyboardInterrupt('after pruning')
+        original_abort.cgyro_rollback_errors = ['inner rollback diagnostic']
+        def prune_then_abort(module):
+            storage.prune_storage(module)
+            pool.fail = True
+            raise original_abort
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            retire_superseded(root, storage.resolve_result, storage.reference_id, prune=prune_then_abort)
+        self.assertIs(caught.exception, original_abort)
+        self.assertIs(records['old']['cases'], old_cases)
+        self.assertIs(records['old']['inputs'], original_inputs)
+        self.assertNotIn('payload_retired', records['old'])
+        second = storage.reference_id(old_cases['p000002'])
+        self.assertIs(pool[second], original_pool[second])
+        self.assertEqual(original_abort.cgyro_rollback_errors[0], 'inner rollback diagnostic')
+        self.assertIn('owner restore rejected', original_abort.cgyro_rollback_errors[1])
+
+    def test_retirement_rollback_restores_other_fields_after_link_restore_fails(self):
+        root, old, old_cases, new, new_cases = self.pair()
+        class InterruptedRecord(dict):
+            fail = False
+            def __setitem__(self, key, value):
+                if self.fail and key == 'cases':
+                    raise RuntimeError('cases restore rejected')
+                super().__setitem__(key, value)
+        records = db_api.run_records(root)
+        records['old'] = record = InterruptedRecord(records['old'])
+        original_inputs = record['inputs']
+        original_abort = KeyboardInterrupt('after unlinking')
+        def abort(module):
+            record.fail = True
+            raise original_abort
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            retire_superseded(root, storage.resolve_result, storage.reference_id, prune=abort)
+        self.assertIs(caught.exception, original_abort)
+        self.assertIs(record['inputs'], original_inputs)
+        self.assertNotIn('payload_retired', record)
+        self.assertNotIn('cases', record)
+        self.assertIn('cases restore rejected', original_abort.cgyro_rollback_errors[0])
+
     def test_circular_candidate_ancestry_is_retained_with_its_descendants(self):
         root, old, old_cases, new, new_cases = self.pair()
         peer, _ = self.snapshot(root, 'peer', times=(11, 21))

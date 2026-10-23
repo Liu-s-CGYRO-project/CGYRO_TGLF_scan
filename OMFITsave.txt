@@ -446,6 +446,7 @@
 ['OMFITtemplates']['LIB']['OMFITlib_template_archive'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_archive.py <-:-:-> {}
 ['OMFITtemplates']['LIB']['OMFITlib_template_service'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_service.py <-:-:-> {}
 ['OMFITtemplates']['LIB']['OMFITlib_template_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_ui.py <-:-:-> {}
+['OMFITtemplates']['LIB']['OMFITlib_template_tasks'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_tasks.py <-:-:-> {}
 ['OMFITtemplates']['LIB']['OMFITlib_template_paths'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_paths.py <-:-:-> {}
 ['OMFITtemplates']['LIB']['OMFITlib_template_github'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_github.py <-:-:-> {}
 ['OMFITtemplates']['LIB']['OMFITlib_template_proxy'] <-:-:-> OMFITpythonTask <-:-:-> ./OMFITtemplates/LIB/OMFITlib_template_proxy.py <-:-:-> {}

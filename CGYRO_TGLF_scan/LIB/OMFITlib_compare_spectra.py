@@ -4,6 +4,7 @@ Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
 
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
+from OMFITlib_compare_options import STAT_DEFAULTS
 from builtins import (
     Exception,
     ValueError,
@@ -104,7 +105,7 @@ def _gamma_stat_for_curve(curve, ctx):
     mask = isfinite(ky) & isfinite(y_gamma)
 
     if str(curve.get('kind', '')).upper() == 'CGYRO' and ctx.get('gamma_ref_error_filter', False):
-        tol = float(ctx.get('error_tolerance', 0.01))
+        tol = float(ctx.get('error_tolerance', STAT_DEFAULTS['error_tolerance']))
         err_mask = _cgyro_error_mask_for_sorted_curve(curve, sort_idx, tol)
         if err_mask is not None and len(err_mask) == len(mask):
             mask &= err_mask
@@ -286,7 +287,7 @@ def plot_gamma_ratio_compare_page(ax, ctx, curves, page_title=''):
             right = f'{ky_max:g}' if ky_max is not None else 'inf'
             title_txt += f', ky in [{left}, {right}]'
     # if ctx.get('gamma_ref_error_filter', False):
-    #     title_txt += f", CGYRO err<{ctx.get('error_tolerance', 0.01):g}>"
+    #     title_txt += f", CGYRO err<{ctx.get('error_tolerance', STAT_DEFAULTS['error_tolerance']):g}>"
     if len(str(page_title).strip()) > 0:
         title_txt += f' - {page_title}'
 

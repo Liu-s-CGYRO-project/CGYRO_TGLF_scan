@@ -14,6 +14,16 @@ import re
 REF, BROWSE = '__RESULT_REF__', 'data'
 
 
+def is_native_file(node):
+    """Classify opaque native file leaves without touching reader attributes.
+
+    A tree also has ``filename``; checking that attribute can both misclassify
+    a container and trigger lazy I/O. Call metadata_value first when traversing
+    persisted metadata, then treat the remaining wrappers as opaque owners.
+    """
+    return any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(node).__mro__)
+
+
 def metadata_value(node):
     """Materialize persisted metadata containers, retaining lazy file readers."""
     if any(base.__name__ == 'OMFITlazyLoad' for base in type(node).__mro__):
@@ -91,7 +101,7 @@ def copy_result_tree(value, factory=dict):
         if id(node) in seen:
             return False
         seen.add(id(node))
-        if any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(node).__mro__):
+        if is_native_file(node):
             return False
         if hasattr(node, 'items'):
             if REF in node:

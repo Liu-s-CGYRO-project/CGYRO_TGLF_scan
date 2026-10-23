@@ -3,17 +3,33 @@ import argparse
 import ast
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
+import tempfile
 import zipfile
 from omfit_help import validate_module_help, validate_module_settings
 from check_omfit_api import validate_project_api, validate_tk_variable_calls
 from check_workbench import validate_workbench
+from release_policy import MAX_PROJECT_PACKAGE_BYTES
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'OMFITtemplates/LIB'))
 from OMFITlib_template_archive import Project, TemplateError, json_bytes, parse_tree, tree_bytes
 from OMFITlib_template_service import new_file
+
+
+def _refresh_manifest(destination, content):
+    """Replace one manifest atomically; the validated ZIP is a separate commit."""
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix='.project-manifest-', dir=destination.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(content)
+        os.replace(temporary, destination)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
 
 
 def _font_constants(path):
@@ -210,8 +226,11 @@ def build(output):
         if manifest.is_file():
             validate_library_imports(parse_tree(manifest.read_bytes()), manifest.parent)
     metadata = json.loads((ROOT / 'PROJECT_CONTENTS.json').read_bytes())
-    metadata['files'] = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in sorted(selected)}
-    (ROOT / 'PROJECT_CONTENTS.json').write_bytes(json_bytes(metadata))
+    # Hash and write the same snapshot. A concurrent source edit must not make
+    # the published manifest disagree with the bytes inside its own package.
+    source_bytes = {name: (ROOT / name).read_bytes() for name in sorted(selected)}
+    metadata['files'] = {name: hashlib.sha256(content).hexdigest() for name, content in source_bytes.items()}
+    manifest_bytes = json_bytes(metadata)
     # The repository walkthrough is not a native runtime reference. Keep it on
     # GitHub; module help and deployment instructions remain in this archive.
     selected.add('PROJECT_CONTENTS.json')
@@ -223,12 +242,13 @@ def build(output):
                 info.create_system = 3
                 info.external_attr = (0o100755 if name.endswith('.sh') else 0o100644) << 16
                 info.compress_type = zipfile.ZIP_DEFLATED
-                archive.writestr(info, (ROOT / name).read_bytes(), compresslevel=9)
+                content = manifest_bytes if name == 'PROJECT_CONTENTS.json' else source_bytes[name]
+                archive.writestr(info, content, compresslevel=9)
             for name in sorted(directories):
                 archive.writestr(name.rstrip('/') + '/', b'')
         # Keep a bounded code-only installer without stripping maintenance
         # comments or integrity checks merely to meet the old 1 MB threshold.
-        if temporary.stat().st_size >= 2 * 1024 * 1024:
+        if temporary.stat().st_size >= MAX_PROJECT_PACKAGE_BYTES:
             raise TemplateError('代码安装包超过 2 MiB，请将大型资源移到独立资源包')
         with Project(temporary) as project:
             project.require_entry_first()
@@ -242,6 +262,13 @@ def build(output):
                     raise TemplateError('发现非空案例节点：' + row.fields[0])
             if project.z.testzip() is not None:
                 raise TemplateError('ZIP CRC 校验失败')
+    # Output publication and source metadata are separate commits. A rejected
+    # build must never leave a new source manifest behind. If this final refresh
+    # fails, report that the already validated package still exists for recovery.
+    try:
+        _refresh_manifest(ROOT / 'PROJECT_CONTENTS.json', manifest_bytes)
+    except OSError as exc:
+        raise TemplateError('安装包已生成，但源清单刷新失败：' + str(output)) from exc
     return {'output': str(output), 'files': len(selected), 'bytes': output.stat().st_size,
             'sha256': hashlib.sha256(output.read_bytes()).hexdigest(), 'calculation_data_files': 0,
             'modules': project.roots, 'api_compatibility': api_review, 'workbench_contracts': workbench_review}

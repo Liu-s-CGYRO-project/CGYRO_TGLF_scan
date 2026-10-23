@@ -21,6 +21,7 @@ from OMFITlib_cgyro_db import run_cases, run_records
 from OMFITlib_cgyro_checkpoint import directory_checkpoint
 from OMFITlib_cgyro_launch import validate_checkpoint_runtime
 from OMFITlib_cgyro_scratch import directory_bytes, ensure_capacity
+from OMFITlib_cgyro_run_state import point_complete
 
 
 def saved_run(module, token):
@@ -209,8 +210,7 @@ def archived_case(module, token, allow_inherited=False):
                         expected[coordinate] = (point, row)
                     inherited = {}
                     for source in tasks.values():
-                        if (str(source.get('run_token', '')) != str(token)
-                                or source.get('status', '') != 'loaded' or source.get('resume_pending', False)):
+                        if str(source.get('run_token', '')) != str(token) or not point_complete(source):
                             continue
                         coordinate = point_coordinate(source)
                         if coordinate not in expected:

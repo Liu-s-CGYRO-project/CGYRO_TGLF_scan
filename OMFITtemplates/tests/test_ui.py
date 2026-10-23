@@ -61,6 +61,17 @@ class UITest(unittest.TestCase):
         self.dialogs = patch('OMFITlib_template_ui.messagebox.showerror', side_effect=lambda title, text, **kw: self.errors.append(text))
         self.dialogs.start()
         self.addCleanup(self.dialogs.stop)
+        # This suite owns a local fixture library. Startup network discovery is
+        # a separate concern; explicit GitHub actions below retain real handlers
+        # and mocked responses. Do not depend on credentials or a live network.
+        def local_startup(app):
+            app._refresh_after = None
+            if app.alive and not app.close_requested:
+                app.view_source.set('本地模板库')
+                app.refresh()
+        startup = patch.object(TemplateManager, '_startup', local_startup)
+        startup.start()
+        self.addCleanup(startup.stop)
         self.app = TemplateManager(self.root, str(self.old), self.library, self.base / 'preferences.json')
         self.pump(.25)
         self.wait_idle()
@@ -88,6 +99,8 @@ class UITest(unittest.TestCase):
         self.app.library_table.selection_set(children[0])
         self.app._select_release()
         self.app._use_selected()
+        # Local selection verifies the ZIP in a worker, just like remote pulls.
+        self.wait_idle()
 
     def test_four_pages_and_real_library(self):
         self.assertEqual(len(self.app.tabs.tabs()), 4)
@@ -168,9 +181,14 @@ class UITest(unittest.TestCase):
         before = primary.actual()
         target = tkfont.Font(root=other, name='TkDefaultFont', exists=True)
         target.configure(size=19)
+        other._project_cjk_size = 16
         manager = TemplateManager(other, library=self.library, preferences=self.base / 'other-font.json')
         self.addCleanup(lambda: manager.close() if manager.alive else None)
-        self.assertEqual(manager.font[1], 19)
+        # Project typography has its own size and named Font, scoped to the
+        # target interpreter; native TkDefaultFont is deliberately untouched.
+        self.assertIs(manager.font._tk, other.tk)
+        self.assertEqual(manager.font.cget('size'), 16)
+        self.assertEqual(target.cget('size'), 19)
         self.assertEqual(primary.actual(), before)
         self.assertIn('TkDefaultFont', tkfont.names(root=other))
 
@@ -267,7 +285,10 @@ class UITest(unittest.TestCase):
             self.wait_idle()
         self.assertEqual(client.call_args.args[0], DEFAULT_REPOSITORY)
         self.assertEqual(client.call_args.kwargs['proxy'], route)
-        self.assertEqual(client.call_args.kwargs['token'], '')
+        # The manager shares the active credentials; forcing token='' would
+        # bypass login and regress authenticated update/rate-limit behavior.
+        self.assertNotIn('token', client.call_args.kwargs)
+        self.assertIs(client.call_args.kwargs['cancel'], self.app.cancel)
         self.assertIn('1.5.0', self.app.status.get())
         self.assertEqual(before, (self.old.read_bytes(), self.app.current.get(), self.app.template_path.get()))
         self.assertIs(self.app.manager_update_dialog.tk, self.root.tk)
@@ -308,7 +329,8 @@ class UITest(unittest.TestCase):
                 patch.object(self.app, '_manager_installed') as installed:
             self.app.manager_install_button.invoke()
             self.wait_idle()
-        self.assertEqual(client.call_args.kwargs['token'], '')
+        self.assertNotIn('token', client.call_args.kwargs)
+        self.assertIs(client.call_args.kwargs['cancel'], self.app.cancel)
         self.assertEqual(client.call_args.kwargs['proxy'], 'http://47.102.120.146:18889')
         self.assertEqual(install.call_args.args[1], report['plan'])
         installed.assert_called_once_with('/fixture/new')
@@ -323,7 +345,7 @@ class UITest(unittest.TestCase):
             while self.app.busy and time.monotonic() < deadline:
                 self.pump(.02)
             installed.assert_not_called()
-        self.assertEqual(self.errors.pop(), '下载校验失败')
+        self.assertEqual(self.errors.pop(), '下载校验失败\n\n详细调用位置见“设置与记录”。')
         self.assertTrue(self.app.alive)
         self.assertEqual(self.app.current.get(), str(self.old))
 
@@ -669,7 +691,7 @@ class UITest(unittest.TestCase):
         self.app.publish_plan = {'login': 'alice'}
         self.app.package_path = 'old-package.zip'
         self.app._error(GitHubError(401, 'GitHub 登录已失效'))
-        self.assertEqual(self.errors.pop(), 'GitHub 登录已失效')
+        self.assertEqual(self.errors.pop(), 'GitHub 登录已失效\n\n详细调用位置见“设置与记录”。')
         self.assertEqual(self.app.metadata['author'].get(), '')
         self.assertIsNone(self.app.publish_plan)
         self.assertIsNone(self.app.package_path)

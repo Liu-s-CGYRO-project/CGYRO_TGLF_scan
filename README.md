@@ -1,6 +1,6 @@
-工程 1.24.10：归档的 ky 节点提供可展开的 `data`，原始结果仍只保存一份。完整核对替代结果、坐标、检查点及续算依赖后，清理已被替代的历史载荷，保留作业记录。减少重复存储元数据复制；继续保留 1.24.9 的局部界面刷新。配套管理器 1.10.25，更新后关闭旧设置窗口再打开。
+工程 1.24.11：统一绘图选择和运行配置校验，修复 TGLF 中断后的恢复、批量运行记录同步及管理器后台任务状态。拆分重复读取与归档判定，补充边界、取消和回滚检查。配套管理器 1.10.26，更新后关闭旧设置窗口再打开。
 
-已有工程可下载本版 [离线更新与整理脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.10/omfit-maintain-1.24.10.py)，上传到运行 OMFIT 的服务器，再按 [Command Box 整理说明](COMMAND_BOX_COMPACTION.md) 执行并另存为新 ZIP。脚本同时更新工程与配套管理器。
+已有工程可下载本版 [离线更新与整理脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.11/omfit-maintain-1.24.11.py)，上传到运行 OMFIT 的服务器，再按 [Command Box 整理说明](COMMAND_BOX_COMPACTION.md) 执行并另存为新 ZIP。脚本同时更新工程与配套管理器。
 
 操作与 .old 风险见 [归档去重说明](CGYRO_TGLF_scan/DOCS/RESULT_STORAGE.md)，取消与续算见 [操作说明](CGYRO_TGLF_scan/DOCS/CANCEL_RESUME.md)。历史修订见 [完整版本记录](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/blob/main/RELEASE_HISTORY.md)。
 
@@ -34,7 +34,7 @@ python3 omfit-deploy.py '/路径/旧工程.zip'
 
 用于 Linux 桌面的 OMFIT 工程，包含已审计、修复和整理的 CGYRO/TGLF 工具，以及项目内置的 **OMFIT GitHub 模板管理器**。
 
-当前工程版本为 **1.24.10**，管理器为 **1.10.25**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
+当前工程版本为 **1.24.11**，管理器为 **1.10.26**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
 
 运行与环境 → 选择服务器和队列 → **自动检测** → 核对“服务器能力”和资源草稿 → **应用到整个工程**。检测结果只用于原服务器和隧道；队列查询失败时保留资源设置并显示未知。内存值用于展示，不推算求解器需求；账户 / QOS 配额及实时空闲资源仍由调度器决定。v3 检查点验证通过后可调整 MPI / OpenMP 资源继续计算。
 
@@ -42,7 +42,7 @@ python3 omfit-deploy.py '/路径/旧工程.zip'
 
 ## 在 OMFIT 打开
 
-发布后可从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.24.10.zip`，在 OMFIT 中打开。
+发布后可从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.24.11.zip`，在 OMFIT 中打开。
 
 也可直接加载本仓库的工程入口：
 
@@ -74,12 +74,12 @@ OMFIT['OMFITtemplates']['GUIS']['main'].run()
 OMFIT['CGYRO_TGLF_scan']['GUIS']['main'].run()
 ```
 
-工作页面包括概览、Transfer tool、输入差异确认、CGYRO、TGLF 单文件与扫描、多 input.gacode、运行与环境、绘图对比、模板与 GitHub。常用参数在总控页设置；原模块的完整设置页通过对应按钮打开。
+工作页面包括概览、运行与环境、Transfer tool、CGYRO、TGLF 计算与扫描、绘图对比、模板与 GitHub。多 input.gacode 入口位于 TGLF 工作台。常用参数在总控页设置；原模块的完整设置页通过对应按钮打开。
 
 1. **Transfer → CGYRO**：运行 Transfer_tool 后自动读取本轮全部 `input.cgyro_N`。在 CGYRO 页勾选 `nr/rho` 和“原始/H/D/T”主离子方案，再设置 1–3 个物理参数轴；它们自动组成计算案例。已有完整 `input.cgyro` 也可直接载入，作为一个输入案例使用。
-2. **Transfer → TGLF**：选择 `input.tglf` 并传入。目标已有文件时先显示参数差异，由用户决定保留当前版本或使用传入版本；不自动混合参数。覆盖前保存原输入与关联结果，新的输入不会被关联到旧结果上。预览后任一输入变化，都需要重新比较。
-   TGYRO 按半径生成的输入也可在“TGLF 单文件与扫描 → 参数与径向扫描”选择，然后点击“比较并传入当前 TGLF 单文件”。生成和切换半径保留已有单文件输入；径向扫描使用局部副本，不覆盖该输入或它的结果。
-3. **Transfer 内部生成**：在“Transfer_tool 运行”载入剖面，设置 rho 或 r/a、起止半径和点数，点击“运行 Transfer_tool”。程序按原 command box 1 同步离子数量、质量与电荷，随后调用 main.py 连续完成 TGYRO 和局部输入生成。无需分别点击 TGYRO 与 profiles_gen。已有 input.tglf / input.tgyro 沿用；缺少时从内置种子复制。“高级设置”只编辑或更换 Transfer_tool 自己的种子，不再跳转到 TGLF_scan 的另一套 TGYRO 参数。替换 TGLF 种子仍显示差异并由用户确认。生成结果按本次半径重建，旧输出归档，失败时恢复原输出。
+2. **TGLF 输入选择**：在“TGLF 计算与扫描”选择当前文件、Transfer_tool 输入或已生成的半径输入。显式导入或传入新的单文件时，程序先把旧输入与关联结果独立保存在输入历史，再安装新输入；参数不混合，也不自动运行。内容相同的输入保留当前结果，不重复归档。工程 1.17 起已取消独立的输入差异确认页。
+   生成或选择半径不会替换已有单文件输入；径向扫描使用局部副本。旧工程未处理的输入候选在打开工作台时转为“保留当前输入”，候选继续保存在历史中。
+3. **Transfer 内部生成**：在“Transfer_tool 运行”载入剖面，设置 rho 或 r/a、起止半径和点数，点击“运行 Transfer_tool”。程序按原 command box 1 同步离子数量、质量与电荷，随后调用 main.py 连续完成 TGYRO 和局部输入生成。无需分别点击 TGYRO 与 profiles_gen。已有 input.tglf / input.tgyro 沿用；缺少时从内置种子复制。“高级设置”只编辑或更换 Transfer_tool 自己的种子，不再跳转到 TGLF_scan 的另一套 TGYRO 参数。显式导入不同的 TGLF 种子会保存旧种子及其 TGYRO 结果，然后清除当前旧输出，等待用户再次运行。生成结果按本次半径重建，旧输出归档，失败时恢复原输出。
    “局部输入互转”为独立页，选择 TGLF → CGYRO、CGYRO → TGLF 或 localdump → CGYRO，只载入该方向需要的源文件；目标输入自动创建。
 4. **计算与收集**：可以仅生成 CGYRO 扫描输入，也可以运行。每个点使用 `p000001` 形式的任务编号；参数、半径、离子方案、任务表及实际结果统一记录在 `RUN_DB/结果名/案例`，服务器目录固定为 `runs/<运行标识>/<任务编号>`。同一结果名、输入、半径与离子下，不同参数扫描并存；相同有序参数轴（含联动参数）按全部参数坐标和 ky 合并，新增坐标追加，仅同坐标点更新。失败或未完整收集时保留旧结果，其他扫描与案例不变。只有已提交或执行过的运行才允许收集。多剖面 TGLF 必须先生成匹配当前输入和参数的局部输入，之后才能运行。
 5. **运行配置**：选择模块与 OMFIT 服务器，使用“同步 OMFIT 连接配置”填入服务器、隧道和工作目录，再设置命令。CGYRO 直接显示当前提交器读取的配置。检查仅确认本地设置和输入依赖，不代表已验证目标机器上的求解器或资源。

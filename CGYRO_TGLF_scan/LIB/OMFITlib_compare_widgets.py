@@ -1,4 +1,5 @@
 """Reusable OMFIT selectors and one native Tk legend editor."""
+from OMFITlib_compare_options import STAT_DEFAULTS
 from OMFITlib_gui_fonts import configure_window_fonts
 from OMFITlib_cgyro_archive import case_parts as archived_case_parts
 from OMFITlib_cgyro_present import case_caption
@@ -253,7 +254,7 @@ class ComparisonWidgets:
             src, dst = dragging[0], box.nearest(event.y)
             if src is None or dst == src or not 0 <= src < box.size():
                 return
-            value = box.get(src)
+            value = box.get(src, None)
             box.delete(src)
             box.insert(dst, value)
             dragging[0] = dst
@@ -286,6 +287,6 @@ class ComparisonWidgets:
     def _render_tolerance_toggle(self, path, state, key, label, **unused):
         with self.ui.same_row():
             self.ui.CheckBox(path(key), label, default=False, updateGUI=True, width=24)
-            self.ui.Entry(path('error_tolerance'), '相对波动上限', default=0.01, width=10,
+            self.ui.Entry(path('error_tolerance'), '相对波动上限', default=STAT_DEFAULTS['error_tolerance'], width=10,
                           kwlabel={'width': 10, 'anchor': 'w'},
                           help='相对时间波动阈值，0.01 表示 1%。勾选过滤后，ω 或 γ 的相对波动超过此值的点被排除；未勾选时不执行过滤。')
