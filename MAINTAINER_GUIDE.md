@@ -1,6 +1,20 @@
 # 维护与扩展接口
 
-适用于工程 1.24.9。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.10。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+
+## 浏览引用与历史保留（1.24.10）
+
+`cgyro_reference` 是结果引用格式的唯一入口。`__RESULT_REF__` 保存内容摘要；可选的 `data` 是受控原生表达式，供树浏览器展开同一物理结果。保存只写表达式文本，禁止把解析后的对象或 `result_view` 写回这个节点。元数据遍历必须先识别引用并停止，不能递归进入 `data`；归档合并须通过引用工厂复制，避免表达式 deepcopy 在离树时求值。管理器迁移器需要同步识别这两个键。新增引用字段必须更新格式验证及原生保存重开测试。
+
+`cgyro_retention.retention_plan(module, resolve, reference)` 只计划，不改树。`retire_superseded` 在发布或显式整理时提交：要求旧作业每个完整坐标都被公开 loaded 点覆盖，时间不回退且不损失已验证检查点；缺少索引、未知输入字段、当前/未收集记录、公开扫描 info.run_token 锚点以及仍被保留续算依赖的祖先都保留。`payload_retired` 只保存替代来源和原点号，原 manifest 不变。禁止仅按 failed 状态、运行名或 p000001 进行清理。
+
+退休、可达性剪枝各自带 BaseException 回滚；外层事务还保留物理池的浅引用日志，覆盖 prune 返回之后的 Abort。这里仅解除保存树的引用，源目录和原工程 ZIP 不删除。`require_retained_run` 是旧窗口续算、激活、手动收集的统一保护入口。批量收集跳过退休记录，不能重新下载它的旧数据。
+
+普通状态保存仍检查活树中新插入的数据，但没有转换时不再复制整个 __STORAGE__。不要用长期 bool 缓存跳过检查；用户可能在两次保存之间导入旧原生结果。性能测试应分别报告目录 I/O、解析、元数据复制和真实界面延迟，不能把合成本机基准说成集群实测。
+
+`archived_case(..., allow_inherited=True)` 只供停止续算的祖先重建使用：扫描头可能已指向子运行，祖先仅剩部分公开坐标。匹配必须同时核对原 token、运行/案例/参数组及完整坐标，再映回原冻结点号；禁止只靠同名 p000001，也不能让过期窗口使用此回退。数值表和绘图传入选定 token，不为列出选择项展开其他运行的祖先链。
+
+离线维护脚本由 `tools/build_maintenance_commandbox.py` 从代码包生成，内嵌校验摘要且不联网。必须同时更新工程和管理器，使用 `Prepared(..., data_policy='keep', settings_policy='keep')`，不能直接加载覆盖当前项目。`LivePlan.apply/undo` 覆盖 BaseException；回滚逐步尝试并保留原中断，二次错误只存字符串。Session 在第一处写入前持有 Prepared，防止半回滚时临时新代码被清理。
 
 ## 先找到修改层
 

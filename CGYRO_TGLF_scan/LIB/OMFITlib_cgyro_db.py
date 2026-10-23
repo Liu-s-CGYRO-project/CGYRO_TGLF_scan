@@ -6,24 +6,15 @@ RUN_DB contains metadata only. Readers never fall back to an external result
 branch; migration is an explicit preparation/compaction operation.
 """
 from builtins import (ValueError, any, dict, getattr, hasattr, isinstance, len,
-                      list, max, object, set, str, tuple, type, vars)
+                      list, max, object, set, str, tuple, type)
 from copy import deepcopy
+from OMFITlib_cgyro_reference import REF, make_reference, metadata_value, validate_reference
 
 POOL, STATE, RUNS = '__STORE__', '__STORAGE__', '__RUNS__'
 PENDING, LEGACY = '__UNCLASSIFIED__', '__LEGACY__'
 OLD_BRANCHES = ('RESULT_STORE', 'RESULT_STORAGE', 'Cases', 'OUTPUTScan', 'OUTPUTS',
                 'LEGACY_UNCLASSIFIED', 'RUN_INDEX', '_PLOT_CACHE')
 _MISSING = object()
-
-
-def metadata_value(node):
-    """Materialize persisted metadata containers, retaining lazy file readers."""
-    if any(base.__name__ == 'OMFITlazyLoad' for base in type(node).__mro__):
-        attributes = vars(node)
-        kind = attributes.get('tp', attributes.get('cls', ''))
-        if kind in ('OMFITpickle', 'OMFITtree', 'OMFITmodule', 'SortedDict', 'OMFITlist'):
-            return node.__lazy_load__()
-    return node
 
 
 def _mapping(node):
@@ -44,6 +35,10 @@ def _native(value, factory):
     if any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(value).__mro__):
         return value
     if hasattr(value, 'items'):
+        if REF in value:
+            digest = metadata_value(value[REF])
+            validate_reference(value, digest)
+            return make_reference(digest, factory)
         if not _has_payload(value):
             # Job metadata may legitimately use full paths as dictionary keys.
             # Keep its original mapping types instead of forcing native trees.
@@ -60,6 +55,8 @@ def _native(value, factory):
 
 def _rebind(value):
     if hasattr(value, 'items') and not any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(value).__mro__):
+        if REF in value:
+            return  # Native assignment binds the index; data is not an owner.
         for key, child in list(value.items()):
             value[key] = child
             _rebind(child)

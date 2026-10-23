@@ -16,11 +16,13 @@ import tempfile
 import time
 import uuid
 import zipfile
-from OMFITlib_cgyro_queue import collection_done, save_current, shell_quote, stop_queue, wait_current
+from OMFITlib_cgyro_queue import (collection_done, require_retained_run, save_current,
+                                 shell_quote, stop_queue, wait_current)
 from OMFITlib_cgyro_run_state import linked_local_action, stop_run, submitted_job_id, text_output
 from OMFITlib_cgyro_submission import PROTOCOL, discover_submission, seal_unstarted, submit_command
 from OMFITlib_cgyro_storage import submission_file
 from OMFITlib_cgyro_db import run_cases, set_run_cases
+from OMFITlib_cgyro_reference import copy_result_tree
 from OMFITlib_cgyro_launch import upgrade_slurm_limits, validate_slurm_script
 
 
@@ -382,6 +384,7 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
 
 def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_retries=False):
     """Read saved outputs; only an explicit run action may enable solver retries."""
+    require_retained_run(root, root.get('RUN_MANIFEST', {}).get('run_token', ''))
     save_current(root, factory)  # Freeze input ZIPs and migrate legacy payloads before taking a rollback snapshot.
     if not allow_solver_retries:
         print('Collecting existing CGYRO outputs only; solver retries are disabled.')
@@ -392,7 +395,7 @@ def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_r
         # failed read must not remove its resume entry or mix old rows/new files.
         preserved = None
         if collection_done(manifest):
-            preserved = (deepcopy(manifest), deepcopy(run_cases(root, manifest)))
+            preserved = (deepcopy(manifest), copy_result_tree(run_cases(root, manifest), factory))
         try:
             root['SCRIPTS']['downsync.py'].run()
         except BaseException as exc:

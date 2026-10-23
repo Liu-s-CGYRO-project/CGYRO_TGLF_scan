@@ -24,6 +24,7 @@
 | TGLF 工作台和多剖面 | `LIB/OMFITlib_tglf_workbench.py`、`OMFITlib_tglf_multi_run.py` | 准备计划和持久运行记录；底层执行在 `TGLF_scan/TGLF/SCRIPTS` |
 | Transfer 粒子处理 | `Transfer_tool/LIB/OMFITlib_transfer_particles.py`、`OMFITlib_transfer_equivalent.py`、`OMFITlib_transfer_zeff.py` | 原始副本准中性 → 完整组成 Zeff → 粒子方案 → 局部输入复查 |
 | CGYRO 单份结果归档 | `LIB/OMFITlib_cgyro_storage.py`、`tools/compact_cgyro_project.py` | 内容摘要唯一拥有原始结果；普通树索引持久化，读取才解析；保留独有历史；检查点验证择一保存 |
+| 结果浏览引用与旧载荷清理 | `LIB/OMFITlib_cgyro_reference.py`、`LIB/OMFITlib_cgyro_retention.py` | 受控 data 表达式展开唯一所有者；按完整坐标、采样时间、检查点和续算依赖核对替代，清理与字节去重分离 |
 | CGYRO 多参数对比视图 | `LIB/OMFITlib_cgyro_scan_view.py` | 按任务坐标 / 原路径建立只读分组；任选变化轴，其余轴固定；不改归档或合并物理样本 |
 | 对比选择、配对、绘图 | `LIB/OMFITlib_compare_state.py`、`OMFITlib_compare_cases.py`、`OMFITlib_compare_*` | 选择状态、结果读取、曲线构造、渲染分开；图中文字为英文 |
 | GUI 外观 | `LIB/OMFITlib_gui_api.py`、`OMFITlib_gui_controls.py`、`OMFITlib_gui_fonts.py` | 控件适配、字体和尺寸；业务代码不单独重设主题 |
@@ -44,7 +45,7 @@
 - 取消后确认 Slurm 终态再自动收集整批。状态记在内部，不另建部分结果目录；空点跳过，其他扫描和 ky 保留，较短部分结果不替换已有完整点。续算从原作业的冻结点表 / 检查点取源，保留未开始点的原号，不用其他作业的相同 p 点号替代。
 - 续算验证区分历史损坏与未推进：前缀、有限性、顺序和检查点不一致仍报错；合法但未超过旧末时刻的段保存在 RUN_DB 内部运行记录，不降低 previous_final_time，不因未推进自动重提。公开合并依据完整坐标和可验证进度；时间曲线 / 续算窗口对停止作业读取原点表。
 - 续算提交 ZIP 由 RUN_DB/__STORE__/__FILES__ 唯一持有，__FILE_REF__ 叶通过 result_view / submission_file 解析。保存快照前去重；新提交不挂载展开检查点。旧展开普通文件只在与 ZIP 成员逐字节摘要相同时移除，编辑型输入和不同内容保留。原目录不删除，上传恢复原点文件名并验证最终副本。新增引用类型时必须同步快照、剪枝、迁移和全部读取入口。
-- CGYRO 物理目录只归 RUN_DB/__STORE__ 所有，其他叶保存 __RESULT_REF__。文件名、长度和完整 SHA-256 相同才去重。prune_storage 验证全部可达索引后才移除无引用所有者条目，不删除磁盘来源文件。
+- CGYRO 物理目录只归 RUN_DB/__STORE__ 所有，其他叶保存 __RESULT_REF__ 和可选浏览 data 表达式。文件名、长度和完整 SHA-256 相同才去重。复制和元数据遍历不能执行 data；prune_storage 验证全部可达索引后才移除无引用所有者条目，不删除磁盘来源文件。
 - 输出文件探测复用单个点检查函数，按 shell 引号转义后的 UTF-8 命令字节数分批（不超过 16 KiB）。每批返回码和点表均须完整匹配，全部探测确认后才开始读取结果；探测异常不能作为空点或求解器失败的证据。
 - 网络报错后先确认原提交是否成功。无法确认时保留 `submission_uncertain`，不重复提交。重试资格按每个扫描点判定，先前的取消、超时和内存不足状态不能因切换到重试数组而丢失。
 - 手动“重新收集未归档结果”只读取、重读和归档原输出，collect_current 默认禁止求解器重试；配置中的重试次数不授予提交权限。单案例明确传 False，批量仅在原“运行”动作自动收集时传 True。手动批量收集不进入等待循环：活动案例由 downsync 报告后继续其他案例；运行动作和续算动作仍可按原限制重试，取消后的既有禁重提规则继续生效。

@@ -253,8 +253,10 @@
 ['LIB']['OMFITlib_cgyro_run_state'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_run_state.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_archive'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_archive.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_storage'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_storage.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_reference'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_reference.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_storage_files'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_storage_files.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_db'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_db.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_retention'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_retention.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_recover'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_recover.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_scratch'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_scratch.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_checkpoint'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_checkpoint.py <-:-:-> {}
@@ -376,8 +378,10 @@
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_run_state'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_run_state.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_archive'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_archive.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_storage'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_storage.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_cgyro_reference'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_reference.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_storage_files'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_storage_files.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_db'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_db.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_cgyro_retention'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_retention.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_recover'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_recover.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_scratch'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_scratch.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_checkpoint'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_checkpoint.py <-:-:-> {}

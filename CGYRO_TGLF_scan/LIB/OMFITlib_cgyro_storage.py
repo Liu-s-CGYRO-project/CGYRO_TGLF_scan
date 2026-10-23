@@ -1,12 +1,12 @@
 """One immutable physical owner for CGYRO results, with serializable indexes.
 
-References are ordinary native trees, not Python aliases or dynamic expressions.
-OMFIT therefore saves the directory once and can reload it without a custom data
-class. Only explicit readers resolve indexes into temporary, unsaved views.
+References are ordinary native trees with a controlled native browser lookup.
+OMFIT saves the physical directory once and only expression text for the visible
+``data`` child. Explicit program readers resolve the immutable owner directly.
 """
 from builtins import (OSError, RuntimeError, ValueError, any, dict, getattr, hasattr,
                       int, isinstance, iter, len, list, max, open, set, sorted, str, sum, tuple, type)
-from copy import deepcopy
+from copy import copy, deepcopy
 import hashlib
 import json
 import os
@@ -16,12 +16,14 @@ from OMFITlib_cgyro_checkpoint import select_checkpoint
 from OMFITlib_cgyro_db import (POOL, STATE, ensure_layout, metadata_value,
                               result_pool, run_cases, run_records, storage_state)
 from OMFITlib_cgyro_recover import recover_archives
+from OMFITlib_cgyro_retention import retire_superseded
 from OMFITlib_cgyro_scratch import clean_stage, ensure_capacity
 from OMFITlib_cgyro_storage_files import (FILE_STORE, SubmissionFiles,
                                          file_reference_id, native_kind, resolve_file)
+from OMFITlib_cgyro_reference import (BROWSE, REF, copy_result_tree, make_reference,
+                                      validate_reference)
 
 STORE = POOL
-REF = '__RESULT_REF__'
 REFERENCE_WALK_VERSION = 4  # Direct radius scans and separate BASE references.
 
 
@@ -43,9 +45,7 @@ def reference_id(node):
     if _file_node(node) or not hasattr(node, 'items') or REF not in node:
         return None
     key = metadata_value(node[REF])
-    if len(node) != 1 or not isinstance(key, str) or re.fullmatch(r'[0-9a-f]{64}', key) is None:
-        raise ValueError('Invalid CGYRO result reference')
-    return key
+    return validate_reference(node, key)
 
 
 def resolve_result(module, node):
@@ -73,7 +73,16 @@ def result_view(module, node):
         return resolve_result(module, node)
     if _file_node(node) or not hasattr(node, 'items'):
         return node
-    return {key: result_view(module, value) for key, value in node.items()}
+    values = {key: result_view(module, value) for key, value in node.items()}
+    if (isinstance(node, dict) and type(node) is not dict and
+            not any(base.__name__ in ('OMFITtree', 'OMFITmodule', 'SortedDict') for base in type(node).__mro__)):
+        # Headless/custom result mappings may implement lazy diagnostic reads.
+        # Keep their reader protocol, but give the view independent containers.
+        result = copy(node)
+        for key, value in values.items():
+            result[key] = value
+        return result
+    return values
 
 
 def submission_file(module, manifest, name, point=None):
@@ -191,9 +200,7 @@ def _physical_copy(result, files):
 
 
 def _reference(key, factory):
-    result = factory()
-    result[REF] = key
-    return result
+    return make_reference(key, factory)
 
 
 def store_result(module, result, factory=dict):
@@ -222,7 +229,7 @@ def store_result(module, result, factory=dict):
     return _reference(key, factory)
 
 
-def compact_storage(module, factory=dict):
+def compact_storage(module, factory=dict, browse=False):
     """Plan all replacements before committing; retain every unique result.
 
     In particular, partial/unpublished history is not a disposable cache. It
@@ -284,7 +291,7 @@ def compact_storage(module, factory=dict):
         if not has_raw(node):
             # Preserve ordinary metadata dictionaries, whose keys may be full
             # file paths. Native OMFITtree keys prohibit slashes.
-            return deepcopy(node)
+            return copy_result_tree(node, factory)
         result = factory()
         for key, value in node.items():
             result[key] = convert(value)
@@ -302,7 +309,7 @@ def compact_storage(module, factory=dict):
             return False
         key = reference_id(node)
         if key is not None:
-            return key in remapped
+            return key in remapped or (browse and BROWSE not in node)
         if _file_node(node) or not hasattr(node, 'items'):
             return False
         if submissions.pending(node):
@@ -313,6 +320,28 @@ def compact_storage(module, factory=dict):
         if branch not in (STORE, STATE) and has_raw(value):
             plans[branch] = convert(value)
     submissions.verify_sources()
+
+    def summary(target):
+        reports = [json.loads(value) for key, value in checkpoints.items() if key in target]
+        return dict(converted_copies=raw_copies, physical_results=len(target) - int(FILE_STORE in target),
+                    converted_input_zips=submissions.converted, expanded_input_bytes=submissions.omitted_bytes,
+                    retained_expanded_files=submissions.retained_files,
+                    input_zip_bytes=sum(submissions.sizes.get(key, 0) for key in target.get(FILE_STORE, {})),
+                    duplicate_bytes=max(0, raw_bytes - sum(sizes[key] for key in additions)) +
+                        max(0, submissions.raw_bytes - sum(submissions.sizes[key] for key in submissions.additions)) +
+                        submissions.omitted_bytes,
+                    physical_bytes=sum(sizes.get(key, 0) for key in target if key != FILE_STORE),
+                    checkpoint_warnings=sum(1 for report in reports if report.get('warning', '')),
+                    backup_checkpoints=sum(1 for report in reports if report.get('selected', '') == 'bin.cgyro.restart.old'))
+
+    if (not plans and not additions and not submissions.additions and
+            previous_state.get('checkpoint_policy', 0) == 1 and STORE in db):
+        # Queue bookkeeping calls this repeatedly. A verified, already indexed
+        # tree needs no commit: avoid deep-copying/replacing all saved size and
+        # checkpoint metadata, which also invalidates native GUI/lazy views.
+        # Still inspect live branches above; users can import legacy owners at
+        # any time, so a persistent "compacted" flag would be unsafe.
+        return summary(pool)
     original = {branch: db[branch] for branch in plans}
     previous_sizes = db.get(STATE, None)
     created_pool = STORE not in db
@@ -348,21 +377,16 @@ def compact_storage(module, factory=dict):
         else:
             db[STATE] = previous_sizes
         raise
-    reports = [json.loads(value) for key, value in checkpoints.items() if key in target]
-    return dict(converted_copies=raw_copies, physical_results=len(target) - int(FILE_STORE in target),
-                converted_input_zips=submissions.converted, expanded_input_bytes=submissions.omitted_bytes,
-                retained_expanded_files=submissions.retained_files,
-                input_zip_bytes=sum(submissions.sizes.get(key, 0) for key in target.get(FILE_STORE, {})),
-                duplicate_bytes=max(0, raw_bytes - sum(sizes[key] for key in additions)) +
-                    max(0, submissions.raw_bytes - sum(submissions.sizes[key] for key in submissions.additions)) +
-                    submissions.omitted_bytes,
-                physical_bytes=sum(sizes.get(key, 0) for key in target if key != FILE_STORE),
-                checkpoint_warnings=sum(1 for report in reports if report.get('warning', '')),
-                backup_checkpoints=sum(1 for report in reports if report.get('selected', '') == 'bin.cgyro.restart.old'))
+    return summary(target)
 
 
 def prune_storage(module):
-    """Drop unreachable pool entries from the saved tree, never delete files."""
+    """Drop unreachable pool entries atomically; never delete physical files.
+
+    Validate the complete reference graph before changing any owner. Keep a
+    shallow rollback journal: a native result object must not be deep-copied
+    merely to protect a metadata transaction from Abort or an assignment error.
+    """
     db = ensure_layout(module)
     pool = result_pool(module)
     used, used_files = set(), set()
@@ -399,13 +423,30 @@ def prune_storage(module):
     sizes = state.get('bytes', {})
     checkpoints = state.get('checkpoints', {})
     file_sizes = state.get('file_bytes', {})
-    for key in stale:
-        del pool[key]
-        sizes.pop(key, None)
-        checkpoints.pop(key, None)
-    for key in stale_files:
-        del files[key]
-        file_sizes.pop(key, None)
+    missing = []  # Unique sentinel; no persistent node or result copy.
+    journal = [(pool, {key: pool[key] for key in stale}),
+               (files, {key: files[key] for key in stale_files}),
+               (sizes, {key: sizes.get(key, missing) for key in stale}),
+               (checkpoints, {key: checkpoints.get(key, missing) for key in stale}),
+               (file_sizes, {key: file_sizes.get(key, missing) for key in stale_files})]
+    try:
+        for key in stale:
+            del pool[key]
+            sizes.pop(key, None)
+            checkpoints.pop(key, None)
+        for key in stale_files:
+            del files[key]
+            file_sizes.pop(key, None)
+    except BaseException:
+        # Abort can arrive between a deletion and its size/index update. Restore
+        # every planned key, including the interrupted operation's owner.
+        for mapping, previous in journal:
+            for key, value in previous.items():
+                if value is missing:
+                    mapping.pop(key, None)
+                else:
+                    mapping[key] = value
+        raise
     return len(stale) + len(stale_files)
 
 
@@ -416,12 +457,29 @@ def consolidate_storage(module, factory=dict):
     # an old project near its /tmp quota could not start compaction at all.
     staged = clean_staging(module, factory)
     cleanup = deepcopy(dict(storage_state(module).get('scratch_cleanup', {})))
-    report = compact_storage(module, factory)
+    report = compact_storage(module, factory, browse=True)
     recovery = recover_archives(module, resolve_result, factory)
     storage_state(module, factory)['recovery'] = recovery
     report['recovered_archives'] = len(recovery['recovered'])
     report['unresolved_archives'] = len(recovery['unresolved'])
-    report['unreferenced_results'] = prune_storage(module)
+    before_bytes = dict(storage_state(module).get('bytes', {}))
+    before_files = dict(storage_state(module).get('file_bytes', {}))
+    retirement = retire_superseded(module, resolve_result, reference_id, prune=prune_storage)
+    report['retired_runs'] = list(retirement['retire'])
+    report['retained_history'] = retirement['retained']
+    report['unreferenced_results'] = retirement['unreferenced_results']
+    state = storage_state(module)
+    report['released_result_bytes'] = sum(size for key, size in before_bytes.items() if key not in state.get('bytes', {}))
+    report['released_input_bytes'] = sum(size for key, size in before_files.items() if key not in state.get('file_bytes', {}))
+    # Report the committed archive, not compact_storage's pre-retirement pool.
+    # Otherwise the GUI would still claim that removed historical owners exist.
+    pool = result_pool(module)
+    report['physical_results'] = len(pool) - int(FILE_STORE in pool)
+    report['physical_bytes'] = sum(state.get('bytes', {}).get(key, 0) for key in pool if key != FILE_STORE)
+    report['input_zip_bytes'] = sum(state.get('file_bytes', {}).get(key, 0) for key in pool.get(FILE_STORE, {}))
+    checkpoints = [json.loads(value) for key, value in state.get('checkpoints', {}).items() if key in pool]
+    report['checkpoint_warnings'] = sum(1 for entry in checkpoints if entry.get('warning', ''))
+    report['backup_checkpoints'] = sum(1 for entry in checkpoints if entry.get('selected', '') == 'bin.cgyro.restart.old')
     report['staging_bytes_removed'] = staged + clean_staging(module, factory)
     cleanup['bytes_removed'] = report['staging_bytes_removed']
     cleanup['warnings'] = list(cleanup.get('warnings', [])) + list(storage_state(module).get('scratch_cleanup', {}).get('warnings', []))
@@ -435,6 +493,8 @@ def clean_staging(module, factory=dict):
     protected = []
     def protect(node):
         node = metadata_value(node)
+        if reference_id(node) is not None:
+            return  # The owner is visited in __STORE__; never evaluate data.
         if _file_node(node):
             protected.append(getattr(node, 'filename', ''))
         elif isinstance(node, (list, tuple)):

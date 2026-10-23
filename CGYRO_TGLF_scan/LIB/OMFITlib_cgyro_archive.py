@@ -1,12 +1,13 @@
 """Stable case identities and independent parameter scans within each case."""
 from builtins import (OSError, TypeError, ValueError, all, any, bool, dict, enumerate, float, getattr,
-                      hasattr, int, len, list, max, open, range, reversed, set, sorted, str, tuple, type, zip)
+                      hasattr, int, isinstance, len, list, max, open, range, reversed, set, sorted, str, tuple, type, zip)
 from collections import OrderedDict
 from copy import deepcopy
 import math
 import os
 import re
 from OMFITlib_cgyro_db import legacy_branch, metadata_value
+from OMFITlib_cgyro_reference import copy_result_tree
 
 
 def clean_run_id(value):
@@ -271,7 +272,7 @@ def _install_point(payload, path, result, factory):
                 key = matches[0]
         actual.append(key)
         if index == len(path) - 1:
-            node[key] = deepcopy(result)
+            node[key] = copy_result_tree(result, factory)
         else:
             node = node.setdefault(key, factory())
     return actual
@@ -372,7 +373,7 @@ def combine_cases(cases, factory=dict):
         for key in case:
             if not str(key).startswith('__') and key not in owned:
                 # Unindexed legacy branches remain available to plot readers.
-                destination[key] = deepcopy(case[key])
+                destination[key] = copy_result_tree(case[key], factory)
         for _, info, tasks in records:
             store_scan(destination, case, info, tasks, factory)
     return destination

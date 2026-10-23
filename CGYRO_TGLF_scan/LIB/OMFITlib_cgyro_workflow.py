@@ -4,8 +4,9 @@ The injected script runner keeps native OMFIT execution out of this coordinator.
 No callable is saved in the data tree. Unknown submission states remain protected
 by the existing entry scripts; GUI refresh must never call these functions.
 """
-from builtins import dict, len, str
-from OMFITlib_cgyro_queue import activate_run, collection_done, pending_runs, queue_records, save_current
+from builtins import dict, len, print, str
+from OMFITlib_cgyro_queue import (activate_run, collection_done, pending_runs, queue_records,
+                                 run_is_retired, save_current)
 from OMFITlib_cgyro_run_state import submission_pending
 
 
@@ -36,6 +37,11 @@ def collect_batch(node, run_script, factory=dict, *, automatic=False):
         setup['irun'], setup['idownsync'] = 0, 0
         for token, entry in queue_records(node):
             manifest = entry['manifest']
+            if run_is_retired(node, token):
+                # Retired snapshots have already been replaced at every full
+                # coordinate. Batch recollection must not download them again.
+                print('Skipping superseded CGYRO history: ' + str(manifest.get('case_id', token)))
+                continue
             if manifest.get('status', '') == 'published':
                 completed.append(manifest['case_id'])
                 continue

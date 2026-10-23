@@ -93,6 +93,7 @@ archive_api = importlib.import_module('OMFITlib_cgyro_archive')
 queue_api = importlib.import_module('OMFITlib_cgyro_queue')
 db_api = importlib.import_module('OMFITlib_cgyro_db')
 scratch = importlib.import_module('OMFITlib_cgyro_scratch')
+reference_api = importlib.import_module('OMFITlib_cgyro_reference')
 
 
 class StorageCases(unittest.TestCase):
@@ -173,9 +174,11 @@ class StorageCases(unittest.TestCase):
         definitions = [node for node in ast.parse(path.read_text(encoding='utf-8')).body
                        if isinstance(node, ast.FunctionDef)]
         namespace = dict(copy=copy, datetime=datetime, timezone=timezone, OMFITtree=dict,
+                         copy_result_tree=reference_api.copy_result_tree,
                          continuation_case=continuation.continuation_case,
                          point_result=continuation.point_result, save_current=queue_api.save_current,
                          compact_storage=storage.compact_storage, prune_storage=storage.prune_storage,
+                         retire_superseded=storage.retire_superseded, reference_id=storage.reference_id,
                          store_result=storage.store_result, resolve_result=storage.resolve_result,
                          run_cases=db_api.run_cases, recover_archives=storage.recover_archives)
         for name in ('canonical_case_key', 'catalog_runs', 'clean_run_id', 'combine_cases',
@@ -184,6 +187,20 @@ class StorageCases(unittest.TestCase):
             namespace[name] = getattr(archive_api, name)
         exec(compile(ast.Module(body=definitions, type_ignores=[]), str(path), 'exec'), namespace)
         return namespace['publish_loaded_run']
+
+    def browsable_expressions(self):
+        class OMFITexpression:
+            def __init__(self, *args):
+                raise AssertionError('Native constructor would evaluate the output')
+            def __getattr__(self, name):
+                raise AssertionError('Browser expression unexpectedly evaluated: ' + name)
+            def __deepcopy__(self, memo):
+                raise AssertionError('Metadata operation copied/evaluated a browser expression')
+        class OMFITiterableExpression(OMFITexpression):
+            pass
+        base = types.ModuleType('omfit_classes.omfit_base')
+        base.OMFITiterableExpression = OMFITiterableExpression
+        return patch.dict(sys.modules, {base.__name__: base})
 
     def result_readers(self):
         from collections import OrderedDict
@@ -638,6 +655,133 @@ class StorageCases(unittest.TestCase):
         self.assertEqual(cases, {})
         self.assertEqual(continuation.archived_case(root, 'ancestor')[:2], ('Jet', cid))
 
+    def test_retired_snapshot_rejects_stale_current_and_history_dialogs(self):
+        manifest = dict(run_token='retired', collection_status='partial')
+        root = dict(RUN_MANIFEST=manifest, RUN_DB={db_api.RUNS: {
+            'retired': dict(manifest=manifest, payload_retired=True)}})
+        # The current-view shortcut must not bypass the authoritative tombstone.
+        with patch.object(continuation, 'result_view', side_effect=AssertionError('resolved retired payload')):
+            for current in (manifest, dict(run_token='newer')):
+                root['RUN_MANIFEST'] = current
+                with self.subTest(current=current['run_token']):
+                    with self.assertRaisesRegex(ValueError, 'superseded.*retired'):
+                        continuation.saved_run(root, 'retired')
+
+    def test_stopped_child_rejects_retired_ancestor_instead_of_guessing_public_ids(self):
+        child = dict(run_token='child', collection_status='partial',
+                     continuation=dict(source_token='ancestor'))
+        root = dict(RUN_MANIFEST=child, RUN_DB={db_api.RUNS: {
+            'child': dict(manifest=child),
+            'ancestor': dict(manifest=dict(run_token='ancestor'), payload_retired=True)}})
+        with self.assertRaisesRegex(ValueError, 'superseded.*retired'):
+            continuation.stopped_context(root, 'child')
+
+    def test_retired_snapshot_cannot_be_reactivated_recollected_or_refrozen(self):
+        retry = importlib.import_module('OMFITlib_cgyro_retry')
+        manifest = dict(run_token='retired', status='failed', collection_status='partial', batch_id='batch')
+        root = dict(RUN_MANIFEST=copy.deepcopy(manifest), RUN_DB={db_api.STATE: {'version': 4},
+            db_api.RUNS: {'retired': dict(manifest=copy.deepcopy(manifest), payload_retired=True)}},
+            RUN_HISTORY={'retired': {'manifest': copy.deepcopy(manifest)}},
+            RUN_BATCH=dict(batch_id='batch', tokens=['retired']))
+        original = copy.deepcopy(root)
+        with patch.object(queue_api, 'compact_storage', side_effect=AssertionError('compacted retired input')), \
+                patch.object(queue_api, 'freeze_run_inputs', side_effect=AssertionError('refroze retired input')):
+            queue_api.save_current(root)
+        for action in (lambda: queue_api.activate_run(root, 'retired'),
+                       lambda: retry.collect_current(root, None, dict, None, None)):
+            with self.assertRaisesRegex(ValueError, 'superseded.*retired'):
+                action()
+        self.assertEqual(root, original)
+
+    def test_batch_collection_skips_retired_snapshot_and_reads_other_case(self):
+        workflow = importlib.import_module('OMFITlib_cgyro_workflow')
+        old = dict(run_token='old', status='failed', collection_status='partial',
+                   batch_id='batch', case_id='old_case', job_id='1')
+        current = dict(run_token='current', status='failed', collection_status='partial',
+                       batch_id='batch', case_id='current_case', job_id='2')
+        setup = dict(irun=1, idownsync=0)
+        root = dict(SETTINGS=dict(SETUP=setup), RUN_MANIFEST=old,
+            RUN_HISTORY={'old': {'manifest': old}, 'current': {'manifest': current}},
+            RUN_BATCH=dict(batch_id='batch', tokens=['old', 'current'], case_ids=['old_case', 'current_case']),
+            RUN_DB={db_api.STATE: {'version': 4}, db_api.RUNS: {
+                'old': dict(manifest=old, payload_retired=True), 'current': dict(manifest=current)}})
+        calls = []
+        def run_script(title, name, **kwargs):
+            calls.append((root['RUN_MANIFEST']['run_token'], name, kwargs))
+        with patch.object(workflow, 'save_current'):
+            workflow.collect_batch(root, run_script)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], 'current')
+        self.assertEqual(calls[0][1], 'CGYROScan.py')
+        self.assertIs(calls[0][2]['allow_solver_retries'], False)
+        self.assertEqual(setup, dict(irun=1, idownsync=0))
+
+    def test_indexed_bookkeeping_does_not_recopy_or_replace_storage_metadata(self):
+        root = {}
+        ref = storage.store_result(root, self.result('stable_index'))
+        root['RUN_DB']['Jet'] = {'point': ref}
+        first = storage.compact_storage(root)
+        state = storage.storage_state(root)
+        with patch.object(storage, 'deepcopy', side_effect=AssertionError('copied unchanged storage state')), \
+                patch.object(storage, 'archive_inventory', side_effect=AssertionError('read indexed result files')):
+            second = storage.compact_storage(root)
+        self.assertIs(storage.storage_state(root), state)
+        self.assertEqual(second, first)
+
+        # A later legacy import must invalidate the no-change path naturally;
+        # no persistent "already compacted" marker may suppress its conversion.
+        root['RUN_DB']['Jet']['new_point'] = self.result('imported_after_indexing', b'new spectrum')
+        report = storage.compact_storage(root)
+        self.assertEqual(report['converted_copies'], 1)
+        self.assertEqual(report['physical_results'], 2)
+        self.assertIsNotNone(storage.reference_id(root['RUN_DB']['Jet']['new_point']))
+
+    def test_prune_abort_restores_result_and_file_owners_with_size_metadata(self):
+        class AbortAfterDelete(dict):
+            armed = True
+            def __delitem__(self, key):
+                super().__delitem__(key)
+                if self.armed:
+                    self.armed = False
+                    raise KeyboardInterrupt('after owner deletion')
+        class AbortAfterPop(dict):
+            armed = True
+            def pop(self, key, default=None):
+                result = super().pop(key, default)
+                if self.armed:
+                    self.armed = False
+                    raise KeyboardInterrupt('after file-size deletion')
+                return result
+        for stage in ('owner', 'file-size'):
+            with self.subTest(stage=stage):
+                root = {}
+                retained = storage.store_result(root, self.result('live_' + stage, b'live'))
+                storage.store_result(root, self.result('stale_' + stage, b'stale'))
+                root['RUN_DB']['Jet'] = {'point': retained}
+                pool, state = storage.result_pool(root), storage.storage_state(root)
+                packed = self.base / ('orphan_' + stage + '.zip')
+                packed.write_bytes(b'orphan input')
+                digest = hashlib.sha256(packed.read_bytes()).hexdigest()
+                pool[files.FILE_STORE] = {digest: OMFITpath(packed)}
+                state['file_bytes'] = {digest: packed.stat().st_size}
+                if stage == 'owner':
+                    root['RUN_DB'][db_api.POOL] = pool = AbortAfterDelete(pool)
+                else:
+                    state['file_bytes'] = AbortAfterPop(state['file_bytes'])
+                owners = dict(pool)
+                file_owners = dict(pool[files.FILE_STORE])
+                metadata = copy.deepcopy(dict(state))
+                with self.assertRaises(KeyboardInterrupt):
+                    storage.prune_storage(root)
+                for key, owner in owners.items():
+                    self.assertIs(pool[key], owner)
+                self.assertEqual(pool[files.FILE_STORE], file_owners)
+                self.assertEqual(dict(state), metadata)
+                self.assertTrue(packed.is_file())
+                self.assertEqual(storage.prune_storage(root), 2)
+                self.assertIsNotNone(storage.resolve_result(root, retained))
+                self.assertTrue(packed.is_file())
+
     def test_legacy_outputs_share_owner_and_distinct_results_survive(self):
         first, same, other = self.result('first'), self.result('same'), self.result('other', b'0 3 4\n')
         root = {'RUN_DB': {'point': first}, 'LEGACY_UNCLASSIFIED': {'unknown': same},
@@ -689,10 +833,12 @@ class StorageCases(unittest.TestCase):
         tree = ast.parse(path.read_text(encoding='utf-8'))
         selected = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
         namespace = dict(copy=copy, datetime=datetime, timezone=timezone, OMFITtree=dict,
+                         copy_result_tree=reference_api.copy_result_tree,
                          continuation_case=continuation.continuation_case,
                          point_result=continuation.point_result, save_current=queue_api.save_current,
                          compact_storage=storage.compact_storage, prune_storage=storage.prune_storage,
                          store_result=storage.store_result, resolve_result=storage.resolve_result,
+                         retire_superseded=storage.retire_superseded, reference_id=storage.reference_id,
                          run_cases=db_api.run_cases, recover_archives=storage.recover_archives)
         for name in ('canonical_case_key', 'catalog_runs', 'clean_run_id', 'combine_cases', 'grouped_case_path', 'install_case', 'matching_cases', 'output_final_time', 'scan_key', 'store_scan', 'validate_preserved_scans'):
             namespace[name] = getattr(archive_api, name)
@@ -1031,6 +1177,160 @@ class StorageCases(unittest.TestCase):
 
         self.assertTrue(storage.is_result(OMFITlazyLoad('OMFITcgyro')))
         self.assertTrue(files.native_kind(OMFITlazyLoad('OMFITpath'), 'OMFITpath'))
+
+    def test_browsable_reference_never_evaluates_during_metadata_operations(self):
+        root = {}
+        plain = storage.store_result(root, self.result('browse'))
+        key = plain['__RESULT_REF__']
+        root['RUN_DB']['Jet'] = {'point': plain}
+        with self.browsable_expressions():
+            with patch.object(storage, 'archive_inventory', side_effect=AssertionError('Must not reread output')):
+                storage.compact_storage(root, browse=True)
+            ref = root['RUN_DB']['Jet']['point']
+            self.assertEqual(set(ref), {'__RESULT_REF__', 'data'})
+            self.assertEqual(storage.reference_id(ref), key)
+            self.assertIs(storage.result_view(root, ref), storage.result_pool(root)[key])
+            self.assertEqual(storage.prune_storage(root), 0)
+            storage.clean_staging(root)
+            native = db_api._native(ref, dict)
+            self.assertEqual(storage.reference_id(native), key)
+            db_api._rebind(native)
+            destination = {}
+            archive_api._install_point(destination, ['N_THETA', '16', 'lin', '0.1'], ref, dict)
+            self.assertEqual(storage.reference_id(destination['N_THETA']['16']['lin']['0.1']), key)
+            updater = migration.ArchiveIndex()
+            updater.cgyro_pool = storage.result_pool(root)
+            self.assertTrue(updater.cgyro_payload(ref))
+            updater.check()
+
+    def test_copy_result_tree_preserves_metadata_and_native_owner_semantics(self):
+        from omfit_mapping import OMFITMapping
+        class Metadata(dict):
+            pass
+        owner_copies = []
+        class Reader(OMFITcgyro):
+            def __deepcopy__(self, memo):
+                owner_copies.append(self)
+                return Reader(self.filename)
+        with self.browsable_expressions():
+            ref = reference_api.make_reference('a' * 64)
+            reader = Reader(self.base)
+            metadata = Metadata({'/runs/input.cgyro': [1, 2]})
+            source = {'points': [ref, (ref,)], 'metadata': metadata, 'reader': reader}
+            result = reference_api.copy_result_tree(OMFITlazyLoad(source), OMFITMapping)
+            self.assertIsInstance(result, OMFITMapping)
+            self.assertIsInstance(result['metadata'], Metadata)
+            result['metadata']['/runs/input.cgyro'].append(3)
+            self.assertEqual(metadata['/runs/input.cgyro'], [1, 2])
+            self.assertEqual(owner_copies, [reader])
+            self.assertIsInstance(result['reader'], Reader)
+            self.assertIsNot(result['reader'], reader)
+            copied = result['points'][0]
+            self.assertEqual(storage.reference_id(copied), 'a' * 64)
+            self.assertIsNot(copied['data'], ref['data'])
+            self.assertIs(copied, result['points'][1][0])
+            with self.assertRaisesRegex(ValueError, 'Invalid CGYRO result reference'):
+                reference_api.copy_result_tree({'point': dict(ref, unexpected=123)})
+
+    def test_result_view_preserves_custom_reads_and_isolates_metadata(self):
+        reads = []
+        class CountedPoint(dict):
+            def __getitem__(self, key):
+                if key == 'balloon':
+                    reads.append(key)
+                return super().__getitem__(key)
+        source = {'metadata': {'values': [1]}, 'point': CountedPoint(balloon={'phi': [2]})}
+        view = storage.result_view({}, source)
+        self.assertEqual(reads, [])
+        self.assertIsInstance(view['point'], CountedPoint)
+        view['metadata']['values'].append(3)
+        view['point']['balloon']['phi'].append(4)
+        self.assertEqual(reads, ['balloon'])
+        self.assertEqual(source['metadata']['values'], [1])
+        self.assertEqual(dict.__getitem__(source['point'], 'balloon')['phi'], [2])
+
+    def test_mixed_compaction_copies_existing_reference_branch_without_reading_owner(self):
+        with self.browsable_expressions():
+            root = {}
+            ref = storage.store_result(root, self.result('mixed_indexed'))
+            key, owner = storage.reference_id(ref), storage.resolve_result(root, ref)
+            raw = self.result('mixed_raw', b'new spectrum')
+            root['RUN_DB']['Jet'] = {'indexed': {'point': ref}, 'imported': raw}
+            with patch.object(storage, 'archive_inventory', wraps=storage.archive_inventory) as inventory:
+                report = storage.compact_storage(root)
+            self.assertEqual(inventory.call_count, 1)
+            self.assertEqual(inventory.call_args.args, (raw.filename,))
+            self.assertEqual(report['physical_results'], 2)
+            self.assertEqual(storage.reference_id(root['RUN_DB']['Jet']['indexed']['point']), key)
+            self.assertIs(storage.result_pool(root)[key], owner)
+
+    def test_unindexed_archive_combination_rebuilds_browsable_reference(self):
+        with self.browsable_expressions():
+            ref = reference_api.make_reference('b' * 64)
+            combined = archive_api.combine_cases([{'legacy': {'lin': {'0.1': ref}}}])
+            copied = combined['legacy']['lin']['0.1']
+            self.assertEqual(storage.reference_id(copied), 'b' * 64)
+            self.assertIsNot(copied['data'], ref['data'])
+
+    def test_publication_of_browsable_points_keeps_one_owner(self):
+        root, publish = {}, self.publisher()
+        root['RUN_MANIFEST'] = dict(run_token='publish_browse', status='loaded', collection_status='ready',
+            dimensions=1, scan_dimensions=1, scan_axes=[dict(name='N_THETA', values=[16], linked=[])],
+            case_tag='case', case_id='nr=1__rho=0.33__ion=T', nr=1, rho=.33, mass='T', runid='Jet',
+            workDir='/runs/publish_browse', server='fixture', points=['p000001'], loaded_points=['p000001'],
+            point_table={'p000001': dict(values={'N_THETA': 16, 'KY': .1},
+                                         result_path=['N_THETA', '16', 'lin', '0.1'])})
+        with self.browsable_expressions():
+            ref = storage.store_result(root, self.result('publish_browse'))
+            db_api.set_run_cases(root, root['RUN_MANIFEST'], {'p000001': ref})
+            owner = storage.resolve_result(root, ref)
+            publish(root)
+            case = archive_api.catalog_runs(root)['Jet']['nr=1__rho=0.33__ion=T']
+            saved = case['N_THETA']['16']['lin']['0.1']
+            self.assertEqual(storage.reference_id(saved), storage.reference_id(ref))
+            self.assertEqual(len(storage.result_pool(root)), 1)
+            self.assertIs(storage.resolve_result(root, saved), owner)
+            self.assertEqual(root['RUN_MANIFEST']['status'], 'published')
+
+    def test_collection_abort_restores_browsable_partial_point(self):
+        retry = importlib.import_module('OMFITlib_cgyro_retry')
+        root = {'RUN_MANIFEST': dict(run_token='partial_browse', case_tag='case',
+                                    status='loaded', collection_status='partial')}
+        with self.browsable_expressions():
+            ref = storage.store_result(root, self.result('partial_browse'))
+            db_api.set_run_cases(root, root['RUN_MANIFEST'], {'p000001': ref})
+            owner = storage.resolve_result(root, ref)
+            def abort_read():
+                db_api.run_cases(root).clear()
+                root['RUN_MANIFEST']['collection_status'] = 'incomplete'
+                raise KeyboardInterrupt('Aborted collection')
+            root['SCRIPTS'] = {'downsync.py': types.SimpleNamespace(run=abort_read)}
+            with self.assertRaisesRegex(KeyboardInterrupt, 'Aborted collection'):
+                retry.collect_current(root, None, dict, None, None)
+            restored = db_api.run_cases(root)['p000001']
+            self.assertEqual(root['RUN_MANIFEST']['collection_status'], 'partial')
+            self.assertEqual(storage.reference_id(restored), storage.reference_id(ref))
+            self.assertIsNot(restored['data'], ref['data'])
+            self.assertIs(storage.resolve_result(root, restored), owner)
+            self.assertEqual(len(storage.result_pool(root)), 1)
+
+    def test_reference_rejects_modified_browser_expression_or_extra_payload(self):
+        class OMFITexpression:
+            def __init__(self, code):
+                self.expression = code
+        root = {}
+        plain = storage.store_result(root, self.result('bad-browse'))
+        key = plain['__RESULT_REF__']
+        updater = migration.ArchiveIndex()
+        updater.cgyro_pool = storage.result_pool(root)
+        for extra in ({'data': OMFITexpression("root['RUN_DB'].clear()")},
+                      {'data': storage.result_pool(root)[key]},
+                      {'unexpected': 123}):
+            broken = dict(plain, **extra)
+            with self.assertRaisesRegex(ValueError, 'Invalid CGYRO result reference'):
+                storage.reference_id(broken)
+            with self.assertRaisesRegex(ValueError, 'Invalid CGYRO result reference'):
+                updater.cgyro_payload(broken)
 
 
 if __name__ == '__main__':

@@ -34,7 +34,13 @@ def _view_settings(root):
     return view
 
 
-def _run_options(root, resolve_stopped=True):
+def _run_options(root, resolve_stopped=True, stopped_token=None):
+    """List metadata, resolving ancestry only for the requested data action.
+
+    ``None`` retains the full-context API for explicit compatibility callers.
+    GUI readers pass their selected token, so another radius/ion's unfinished
+    run cannot open result files or block the user's selected plot/table.
+    """
     module = root.get('CGYRO_scan', {})
     run_db = catalog_runs(module)
     records = OrderedDict()
@@ -91,7 +97,8 @@ def _run_options(root, resolve_stopped=True):
         indexed_or_empty = (token in records or not (
             manifest.get('collection_status', '') == 'partial' or manifest.get('loaded_points', [])
             or manifest.get('partial_points', []) or manifest.get('continuation', {}).get('source_token', '')))
-        if not resolve_stopped and indexed_or_empty:
+        selected = stopped_token is None or token == stopped_token
+        if not selected or (not resolve_stopped and indexed_or_empty):
             # Ordinary control changes need only labels and indexed coordinates.
             # Joining continuation ancestry resolves physical result owners and
             # can open many lazy files. Indexed records defer that to a data
@@ -152,11 +159,14 @@ def _select_numeric(text, choices, label):
 
 def selected_record(root, resolve_stopped=True):
     view = _view_settings(root)
-    records, options = _run_options(root, resolve_stopped=resolve_stopped)
+    current = str(root.get('CGYRO_scan', {}).get('RUN_MANIFEST', {}).get('run_token', ''))
+    requested = view.get('run_token', '')
+    if current and view.get('observed_run', '') != current:
+        requested = current
+    records, options = _run_options(root, resolve_stopped=resolve_stopped, stopped_token=requested)
     if not options:
         raise ValueError('尚无已收集的 CGYRO 扫描结果。')
     token = view.get('run_token', '')
-    current = str(root.get('CGYRO_scan', {}).get('RUN_MANIFEST', {}).get('run_token', ''))
     if current in records and view.get('observed_run', '') != current:
         token = current
         view['observed_run'] = current
@@ -165,6 +175,10 @@ def selected_record(root, resolve_stopped=True):
         current = str(root.get('CGYRO_scan', {}).get('RUN_MANIFEST', {}).get('run_token', ''))
         token = current if current in records else list(options.values())[-1]
         view['run_token'] = token
+    if token != requested:
+        # A saved selection may disappear after consolidation. Resolve the
+        # final fallback, never every stopped record just to populate labels.
+        records, options = _run_options(root, resolve_stopped=resolve_stopped, stopped_token=token)
     return view, token, records[token], options
 
 
@@ -547,7 +561,7 @@ class ResultBrowser:
 
 def plot_time_traces(root, notebook, token, point_ids, legend_font_size=10, stopped_points=False):
     """Plot native cumulative time samples; never average or re-zero a restart."""
-    records, _ = _run_options(root)
+    records, _ = _run_options(root, stopped_token=token)
     if token not in records:
         raise ValueError('结果记录已改变，请重新打开计算点选择窗口。')
     entry = records[token]

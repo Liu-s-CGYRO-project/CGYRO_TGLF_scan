@@ -73,8 +73,11 @@ class OMFITSession:
             raise TemplateError('当前 OMFIT 工程已改变，请重新预览')
         state = self._live_state()
         self._capture_live_windows(plan)
+        # Pin backing files before the first assignment. An Abort plus a
+        # secondary rollback error can leave a new code node in the live tree;
+        # its prepared directory must survive even when apply() cannot finish.
+        state['storage'].append(plan.prepared)
         plan.apply(self._refresh_live)
-        state['storage'].append(plan.prepared)  # Keep backing files alive through save/undo.
         state['undo'] = plan
         record = dict(plan.report(), completed_at=datetime.now().isoformat(timespec='seconds'))
         state['history'].append(record)

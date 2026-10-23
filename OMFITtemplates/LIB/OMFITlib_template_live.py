@@ -1,5 +1,5 @@
 """Stage template files and patch an existing OMFIT tree without project I/O."""
-from builtins import all, any, bool, bytes, dict, float, getattr, hasattr, id, int, isinstance, iter, len, list, object, open, repr, reversed, set, sorted, str, tuple, type, zip
+from builtins import BaseException, Exception, all, any, bool, bytes, dict, float, getattr, hasattr, id, int, isinstance, iter, len, list, object, open, repr, reversed, set, setattr, sorted, str, tuple, type, zip
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
@@ -524,6 +524,7 @@ class LivePlan:
     def apply(self, refresh):
         if self.applied:
             raise TemplateError('此预览已经应用，请重新预览')
+        self.rollback_errors = []
         self._check()
         completed = []
         try:
@@ -535,29 +536,48 @@ class LivePlan:
                 # Native SortedDict copies expressions when attaching them.
                 op['new'] = lookup(self.omfit, op['path'])
             refresh(self, False)
-        except Exception as exc:
+            for op in self.operations:
+                op['stamp'] = None if op['data'] else stamp(op['new'])
+                if op['data']:
+                    op['layout_stamp'] = structure(op['new'])
+            if self.scaffold is not None:
+                self.scaffold_stamp = structure(self.scaffold)
+            self.applied = True
+        except BaseException as exc:
+            # OMFIT Abort can raise KeyboardInterrupt. Restore every touched
+            # node, even if a second interruption/write failure affects one
+            # rollback step; preserve the original exception as the cause.
             for op in reversed(completed):
                 if op['old'] is MISSING and raw(op['parent'], op['path'][-1]) is MISSING:
                     continue
-                self._put(op, op['old'])
+                self._rollback_step(location(op['path']), self._put, op, op['old'])
             if self.scaffold is not None:
-                self._restore_roots()
-            try:
-                refresh(self, True)
-            except Exception:
-                pass
-            raise TemplateError('更新失败，已恢复原节点：' + str(exc)) from exc
-        for op in self.operations:
-            op['stamp'] = None if op['data'] else stamp(op['new'])
-            if op['data']:
-                op['layout_stamp'] = structure(op['new'])
-        if self.scaffold is not None:
-            self.scaffold_stamp = structure(self.scaffold)
-        self.applied = True
+                self._rollback_step('module roots', self._restore_roots)
+            self._rollback_step('GUI refresh', refresh, self, True)
+            setattr(exc, 'template_rollback_errors', list(self.rollback_errors))
+            if not isinstance(exc, Exception):
+                raise
+            message = ('更新失败，部分回滚步骤失败，请保留当前会话并检查错误：' if self.rollback_errors
+                       else '更新失败，已恢复原节点：')
+            failure = TemplateError(message + str(exc))
+            failure.template_rollback_errors = list(self.rollback_errors)
+            raise failure from exc
+
+    def _rollback_step(self, label, callback, *args):
+        """Continue recovery after secondary failures without hiding Abort.
+
+        Keep strings rather than exception frames, which could otherwise pin
+        large live result trees. Callers retain the original exception object.
+        """
+        try:
+            callback(*args)
+        except BaseException as exc:
+            self.rollback_errors.append(dict(step=label, error=type(exc).__name__ + ': ' + str(exc)))
 
     def undo(self, refresh):
         if not self.applied:
             raise TemplateError('没有可撤销的更新')
+        self.rollback_errors = []
         self._check(undo=True)
         completed = []
         try:
@@ -567,11 +587,12 @@ class LivePlan:
             if self.scaffold is not None:
                 self._restore_roots()
             refresh(self, True)
-        except Exception:
+        except BaseException as exc:
             if self.scaffold is not None and raw(self.omfit, GROUP) is MISSING:
-                self._move()
+                self._rollback_step('module roots', self._move)
             for op in reversed(completed):
-                self._put(op, op['new'])
-            refresh(self, False)
+                self._rollback_step(location(op['path']), self._put, op, op['new'])
+            self._rollback_step('GUI refresh', refresh, self, False)
+            setattr(exc, 'template_rollback_errors', list(self.rollback_errors))
             raise
         self.applied = False

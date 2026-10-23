@@ -29,7 +29,7 @@ GROUP = 'CGYRO_TGLF_scan'
 LEGACY = ('CGYRO_scan', 'TGLF_scan', 'Transfer_tool')
 RUNTIME = ('OMFITlib_template_archive', 'OMFITlib_template_versions', 'OMFITlib_template_service')
 DEFAULT_PROXY = 'http://47.102.120.146:18889'
-LIMIT = 1000000
+LIMIT = 2 * 1024 * 1024
 
 
 class DeploymentError(ValueError):

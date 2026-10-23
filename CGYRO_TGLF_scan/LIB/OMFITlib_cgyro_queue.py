@@ -25,12 +25,28 @@ def queue_records(root):
             if token in history and history[token].get('manifest', None)]
 
 
+def run_is_retired(root, token):
+    """A tombstone is authoritative even when an old GUI retains its manifest."""
+    return run_records(root).get(str(token), {}).get('payload_retired', False)
+
+
+def require_retained_run(root, token):
+    if run_is_retired(root, token):
+        raise ValueError('This historical result was superseded and its payload was retired. '
+                         'Reopen the result table and select the latest retained scan.')
+
+
 def save_current(root, factory=dict):
     """Save immutable result/input references before copying the active case."""
     manifest = root.get('RUN_MANIFEST', {})
     if (not manifest.get('run_token', '') or
             not any(key in root for key in ('RUN_DB', 'Cases', 'RUN_HISTORY'))):
         return  # Metadata-only scheduler views already refer to the saved entry.
+    if run_is_retired(root, manifest['run_token']):
+        # A finally handler may save an obsolete selection after cleanup. Its
+        # historical metadata is already retained; never recreate input/case
+        # branches or overwrite that record from the stale live manifest.
+        return
     compact_storage(root, factory)
     batch = root.get('RUN_BATCH', {})
     token = manifest['run_token']
@@ -54,6 +70,7 @@ def save_current(root, factory=dict):
 def activate_run(root, token):
     """Restore a batch snapshot before waiting, retrying, or collecting it."""
     ensure_layout(root)
+    require_retained_run(root, token)
     entry = root['RUN_HISTORY'][token]
     if entry['manifest'].get('batch_id', '') != root['RUN_BATCH'].get('batch_id', ''):
         raise ValueError('The saved run belongs to another queue batch.')

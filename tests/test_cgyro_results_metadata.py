@@ -47,6 +47,55 @@ def fixture(empty=False):
 
 
 class ResultMetadataTests(unittest.TestCase):
+    def two_partial_records(self):
+        root = fixture()
+        db = root['CGYRO_scan']['RUN_DB']
+        other = copy.deepcopy(db['Jet']['nr=1_rho=0.33'])
+        info = other['__SCANS__']['N_THETA']['info']
+        info.update(run_token='other', nr=2, source_nr=2, rho=.5,
+                    case_id='nr=2__rho=0.5__ion=BASE')
+        db['Jet']['nr=2_rho=0.5'] = other
+        db['__RUNS__']['other'] = {'manifest': copy.deepcopy(info)}
+        return root
+
+    def test_reader_does_not_resolve_an_unselected_radius(self):
+        root = self.two_partial_records()
+        context = dict(info={}, view={'__TASKS__': {'frozen': {}}}, rows={'frozen': {}})
+        def selected_only(module, token):
+            if token != 'current':
+                raise AssertionError('Opened unrelated result files for ' + token)
+            return context
+        with patch.object(browser, 'stopped_context', side_effect=selected_only) as resolve:
+            _, token, entry, options = browser.selected_record(root)
+        self.assertEqual(token, 'current')
+        self.assertEqual(set(options.values()), {'current', 'other'})
+        self.assertIs(entry['resume_context'], context)
+        resolve.assert_called_once_with(root['CGYRO_scan'], 'current')
+
+    def test_explicit_selection_and_stale_fallback_resolve_only_final_token(self):
+        for selected, expected in (('other', 'other'), ('deleted-record', 'current')):
+            with self.subTest(selected=selected):
+                root = self.two_partial_records()
+                root['SETTINGS']['WORKBENCH']['cgyro_result_view'] = dict(
+                    run_token=selected, observed_run='current')
+                context = dict(info={}, view={'__TASKS__': {}}, rows={})
+                with patch.object(browser, 'stopped_context', return_value=context) as resolve:
+                    _, token, _, _ = browser.selected_record(root)
+                self.assertEqual(token, expected)
+                resolve.assert_called_once_with(root['CGYRO_scan'], expected)
+
+    def test_unselected_unindexed_continuation_does_not_open_its_source(self):
+        root = self.two_partial_records()
+        manifest = root['CGYRO_scan']['RUN_MANIFEST']
+        manifest.update(run_token='unindexed', continuation={'source_token': 'unreadable-ancestor'})
+        root['SETTINGS']['WORKBENCH']['cgyro_result_view'] = dict(run_token='other', observed_run='unindexed')
+        context = dict(info={}, view={'__TASKS__': {}}, rows={})
+        with patch.object(browser, 'stopped_context', return_value=context) as resolve:
+            _, token, _, options = browser.selected_record(root)
+        self.assertEqual(token, 'other')
+        self.assertIn('unindexed', options.values())
+        resolve.assert_called_once_with(root['CGYRO_scan'], 'other')
+
     def test_unindexed_partial_and_inherited_results_keep_slice_controls(self):
         for status in ('partial', 'empty'):
             with self.subTest(status=status):

@@ -1,6 +1,6 @@
 # 在 OMFIT Command Box 整理当前工程
 
-先更新模板管理器到 1.10.23、工程到 1.24.6，关闭旧结果窗口。在 Command Box 执行下面完整的一行：
+先安装配套模板管理器 1.10.25、工程 1.24.10，关闭旧结果窗口。在 Command Box 执行下面完整的一行：
 
 ```python
 OMFIT['CGYRO_TGLF_scan']['SCRIPTS']['compact_cgyro_storage'].run()
@@ -8,19 +8,21 @@ OMFIT['CGYRO_TGLF_scan']['SCRIPTS']['compact_cgyro_storage'].run()
 
 它把旧的 `Jet [partial ...]`、`Jet [recovered ...]` 和 `Jet [legacy revision ...]` 合并回 `Jet`。普通扫描移到 `RUN_DB/Jet/nr=1_rho=0.33/N_THETA` 等参数组下，BASE 仅保留原始参数固定的基准结果；H/D/T 扫描仍各用离子目录。状态只记在内部。旧结果和冻结输入都留在 `CGYRO_scan/RUN_DB`，按文件名称、长度和 SHA-256 去重，核对后恢复旧扫描索引。`N_THETA`、`N_ENERGY` 及多轴扫描独立保存；相同参数组按全部坐标和 ky 合并。不同 ky 追加，完全相同坐标的新结果更新对应点。
 
+1.24.10 同时为 ky 节点添加可展开的 `data` 入口，并释放已被当前结果完整覆盖的旧失败快照及其无用冻结输入。仍可续算的唯一结果、未收集任务和未知数据保留。控制台报告退休的运行和下次另存可减少的字节数；不会在当前 ZIP 上原地删文件。
+
 可核实的未分类记录按其原 runid、case_id、scan_axes 和 result_path 恢复。无法核实或缺少数据的记录保留在 `RUN_DB/__UNCLASSIFIED__`，不会根据当前界面设置猜测其身份。整理报告在 `RUN_DB/__STORAGE__/recovery`。这不是重新提交或补算操作。
 
 整理完成后使用 OMFIT“另存为”保存新的工程 ZIP，保存后体积才会变化。原 ZIP、来源目录和服务器文件不删除。哈希与复制可能需要数分钟和临时磁盘空间。关闭旧窗口后重新打开结果浏览，确保回调使用新版代码。
 
-如果旧工程缺少脚本或读取接口过旧，从对应版本更新包使用 `omfit-cgyro-compact.py`，在 Command Box 执行文件内容。工具检查父、子模块完整依赖和读取接口；需要时下载固定版本代码包，核对大小、SHA-256 和 ZIP CRC，使用管理器的事务接口更新代码，再整理数据。输入和设置采用 keep 策略；独立旧模块由迁移器识别。工具不调用 OMFIT.load()。
+如果旧工程缺少脚本或读取接口过旧，使用本版生成的 `omfit-maintain-1.24.10.py`。它内嵌经过 SHA-256 / CRC 校验的代码包，使用管理器事务同步更新工程和管理器，再整理数据；无需网络。输入和设置采用 keep 策略，额外用户脚本保留。它不调用 OMFIT.load()，不重新提交作业，不在原 ZIP 上删文件。
 
 完整文件可用单行命令执行（路径改为下载位置）：
 
 ```python
-exec(compile(open('/absolute/path/omfit-cgyro-compact.py', 'rb').read(), 'omfit-cgyro-compact.py', 'exec'), {'OMFIT': OMFIT})
+exec(compile(open('/absolute/path/omfit-maintain-1.24.10.py', 'rb').read(), 'omfit-maintain-1.24.10.py', 'exec'), {'OMFIT': OMFIT})
 ```
 
-下载工具默认沿用现有代理；直连可在执行字典中加入 `'COMPACT_PROXY': ''`。结果格式更新后不会保留仅撤销读取代码的入口，以免新索引交给旧读取器。
+结果格式更新后不会保留仅撤销读取代码的入口，以免新索引交给旧读取器。脚本本身仅含代码，不含此项目的结果 ZIP。更新后保存成新 ZIP；原 ZIP 可用于恢复。
 
 检查点规则及删除 .old 的实际代价见 [归档设计](RESULT_STORAGE_DESIGN.md)。本版完成隔离文件与元数据回归检查，未在用户的 OMFIT 会话执行整理、保存重开或求解器续算。
 

@@ -31,7 +31,7 @@ def main():
         ('template', args.template, 'tdxy-liu__cgyro-tglf__' + version + '.omfittpl.zip'),
     ):
         data = path.read_bytes()
-        if path.name != expected or not 0 < len(data) < 1000000:
+        if path.name != expected or not 0 < len(data) < 2 * 1024 * 1024:
             raise ValueError('Unexpected release package: ' + str(path))
         release[kind] = dict(name=expected, bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
     source = Path(__file__).with_name('deploy_project.py').read_text(encoding='utf-8')

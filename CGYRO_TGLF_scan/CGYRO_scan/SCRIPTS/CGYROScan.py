@@ -8,8 +8,10 @@ from OMFITlib_cgyro_archive import (canonical_case_key, catalog_runs, clean_run_
 from OMFITlib_cgyro_retry import collect_current
 from OMFITlib_cgyro_continue import continuation_case, point_result
 from OMFITlib_cgyro_queue import save_current
-from OMFITlib_cgyro_storage import compact_storage, prune_storage, resolve_result, store_result
+from OMFITlib_cgyro_storage import compact_storage, prune_storage, reference_id, resolve_result, store_result
+from OMFITlib_cgyro_retention import retire_superseded
 from OMFITlib_cgyro_db import run_cases
+from OMFITlib_cgyro_reference import copy_result_tree
 from OMFITlib_cgyro_recover import recover_archives
 defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False, continuation=None,
             allow_solver_retries=None, check_temp_start=True)
@@ -111,7 +113,7 @@ def publish_loaded_run(root):
             if key not in node:
                 node[key] = OMFITtree()
             node = node[key]
-        node[path[-1]] = copy.deepcopy(run_cases(root, manifest)[point_id])
+        node[path[-1]] = copy_result_tree(run_cases(root, manifest)[point_id], OMFITtree)
 
     run_id = clean_run_id(manifest['runid'])
     if not run_id or run_id.startswith('__') or '/' in run_id:
@@ -201,7 +203,9 @@ def publish_loaded_run(root):
     if complete:
         manifest['status'] = 'published'
     remember_collection(root)
-    prune_storage(root)
+    # A successful replacement can retire obsolete failed snapshots. This is a
+    # publication boundary, never a GUI-refresh or scheduler-poll side effect.
+    retire_superseded(root, resolve_result, reference_id, prune=prune_storage)
     print('Collected {} complete and {} partial points; {} points skipped. {}'.format(
         len(loaded), len(partial), len(manifest.get('skipped_points', [])),
         'Results merged into RUN_DB / {} / {}.'.format(run_id, ' / '.join(info['case_path']))))

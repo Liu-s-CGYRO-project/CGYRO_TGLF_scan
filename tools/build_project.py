@@ -226,8 +226,10 @@ def build(output):
                 archive.writestr(info, (ROOT / name).read_bytes(), compresslevel=9)
             for name in sorted(directories):
                 archive.writestr(name.rstrip('/') + '/', b'')
-        if temporary.stat().st_size >= 1000000:
-            raise TemplateError('代码安装包超过 1 MB，请将大型资源移到独立资源包')
+        # Keep a bounded code-only installer without stripping maintenance
+        # comments or integrity checks merely to meet the old 1 MB threshold.
+        if temporary.stat().st_size >= 2 * 1024 * 1024:
+            raise TemplateError('代码安装包超过 2 MiB，请将大型资源移到独立资源包')
         with Project(temporary) as project:
             project.require_entry_first()
             owned = project.ownership(project.roots)

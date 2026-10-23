@@ -170,8 +170,16 @@ class ArchiveIndex:
         if '__RESULT_REF__' not in contents:
             return False
         key = self.materialize(contents['__RESULT_REF__'])
-        if len(contents) != 1 or not isinstance(key, str) or re.fullmatch(r'[0-9a-f]{64}', key) is None:
+        if not isinstance(key, str) or re.fullmatch(r'[0-9a-f]{64}', key) is None:
             raise ValueError('Invalid CGYRO result reference')
+        # New indexes may expose a native browser expression. Only this exact
+        # generated lookup is permitted; never evaluate it during migration.
+        if set(contents) != {'__RESULT_REF__'}:
+            data = contents.get('data', None)
+            expected = "root['RUN_DB']['__STORE__']['" + key + "']"
+            if (set(contents) != {'__RESULT_REF__', 'data'} or not kind(data, 'OMFITexpression')
+                    or object.__getattribute__(data, 'expression') != expected):
+                raise ValueError('Invalid CGYRO result reference')
         if not self.cgyro_object(self.get(self.cgyro_pool, key, None)):
             raise ValueError('Missing CGYRO result owner: ' + key)
         return True

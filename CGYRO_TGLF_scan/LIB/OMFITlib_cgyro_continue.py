@@ -14,7 +14,8 @@ import os
 import re
 import shutil
 import zipfile
-from OMFITlib_cgyro_archive import case_scans, scan_branch, scan_key
+from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, clean_run_id,
+                                   point_coordinate, scan_branch, scan_key)
 from OMFITlib_cgyro_storage import result_view
 from OMFITlib_cgyro_db import run_cases, run_records
 from OMFITlib_cgyro_checkpoint import directory_checkpoint
@@ -23,10 +24,19 @@ from OMFITlib_cgyro_scratch import directory_bytes, ensure_capacity
 
 
 def saved_run(module, token):
+    """Resolve frozen state, rejecting stale dialogs after payload retirement.
+
+    RUN_MANIFEST can still describe an older selection after archive cleanup.
+    Check the authoritative run record before the current-view shortcut: its
+    point IDs must never be rebound to newer public results with reused IDs.
+    """
+    entry = run_records(module).get(str(token), {})
+    if entry.get('payload_retired', False):
+        raise ValueError('This historical result was superseded and its payload was retired. '
+                         'Reopen the result table and select the latest retained scan.')
     current = module.get('RUN_MANIFEST', {})
     if str(current.get('run_token', '')) == str(token):
         return current, result_view(module, run_cases(module, current))
-    entry = run_records(module).get(str(token), {})
     manifest = entry.get('manifest', {})
     return manifest, result_view(module, run_cases(module, manifest))
 
@@ -52,7 +62,7 @@ def stopped_context(module, token):
         unfinished.difference_update(complete_points)
         unfinished.update(set(record.get('points', [])) - complete_points)
         try:
-            _, _, archived = archived_case(module, record['run_token'])
+            _, _, archived = archived_case(module, record['run_token'], allow_inherited=True)
         except ValueError:
             archived = None
         if archived is not None:
@@ -154,8 +164,13 @@ def resume_source(module, token, point, context=None):
     return dict(mode=mode, zip=path, sha256=copy.deepcopy(dict(hashes)))
 
 
-def archived_case(module, token):
-    """Resolve one retained scan; reject a dialog for a replaced scan token."""
+def archived_case(module, token, allow_inherited=False):
+    """Resolve one retained scan; reject a dialog for a replaced scan token.
+
+    Only ancestry reconstruction may use surviving points from a newer scan
+    header. It requires the original owner token, full case/scan/coordinates
+    and frozen point IDs; a stale dialog never opts into this fallback.
+    """
     manifest, points = saved_run(module, token)
     stopped = manifest.get('collection_status', '') in ('partial', 'empty')
     for runid, run in catalog_runs(module).items():
@@ -177,6 +192,43 @@ def archived_case(module, token):
                         if path:
                             view[path[0]] = case[branch]
                     return runid, case_id, result_view(module, view)
+                if (allow_inherited and manifest.get('status', '') == 'published'
+                        and clean_run_id(runid) == clean_run_id(manifest.get('runid', ''))
+                        and canonical_case_key(case_id, info) == canonical_case_key(
+                            manifest.get('case_id', ''), manifest)
+                        and scan_key(info) == scan_key(manifest)):
+                    # A subset continuation replaces the public header but
+                    # retains unselected points from its published ancestor.
+                    # Published snapshots no longer own duplicate cases, so
+                    # recover only those exact, still-owned public points.
+                    expected = {}
+                    for point, row in manifest.get('point_table', {}).items():
+                        coordinate = point_coordinate(row)
+                        if coordinate in expected:
+                            raise ValueError('Ambiguous frozen ancestor coordinates')
+                        expected[coordinate] = (point, row)
+                    inherited = {}
+                    for source in tasks.values():
+                        if (str(source.get('run_token', '')) != str(token)
+                                or source.get('status', '') != 'loaded' or source.get('resume_pending', False)):
+                            continue
+                        coordinate = point_coordinate(source)
+                        if coordinate not in expected:
+                            continue
+                        point, original = expected[coordinate]
+                        if point in inherited:
+                            raise ValueError('Ambiguous inherited ancestor coordinates')
+                        row = copy.deepcopy(dict(source))
+                        row.update(copy.deepcopy(dict(original)))
+                        row.update(dict(task_id=point, result_path=list(source['result_path'])))
+                        inherited[point] = row
+                    if inherited:
+                        source_info = copy.deepcopy(dict(manifest))
+                        source_info.update(dict(source_nr=manifest.get('nr', ''), ion_case=manifest.get('mass', '')))
+                        view = dict(__INFO__=source_info, __TASKS__=inherited)
+                        for row in inherited.values():
+                            view[row['result_path'][0]] = case[row['result_path'][0]]
+                        return runid, case_id, result_view(module, view)
     # Older stopped jobs retain their original point IDs internally, even
     # after their public results merge into Jet/radius/isotope. Use that
     # frozen table rather than another job's identically named p000001.

@@ -180,6 +180,74 @@ class LiveTest(unittest.TestCase):
         self.assertEqual(self.omfit['Demo']['SETTINGS']['PHYSICS']['x'], 99)
         self.assertFalse(self.session.can_undo_live())
 
+    def test_abort_during_assignment_restores_original_nodes_and_exception(self):
+        plan = self.plan(settings='template')
+        before = self.omfit['Demo']['SCRIPTS']['run']
+        original_put, abort = plan._put, KeyboardInterrupt('operator abort')
+        changed = []
+        def put_then_abort(op, value):
+            original_put(op, value)
+            if not changed:
+                changed.append(op)
+                raise abort
+        plan._put = put_then_abort
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            self.session.apply_live(plan)
+        self.assertIs(caught.exception, abort)
+        self.assertEqual(abort.template_rollback_errors, [])
+        self.assertFalse(plan.applied)
+        self.assertIs(self.omfit['Demo']['SCRIPTS']['run'], before)
+        self.assertEqual(self.omfit['Demo']['SETTINGS']['MODULE']['version'], 1)
+        self.assertEqual(self.omfit['Demo']['SETTINGS']['PHYSICS']['x'], 99)
+        self.assertFalse(self.session.can_undo_live())
+
+    def test_abort_in_gui_refresh_restores_code_and_keeps_backing_pinned(self):
+        plan = self.plan(settings='template')
+        before = self.omfit['Demo']['SCRIPTS']['run']
+        abort = KeyboardInterrupt('GUI abort')
+        self.session._refresh_live = Mock(side_effect=[abort, None])
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            self.session.apply_live(plan)
+        self.assertIs(caught.exception, abort)
+        self.assertIs(self.omfit['Demo']['SCRIPTS']['run'], before)
+        self.assertEqual(self.omfit['Demo']['SETTINGS']['PHYSICS']['x'], 99)
+        self.assertIn(plan.prepared, self.session._live_state()['storage'])
+
+    def test_abort_undo_reapplies_new_nodes_and_preserves_undo_action(self):
+        plan = self.plan(settings='template')
+        self.session.apply_live(plan)
+        updated = self.omfit['Demo']['SCRIPTS']['run']
+        abort = KeyboardInterrupt('undo abort')
+        self.session._refresh_live = Mock(side_effect=[abort, None])
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            self.session.undo_live()
+        self.assertIs(caught.exception, abort)
+        self.assertIs(self.omfit['Demo']['SCRIPTS']['run'], updated)
+        self.assertEqual(self.omfit['Demo']['SETTINGS']['PHYSICS']['x'], 2)
+        self.assertTrue(plan.applied)
+        self.assertTrue(self.session.can_undo_live())
+
+    def test_secondary_rollback_errors_do_not_mask_abort_or_skip_other_nodes(self):
+        plan = self.plan(settings='template')
+        before = self.omfit['Demo']['SCRIPTS']['run']
+        abort = KeyboardInterrupt('initial abort')
+        original_put, failures = plan._put, []
+        def rollback_with_failures(op, value):
+            original_put(op, value)
+            if value is op['old'] and len(failures) < 2:
+                failures.append(op['path'])
+                raise OSError('secondary rollback failure')
+        plan._put = rollback_with_failures
+        self.session._refresh_live = Mock(side_effect=[abort, KeyboardInterrupt('second GUI abort')])
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            self.session.apply_live(plan)
+        self.assertIs(caught.exception, abort)
+        self.assertEqual(len(abort.template_rollback_errors), 3)
+        self.assertEqual(abort.template_rollback_errors[-1]['step'], 'GUI refresh')
+        self.assertIs(self.omfit['Demo']['SCRIPTS']['run'], before)
+        self.assertEqual(self.omfit['Demo']['SETTINGS']['PHYSICS']['x'], 99)
+        self.assertIn(plan.prepared, self.session._live_state()['storage'])
+
     def test_native_gui_controller_rebound_and_redrawn_in_same_window(self):
         old = self.omfit['Demo']['GUIS']['main']
         plan = self.plan()  # A window opened after preview must also be refreshed.
