@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.13。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.14。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 状态、选择与异常接口（1.24.11）
 
@@ -15,7 +15,7 @@
 
 离线更新可使用 `build_maintenance_commandbox.py --install-only`，保留数据和设置，只更新代码，不自动整理归档；用户随后在原工程点击恢复/收集。操作说明见 [按作业号恢复](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。
 
-### 本地审查修复的维护约定（2026-10-24，待发布）
+### 本地审查修复的维护约定（1.24.12）
 
 - `cgyro_db.rollback_actions(original_error, actions)` 是 CGYRO 多步恢复的共同接口。`actions` 为 `(步骤名, 无参恢复函数)` 序列，返回本轮失败的字符串列表。调用方仍须 `raise` 原异常；返回非空时不能继续自动重试，也不能清理可能仍被公开索引引用的新 owner。不要以捕获异常代替验证恢复是否完成。
 - `freeze_run_inputs` 必须先验证非空 token，先安装新引用、再移除来源。原生映射可能先修改再抛异常，不能使用 `target[key] = source.pop(key)`。迁移遇到同 token 的不同 cases 快照时，必须在写活树前拒绝；文件路径相同不证明两个未保存原生对象内容相同，不能猜选“较新”对象。
@@ -280,3 +280,17 @@ python -B tools/run_regressions.py --suite test_build_project --suite test_maint
 CGYRO 的远程执行使用 `cgyro_run_state.native_remote_execute(ui, ...)`，参数和异常沿用原生 OMFIT 接口。该边界只在进程的 SHELL 缺失或为空时设置 `/bin/bash`，保留已有 shell。VNC/桌面启动器未必传递登录 shell；原生 remote_execute 的同主机分支会调用 execute，后者即便禁用 bang command 仍读取 SHELL 构造终端按钮。因此不能只在 shell 命令文本中 export，必须在调用宿主接口前准备进程环境。
 
 恢复、同步、等待、取消和提交回执沿用此入口，后续原生下载也能使用相同进程默认值。不要捕获 KeyError 后重复远程命令，以免重放已有副作用。`test_cgyro_remote_environment` 从指定 OMFIT 源码提取未经改写的 execute/remote_execute 函数，隔离进程和连接边界，复现缺失环境及验证错误/Abort 仍可见；回归运行需提供 `--omfit-source`。
+
+## 按作业号限制操作范围（1.24.14）
+
+恢复时在 RUN_BATCH 写入 `focus_token`；该字段仅决定当前操作的范围。保留在 tokens/history 的其他记录不授予本次同步、收集或取消权限，`queue_records()` 默认仅返回 focus。`include_parked=True` 供明确的元数据检查使用，不能用于当前作业的执行循环。普通多案例提交没有 focus，仍按完整批次处理。
+
+空或失效 focus 必须停止，不能回退到遍历全部历史。`collect_batch` 在改变执行设置前捕获并验证范围，汇总完成数与显示计数也使用同一范围。再次恢复已保存作业可以重选范围，无需重下输入；此分支仍检查查询期间的元数据变化并使用原有事务写入。归档结果和冻结输入仍只由 RUN_DB 拥有。
+
+全工程清空检查必须显式读取 `queue_records(include_parked=True)`，不能因当前恢复只关注一个作业而忽略其他已提交记录。
+
+## 定向删除半径（1.24.14）
+
+`cgyro_radius_cleanup.preview_radius` 和 `remove_radius` 按 runid/nr/rho 及原始 case_id 核对身份，使用 1e-12 的绝对容差区分相邻半径。GUI 按钮只展开元数据选择器；平时刷新不遍历全归档。确认预览与执行前重新规划的范围必须一致。脚本 `remove_radius.py` 默认为预览，confirm 必须是布尔值。
+
+删除先解除公共扫描与 RUN_HISTORY、RUN_DB/__RUNS__ 的指定引用，再更新当前清单/批次并调用现有可达性剪枝。暂存恢复日志只持有浅引用，不复制结果数组；Abort 和原生“删除后抛错”都按逆序恢复。剪枝保留其他半径仍引用的同一物理结果；不执行远程命令或文件系统删除。未知身份、冲突元数据和跨半径续算依赖不得猜测处理。

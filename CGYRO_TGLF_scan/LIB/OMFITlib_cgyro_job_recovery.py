@@ -145,9 +145,9 @@ def _recovered_manifest(original, identity, endpoint, source, local, missing):
 def _install(root, manifest, inputs, factory):
     """Publish only after every probe/download succeeds; journal native writes.
 
-    A recovery batch adopts pending records without changing their physical run
-    identity. This keeps an unsaved second radius visible to manual collection,
-    and does not drop a previously recovered/live job when another is attached.
+    Retain pending records without changing their physical run identity. Only
+    the explicitly recovered token is in the action scope; retaining history
+    must never grant synchronization, collection or cancellation of old jobs.
     """
     db = ensure_layout(root, factory)
     token = manifest['run_token']
@@ -166,7 +166,7 @@ def _install(root, manifest, inputs, factory):
     for saved in snapshots.values():
         saved['batch_id'] = batch_id
     batch = dict(batch_id=batch_id, tokens=list(snapshots), case_ids=[row.get('case_id', row['run_token']) for row in snapshots.values()],
-                 completed=[], errors=[], status='recovered')
+                 completed=[], errors=[], status='recovered', focus_token=token)
     missing = object()
     changes = []
     def assign(mapping, key, value):
@@ -225,7 +225,15 @@ def recover_job(root, ui, job_id, endpoint, local_base, factory=dict, path_reade
         original, source = _load_verified_manifest(ui, endpoint, identity, manifest_path)
         existing = _existing_run(root, original, endpoint, job_id)
         if existing is not None:
-            return dict(already_present=True, manifest=deepcopy(existing), missing_inputs=[])
+            # Re-select an already retained job without downloading inputs.
+            # This also narrows batches created by versions that grouped every
+            # uncollected historical job into the recovery action.
+            if before != _metadata_revision(root):
+                raise ValueError('恢复期间运行记录发生变化，请重新执行恢复。')
+            if (root.get('RUN_BATCH', {}).get('focus_token', '') != original['run_token']
+                    or root.get('RUN_MANIFEST', {}).get('run_token', '') != original['run_token']):
+                _install(root, deepcopy(existing), factory(), factory)
+            return dict(already_present=True, manifest=deepcopy(root['RUN_MANIFEST']), missing_inputs=[])
         parent = original.get('continuation', {}).get('source_token', '')
         if parent and not run_records(root).get(parent, {}).get('manifest', {}):
             raise ValueError('这是续算作业，原扫描记录尚未恢复。请先恢复源运行 ' + str(parent)

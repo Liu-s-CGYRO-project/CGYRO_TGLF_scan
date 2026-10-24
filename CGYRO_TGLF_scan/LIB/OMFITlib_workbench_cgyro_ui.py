@@ -3,11 +3,11 @@
 Public methods remain inherited by ProjectUI for saved GUIs and callbacks.
 Keep OMFITlib imports at module scope: native GUI execution clears its import hook.
 """
-from builtins import any, dict, float, int, isinstance, len, list, next, range, sorted, str
+from builtins import ValueError, any, dict, float, int, isinstance, len, list, next, range, sorted, str
 from collections import OrderedDict
 import math
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from OMFITlib_workbench_catalog import SCAN_TABS as CGYRO_SCAN_TABS
 from OMFITlib_cgyro_results import ResultBrowser
 from OMFITlib_cgyro_present import run_caption, collection_caption
@@ -17,6 +17,7 @@ from OMFITlib_cgyro_scan_values import AXIS_KEYS, KY_MODES, VALUE_MODES, ky_valu
 from OMFITlib_cgyro_parameter_help import parameter_help
 from OMFITlib_project import ION_CASES, MODULES, cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, location, read, runtime_issues, sync_cgyro_choices, sync_cgyro_ion_cases, sync_run_issues
 from OMFITlib_cgyro_run_state import submission_pending
+from OMFITlib_cgyro_radius_cleanup import preview_radius, radius_choices
 
 
 class CgyroPage:
@@ -54,7 +55,39 @@ class CgyroPage:
                 self.guarded('重新收集未归档结果', self.actions.collect, collect_issues(self.root),
                              help='只读取、归档已有输出；运行中的案例提示后跳过。需要补算时，进入下方“选择点续算”。')
         ResultBrowser(self.root, self.ui, continue_callback=self.actions.continue_cgyro).render(title=False)
+        self.render_cgyro_cleanup(node)
         self.nav('对比绘图（可选）', 'plots')
+
+    def render_cgyro_cleanup(self, node):
+        """Do not enumerate archives on every ordinary control refresh."""
+        self.settings.setdefault('cgyro_cleanup_open', False)
+        self.settings.setdefault('cgyro_cleanup_radius', '')
+        self.ui.Button('删除指定半径…', lambda: self.settings.__setitem__(
+            'cgyro_cleanup_open', not self.settings['cgyro_cleanup_open']), updateGUI=True)
+        if not self.settings['cgyro_cleanup_open']:
+            return
+        options = radius_choices(node)
+        self.ui.ComboBox(self.prefix + "['cgyro_cleanup_radius']", '删除范围',
+                         choices=[''] + list(options), updateGUI=True)
+        self.ui.Button('删除该半径的记录和结果', self.confirm_cgyro_radius_cleanup, updateGUI=True,
+                       state='normal' if self.settings['cgyro_cleanup_radius'] in options else 'disabled')
+
+    def confirm_cgyro_radius_cleanup(self):
+        node = read(self.root, MODULES['cgyro'])
+        choice = self.settings.get('cgyro_cleanup_radius', '')
+        options = radius_choices(node)
+        if choice not in options:
+            raise ValueError('请先选择需要删除的运行名和半径。')
+        report = preview_radius(node, **options[choice])
+        parent = getattr(self.ui, '_aux', {}).get('parentGUI', None)
+        prompt = ('删除 {} 的任务记录、冻结输入和本工程内归档结果。\n'
+                  '作业号：{}\n归档分支：{}\n\n'
+                  '其他半径保留。远端作业和文件保留。此操作无法撤销。').format(
+                      choice, ', '.join(report['jobs']) or '无', len(report['archives']))
+        if messagebox.askokcancel('删除指定半径', prompt, parent=parent, icon='warning'):
+            self.actions.remove_cgyro_radius(**options[choice], expected=report)
+            self.settings['cgyro_cleanup_radius'] = ''
+            self.settings['cgyro_cleanup_open'] = False
 
     def render_cgyro_recovery(self, node):
         """Available even in an empty reopened project after a desktop timeout."""
@@ -71,7 +104,7 @@ class CgyroPage:
         if self.settings['cgyro_recovery_advanced']:
             self.ui.Entry(self.prefix + "['cgyro_recovery_manifest']", '服务器上的 manifest.json',
                           width=50, updateGUI=False, help='通常无需填写；自动查找失败时使用原 OMFIT 暂存目录中的清单绝对路径。')
-        self.label('OMFIT 意外退出后，按原作业号接回状态与收集入口。')
+        self.label('按作业号接回任务；本次同步和收集只处理该作业。')
 
     def render_cgyro_scan_tabs(self):
         node = read(self.root, MODULES['cgyro'])

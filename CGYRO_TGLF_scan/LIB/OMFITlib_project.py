@@ -1140,6 +1140,13 @@ class ProjectActions:
         self.settings['message'] = ('作业 ' + job_id + ' 的记录已核对。运行中可同步状态；结束后点击'
                                     '“重新收集未归档结果”。请保存工程，以保留恢复记录。')
 
+    def remove_cgyro_radius(self, runid, rho, nr='', expected=None):
+        """The view confirms a concrete metadata preview before this action."""
+        self._cgyro_script('删除指定 CGYRO 半径', 'remove_radius.py', runid=runid, rho=rho,
+                          nr=nr, confirm=True, expected=expected)
+        self.settings.pop('cgyro_result_view', None)
+        self.settings['message'] = '已删除 {} / ρ={} 的任务记录和工程内结果，请另存工程。'.format(runid, rho)
+
     def save_command(self, name):
         command = self.settings.get('command_draft', '').strip()
         if not command:

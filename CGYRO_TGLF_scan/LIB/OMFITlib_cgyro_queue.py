@@ -20,10 +20,24 @@ def collection_done(manifest):
     return collection_finished(manifest)
 
 
-def queue_records(root):
-    """Return only this batch's known snapshots in submission order."""
+def queue_records(root, *, include_parked=False):
+    """Return the explicit action scope; retain other pending jobs separately.
+
+    Recovery preserves old queue metadata, but a supplied job ID only grants
+    collection/synchronization permission for that job. An invalid focus must
+    fail closed instead of silently broadening an action to historical jobs.
+    Metadata inspection can request include_parked=True; retaining a historical
+    record does not make it part of the newly selected operation.
+    """
     history = root.get('RUN_HISTORY', {})
-    return [(token, history[token]) for token in root.get('RUN_BATCH', {}).get('tokens', [])
+    batch = root.get('RUN_BATCH', {})
+    tokens = batch.get('tokens', [])
+    if not include_parked and 'focus_token' in batch:
+        focus = str(batch['focus_token'])
+        if not focus or focus not in tokens or not history.get(focus, {}).get('manifest', None):
+            raise ValueError('The recovered job selection is invalid; recover the intended job ID again.')
+        tokens = [focus]
+    return [(token, history[token]) for token in tokens
             if token in history and history[token].get('manifest', None)]
 
 
@@ -101,8 +115,10 @@ def queue_summary(root):
     done = len([row for row in rows if row.get('status', '') == 'published'])
     partial = len([row for row in rows if row.get('collection_status', '') == 'partial'])
     empty = len([row for row in rows if row.get('collection_status', '') == 'empty'])
-    total = len(batch.get('case_ids', rows))
-    return '批量案例：完整 {} / {}；部分结果 {}；无结果跳过 {}。'.format(done, total, partial, empty)
+    focused = 'focus_token' in batch
+    total = len(rows) if focused else len(batch.get('case_ids', rows))
+    caption = '本次恢复作业' if focused else '批量案例'
+    return (caption + '：完整 {} / {}；部分结果 {}；无结果跳过 {}。').format(done, total, partial, empty)
 
 
 def _commit_synced_manifest(root, token, manifest, factory):

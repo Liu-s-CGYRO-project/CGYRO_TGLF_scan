@@ -266,6 +266,7 @@
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_recovery_manifest'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_recovery_manifest.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_job_probe'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_job_probe.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_job_recovery'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_job_recovery.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_radius_cleanup'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_radius_cleanup.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_retry'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_retry.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_launch'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_launch.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_server_capabilities'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_server_capabilities.py <-:-:-> {}
@@ -308,6 +309,7 @@
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['downsync.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/downsync.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['refresh_run_status.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/refresh_run_status.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['recover_job.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/recover_job.py <-:-:-> {}
+['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['remove_radius.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/remove_radius.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['wait_current_run.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/wait_current_run.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['subscan_lin.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['subscan_lin_new.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/subscan_lin_new.py <-:-:-> {}
@@ -394,6 +396,7 @@
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_recovery_manifest'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_recovery_manifest.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_job_probe'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_job_probe.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_job_recovery'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_job_recovery.py <-:-:-> {}
+['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_radius_cleanup'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_radius_cleanup.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_retry'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_retry.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_cgyro_launch'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_launch.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['CGYRO_scan']['LIB']['OMFITlib_server_capabilities'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_server_capabilities.py <-:-:-> {}

@@ -354,6 +354,44 @@ class ProjectTest(unittest.TestCase):
         self.cg['SCRIPTS']['runCGYRO.py'].run.assert_not_called()
         self.cg['SCRIPTS']['downsync.py'].run.assert_not_called()
 
+    def test_recovery_panel_shows_only_requested_job_not_old_pending_history(self):
+        import OMFITlib_workbench_cgyro_ui as cgyro_ui
+        old = dict(run_token='old', job_id='9537283', status='failed', collection_status='pending',
+                   case_id='nr=11__rho=0.99__ion=BASE', batch_id='recovery')
+        selected = dict(run_token='selected', job_id='9817420', status='submitted_or_finished',
+                        collection_status='pending', case_id='nr=1__rho=0.33__ion=T', batch_id='recovery')
+        self.cg.update(dict(RUN_MANIFEST=copy.deepcopy(selected),
+            RUN_HISTORY={'old': {'manifest': old}, 'selected': {'manifest': selected}},
+            RUN_BATCH=dict(batch_id='recovery', tokens=['old', 'selected'],
+                           case_ids=[old['case_id'], selected['case_id']], focus_token='selected')))
+        with patch.object(cgyro_ui.ResultBrowser, 'render'):
+            ui = self.render('cgyro')
+        labels = '\n'.join(str(args[0]) for name, args, kwargs in ui.events if name == 'Label')
+        self.assertIn('9817420', labels)
+        self.assertNotIn('9537283', labels)
+        self.assertIn('本次恢复作业：完整 0 / 1', labels)
+        self.assertEqual(self.cg['RUN_HISTORY']['old']['manifest'], old)
+        self.assert_no_scripts_run()
+
+    def test_radius_delete_cancel_and_confirm_use_exact_previewed_scope(self):
+        import OMFITlib_workbench_cgyro_ui as cgyro_ui
+        old = dict(runid='Jet', run_token='old', nr=11, rho=.99,
+                   case_id='nr=11__rho=0.99__ion=BASE', job_id='9537283', status='failed')
+        self.cg['RUN_HISTORY'] = {'old': {'manifest': old}}
+        self.actions.settings['cgyro_cleanup_open'] = True
+        self.actions.settings['cgyro_cleanup_radius'] = 'Jet | nr=11 | ρ=0.99'
+        ui = self.render('cgyro')
+        callback, _ = ui.button('删除该半径的记录和结果')
+        with patch.object(cgyro_ui.messagebox, 'askokcancel', return_value=False):
+            callback()
+        self.cg['SCRIPTS']['remove_radius.py'].run.assert_not_called()
+        with patch.object(cgyro_ui.messagebox, 'askokcancel', return_value=True):
+            callback()
+        arguments = self.cg['SCRIPTS']['remove_radius.py'].run.call_args.kwargs
+        self.assertEqual((arguments['runid'], arguments['nr'], arguments['rho'], arguments['confirm']),
+                         ('Jet', '11', .99, True))
+        self.assertEqual(arguments['expected']['jobs'], ['9537283'])
+
     def test_collect_publishes_correct_dimension_without_resubmission(self):
         self.cg['RUN_MANIFEST'] = dict(status='submitted_or_finished', dimensions=2, points=['a'], workDir='/tmp/test')
         setup = self.cg['SETTINGS']['SETUP']; setup.update(dict(irun=1, idownsync=1, idimrun=1))

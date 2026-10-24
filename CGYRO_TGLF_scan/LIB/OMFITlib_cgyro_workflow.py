@@ -31,11 +31,13 @@ def collect_batch(node, run_script, factory=dict, *, automatic=False):
     waiting/retries; manually collecting must use the False default.
     """
     setup, batch = node['SETTINGS']['SETUP'], node['RUN_BATCH']
+    records = queue_records(node)
+    expected = len(records) if 'focus_token' in batch else len(batch['case_ids'])
     previous = setup.get('irun', None), setup.get('idownsync', None)
     completed, errors = [], []
     try:
         setup['irun'], setup['idownsync'] = 0, 0
-        for token, entry in queue_records(node):
+        for token, entry in records:
             manifest = entry['manifest']
             if run_is_retired(node, token):
                 # Retired snapshots have already been replaced at every full
@@ -70,7 +72,7 @@ def collect_batch(node, run_script, factory=dict, *, automatic=False):
     finally:
         setup['irun'], setup['idownsync'] = previous
         batch.update(dict(completed=completed, errors=errors,
-            status='published' if len(completed) == len(batch['case_ids']) else
+            status='published' if len(completed) == expected else
             'cancel_requested' if batch.get('stop_requested', False) and (pending_runs(node) or errors) else
             'cancelled' if batch.get('stop_requested', False) else 'partial'))
     if errors:

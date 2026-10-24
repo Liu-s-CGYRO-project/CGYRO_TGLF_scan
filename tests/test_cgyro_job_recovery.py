@@ -21,6 +21,8 @@ import OMFITlib_cgyro_job_probe as probe
 import OMFITlib_cgyro_job_recovery as recovery
 import OMFITlib_cgyro_retry as retry
 import OMFITlib_cgyro_continue as continuation
+import OMFITlib_cgyro_queue as queue
+import OMFITlib_cgyro_workflow as workflow
 from OMFITlib_cgyro_db import ensure_layout
 
 TOKEN = 'a' * 32
@@ -278,6 +280,78 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(self.root['RUN_BATCH']['tokens'], ['other', TOKEN])
         self.assertEqual(self.root['RUN_HISTORY']['other']['manifest']['job_id'], '122')
         self.assertEqual(self.root['RUN_HISTORY']['other']['manifest']['batch_id'], self.root['RUN_BATCH']['batch_id'])
+        self.assertEqual([token for token, _ in queue.queue_records(self.root)], [TOKEN])
+        self.assertEqual([token for token, _ in queue.queue_records(self.root, include_parked=True)], ['other', TOKEN])
+        self.assertIn('本次恢复作业：完整 0 / 1', queue.queue_summary(self.root))
+
+    def old_pending(self):
+        old = dict(run_token='other', case_id='old radius', job_id='122', status='failed',
+                   batch_id='previous', collection_status='pending')
+        self.root.update(RUN_HISTORY={'other': {'manifest': old}}, RUN_MANIFEST=copy.deepcopy(old),
+                         RUN_BATCH={'batch_id': 'previous', 'tokens': ['other']})
+        self.root['SETTINGS']['SETUP'] = dict(irun=1, idownsync=0)
+
+    def test_collection_only_reads_explicit_recovered_job_and_keeps_history(self):
+        self.old_pending()
+        self.recover()
+        previous = copy.deepcopy(self.root['RUN_HISTORY']['other'])
+        calls = []
+        def run_script(title, name, **kwargs):
+            calls.append((self.root['RUN_MANIFEST']['job_id'], name, kwargs))
+            self.root['RUN_MANIFEST']['status'] = 'published'
+        workflow.collect_batch(self.root, run_script)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0:2], ('123', 'CGYROScan.py'))
+        self.assertFalse(calls[0][2]['allow_solver_retries'])
+        self.assertEqual(self.root['RUN_HISTORY']['other'], previous)
+        self.assertEqual(self.root['RUN_BATCH']['status'], 'published')
+        self.assertIn('本次恢复作业：完整 1 / 1', queue.queue_summary(self.root))
+        self.assertEqual(queue.pending_runs(self.root), [])
+        self.assertEqual(self.root['SETTINGS']['SETUP'], dict(irun=1, idownsync=0))
+
+    def test_synchronization_only_queries_explicit_recovered_job(self):
+        self.old_pending()
+        self.recover()
+        previous = copy.deepcopy(self.root['RUN_HISTORY']['other'])
+        calls = []
+        def sync(view, ui):
+            calls.append(view['RUN_MANIFEST']['job_id'])
+            view['RUN_MANIFEST']['scheduler_sync'] = dict(outcome='completed')
+        with patch.object(queue, 'refresh_run_state', sync):
+            queue.refresh_queue(self.root, self.remote)
+        self.assertEqual(calls, ['123'])
+        self.assertEqual(self.root['RUN_HISTORY']['other'], previous)
+
+    def test_recovery_again_narrows_previously_grouped_history_without_download(self):
+        self.old_pending()
+        self.recover()
+        self.root['RUN_BATCH'].pop('focus_token')  # A pre-fix project snapshot.
+        self.root['RUN_MANIFEST'] = copy.deepcopy(self.root['RUN_HISTORY']['other']['manifest'])
+        downloads = self.remote.downloads
+        owner = self.root['RUN_DB']['__RUNS__'][TOKEN]['inputs']['p000001']['zip']
+        report = self.recover()
+        self.assertTrue(report['already_present'])
+        self.assertEqual(self.remote.downloads, downloads)
+        self.assertEqual(self.root['RUN_MANIFEST']['job_id'], '123')
+        self.assertEqual(report['manifest'], self.root['RUN_MANIFEST'])
+        self.assertEqual([token for token, _ in queue.queue_records(self.root)], [TOKEN])
+        self.assertIs(self.root['RUN_DB']['__RUNS__'][TOKEN]['inputs']['p000001']['zip'], owner)
+
+    def test_invalid_recovery_focus_cannot_fall_back_to_collecting_history(self):
+        self.old_pending()
+        self.recover()
+        for token in ('', 'not-in-the-batch'):
+            self.root['RUN_BATCH']['focus_token'] = token
+            previous = recovery._metadata_revision(self.root)
+            setup = copy.deepcopy(self.root['SETTINGS']['SETUP'])
+            owners = self.root['RUN_DB']['__RUNS__'][TOKEN]['inputs']
+            calls = []
+            with self.subTest(token=token), self.assertRaisesRegex(ValueError, 'selection is invalid'):
+                workflow.collect_batch(self.root, lambda *args, **kwargs: calls.append(args))
+            self.assertEqual(recovery._metadata_revision(self.root), previous)
+            self.assertEqual(self.root['SETTINGS']['SETUP'], setup)
+            self.assertIs(self.root['RUN_DB']['__RUNS__'][TOKEN]['inputs'], owners)
+            self.assertEqual(calls, [])
 
     def test_existing_newer_attempt_and_retired_payload_not_overwritten(self):
         for saved in (dict(manifest=dict(manifest(), job_id='124')),

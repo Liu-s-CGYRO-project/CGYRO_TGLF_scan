@@ -34,7 +34,7 @@ def node_at(root, path):
 def active_jobs(root):
     records = [('CGYRO 当前任务', node_at(root, ('CGYRO_scan', 'RUN_MANIFEST')))]
     records.extend(('CGYRO ' + str(token), entry['manifest'])
-                   for token, entry in queue_records(node_at(root, ('CGYRO_scan',))))
+                   for token, entry in queue_records(node_at(root, ('CGYRO_scan',)), include_parked=True))
     for path in (('TGLF_scan', 'RUN_DB'), ('TGLF_scan', 'TGYRO', 'RUN_DB'), ('PROJECT_STATE', 'activity')):
         records.extend((str(key), record) for key, record in node_at(root, path).items())
     for case in root.get('TGLF_CASES', {}).values():
