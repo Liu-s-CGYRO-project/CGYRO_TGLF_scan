@@ -7,7 +7,7 @@ import math
 import os
 import re
 from OMFITlib_cgyro_db import legacy_branch, metadata_value
-from OMFITlib_cgyro_reference import copy_result_tree
+from OMFITlib_cgyro_reference import copy_result_tree, same_result_reference
 from OMFITlib_cgyro_run_state import point_complete
 
 
@@ -472,7 +472,7 @@ def validate_preserved_scans(cases, destination, replaced_scan, incoming_tasks=N
         for key, info, tasks in records:
             key = scan_key(info, key)
             if key != replaced_scan:
-                expected[key] = (info, tasks)
+                expected[key] = (case, info, tasks)
             else:
                 for row in tasks.values():
                     coordinate = point_coordinate(row)
@@ -485,9 +485,9 @@ def validate_preserved_scans(cases, destination, replaced_scan, incoming_tasks=N
     retained_tasks = actual.get(replaced_scan, ({}, {}))[1]
     retained = {point_coordinate(row): _at(destination, row['result_path']) for row in retained_tasks.values()}
     for coordinate, result in retained_points.items():
-        if coordinate not in retained or retained[coordinate] != result:
+        if coordinate not in retained or not same_result_reference(retained[coordinate], result):
             raise ValueError('Archive retention check failed for prior parameter/ky coordinate: ' + str(coordinate))
-    for key, (info, tasks) in expected.items():
+    for key, (source_case, info, tasks) in expected.items():
         saved_info, saved_tasks = actual.get(key, ({}, {}))
         if (set(tasks) != set(saved_tasks) or
                 str(info.get('run_token', '')) != str(saved_info.get('run_token', ''))):
@@ -502,6 +502,8 @@ def validate_preserved_scans(cases, destination, replaced_scan, incoming_tasks=N
                 if part not in node:
                     raise ValueError('Archive point missing in retained scan: ' + key + ' / ' + str(point))
                 node = node[part]
+            if not same_result_reference(node, _at(source_case, row['result_path'])):
+                raise ValueError('Archive result changed in retained scan: ' + key + ' / ' + str(point))
 
 
 def matching_cases(module, runid, identity):

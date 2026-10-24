@@ -60,6 +60,26 @@ def validate_reference(node, key):
     return key
 
 
+def same_result_reference(first, second):
+    """Compare immutable owner identities without evaluating browser links.
+
+    Rebuilding an index creates a fresh ``data`` expression. Dictionary equality
+    would invoke OMFITexpression.__eq__ and read/evaluate that GUI convenience,
+    even when both indexes have the same verified digest. Validate each index
+    shape, then compare its sole persisted owner key. Unindexed file readers
+    can only prove identity by being the very same object, never by filename.
+    """
+    first, second = metadata_value(first), metadata_value(second)
+    def key(node):
+        if not is_native_file(node) and hasattr(node, 'items') and REF in node:
+            return validate_reference(node, metadata_value(node[REF]))
+        return None
+    first_key, second_key = key(first), key(second)
+    if first_key is not None or second_key is not None:
+        return first_key is not None and second_key is not None and first_key == second_key
+    return first is second and is_native_file(first)
+
+
 def browse_expression(key):
     """Build inert native metadata; construction must not load a result.
 

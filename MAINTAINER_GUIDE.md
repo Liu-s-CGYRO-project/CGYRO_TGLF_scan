@@ -1,7 +1,14 @@
 # 维护与扩展接口
 
-适用于工程 1.24.16。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.17。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
+
+
+## 归档结果身份比较（1.24.17）
+
+`cgyro_reference.same_result_reference(first, second)` 是归档保留校验的结果比较接口。先 `metadata_value` 解开元数据容器、再验证索引；只比较 `__RESULT_REF__`，不得用完整字典 `==/!=`、浏览表达式 `data` 的比较或结果数组比较来证明保留。原生 OMFITexpression 的比较运算符会执行 `_value_()`，而重建的浏览链接实例本来就不同。摘要相同且两个索引都合法才证明引用同一不可变所有者；未索引文件不能按同名路径判等。
+
+`validate_preserved_scans` 必须在安装新 case 和清理旧引用之前校验。新增坐标可以替换该点，其他坐标和其他参数扫描必须保留原来的结果标识，不止保留相同路径。不要通过删除此校验来绕过误报。新增测试覆盖真实 publisher、三种维度和符号 ky；`test_cgyro_archive_reference` 要求指定原生 OMFIT 源码，使用其未经改写的表达式比较方法，求值边界由测试记录器替代。
 
 ## 任务删除接口（1.24.15）
 

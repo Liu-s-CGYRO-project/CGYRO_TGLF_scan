@@ -1121,6 +1121,78 @@ class StorageCases(unittest.TestCase):
         archive_api.validate_preserved_scans([old], merged, 'N_THETA', tasks)
         self.assertEqual(len(merged['__TASKS__']), 2)
 
+    def test_browsable_publisher_retains_prior_h_energy_point_when_new_ky_is_collected(self):
+        # Reproduce the user's (8, 0.1) failure through the real publisher.
+        # Browser expressions are different objects after each index rebuild;
+        # their identities are not the identity of the scientific result.
+        root, publish = {}, self.publisher()
+        def collect(token, ky):
+            root['RUN_MANIFEST'] = dict(run_token=token, status='loaded', collection_status='ready',
+                dimensions=1, scan_axes=[dict(name='N_ENERGY', values=[8], linked=[])],
+                case_tag='case', case_id='nr=1__rho=0.33__ion=H', nr=1, rho=.33, mass='H', runid='Jet',
+                workDir='/runs/' + token, server='fixture', points=['p000001'], loaded_points=['p000001'],
+                point_table={'p000001': dict(values={'N_ENERGY': 8, 'KY': ky},
+                                            result_path=['N_ENERGY', '8', 'lin', str(ky)])})
+            root['Cases'] = {'case': {'p000001': self.result(token, token.encode())}}
+            publish(root)
+        with self.browsable_expressions():
+            collect('browsable_h_old', .1)
+            old = archive_api.catalog_runs(root)['Jet']['nr=1__rho=0.33__ion=H']
+            original = storage.reference_id(old['N_ENERGY']['8']['lin']['0.1'])
+            collect('browsable_h_new', .2)
+            case = archive_api.catalog_runs(root)['Jet']['nr=1__rho=0.33__ion=H']
+            self.assertEqual(len(case['__TASKS__']), 2)
+            self.assertEqual(storage.reference_id(case['N_ENERGY']['8']['lin']['0.1']), original)
+            self.assertEqual({row['values']['KY'] for row in case['__TASKS__'].values()}, {.1, .2})
+
+    def test_browsable_retention_preserves_signed_ky_for_one_two_and_three_axes(self):
+        with self.browsable_expressions():
+            for dimensions in (1, 2, 3):
+                with self.subTest(dimensions=dimensions):
+                    names = ['N_ENERGY', 'N_XI', 'N_THETA'][:dimensions]
+                    axes = [dict(name=n, values=[v], linked=[]) for n, v in zip(names, (8, 16, 32))]
+                    def case(token, ky, digest):
+                        path = [item for pair in zip(names, ('8', '16', '32')) for item in pair] + ['lin', str(ky)]
+                        payload = {}
+                        node = payload
+                        for part in path[:-1]:
+                            node = node.setdefault(part, {})
+                        node[path[-1]] = reference_api.make_reference(digest)
+                        info = dict(run_token=token, scan_axes=axes, parameters=[names[0]], dimensions=dimensions)
+                        rows = {'p000001': dict(result_path=path, run_token=token)}
+                        result = {}
+                        archive_api.store_scan(result, payload, info, rows)
+                        return result
+                    old = case('old', .1, 'a' * 64)
+                    incoming = case('incoming', -.1, 'b' * 64)
+                    merged = archive_api.combine_cases([old])
+                    archive_api.store_scan(merged, incoming, incoming['__INFO__'], incoming['__TASKS__'])
+                    key = archive_api.scan_key(incoming['__INFO__'])
+                    archive_api.validate_preserved_scans([old], merged, key, incoming['__TASKS__'])
+                    self.assertEqual(len(merged['__TASKS__']), 2)
+                    preserved = next(row for row in merged['__TASKS__'].values() if row['run_token'] == 'old')
+                    self.assertEqual(archive_api.point_coordinate(preserved)[1][-1], .1)
+                    # A different owner at an unchanged coordinate must still
+                    # be rejected; ignoring the browser link cannot waive it.
+                    node = merged
+                    for part in preserved['result_path'][:-1]:
+                        node = node[part]
+                    node[preserved['result_path'][-1]] = reference_api.make_reference('c' * 64)
+                    with self.assertRaisesRegex(ValueError, 'prior parameter/ky'):
+                        archive_api.validate_preserved_scans([old], merged, key, incoming['__TASKS__'])
+
+    def test_retention_guard_checks_payload_identity_in_other_parameter_scans(self):
+        root = {}
+        old = self.indexed_scan(root, 'kept_axis', 'H', values=(16,), ky_count=1)
+        incoming = self.indexed_scan(root, 'new_axis', 'H', name='N_ENERGY', values=(8,), ky_count=1)
+        with self.browsable_expressions():
+            merged = archive_api.combine_cases([old])
+            archive_api.store_scan(merged, incoming, incoming['__INFO__'], incoming['__TASKS__'])
+            archive_api.validate_preserved_scans([old], merged, 'N_ENERGY', incoming['__TASKS__'])
+            merged['N_THETA']['16']['lin']['0.01'] = reference_api.make_reference('d' * 64)
+            with self.assertRaisesRegex(ValueError, 'retained scan'):
+                archive_api.validate_preserved_scans([old], merged, 'N_ENERGY', incoming['__TASKS__'])
+
     def test_compaction_keeps_path_keyed_metadata_as_plain_mapping(self):
         class NativeKeys(dict):
             def __setitem__(self, key, value):
