@@ -125,7 +125,7 @@ class RetentionTests(unittest.TestCase):
         pool = storage.result_pool(root)
         self.assertEqual(set(report['retired_runs']), {'old'})
         self.assertEqual(report['physical_results'], 2)
-        self.assertEqual(report['physical_bytes'], sum(
+        self.assertEqual(report['physical_bytes'] + report['file_dedup_bytes'], sum(
             storage.storage_state(root)['bytes'][key] for key in pool if key != '__FILES__'))
         self.assertGreater(report['released_result_bytes'], 0)
 

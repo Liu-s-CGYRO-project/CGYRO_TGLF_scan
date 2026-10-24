@@ -1,6 +1,6 @@
 """Stable case identities and independent parameter scans within each case."""
-from builtins import (OSError, TypeError, ValueError, all, any, bool, dict, enumerate, float, getattr,
-                      hasattr, int, isinstance, len, list, max, open, range, reversed, set, sorted, str, tuple, type, zip)
+from builtins import (AttributeError, OSError, TypeError, ValueError, all, any, bool, dict, enumerate, float, getattr,
+                      hasattr, int, isinstance, len, list, max, object, open, range, reversed, set, sorted, str, tuple, type, zip)
 from collections import OrderedDict
 from copy import deepcopy
 import math
@@ -148,10 +148,19 @@ def case_destination(module, runid, caseid, info=None):
     return [runid] + path
 
 
+def result_file(result, name):
+    """Read a small stored file without expanding a packed restart directory."""
+    try:
+        lookup = object.__getattribute__(result, '_payload_file')
+    except AttributeError:
+        return os.path.join(result.filename, name)
+    return lookup(name)
+
+
 def output_final_time(result):
     """Read only the last time row; no solver arrays or restart payload load."""
     try:
-        with open(os.path.join(result.filename, 'out.cgyro.time'), 'rb') as handle:
+        with open(result_file(result, 'out.cgyro.time'), 'rb') as handle:
             handle.seek(0, 2)
             handle.seek(max(0, handle.tell() - 16384))
             lines = handle.read().splitlines()

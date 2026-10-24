@@ -1,6 +1,6 @@
 # 在 OMFIT Command Box 整理当前工程
 
-先安装配套模板管理器 1.10.27、工程 1.24.14，关闭旧结果窗口。在 Command Box 执行下面完整的一行：
+先安装配套模板管理器 1.10.28、工程 1.24.18，关闭旧结果窗口。在 Command Box 执行下面完整的一行：
 
 ```python
 OMFIT['CGYRO_TGLF_scan']['SCRIPTS']['compact_cgyro_storage'].run()
@@ -8,23 +8,23 @@ OMFIT['CGYRO_TGLF_scan']['SCRIPTS']['compact_cgyro_storage'].run()
 
 它把旧的 `Jet [partial ...]`、`Jet [recovered ...]` 和 `Jet [legacy revision ...]` 合并回 `Jet`。普通扫描移到 `RUN_DB/Jet/nr=1_rho=0.33/N_THETA` 等参数组下，BASE 仅保留原始参数固定的基准结果；H/D/T 扫描仍各用离子目录。状态只记在内部。旧结果和冻结输入都留在 `CGYRO_scan/RUN_DB`，按文件名称、长度和 SHA-256 去重，核对后恢复旧扫描索引。`N_THETA`、`N_ENERGY` 及多轴扫描独立保存；相同参数组按全部坐标和 ky 合并。不同 ky 追加，完全相同坐标的新结果更新对应点。
 
-1.24.10 同时为 ky 节点添加可展开的 `data` 入口，并释放已被当前结果完整覆盖的旧失败快照及其无用冻结输入。仍可续算的唯一结果、未收集任务和未知数据保留。控制台报告退休的运行和下次另存可减少的字节数；不会在当前 ZIP 上原地删文件。
+ky 节点保留可展开的 `data` 入口。1.24.18 逐点清理旧快照：同一旧作业里已被当前有效结果覆盖的点可清理，其余点保留。不同结果中的相同文件在 RUN_DB 内共用一份；输出稍有变化也能对其中未变的文件去重。控制台报告清理的旧运行/计算点及下次另存减少的载荷字节数。仍有用途的历史、未收集或状态不明任务、续算依赖保留。
 
 可核实的未分类记录按其原 runid、case_id、scan_axes 和 result_path 恢复。无法核实或缺少数据的记录保留在 `RUN_DB/__UNCLASSIFIED__`，不会根据当前界面设置猜测其身份。整理报告在 `RUN_DB/__STORAGE__/recovery`。这不是重新提交或补算操作。
 
 整理完成后使用 OMFIT“另存为”保存新的工程 ZIP，保存后体积才会变化。原 ZIP、来源目录和服务器文件不删除。哈希与复制可能需要数分钟和临时磁盘空间。关闭旧窗口后重新打开结果浏览，确保回调使用新版代码。
 
-如果旧工程缺少脚本或读取接口过旧，使用本版生成的 `omfit-maintain-1.24.14.py`。它内嵌经过 SHA-256 / CRC 校验的代码包，使用管理器事务同步更新工程和管理器，再整理数据；无需网络。输入和设置采用 keep 策略，额外用户脚本保留。它不调用 OMFIT.load()，不重新提交作业，不在原 ZIP 上删文件。
+如果旧工程缺少脚本或读取接口过旧，使用本版生成的 `omfit-maintain-1.24.18.py`。它内嵌经过 SHA-256 / CRC 校验的代码包，使用管理器事务同步更新工程和管理器，再整理数据；无需网络。输入和设置采用 keep 策略，额外用户脚本保留。它不调用 OMFIT.load()，不重新提交作业，不在原 ZIP 上删文件。
 
 完整文件可用单行命令执行（路径改为下载位置）：
 
 ```python
-exec(compile(open('/absolute/path/omfit-maintain-1.24.14.py', 'rb').read(), 'omfit-maintain-1.24.14.py', 'exec'), {'OMFIT': OMFIT})
+exec(compile(open('/absolute/path/omfit-maintain-1.24.18.py', 'rb').read(), 'omfit-maintain-1.24.18.py', 'exec'), {'OMFIT': OMFIT})
 ```
 
 结果格式更新后不会保留仅撤销读取代码的入口，以免新索引交给旧读取器。脚本本身仅含代码，不含此项目的结果 ZIP。更新后保存成新 ZIP；原 ZIP 可用于恢复。
 
-检查点规则及删除 .old 的实际代价见 [归档设计](RESULT_STORAGE_DESIGN.md)。本版完成隔离文件与元数据回归检查，未在用户的 OMFIT 会话执行整理、保存重开或求解器续算。
+检查点规则及删除 .old 的实际代价见 [归档设计](RESULT_STORAGE_DESIGN.md)。本版用太原 Python 3.9 的独立原生小工程验证保存、ZIP 重开和共享文件仅存一份；没有改动用户工程，也没有运行求解器。
 
 ## /tmp 100 GiB 限制
 
@@ -38,10 +38,12 @@ exec(compile(open('/absolute/path/omfit-maintain-1.24.14.py', 'rb').read(), 'omf
 
 ## 仅更新代码或恢复退出前的作业
 
-只需要安装新版代码时，执行 Release 的 `omfit-update-1.24.14.py`。此脚本与维护脚本使用相同的完整性校验和更新事务，但不会自动整理归档。
+只需要安装新版代码时，执行 Release 的 `omfit-update-1.24.18.py`。此脚本与维护脚本使用相同的完整性校验和更新事务，但不会自动整理归档。
 
 ```python
-exec(compile(open('/absolute/path/omfit-update-1.24.14.py', 'rb').read(), 'omfit-update-1.24.14.py', 'exec'), {'OMFIT': OMFIT})
+exec(compile(open('/absolute/path/omfit-update-1.24.18.py', 'rb').read(), 'omfit-update-1.24.18.py', 'exec'), {'OMFIT': OMFIT})
 ```
 
 关闭旧窗口后重开总控，在“CGYRO 扫描 → 结果与记录”按作业号恢复；结束的作业再点击“重新收集未归档结果”，随后保存工程。详见 [作业恢复](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。
+
+部分清理后的历史作业不再整批重新收集，避免把已清理点下载回来。尚未被替代的点仍可从“时间曲线 / 选择点续算”继续。不要因快照较旧就强制删除未知结果。首次文件级整理需要读取、校验并复制文件，可能耗时数分钟；普通选择与刷新不执行此工作。

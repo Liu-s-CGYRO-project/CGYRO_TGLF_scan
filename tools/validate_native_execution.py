@@ -78,6 +78,15 @@ class NativeHost:
                 return self.execute(Path(node.filename).read_text(encoding='utf-8'), node.root, user=kwargs)
             runNoGUI = run
             plot = run
+            __run__ = run
+        # Use the unmodified native importCode boundary too: browser data links
+        # execute a saved LIB task after the ordinary import hook is gone.
+        task_class = next(n for n in ast.parse(raw).body if isinstance(n, ast.ClassDef)
+                          and any(isinstance(m, ast.FunctionDef) and m.name == 'importCode' for m in n.body))
+        import_code = next(m for m in task_class.body if isinstance(m, ast.FunctionDef) and m.name == 'importCode')
+        method_scope = {}
+        exec(compile(ast.Module(body=[import_code], type_ignores=[]), str(source), 'exec'), method_scope)
+        Task.importCode = method_scope['importCode']
         class Plot(Task):
             pass
         class Reader(self.factory):
@@ -308,6 +317,56 @@ class NativeExecutionTests(unittest.TestCase):
                 self.assertEqual(out['ensure_cli'](client), str(target))
             self.assertEqual(target.read_bytes(), binary)
 
+    def test_file_manifest_browser_works_after_native_import_cleanup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder, factory = Path(temporary), self.host.factory
+            class OMFITcgyro(factory):
+                def __init__(self, filename='', **kwargs):
+                    super().__init__()
+                    self.filename = str(filename or tempfile.mkdtemp(dir=folder))
+                    self.test_mode = False
+                    self.OMFITproperties = {}
+            class OMFITpath:
+                def __init__(self, filename=''):
+                    handle = tempfile.NamedTemporaryFile(dir=folder, delete=False)
+                    handle.close()
+                    self.filename = str(filename or handle.name)
+            path_module = ModuleType('omfit_classes.omfit_path')
+            path_module.OMFITpath = OMFITpath
+            native_package = ModuleType('omfit_classes')
+            native_package.__path__ = []
+            root = self.host.cg
+            previous = root.get('RUN_DB', None)
+            root['RUN_DB'] = factory()
+            try:
+                with patch.dict(sys.modules, {'omfit_classes': native_package,
+                                              'omfit_classes.omfit_path': path_module}), \
+                        patch.object(self.host.gacode, 'OMFITcgyro', OMFITcgyro):
+                    source = folder / 'solver'
+                    source.mkdir()
+                    (source / 'input.cgyro').write_bytes(b'KY=0.2\n')
+                    (source / 'out.cgyro.time').write_bytes(b'20 0 0\n')
+                    result = self.host.execute(
+                        'from OMFITlib_cgyro_storage import store_result, directory_inventory, resolve_result\n'
+                        'from OMFITlib_cgyro_payload import pack_results\n'
+                        'from OMFITlib_cgyro_reference import browse_code\n'
+                        'ref = store_result(root, reader, OMFITtree)\n'
+                        'root["RUN_DB"]["__UNCLASSIFIED__"] = OMFITtree(point=ref)\n'
+                        'pack_results(root, directory_inventory, OMFITtree)\n'
+                        'code = browse_code(ref["__RESULT_REF__"])\n'
+                        'deferred = resolve_result(root, ref)\n', root, reader=OMFITcgyro(source), OMFITcgyro=OMFITcgyro)
+                    self.assertFalse(any(name.startswith('OMFITlib_') for name in sys.modules))
+                    browser = eval(result['code'], {'root': root})
+                    self.assertIsInstance(browser, OMFITcgyro)
+                    self.assertEqual((Path(browser.filename) / 'input.cgyro').read_bytes(), b'KY=0.2\n')
+                    self.assertEqual(Path(result['deferred'].filename), Path(browser.filename))
+                    self.assertFalse(any(name.startswith('OMFITlib_') for name in sys.modules))
+            finally:
+                if previous is None:
+                    root.pop('RUN_DB', None)
+                else:
+                    root['RUN_DB'] = previous
+
     def test_incremental_manager_update_after_native_import_cleanup(self):
         root = self.host.modules[('OMFITtemplates',)]
         out = self.host.execute('from OMFITlib_template_incremental import plan_incremental, install_incremental, verify_installation', root)
@@ -429,13 +488,14 @@ class NativeExecutionTests(unittest.TestCase):
         np.testing.assert_allclose(out['Pres'], 2*(1-np.linspace(0, 1, 9)))
 
 
-def validate(source):
+def validate(source, selected=None):
     host = NativeHost(source)
     NativeExecutionTests.host = host
     stream = io.StringIO()
     with warnings.catch_warnings(), patch.dict(sys.modules, {'omfit_classes.utils_base': host.registry}):
         warnings.simplefilter('ignore', (SyntaxWarning, DeprecationWarning))
-        suite = unittest.defaultTestLoader.loadTestsFromTestCase(NativeExecutionTests)
+        suite = (unittest.TestSuite(NativeExecutionTests(name) for name in selected) if selected else
+                 unittest.defaultTestLoader.loadTestsFromTestCase(NativeExecutionTests))
         result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
     report = dict(python=sys.version.split()[0], numpy=np.__version__, omfit_source=str(source),
                   native_functions=host.evidence, native_mapping=host.mapping_evidence,
@@ -449,8 +509,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('omfit_source', type=Path)
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--test', action='append', choices=unittest.defaultTestLoader.getTestCaseNames(NativeExecutionTests),
+                        help='Run one named native-boundary test; repeat for a focused validation')
     args = parser.parse_args()
-    report, log, passed = validate(args.omfit_source)
+    report, log, passed = validate(args.omfit_source, args.test)
     text = json.dumps(report, indent=2) + '\n'
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

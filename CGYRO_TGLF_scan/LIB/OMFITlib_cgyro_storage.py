@@ -1,8 +1,9 @@
 """One immutable physical owner for CGYRO results, with serializable indexes.
 
 References are ordinary native trees with a controlled native browser lookup.
-OMFIT saves the physical directory once and only expression text for the visible
-``data`` child. Explicit program readers resolve the immutable owner directly.
+Legacy owners are native directories. Explicit maintenance replaces them with
+file manifests, so identical files share one native owner in a saved project.
+The visible ``data`` child saves only expression text; readers resolve it lazily.
 """
 from builtins import (BaseException, OSError, RuntimeError, ValueError, any, dict, getattr, hasattr,
                       int, isinstance, iter, len, list, max, open, set, sorted, str, sum, tuple, type)
@@ -21,7 +22,9 @@ from OMFITlib_cgyro_scratch import clean_stage, ensure_capacity
 from OMFITlib_cgyro_storage_files import (FILE_STORE, SubmissionFiles,
                                          file_reference_id, native_kind, resolve_file)
 from OMFITlib_cgyro_reference import (BROWSE, REF, copy_result_tree, is_native_file, make_reference,
-                                      validate_reference)
+                                      browse_current, validate_reference)
+from OMFITlib_cgyro_payload import (FilePlan, deferred_key, inventory as payload_inventory, is_packed,
+                                    pack_results, resolve_owner, sources as payload_sources)
 
 STORE = POOL
 CHECKPOINT_POLICY_VERSION = 1  # One verified restart, with old-file fallback.
@@ -51,10 +54,7 @@ def resolve_result(module, node):
     key = reference_id(node)
     if key is None:
         return node
-    result = result_pool(module).get(key, None)
-    if result is None or not is_result(result):
-        raise ValueError('Missing physical CGYRO result: ' + key)
-    return result
+    return resolve_owner(module, key)
 
 
 def result_view(module, node):
@@ -203,6 +203,9 @@ def _reference(key, factory):
 def store_result(module, result, factory=dict):
     """Freeze a verified downloaded point before installing any public view."""
     ensure_layout(module, factory)
+    deferred = deferred_key(module, result)
+    if deferred is not None:
+        return _reference(deferred, factory)
     old = reference_id(result)
     if old is not None:
         resolve_result(module, result)
@@ -216,8 +219,13 @@ def store_result(module, result, factory=dict):
     files, checkpoint = archive_inventory(result.filename)
     key = content_key(files)
     if key not in pool:
-        pool[key] = _physical_copy(result, files)
-    if not is_result(pool[key]):
+        if storage_state(module).get('file_dedup_version', 0):
+            plan = FilePlan(module, factory)
+            plan.add(key, result, files)
+            plan.commit()
+        else:
+            pool[key] = _physical_copy(result, files)
+    if not is_result(pool[key]) and not is_packed(pool[key]):
         raise ValueError('Invalid physical CGYRO result: ' + key)
     state = storage_state(module, factory)
     state.update(dict(version=max(STORAGE_SCHEMA_VERSION, state.get('version', 0)),
@@ -235,9 +243,16 @@ def _storage_totals(pool, result_sizes, file_sizes, checkpoints):
     without causing metadata writes or rereading solver directories.
     """
     reports = [json.loads(value) for key, value in checkpoints.items() if key in pool]
+    result_files = {row[2] for key, owner in pool.items() if key != FILE_STORE and is_packed(owner)
+                    for row in payload_inventory(owner, key)}
+    logical_bytes = sum(result_sizes.get(key, 0) for key in pool if key != FILE_STORE)
+    physical_bytes = (sum(result_sizes.get(key, 0) for key, owner in pool.items()
+                          if key != FILE_STORE and not is_packed(owner)) +
+                      sum(file_sizes.get(key, 0) for key in result_files))
     return dict(physical_results=len(pool) - int(FILE_STORE in pool),
-                physical_bytes=sum(result_sizes.get(key, 0) for key in pool if key != FILE_STORE),
-                input_zip_bytes=sum(file_sizes.get(key, 0) for key in pool.get(FILE_STORE, {})),
+                physical_bytes=physical_bytes, logical_result_bytes=logical_bytes,
+                file_dedup_bytes=max(0, logical_bytes - physical_bytes),
+                input_zip_bytes=sum(file_sizes.get(key, 0) for key in pool.get(FILE_STORE, {}) if key not in result_files),
                 checkpoint_warnings=sum(1 for report in reports if report.get('warning', '')),
                 backup_checkpoints=sum(1 for report in reports if report.get('selected', '') == 'bin.cgyro.restart.old'))
 
@@ -322,7 +337,7 @@ def compact_storage(module, factory=dict, browse=False):
             return False
         key = reference_id(node)
         if key is not None:
-            return key in remapped or (browse and BROWSE not in node)
+            return key in remapped or (browse and (BROWSE not in node or not browse_current(node[BROWSE], key)))
         if _file_node(node) or not hasattr(node, 'items'):
             return False
         if submissions.pending(node):
@@ -421,8 +436,10 @@ def prune_storage(module):
             return
         key = reference_id(node)
         if key is not None:
-            if key not in pool or not is_result(pool[key]):
+            if key not in pool or not (is_result(pool[key]) or is_packed(pool[key])):
                 raise ValueError('Missing physical CGYRO result: ' + key)
+            if key not in used and is_packed(pool[key]):
+                used_files.update(row[2] for row in payload_sources(module, pool[key], key))
             used.add(key)
         elif not _file_node(node) and hasattr(node, 'items'):
             for value in node.values():
@@ -484,6 +501,7 @@ def consolidate_storage(module, factory=dict):
     staged = clean_staging(module, factory)
     cleanup = deepcopy(dict(storage_state(module).get('scratch_cleanup', {})))
     report = compact_storage(module, factory, browse=True)
+    before_total = report['physical_bytes'] + report['input_zip_bytes']
     recovery = recover_archives(module, resolve_result, factory)
     storage_state(module, factory)['recovery'] = recovery
     report['recovered_archives'] = len(recovery['recovered'])
@@ -492,15 +510,20 @@ def consolidate_storage(module, factory=dict):
     before_files = dict(storage_state(module).get('file_bytes', {}))
     retirement = retire_superseded(module, resolve_result, reference_id, prune=prune_storage)
     report['retired_runs'] = list(retirement['retire'])
+    report['retired_points'] = {token: list(value['points']) for token, value in retirement['partial'].items()}
     report['retained_history'] = retirement['retained']
     report['unreferenced_results'] = retirement['unreferenced_results']
     state = storage_state(module)
     report['released_result_bytes'] = sum(size for key, size in before_bytes.items() if key not in state.get('bytes', {}))
     report['released_input_bytes'] = sum(size for key, size in before_files.items() if key not in state.get('file_bytes', {}))
+    report['packed_results'] = pack_results(module, directory_inventory, factory)
     # Report the committed archive, not compact_storage's pre-retirement pool.
     # Otherwise the GUI would still claim that removed historical owners exist.
     pool = result_pool(module)
     report.update(_storage_totals(pool, state.get('bytes', {}), state.get('file_bytes', {}), state.get('checkpoints', {})))
+    # Logical per-result bytes overlap after file deduplication. Only compare
+    # unique physical totals to report newly released bytes on repeated runs.
+    report['released_archive_bytes'] = max(0, before_total - report['physical_bytes'] - report['input_zip_bytes'])
     report['staging_bytes_removed'] = staged + clean_staging(module, factory)
     cleanup['bytes_removed'] = report['staging_bytes_removed']
     cleanup['warnings'] = list(cleanup.get('warnings', [])) + list(storage_state(module).get('scratch_cleanup', {}).get('warnings', []))

@@ -39,8 +39,22 @@ def saved_run(module, token):
                          'Reopen the result table and select the latest retained scan.')
     current = module.get('RUN_MANIFEST', {})
     if str(current.get('run_token', '')) == str(token):
-        return current, result_view(module, run_cases(module, current))
-    manifest = entry.get('manifest', {})
+        manifest = current
+    else:
+        manifest = entry.get('manifest', {})
+    retired = set(entry.get('retired_points', {}))
+    if retired:
+        # Keep the original manifest as an audit record, but never advertise a
+        # retired point as an unstarted job eligible for a fresh resubmission.
+        manifest = copy.deepcopy(dict(manifest))
+        for field in ('points', 'loaded_points', 'partial_points'):
+            if field in manifest:
+                manifest[field] = [point for point in manifest[field] if point not in retired]
+        manifest['point_table'] = {point: row for point, row in manifest.get('point_table', {}).items()
+                                   if point not in retired}
+        continuation = manifest.get('continuation', {})
+        if 'source_points' in continuation:
+            continuation['source_points'] = [point for point in continuation['source_points'] if point not in retired]
     return manifest, result_view(module, run_cases(module, manifest))
 
 
@@ -96,6 +110,12 @@ def stopped_context(module, token):
         # An unchanged point may have been inherited from an earlier segment.
         for point, row in case['__TASKS__'].items():
             rows.setdefault(point, copy.deepcopy(dict(row)))
+    # Ancestor reconstruction can bring a superseded point back. Retirement
+    # is explicit for this frozen job, so remove it from every runtime view.
+    for point in run_records(module).get(str(token), {}).get('retired_points', {}):
+        for mapping in (rows, sources, results, readable):
+            mapping.pop(point, None)
+        unfinished.discard(point)
     planned = set(manifest.get('continuation', {}).get('source_points', manifest.get('points', [])))
     if planned - set(rows) or (planned - unfinished) - set(results):
         # A full rescan can replace a published ancestor while leaving an old

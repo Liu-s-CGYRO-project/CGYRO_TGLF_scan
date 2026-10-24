@@ -72,6 +72,8 @@ def _existing_run(root, manifest, endpoint, job_id):
     existing = record.get('manifest', root.get('RUN_HISTORY', {}).get(token, {}).get('manifest', {}))
     if record.get('payload_retired', False):
         raise ValueError('该历史运行已被较新结果替代；不会重新导入旧输出覆盖现有结果。')
+    if record.get('retired_points', {}):
+        raise ValueError('该已收集作业的部分旧点已整理。其余结果仍可从结果表续算；不会重新导入已替代的旧点。')
     if existing:
         if (str(existing.get('job_id', '')) not in ('', job_id) or existing.get('workDir', '') != manifest['workDir']
                 or existing.get('server', '') != endpoint['server']):

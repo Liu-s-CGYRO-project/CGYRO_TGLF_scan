@@ -6,9 +6,10 @@ Names and archived metadata are evidence. Current GUI settings are never used
 to guess the radius, isotope, time or remote directory of an old calculation.
 """
 from builtins import (KeyError, TypeError, ValueError, all, any, bool, dict, enumerate, float, getattr,
-                      id, isinstance, len, list, object, range, repr, set, sorted, str, tuple, type, vars, zip)
+                      id, int, isinstance, len, list, next, object, range, repr, set, sorted, str, tuple, type, vars, zip)
 import ast
 import hashlib
+import json
 import math
 from pathlib import Path
 import re
@@ -176,13 +177,51 @@ class ArchiveIndex:
         # generated lookup is permitted; never evaluate it during migration.
         if set(contents) != {'__RESULT_REF__'}:
             data = contents.get('data', None)
-            expected = "root['RUN_DB']['__STORE__']['" + key + "']"
+            expected = ("root['RUN_DB']['__STORE__']['" + key + "']",
+                        "root['LIB']['OMFITlib_cgyro_payload'].importCode(_relLoc={'root': root})"
+                        ".resolve_browser(root, '" + key + "')")
             if (set(contents) != {'__RESULT_REF__', 'data'} or not kind(data, 'OMFITexpression')
-                    or object.__getattribute__(data, 'expression') != expected):
+                    or object.__getattribute__(data, 'expression') not in expected):
                 raise ValueError('Invalid CGYRO result reference')
-        if not self.cgyro_object(self.get(self.cgyro_pool, key, None)):
-            raise ValueError('Missing CGYRO result owner: ' + key)
+        owner = self.get(self.cgyro_pool, key, None)
+        if not self.cgyro_object(owner):
+            self.packed_inventory(owner, key)
         return True
+
+    def packed_inventory(self, owner, key):
+        """Validate the saved format without importing/evaluating project code.
+
+        This is the updater's compatibility boundary, not a solver reader. A
+        new project version may not yet be installed while migration previews.
+        Keep its fixed schema in sync with OMFITlib_cgyro_payload.inventory.
+        """
+        contents = self.read(owner)
+        if (set(contents) != {'__CGYRO_FILES__', 'inventory', 'test_mode'} or
+                contents['__CGYRO_FILES__'] != 1 or not isinstance(contents['test_mode'], bool)):
+            raise ValueError('Missing CGYRO result owner: ' + key)
+        rows, names = json.loads(contents['inventory']), set()
+        if not isinstance(rows, list) or not rows:
+            raise ValueError('Invalid CGYRO file manifest')
+        for row in rows:
+            if not isinstance(row, list) or len(row) != 3:
+                raise ValueError('Invalid CGYRO file manifest')
+            name, size, digest = row
+            if (not isinstance(name, str) or not name or '\\' in name or ':' in name or '\x00' in name or
+                    any(part in ('', '.', '..') for part in name.split('/')) or name in names or
+                    not isinstance(size, int) or isinstance(size, bool) or size < 0 or
+                    not isinstance(digest, str) or re.fullmatch(r'[0-9a-f]{64}', digest) is None):
+                raise ValueError('Invalid CGYRO file manifest')
+            names.add(name)
+            blob = self.get(self.get(self.cgyro_pool, '__FILES__', {}), digest, None)
+            if not (kind(blob, 'OMFITpath') or (kind(blob, 'OMFITlazyLoad') and
+                    vars(blob).get('tp', vars(blob).get('cls', '')) == 'OMFITpath')):
+                raise ValueError('Missing CGYRO result file: ' + digest)
+        if any('/'.join(name.split('/')[:i]) in names for name in names for i in range(1, len(name.split('/')))):
+            raise ValueError('Invalid CGYRO file manifest paths')
+        raw = json.dumps(sorted(rows), ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+        if hashlib.sha256(raw).hexdigest() != key:
+            raise ValueError('CGYRO file manifest identity mismatch')
+        return rows
 
     def read(self, node):
         node = self.materialize(node)
@@ -352,8 +391,17 @@ class ArchiveIndex:
         if not self.cgyro_object(payload):
             if not self.cgyro_payload(payload):
                 raise ValueError('Unrecognized CGYRO result')
-            payload = self.get(self.cgyro_pool, self.get(payload, '__RESULT_REF__', ''), None)
-        path = Path(payload.filename) / 'input.cgyro'
+            key = self.get(payload, '__RESULT_REF__', '')
+            payload = self.get(self.cgyro_pool, key, None)
+        if self.cgyro_object(payload):
+            path = Path(payload.filename) / 'input.cgyro'
+        else:
+            rows = self.packed_inventory(payload, key)
+            digest = next((row[2] for row in rows if row[0] == 'input.cgyro'), '')
+            blob = self.get(self.get(self.cgyro_pool, '__FILES__', {}), digest, None)
+            if blob is None:
+                raise ValueError('原结果中没有 input.cgyro')
+            path = Path(blob.filename)
         if not path.is_file() or path.stat().st_size > 262144:
             self.input_guards[str(path)] = None
             raise ValueError('原结果目录中没有可读取的 input.cgyro')

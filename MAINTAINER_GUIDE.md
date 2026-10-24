@@ -1,8 +1,16 @@
 # 维护与扩展接口
 
-适用于工程 1.24.17。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.18。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 
+
+## 快照退休与文件存储接口（1.24.18）
+
+- `retention_plan` 只规划，不写树；`retire_superseded` 提交逐点/整次退休，并在 prune 返回后的 Abort 仍恢复所有者和引用。不得以日期或失败状态直接删历史。
+- `cgyro_payload` 负责文件清单、原生文件 owner、校验复制与按需读取；`cgyro_storage` 负责结果身份/全树引用；`cgyro_reference` 仅定义不可变引用和固定浏览表达式。新增读取程序通过 `resolve_result`，小文件通过 `archive.result_file`，不得按 __STORE__ 节点的具体 Python 类型猜格式。
+- 原生 execGlobLoc 会移除 LIB 顶层 OMFITobject/SortedDict 子类，惰性 reader 必须由函数内部定义，且不得写入持久树。全局 import 清理后，浏览表达式须经本模块 LIB.importCode；管理器同时支持旧/新固定表达式和文件清单，不能只更新工程而回退管理器。
+- 剩余点续算通过 effective manifest；原始点表不变，以免错配 Slurm 数组。旧收集/恢复/finally 需检查 retired_points，不能复活已清理载荷。
+- `test_cgyro_point_retention/test_cgyro_file_dedup` 覆盖逐点替代、共享 owner、篡改、读者隔离、元数据重开与 Abort；`validate_native_execution --test test_file_manifest_browser_works_after_native_import_cleanup` 检查真实原生导入器。`validate_native_file_storage.py` 用安装了 OMFIT 的 Python 检查原生保存/重开，只创建独立小工程，不能拿用户 ZIP 充当测试夹具。
 
 ## 归档结果身份比较（1.24.17）
 

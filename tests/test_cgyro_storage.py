@@ -253,7 +253,7 @@ class StorageCases(unittest.TestCase):
         repeated = archive_api.catalog_runs(root)['Jet'][cid]
         self.assertEqual({scan: {archive_api.point_coordinate(row): continuation.point_result(repeated, row)
                                 for row in tasks.values()} for scan, _, tasks in archive_api.case_scans(repeated)}, before)
-        self.assertEqual(set(storage.result_pool(root)), owners)
+        self.assertEqual(set(storage.result_pool(root)) - {'__FILES__'}, owners - {'__FILES__'})
 
     def test_ordinary_original_scan_without_reference_has_no_base_child(self):
         root = {}
@@ -304,7 +304,7 @@ class StorageCases(unittest.TestCase):
         storage.consolidate_storage(root)
         self.assertIn('N_THETA', root['RUN_DB']['Jet']['nr=1_rho=0.33'])
         self.assertNotIn('BASE', root['RUN_DB']['Jet']['nr=1_rho=0.33'])
-        self.assertEqual(set(storage.result_pool(root)), owners)
+        self.assertEqual(set(storage.result_pool(root)) - {'__FILES__'}, owners - {'__FILES__'})
 
     def test_base_migration_abort_restores_old_catalog_and_references(self):
         root = {}
@@ -342,7 +342,7 @@ class StorageCases(unittest.TestCase):
         self.assertNotIn('BASE', group)
         self.assertEqual(set(group['N_THETA']), {'16', '32'})
         self.assertEqual(len(group['__SCANS__']['N_THETA']['tasks']), 4)
-        self.assertEqual(set(storage.result_pool(root)), owners)
+        self.assertEqual(set(storage.result_pool(root)) - {'__FILES__'}, owners - {'__FILES__'})
 
     def test_actual_collection_keeps_direct_scans_reference_isotopes_and_new_ky(self):
         root, publish = {}, self.publisher()
@@ -392,7 +392,7 @@ class StorageCases(unittest.TestCase):
         report = storage.consolidate_storage(root)
         self.assertEqual(report['recovered_archives'], 3)
         self.assertEqual(report['unresolved_archives'], 0)
-        self.assertEqual(len(storage.result_pool(root)), 188)
+        self.assertEqual(report['physical_results'], 188)
         run = root['RUN_DB']['Jet']
         for ion, key, count in (('H', 'N_ENERGY', 60), ('D', 'N_THETA', 64), ('T', 'N_THETA', 64)):
             case = run['nr=1_rho=0.33'][ion]
@@ -410,7 +410,7 @@ class StorageCases(unittest.TestCase):
         report = storage.consolidate_storage(root)
         self.assertEqual(report['recovered_archives'], 1)
         self.assertEqual(root['RUN_DB']['Jet']['nr=1_rho=0.33']['T']['__INFO__']['run_token'], 'theta_old')
-        self.assertEqual(len(storage.result_pool(root)), 1)
+        self.assertEqual(report['physical_results'], 1)
         visible = [key for key in root['RUN_DB'] if not key.startswith('__')]
         self.assertEqual(visible, ['Jet'])
 
@@ -447,7 +447,7 @@ class StorageCases(unittest.TestCase):
         self.assertEqual(set(jet['nr=1_rho=0.33']['H']['__SCANS__']), {'N_THETA', 'N_ENERGY'})
         theta = jet['nr=1_rho=0.33']['T']['__SCANS__']['N_THETA']['tasks']
         self.assertEqual({row['values']['N_THETA'] for row in theta.values()}, {16, 32, 48})
-        self.assertEqual(len(storage.result_pool(root)), len(cases) + 1)
+        self.assertEqual(len(set(storage.result_pool(root)) - {'__FILES__'}), len(cases) + 1)
         storage.resolve_result(root, private)
         self.assertTrue(root['RUN_DB'][db_api.PENDING])  # No identity was guessed for raw output.
         def coordinates():
@@ -470,7 +470,10 @@ class StorageCases(unittest.TestCase):
             row = case['__TASKS__']['p000001']
             result = storage.resolve_result(root, continuation.point_result(case, row))
             if final_time is not None:
-                (Path(result.filename) / 'out.cgyro.time').write_text(str(final_time) + '\n', encoding='utf-8')
+                # Change a private fixture, not a content-addressed owner.
+                raw = self.result(token + '_timed', token.encode())
+                (Path(raw.filename) / 'out.cgyro.time').write_text(str(final_time) + '\n', encoding='utf-8')
+                archive_api._install_point(case, row['result_path'], storage.store_result(root, raw), dict)
             row.update(status='partial' if partial else 'loaded', resume_pending=partial)
             case['__INFO__']['collection_status'] = 'partial' if partial else 'complete'
             return case
@@ -677,7 +680,7 @@ class StorageCases(unittest.TestCase):
         pending = root['RUN_DB'][db_api.PENDING]
         self.assertEqual(pending['Unknown'], second)
         self.assertEqual(pending['Unknown [2]'], first)
-        self.assertEqual(len(storage.result_pool(root)), 2)
+        self.assertEqual(len(set(storage.result_pool(root)) - {'__FILES__'}), 2)
 
     def test_grouped_readers_and_stopped_resume_use_distinct_point_tables(self):
         root = {}

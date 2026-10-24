@@ -53,6 +53,9 @@ def require_retained_run(root, token):
     if run_is_retired(root, token):
         raise ValueError('This historical result was superseded and its payload was retired. '
                          'Reopen the result table and select the latest retained scan.')
+    if run_records(root).get(str(token), {}).get('retired_points', {}):
+        raise ValueError('Some points of this collected job were superseded and retired. '
+                         'Use the retained result table to continue remaining points; recollection of the old job is disabled.')
 
 
 def save_current(root, factory=dict):
@@ -61,7 +64,8 @@ def save_current(root, factory=dict):
     if (not manifest.get('run_token', '') or
             not any(key in root for key in ('RUN_DB', 'Cases', 'RUN_HISTORY'))):
         return  # Metadata-only scheduler views already refer to the saved entry.
-    if run_is_retired(root, manifest['run_token']):
+    if (run_is_retired(root, manifest['run_token']) or
+            run_records(root).get(str(manifest['run_token']), {}).get('retired_points', {})):
         # A finally handler may save an obsolete selection after cleanup. Its
         # historical metadata is already retained; never recreate input/case
         # branches or overwrite that record from the stale live manifest.

@@ -8,6 +8,7 @@ from builtins import dict, len, print, str
 from OMFITlib_cgyro_queue import (activate_run, collection_done, pending_runs, queue_records,
                                  run_is_retired, save_current)
 from OMFITlib_cgyro_run_state import submission_pending
+from OMFITlib_cgyro_db import run_records
 
 
 def collect_run(node, run_script):
@@ -39,9 +40,10 @@ def collect_batch(node, run_script, factory=dict, *, automatic=False):
         setup['irun'], setup['idownsync'] = 0, 0
         for token, entry in records:
             manifest = entry['manifest']
-            if run_is_retired(node, token):
-                # Retired snapshots have already been replaced at every full
-                # coordinate. Batch recollection must not download them again.
+            if run_is_retired(node, token) or run_records(node).get(str(token), {}).get('retired_points', {}):
+                # Collected historical snapshots cannot resurrect retired
+                # points. Partial retirement keeps remaining points available
+                # for explicit continuation under a new run token.
                 print('Skipping superseded CGYRO history: ' + str(manifest.get('case_id', token)))
                 continue
             if manifest.get('status', '') == 'published':

@@ -254,6 +254,7 @@
 ['LIB']['OMFITlib_cgyro_archive'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_archive.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_storage'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_storage.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_reference'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_reference.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_payload'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_payload.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_storage_files'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_storage_files.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_db'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_db.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_retention'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_retention.py <-:-:-> {}
@@ -390,6 +391,7 @@
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_archive'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_archive.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_storage'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_storage.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_reference'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_reference.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_cgyro_payload'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_payload.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_storage_files'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_storage_files.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_db'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_db.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_retention'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_retention.py <-:-:-> {}

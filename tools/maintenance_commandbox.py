@@ -6,7 +6,7 @@ matching updater, including the manager's new result-reference reader. No
 network, scheduler, solver, original ZIP overwrite or remote deletion occurs.
 """
 from builtins import (RuntimeError, ValueError, any, dict, getattr, globals,
-                      isinstance, len, print, set, str)
+                      isinstance, len, print, set, str, sum)
 import base64
 import hashlib
 import json
@@ -84,7 +84,10 @@ def maintain(omfit):
     api = node['LIB']['OMFITlib_cgyro_storage'].importCode(_relLoc=dict(root=node))
     print('Checking archive references, replacement coverage and checkpoints ...')
     report = api.consolidate_storage(node, OMFITtree)
-    print('Maintenance completed: ' + json.dumps(report, sort_keys=True))
+    print('Maintenance completed: {} runs retired; {} old points removed from mixed snapshots; '
+          '{:.3f} GiB payload released for Save As.'.format(len(report.get('retired_runs', [])),
+          sum(len(points) for points in report.get('retired_points', {}).values()),
+          report.get('released_archive_bytes', 0) / 1024 ** 3))
     print('Expand RUN_DB / run / radius / scan / ... / ky / data to inspect result details.')
     print('Use Save As for a NEW project ZIP, then close and reopen the settings windows.')
     return report

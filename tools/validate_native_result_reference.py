@@ -24,6 +24,8 @@ def verify(reference_source):
     # Optional OMAS acceleration is irrelevant to serialization. Prevent its
     # import hook from compiling into the user's normal cache in this probe.
     sys.modules['omas.omas_cython'] = None
+    library = Path(__file__).resolve().parents[1] / 'CGYRO_TGLF_scan/LIB'
+    sys.path.insert(0, str(library))
     with tempfile.TemporaryDirectory(prefix='omfit-native-reference-') as directory:
         work = Path(directory)
         prior_cwd = os.getcwd()
@@ -31,6 +33,7 @@ def verify(reference_source):
         try:
             import omfit_classes.omfit_base as native
             from omfit_classes.omfit_gacode import OMFITcgyro
+            import OMFITlib_cgyro_payload as payload_api
             helper = types.ModuleType('reference_under_test')
             exec(compile(reference_source, 'OMFITlib_cgyro_reference.py', 'exec'), helper.__dict__)
             native.OMFITcwd = str(work)
@@ -61,6 +64,9 @@ def verify(reference_source):
             tree['CGYRO_scan'] = native.OMFITmodule()
             native.OMFIT = tree
             module = tree['CGYRO_scan']
+            # A standalone host has no registered project LIB. The real native
+            # importCode path is tested separately by validate_native_execution.
+            module['LIB'] = {'OMFITlib_cgyro_payload': types.SimpleNamespace(importCode=lambda **kw: payload_api)}
             module['RUN_DB'] = native.OMFITtree()
             db = module['RUN_DB']
             db['__STORE__'] = native.OMFITtree()
@@ -91,6 +97,7 @@ def verify(reference_source):
             # may make the native saver deploy an additional physical result.
             db['Jet']['0.2'] = helper.make_reference(digest, native.OMFITtree)
             saved = work / 'saved'
+            module.pop('LIB')  # Never persist the standalone host adapter.
             tree._save(str(saved), only="['CGYRO_scan']", quiet=True)
             index = (saved / 'OMFITsave.txt').read_text()
             rows = [line.split(' <-:-:-> ') for line in index.splitlines() if ' <-:-:-> ' in line]
@@ -105,6 +112,7 @@ def verify(reference_source):
             reopened['scratch'] = native.OMFITtree()
             native.OMFIT = reopened
             reopened_module = reopened['CGYRO_scan']
+            reopened_module['LIB'] = {'OMFITlib_cgyro_payload': types.SimpleNamespace(importCode=lambda **kw: payload_api)}
             reopened_ref = reopened_module['RUN_DB']['Jet']['0.1']
             reopened_owner = reopened_module['RUN_DB']['__STORE__'][digest]
             reopened_owner.test_mode = True  # This fixture deliberately has no solver arrays.
