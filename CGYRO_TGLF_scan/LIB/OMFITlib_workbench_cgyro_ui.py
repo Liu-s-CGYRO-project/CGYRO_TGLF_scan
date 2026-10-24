@@ -18,6 +18,7 @@ from OMFITlib_cgyro_parameter_help import parameter_help
 from OMFITlib_project import ION_CASES, MODULES, cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, location, read, runtime_issues, sync_cgyro_choices, sync_cgyro_ion_cases, sync_run_issues
 from OMFITlib_cgyro_run_state import submission_pending
 from OMFITlib_cgyro_radius_cleanup import preview_radius, radius_choices
+from OMFITlib_cgyro_task_manager import TaskManager, confirm_scope
 
 
 class CgyroPage:
@@ -60,6 +61,7 @@ class CgyroPage:
 
     def render_cgyro_cleanup(self, node):
         """Do not enumerate archives on every ordinary control refresh."""
+        self.ui.Button('任务管理 / 删除任务…', self.open_cgyro_task_manager, updateGUI=False)
         self.settings.setdefault('cgyro_cleanup_open', False)
         self.settings.setdefault('cgyro_cleanup_radius', '')
         self.ui.Button('删除指定半径…', lambda: self.settings.__setitem__(
@@ -67,8 +69,9 @@ class CgyroPage:
         if not self.settings['cgyro_cleanup_open']:
             return
         options = radius_choices(node)
-        self.ui.ComboBox(self.prefix + "['cgyro_cleanup_radius']", '删除范围',
-                         choices=[''] + list(options), updateGUI=True)
+        # Native OMFIT takes (location, options, lbl), not a choices keyword.
+        self.ui.ComboBox(self.prefix + "['cgyro_cleanup_radius']", [''] + list(options),
+                         '删除范围', updateGUI=True)
         self.ui.Button('删除该半径的记录和结果', self.confirm_cgyro_radius_cleanup, updateGUI=True,
                        state='normal' if self.settings['cgyro_cleanup_radius'] in options else 'disabled')
 
@@ -79,15 +82,34 @@ class CgyroPage:
         if choice not in options:
             raise ValueError('请先选择需要删除的运行名和半径。')
         report = preview_radius(node, **options[choice])
-        parent = getattr(self.ui, '_aux', {}).get('parentGUI', None)
+        parent = getattr(self.ui, '_owner', None)
+        if not isinstance(parent, tk.Misc):
+            parent = getattr(self.ui, '_aux', {}).get('parentGUI', None)
         prompt = ('删除 {} 的任务记录、冻结输入和本工程内归档结果。\n'
                   '作业号：{}\n归档分支：{}\n\n'
                   '其他半径保留。远端作业和文件保留。此操作无法撤销。').format(
                       choice, ', '.join(report['jobs']) or '无', len(report['archives']))
-        if messagebox.askokcancel('删除指定半径', prompt, parent=parent, icon='warning'):
+        challenge = 'DELETE RADIUS ' + report['revision'][:8].upper()
+        if confirm_scope(parent, prompt, challenge) == challenge:
             self.actions.remove_cgyro_radius(**options[choice], expected=report)
             self.settings['cgyro_cleanup_radius'] = ''
             self.settings['cgyro_cleanup_open'] = False
+
+    def open_cgyro_task_manager(self):
+        # _aux is process-global and may belong to a different settings GUI
+        # by the time this button is clicked. The adapter captured our owner.
+        parent = getattr(self.ui, '_owner', None)
+        if not isinstance(parent, tk.Misc):
+            parent = getattr(self.ui, '_aux', {}).get('parentGUI', None)
+        if not isinstance(parent, tk.Misc):
+            raise ValueError('任务管理需要在 OMFIT 图形界面中打开。')
+        top = parent.winfo_toplevel()
+        existing = getattr(top, '_cgyro_task_manager', None)
+        if existing is not None and existing.window.winfo_exists():
+            existing.window.lift()
+            return
+        top._cgyro_task_manager = TaskManager(top, read(self.root, MODULES['cgyro']),
+            self.actions.remove_cgyro_tasks, self.actions.factory, on_changed=self.ui.UpdateGUI)
 
     def render_cgyro_recovery(self, node):
         """Available even in an empty reopened project after a desktop timeout."""

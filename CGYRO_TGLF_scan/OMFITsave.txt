@@ -266,6 +266,10 @@
 ['LIB']['OMFITlib_cgyro_job_probe'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_job_probe.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_job_recovery'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_job_recovery.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_radius_cleanup'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_radius_cleanup.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_cleanup_state'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_cleanup_state.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_task_catalog'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_task_catalog.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_task_cleanup'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_task_cleanup.py <-:-:-> {}
+['LIB']['OMFITlib_cgyro_task_manager'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_task_manager.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_retry'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_retry.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_launch'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_launch.py <-:-:-> {}
 ['LIB']['OMFITlib_server_capabilities'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_server_capabilities.py <-:-:-> {}
@@ -309,6 +313,7 @@
 ['CGYRO_scan']['SCRIPTS']['refresh_run_status.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/SCRIPTS/refresh_run_status.py <-:-:-> {}
 ['CGYRO_scan']['SCRIPTS']['recover_job.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/SCRIPTS/recover_job.py <-:-:-> {}
 ['CGYRO_scan']['SCRIPTS']['remove_radius.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/SCRIPTS/remove_radius.py <-:-:-> {}
+['CGYRO_scan']['SCRIPTS']['remove_tasks.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/SCRIPTS/remove_tasks.py <-:-:-> {}
 ['CGYRO_scan']['SCRIPTS']['wait_current_run.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/SCRIPTS/wait_current_run.py <-:-:-> {}
 ['CGYRO_scan']['SCRIPTS']['subscan_lin.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/SCRIPTS/subscan_lin.py <-:-:-> {}
 ['CGYRO_scan']['SCRIPTS']['subscan_lin_new.py'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_scan/SCRIPTS/subscan_lin_new.py <-:-:-> {}
@@ -396,6 +401,9 @@
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_job_probe'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_job_probe.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_job_recovery'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_job_recovery.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_radius_cleanup'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_radius_cleanup.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_cgyro_cleanup_state'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_cleanup_state.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_cgyro_task_catalog'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_task_catalog.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_cgyro_task_cleanup'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_task_cleanup.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_retry'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_retry.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_launch'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_launch.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_server_capabilities'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_server_capabilities.py <-:-:-> {}
@@ -513,6 +521,7 @@
 ['DOCS']['首次部署与迁移'] <-:-:-> OMFITascii <-:-:-> ./DOCS/FIRST_DEPLOY.md <-:-:-> {}
 ['DOCS']['中止与续算'] <-:-:-> OMFITascii <-:-:-> ./DOCS/CANCEL_RESUME.md <-:-:-> {}
 ['DOCS']['按作业号恢复'] <-:-:-> OMFITascii <-:-:-> ./DOCS/JOB_RECOVERY.md <-:-:-> {}
+['DOCS']['任务管理与删除'] <-:-:-> OMFITascii <-:-:-> ./DOCS/TASK_CLEANUP.md <-:-:-> {}
 ['DOCS']['结果归档去重'] <-:-:-> OMFITascii <-:-:-> ./DOCS/RESULT_STORAGE.md <-:-:-> {}
 ['DOCS']['多参数扫描绘图'] <-:-:-> OMFITascii <-:-:-> ./DOCS/MULTI_AXIS_PLOTS.md <-:-:-> {}
 ['DOCS']['字体许可'] <-:-:-> OMFITascii <-:-:-> ./DOCS/FONT_LICENSE.txt <-:-:-> {}

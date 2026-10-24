@@ -193,6 +193,26 @@ class NativeTkRefreshTests(unittest.TestCase):
         self.assertEqual(self.tree['mode'], 'spectra')
         self.assert_owner_refresh()
 
+    def test_radius_cleanup_selector_uses_unchanged_native_combobox_options_signature(self):
+        # Compile the actual page class without importing solver/UI modules.
+        # Its native control call must work with OMFITx, not just a permissive
+        # headless recorder that accepts arbitrary positional/keyword values.
+        namespace = dict(radius_choices=lambda node: {'Jet | nr=11 | rho=0.99': {}})
+        native_definitions(REPO / 'CGYRO_TGLF_scan/LIB/OMFITlib_workbench_cgyro_ui.py',
+                           {'CgyroPage'}, namespace)
+        self.tree.update(cgyro_cleanup_open=True, cgyro_cleanup_radius='')
+        view = namespace['CgyroPage']()
+        view.settings, view.prefix = self.tree, 'root'
+        view.open_cgyro_task_manager = view.confirm_cgyro_radius_cleanup = lambda: None
+        def render(api):
+            view.ui = api
+            view.render_cgyro_cleanup({})
+        self.render(render)
+        combos = [w for w in self.descendants(self.owner.top) if isinstance(w, ttk.Combobox)]
+        self.assertEqual(len(combos), 1)
+        self.assertIn('Jet | nr=11 | rho=0.99', str(combos[0].cget('values')))
+        self.assertEqual(self.errors, [])
+
     def test_native_entry_reset_stages_without_discarding_default(self):
         self.render(lambda api: self.controls.update(entry=api.Entry(
             "root['number']", default=6.0, updateGUI=True)))

@@ -1,7 +1,7 @@
 """Explicit result-only cleanup. Never visits paths on disk or remote servers."""
 from builtins import dict, hasattr, list, str, tuple
 from OMFITlib_compare_state import MODES, SELECTION_KEYS
-from OMFITlib_cgyro_queue import queue_records
+from OMFITlib_cgyro_task_catalog import manifest_sources
 
 RESULT_KEYS = ('scanResults', 'scanResults_spectra', 'scanResults2D', 'scanResults2D_spectra',
                'UQResults', 'UQResults_spectra', 'Experimental_fluxes', 'Experimental_spectra',
@@ -33,8 +33,10 @@ def node_at(root, path):
 
 def active_jobs(root):
     records = [('CGYRO 当前任务', node_at(root, ('CGYRO_scan', 'RUN_MANIFEST')))]
-    records.extend(('CGYRO ' + str(token), entry['manifest'])
-                   for token, entry in queue_records(node_at(root, ('CGYRO_scan',)), include_parked=True))
+    # Task deletion may clear the current queue focus. Parked jobs still
+    # protect whole-project cleanup even when RUN_BATCH no longer lists them.
+    records.extend(('CGYRO ' + str(token), manifest)
+                   for token, manifest, _ in manifest_sources(node_at(root, ('CGYRO_scan',))))
     for path in (('TGLF_scan', 'RUN_DB'), ('TGLF_scan', 'TGYRO', 'RUN_DB'), ('PROJECT_STATE', 'activity')):
         records.extend((str(key), record) for key, record in node_at(root, path).items())
     for case in root.get('TGLF_CASES', {}).values():

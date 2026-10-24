@@ -19,7 +19,7 @@ FAKE_NATIVE = {'test_cgyro', 'test_compare', 'test_native_mapping', 'test_projec
                'test_project_runtime', 'test_tglf_multi'}
 NATIVE_SOURCE = {'test_gui_refresh', 'test_gui_refresh_controls', 'test_gui_refresh_native',
                  'test_cgyro_remote_environment'}
-TK_SUITES = {'test_gui_refresh_native', 'test_gui_font_performance', 'test_plot_window'}
+TK_SUITES = {'test_gui_refresh_native', 'test_gui_font_performance', 'test_plot_window', 'test_cgyro_task_manager'}
 
 
 def check_environment(path, omfit_source):

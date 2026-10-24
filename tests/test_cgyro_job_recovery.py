@@ -411,6 +411,35 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(root, before)
         self.assertNotIn(id(root), recovery._RECOVERING)
 
+    def test_explicit_verified_recovery_can_reimport_a_deleted_task(self):
+        ensure_layout(self.root)
+        self.root['RUN_DB']['__STORAGE__']['deleted_tasks'] = {TOKEN: True}
+        with patch.object(recovery, '_load_verified_manifest', side_effect=ValueError('bad identity')):
+            with self.assertRaisesRegex(ValueError, 'bad identity'):
+                self.recover()
+        self.assertTrue(recovery.run_is_deleted(self.root, TOKEN))
+        self.recover()
+        self.assertFalse(recovery.run_is_deleted(self.root, TOKEN))
+        self.assertIn(TOKEN, self.root['RUN_HISTORY'])
+
+    def test_abort_after_clearing_deletion_marker_restores_marker_and_prior_records(self):
+        class AbortState(OMFITMapping):
+            armed = False
+            def __setitem__(self, key, value):
+                super().__setitem__(key, value)
+                if key == 'deleted_tasks' and self.armed:
+                    self.armed = False
+                    raise KeyboardInterrupt('Abort after reimport marker')
+        ensure_layout(self.root)
+        state = AbortState(self.root['RUN_DB']['__STORAGE__'])
+        state['deleted_tasks'] = {TOKEN: True}
+        self.root['RUN_DB']['__STORAGE__'] = state
+        before = copy.deepcopy(self.root)
+        state.armed = True
+        with self.assertRaisesRegex(KeyboardInterrupt, 'Abort after reimport marker'):
+            self.recover()
+        self.assertEqual(self.root, before)
+
 
 class SubmissionSidecarTests(unittest.TestCase):
     def test_sidecar_is_uploaded_before_any_scheduler_command(self):

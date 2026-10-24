@@ -1,6 +1,18 @@
 # 维护与扩展接口
 
-适用于工程 1.24.14。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.15。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+
+
+## 任务删除接口（1.24.15）
+
+- `cgyro_task_catalog.task_catalog` 只在任务窗口打开/刷新时读取元数据，不创建结果缓存，不调用调度器或文件读取器。任务由完整 run_token 标识，自动重试在同一行披露全部作业号，续算单独记录。不要以行号、p000001、截断标签或作业数字跨服务器匹配。
+- `cgyro_task_cleanup.preview_tasks/remove_tasks` 是唯一任务删除业务入口。先构建具体坐标变更与预览，提交前核对 revision 和确认文字。`case_sources` 的半径直存视图会过滤 H/D/T，不能把该视图直接写回半径节点；本实现从实际路径复制容器，保留邻居。
+- 不按 `info.run_token` 删除整个混合扫描；使用每行的 `run_token`，在旧单来源格式中才允许索引头回退。多来源且缺失逐点身份时中止。重建 `__SCANS__` 和兼容头时必须选择保留的来源，不能引用已删除任务。
+- `cgyro_cleanup_state.commit_cleanup` 在每次原生写入前记录旧引用；仅在事务内部转换新原生容器，保留兼容头别名。不复制物理结果。回滚先恢复所有者再恢复索引，覆盖原生写入后才抛错与 prune 返回后 Abort。
+- `cgyro_db.run_is_deleted` 使用 `__STORAGE__.deleted_tasks[token]=True` 防止旧 GUI/收集 finally 重建任务；仅保存 token 布尔值。`save_current/require_retained_run/saved_run` 必须遵守此边界。只有已经验证原始身份和输入的显式恢复事务可移除此标记，并在 Abort 时恢复。
+- 任务窗口使用独立 Tk Toplevel，筛选只处理当前内存行，清除隐形选择；两次确认间处理事件后，必须再次检查选择和后台数据。第一次确认可滚动且按钮固定，第二次文字严格匹配。工作台刷新只请求所属 GUI，不能广播 UpdateGUI。
+- 全工程清空通过 `manifest_sources` 检查所有保留记录，不能用当前 RUN_BATCH/focus 代替全局活动任务检查。删除按钮不具备 SSH、scancel、重新提交或文件系统清理权限。
+- 扩展删除对象时先补充新的身份/依赖规则与故障测试，再增加清单写入；不可在 GUI 回调中直接 pop 任意结果分支。详见 `test_cgyro_task_cleanup/test_cgyro_task_manager/test_gui_refresh_native/test_cgyro_job_recovery`。
 
 ## 状态、选择与异常接口（1.24.11）
 

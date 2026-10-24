@@ -15,7 +15,8 @@ import shutil
 import sys
 import tempfile
 import uuid
-from OMFITlib_cgyro_db import ensure_layout, rollback_actions, run_records
+from OMFITlib_cgyro_db import (DELETED_TASKS, ensure_layout, rollback_actions, run_is_deleted,
+                              run_records, storage_state)
 from OMFITlib_cgyro_job_probe import (files_command, identity_command, input_inventory_command,
     parse_identity, parse_inventory, read_remote_manifest, remote_text, script_content, section)
 from OMFITlib_cgyro_recovery_manifest import (SIDECAR, job_number, read_manifest,
@@ -156,10 +157,11 @@ def _install(root, manifest, inputs, factory):
     snapshots = {}
     for old_token, entry in history.items():
         saved = entry.get('manifest', {})
-        if uncollected_job(saved) or submission_pending(saved):
+        if not run_is_deleted(root, old_token) and (uncollected_job(saved) or submission_pending(saved)):
             snapshots[str(old_token)] = deepcopy(saved)
     current = root.get('RUN_MANIFEST', {})
-    if (uncollected_job(current) or submission_pending(current)) and current.get('run_token', ''):
+    if ((uncollected_job(current) or submission_pending(current)) and current.get('run_token', '')
+            and not run_is_deleted(root, current['run_token'])):
         snapshots[current['run_token']] = deepcopy(current)
     batch_id = uuid.uuid4().hex
     snapshots[token] = deepcopy(manifest)
@@ -195,6 +197,12 @@ def _install(root, manifest, inputs, factory):
             assign(records[token], 'cases', factory())
         assign(root, 'RUN_BATCH', batch)
         assign(root, 'RUN_MANIFEST', deepcopy(snapshots[token]))
+        if run_is_deleted(root, token):
+            # Only this verified, explicitly requested recovery can revive the
+            # identity. Ordinary save/collect/continuation callbacks cannot.
+            markers = dict(storage_state(root).get(DELETED_TASKS, {}))
+            markers.pop(token)
+            assign(storage_state(root), DELETED_TASKS, markers)
     except BaseException as error:
         def restore(mapping, key, old):
             if old is missing:

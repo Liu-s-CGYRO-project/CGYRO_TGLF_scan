@@ -9,11 +9,14 @@ from builtins import (BaseException, TypeError, ValueError, any, dict, float, ha
 from copy import deepcopy
 import math
 from OMFITlib_cgyro_archive import canonical_case_key, case_parts, case_sources, clean_run_id
-from OMFITlib_cgyro_db import (PENDING, ensure_layout, metadata_value, result_pool,
+from OMFITlib_cgyro_db import (DELETED_TASKS, PENDING, ensure_layout, metadata_value, result_pool,
                               rollback_actions, run_records, storage_state)
 from OMFITlib_cgyro_storage import prune_storage
 from OMFITlib_cgyro_reference import is_native_file
 from OMFITlib_cgyro_storage_files import FILE_STORE
+from OMFITlib_cgyro_cleanup_state import (deletion_markers, pool_journal as _pool_journal,
+                                         restore_pool as _restore_pool)
+from OMFITlib_cgyro_task_catalog import metadata_revision
 
 
 def _case_info(case):
@@ -143,26 +146,12 @@ def _plan(module, runid, rho, nr):
         if _matches(_identity(info), target):
             drop(pending, key)
     return dict(runid=runid, nr=target[1], rho=rho, tokens=sorted(tokens), jobs=sorted(job_ids),
-                archives=sorted(set(public)), removals=removals)
+                archives=sorted(set(public)), revision=metadata_revision(module), removals=removals)
 
 
 def preview_radius(module, runid, rho, nr=None):
     plan = _plan(module, runid, rho, nr)
     return {key: value for key, value in plan.items() if key != 'removals'}
-
-
-def _pool_journal(module):
-    """Keep owners alive across an Abort immediately after pruning returns."""
-    pool, state = result_pool(module), storage_state(module)
-    mappings = [pool, pool.get(FILE_STORE, {})]
-    mappings.extend(state.get(key, {}) for key in ('bytes', 'checkpoints', 'file_bytes'))
-    return [(mapping, dict(mapping.items())) for mapping in mappings]
-
-
-def _restore_pool(mapping, original):
-    for key, value in original.items():
-        if key not in mapping:
-            mapping[key] = value
 
 
 def remove_radius(module, runid, rho, nr=None, factory=dict, expected=None):
@@ -191,6 +180,7 @@ def remove_radius(module, runid, rho, nr=None, factory=dict, expected=None):
         for mapping, key, old in removals:
             journal.append((mapping, key, old))
             mapping.pop(key)
+        assign(storage_state(module), DELETED_TASKS, deletion_markers(module, tokens))
         if str(current.get('run_token', '')) in tokens or _matches(_identity(current),
                 (plan['runid'], plan['nr'], plan['rho'])):
             assign(module, 'RUN_MANIFEST', factory())

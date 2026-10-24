@@ -13,6 +13,7 @@ from OMFITlib_cgyro_reference import REF, is_native_file, make_reference, metada
 POOL, STATE, RUNS = '__STORE__', '__STORAGE__', '__RUNS__'
 STORAGE_SCHEMA_VERSION = 4  # Direct radius scans; BASE is only a fixed reference.
 PENDING, LEGACY = '__UNCLASSIFIED__', '__LEGACY__'
+DELETED_TASKS = 'deleted_tasks'  # Tokens only; no job history or result snapshots.
 OLD_BRANCHES = ('RESULT_STORE', 'RESULT_STORAGE', 'Cases', 'OUTPUTScan', 'OUTPUTS',
                 'LEGACY_UNCLASSIFIED', 'RUN_INDEX', '_PLOT_CACHE')
 _MISSING = object()
@@ -276,6 +277,16 @@ def result_pool(module, factory=None):
 def storage_state(module, factory=None):
     db = ensure_layout(module, factory) if factory is not None else module.get('RUN_DB', {})
     return db.setdefault(STATE, factory()) if factory is not None else metadata_value(db.get(STATE, {}))
+
+
+def run_is_deleted(module, token):
+    """Block stale dialogs/finally handlers from recreating explicitly deleted runs.
+
+    The token-only marker survives saving, but is not a task/result record and
+    is never listed in the task manager. Verified, explicit job recovery may
+    clear one marker; a cached GUI callback has no authority to do that.
+    """
+    return str(token) in metadata_value(storage_state(module).get(DELETED_TASKS, {}))
 
 
 def run_records(module, factory=None):

@@ -382,15 +382,37 @@ class ProjectTest(unittest.TestCase):
         self.actions.settings['cgyro_cleanup_radius'] = 'Jet | nr=11 | ρ=0.99'
         ui = self.render('cgyro')
         callback, _ = ui.button('删除该半径的记录和结果')
-        with patch.object(cgyro_ui.messagebox, 'askokcancel', return_value=False):
+        combo = next((args, kwargs) for name, args, kwargs in ui.events
+                     if name == 'ComboBox' and 'cgyro_cleanup_radius' in str(args[0]))
+        self.assertIsInstance(combo[0][1], list)
+        self.assertEqual(combo[0][2], '删除范围')
+        self.assertNotIn('choices', combo[1])
+        with patch.object(cgyro_ui, 'confirm_scope', return_value=None):
             callback()
         self.cg['SCRIPTS']['remove_radius.py'].run.assert_not_called()
-        with patch.object(cgyro_ui.messagebox, 'askokcancel', return_value=True):
+        with patch.object(cgyro_ui, 'confirm_scope', side_effect=lambda parent, text, challenge: challenge):
             callback()
         arguments = self.cg['SCRIPTS']['remove_radius.py'].run.call_args.kwargs
         self.assertEqual((arguments['runid'], arguments['nr'], arguments['rho'], arguments['confirm']),
                          ('Jet', '11', .99, True))
         self.assertEqual(arguments['expected']['jobs'], ['9537283'])
+
+    def test_task_manager_entry_does_not_enumerate_or_delete_on_ordinary_render(self):
+        import OMFITlib_workbench_cgyro_ui as cgyro_ui
+        with patch.object(cgyro_ui, 'TaskManager') as manager:
+            ui = self.render('cgyro')
+            _, options = ui.button('任务管理 / 删除任务…')
+            self.assertFalse(options['updateGUI'])
+            manager.assert_not_called()
+        self.cg['SCRIPTS']['remove_tasks.py'].run.assert_not_called()
+
+    def test_task_deletion_action_passes_exact_native_preview_and_challenge(self):
+        report = dict(tokens=['one'], revision='fixed')
+        self.actions.remove_cgyro_tasks(['one'], expected=report, confirmation='DELETE ABCD')
+        self.cg['SCRIPTS']['remove_tasks.py'].run.assert_called_once_with(
+            tokens=['one'], confirm=True, expected=report, confirmation='DELETE ABCD')
+        self.cg['SCRIPTS']['runCGYRO.py'].run.assert_not_called()
+        self.cg['SCRIPTS']['downsync.py'].run.assert_not_called()
 
     def test_collect_publishes_correct_dimension_without_resubmission(self):
         self.cg['RUN_MANIFEST'] = dict(status='submitted_or_finished', dimensions=2, points=['a'], workDir='/tmp/test')

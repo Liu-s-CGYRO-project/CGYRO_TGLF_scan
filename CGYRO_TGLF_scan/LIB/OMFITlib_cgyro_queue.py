@@ -8,7 +8,7 @@ from contextlib import nullcontext
 from copy import deepcopy
 import time
 from OMFITlib_cgyro_storage import compact_storage
-from OMFITlib_cgyro_db import ensure_layout, freeze_run_inputs, rollback_actions, run_records
+from OMFITlib_cgyro_db import ensure_layout, freeze_run_inputs, rollback_actions, run_is_deleted, run_records
 from OMFITlib_cgyro_run_state import (STOP_POLL_ATTEMPTS, STOP_POLL_SECONDS, STOP_QUERY_ERROR_LIMIT,
                                     collection_finished, linked_kill_local, native_remote_execute, pbs_wait, quote as shell_quote,
                                     refresh_run_state, slurm_wait, stop_message, stop_run, submission_pending,
@@ -43,10 +43,13 @@ def queue_records(root, *, include_parked=False):
 
 def run_is_retired(root, token):
     """A tombstone is authoritative even when an old GUI retains its manifest."""
-    return run_records(root).get(str(token), {}).get('payload_retired', False)
+    return run_is_deleted(root, token) or run_records(root).get(str(token), {}).get('payload_retired', False)
 
 
 def require_retained_run(root, token):
+    if run_is_deleted(root, token):
+        raise ValueError('This task was explicitly deleted. Close the old result window. '
+                         'Recover its job ID explicitly if you want to import it again.')
     if run_is_retired(root, token):
         raise ValueError('This historical result was superseded and its payload was retired. '
                          'Reopen the result table and select the latest retained scan.')

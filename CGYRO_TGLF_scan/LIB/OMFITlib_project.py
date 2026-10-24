@@ -1147,6 +1147,13 @@ class ProjectActions:
         self.settings.pop('cgyro_result_view', None)
         self.settings['message'] = '已删除 {} / ρ={} 的任务记录和工程内结果，请另存工程。'.format(runid, rho)
 
+    def remove_cgyro_tasks(self, tokens, expected, confirmation):
+        """Only the reviewed task IDs enter the native deletion script."""
+        self._cgyro_script('删除指定 CGYRO 任务', 'remove_tasks.py', tokens=list(tokens),
+                          confirm=True, expected=expected, confirmation=confirmation)
+        self.settings.pop('cgyro_result_view', None)
+        self.settings['message'] = '已删除所选 {} 条任务及工程内结果，请另存工程。'.format(len(tokens))
+
     def save_command(self, name):
         command = self.settings.get('command_draft', '').strip()
         if not command:

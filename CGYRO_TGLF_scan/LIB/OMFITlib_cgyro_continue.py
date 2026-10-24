@@ -17,7 +17,7 @@ import zipfile
 from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, clean_run_id,
                                    point_coordinate, scan_branch, scan_key)
 from OMFITlib_cgyro_storage import result_view, submission_file
-from OMFITlib_cgyro_db import run_cases, run_records
+from OMFITlib_cgyro_db import run_cases, run_is_deleted, run_records
 from OMFITlib_cgyro_checkpoint import directory_checkpoint
 from OMFITlib_cgyro_launch import validate_checkpoint_runtime
 from OMFITlib_cgyro_scratch import directory_bytes, ensure_capacity
@@ -31,6 +31,8 @@ def saved_run(module, token):
     Check the authoritative run record before the current-view shortcut: its
     point IDs must never be rebound to newer public results with reused IDs.
     """
+    if run_is_deleted(module, token):
+        raise ValueError('This task was explicitly deleted; close the old result window.')
     entry = run_records(module).get(str(token), {})
     if entry.get('payload_retired', False):
         raise ValueError('This historical result was superseded and its payload was retired. '
