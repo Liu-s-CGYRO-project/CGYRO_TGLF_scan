@@ -37,3 +37,9 @@ OMFIT['CGYRO_TGLF_scan']['CGYRO_scan']['SCRIPTS']['recover_job.py'].run(job_id='
 ```
 
 自动查找失败时增加 `manifest_path='/原暂存目录/manifest.json'`。该入口与按钮共用同一套检查。
+
+## `KeyError: 'SHELL'`
+
+部分 VNC/桌面启动的 OMFIT 会话没有 SHELL 环境变量，旧版会在远程查询开始前报错。工程 1.24.13 起自动补齐缺失的默认值；已有 shell 配置保留。更新代码后关闭旧设置窗口并重新打开，再恢复原作业号。
+
+当前会话也可先在 Command Box 执行 `import os; os.environ.setdefault('SHELL', '/bin/bash')`，然后再次恢复。此步骤只补充 OMFIT 进程环境。

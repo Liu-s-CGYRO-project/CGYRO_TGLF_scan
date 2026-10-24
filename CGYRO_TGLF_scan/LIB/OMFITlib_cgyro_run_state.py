@@ -7,6 +7,7 @@ from builtins import (Exception, RuntimeError, ValueError, all, any, bool, dict,
                       getattr, int, isinstance, len, list, print, range, set, str, tuple, zip)
 from contextlib import contextmanager
 from datetime import datetime, timezone
+import os
 import re
 from OMFITlib_cgyro_reference import metadata_value
 
@@ -26,6 +27,19 @@ JOB_ID_RULES = {
     'slurm': r'(?i)submitted\s+batch\s+job\s+([0-9]+)',
     'pbs': r'(?m)^\s*([0-9]+(?:\.[A-Za-z0-9._-]+)?)\s*$',
 }
+
+
+def native_remote_execute(ui, *args, **kwargs):
+    """Supply the host shell omitted by some VNC/desktop launchers.
+
+    OMFIT remote_execute delegates same-host connections to execute, which
+    indexes SHELL even with use_bang_command=False to build its terminal button.
+    Keep an explicitly configured shell; initialize only a missing/empty value.
+    The process default also serves native rsync/download calls made afterwards.
+    """
+    if not os.environ.get('SHELL'):
+        os.environ['SHELL'] = '/bin/bash'
+    return ui.remote_execute(*args, **kwargs)
 
 
 def collection_finished(manifest):
@@ -365,7 +379,7 @@ def stop_run(root, ui, expected_job_id, expected_run_token):
     manifest['stop_requested'] = True
     output, errors = [], []
     try:
-        code = ui.remote_execute(manifest['server'], '/bin/bash -c ' + quote(command),
+        code = native_remote_execute(ui, manifest['server'], '/bin/bash -c ' + quote(command),
                                  manifest['workDir'], manifest.get('tunnel', ''), quiet=True,
                                  ignoreReturnCode=True, use_bang_command=False, std_out=output, std_err=errors)
         rows = set(text_output(output).splitlines())
@@ -493,7 +507,7 @@ def refresh_run_state(root, ui):
         return dict(outcome='published', terminal=True, active=False)
     manifest, job_id = saved_slurm_run(root)
     output, errors = [], []
-    code = ui.remote_execute(manifest['server'], '/bin/bash -c ' + quote(slurm_probe(job_id)),
+    code = native_remote_execute(ui, manifest['server'], '/bin/bash -c ' + quote(slurm_probe(job_id)),
                              manifest['workDir'], manifest.get('tunnel', ''), quiet=True,
                              ignoreReturnCode=True, use_bang_command=False, std_out=output, std_err=errors)
     if code != 0:

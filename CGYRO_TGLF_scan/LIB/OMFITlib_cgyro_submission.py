@@ -6,7 +6,7 @@ before submission. An empty log alone cannot resolve a legacy attempt.
 from builtins import RuntimeError, ValueError, dict, iter, len, next, set, sorted, str
 import posixpath
 import re
-from OMFITlib_cgyro_run_state import quote, text_output
+from OMFITlib_cgyro_run_state import native_remote_execute, quote, text_output
 
 
 PROTOCOL = 'gate-v1'
@@ -78,7 +78,7 @@ else printf 'CGYRO_ACCOUNT_ERROR\\n%s\\n' "$rows"; fi
 
 def discover_submission(manifest, ui):
     output, errors = [], []
-    code = ui.remote_execute(manifest['server'], discovery_command(manifest), '/',
+    code = native_remote_execute(ui, manifest['server'], discovery_command(manifest), '/',
         manifest.get('tunnel', ''), quiet=True, ignoreReturnCode=True,
         use_bang_command=False, std_out=output, std_err=errors)
     raw = text_output(output)
@@ -103,7 +103,7 @@ def seal_unstarted(manifest, ui):
     if manifest.get('submission_protocol', '') != PROTOCOL:
         return False  # A pre-gate submitter would not respect a new recovery seal.
     output, errors = [], []
-    code = ui.remote_execute(manifest['server'], seal_command(manifest), '/',
+    code = native_remote_execute(ui, manifest['server'], seal_command(manifest), '/',
         manifest.get('tunnel', ''), quiet=True, ignoreReturnCode=True,
         use_bang_command=False, std_out=output, std_err=errors)
     manifest['submission_seal_output'] = text_output([output, errors])

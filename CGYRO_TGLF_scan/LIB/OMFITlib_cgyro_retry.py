@@ -18,7 +18,7 @@ import uuid
 import zipfile
 from OMFITlib_cgyro_queue import (collection_done, require_retained_run, save_current,
                                  shell_quote, stop_queue, wait_current)
-from OMFITlib_cgyro_run_state import linked_local_action, stop_run, submitted_job_id, text_output
+from OMFITlib_cgyro_run_state import linked_local_action, native_remote_execute, stop_run, submitted_job_id, text_output
 from OMFITlib_cgyro_submission import PROTOCOL, discover_submission, seal_unstarted, submit_command
 from OMFITlib_cgyro_storage import submission_file
 from OMFITlib_cgyro_db import rollback_actions, run_cases, set_run_cases
@@ -80,7 +80,7 @@ def recover_submission(root, ui, factory=dict):
         for attempt in range(3):
             output, errors = [], []
             try:
-                code = ui.remote_execute(manifest['server'], 'cat -- ' + shell_quote(posixpath.join(manifest['workDir'], '.cgyro_submit.out')),
+                code = native_remote_execute(ui, manifest['server'], 'cat -- ' + shell_quote(posixpath.join(manifest['workDir'], '.cgyro_submit.out')),
                     '/', manifest.get('tunnel', ''), quiet=True, ignoreReturnCode=True,
                     use_bang_command=False, std_out=output, std_err=errors)
                 if code == 0:
@@ -205,7 +205,7 @@ def _execute_submission(root, ui, factory, ascii_reader, inputs, local, command)
     manifest.update(dict(status='submitting', submission_uncertain=True))
     save_current(root, factory)
     try:
-        code = ui.remote_execute(manifest['server'], submit_command(manifest, command),
+        code = native_remote_execute(ui, manifest['server'], submit_command(manifest, command),
             manifest['workDir'], manifest.get('tunnel', ''), quiet=False, ignoreReturnCode=True,
             use_bang_command=False, std_out=output, std_err=errors)
     except Exception as exc:

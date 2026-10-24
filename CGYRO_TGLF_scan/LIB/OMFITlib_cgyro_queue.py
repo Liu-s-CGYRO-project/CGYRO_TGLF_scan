@@ -10,7 +10,7 @@ import time
 from OMFITlib_cgyro_storage import compact_storage
 from OMFITlib_cgyro_db import ensure_layout, freeze_run_inputs, rollback_actions, run_records
 from OMFITlib_cgyro_run_state import (STOP_POLL_ATTEMPTS, STOP_POLL_SECONDS, STOP_QUERY_ERROR_LIMIT,
-                                    collection_finished, linked_kill_local, pbs_wait, quote as shell_quote,
+                                    collection_finished, linked_kill_local, native_remote_execute, pbs_wait, quote as shell_quote,
                                     refresh_run_state, slurm_wait, stop_message, stop_run, submission_pending,
                                     uncollected_job)
 
@@ -276,7 +276,7 @@ def wait_current(root, ui, factory=dict):
     with scope:
         for attempt in range(3):
             try:
-                code = ui.remote_execute(manifest['server'], '/bin/bash -c ' + shell_quote(command),
+                code = native_remote_execute(ui, manifest['server'], '/bin/bash -c ' + shell_quote(command),
                                          manifest['workDir'], manifest.get('tunnel', ''), quiet=False,
                                          ignoreReturnCode=True, use_bang_command=False, std_err=errors)
             except Exception as exc:

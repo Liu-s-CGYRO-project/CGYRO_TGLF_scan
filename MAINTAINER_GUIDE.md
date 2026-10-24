@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.12。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.13。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 状态、选择与异常接口（1.24.11）
 
@@ -274,3 +274,9 @@ python -B tools/run_regressions.py \
 ```bash
 python -B tools/run_regressions.py --suite test_build_project --suite test_maintenance_tools --log-dir /path/to/build-test-logs
 ```
+
+## 原生远程执行环境（1.24.13）
+
+CGYRO 的远程执行使用 `cgyro_run_state.native_remote_execute(ui, ...)`，参数和异常沿用原生 OMFIT 接口。该边界只在进程的 SHELL 缺失或为空时设置 `/bin/bash`，保留已有 shell。VNC/桌面启动器未必传递登录 shell；原生 remote_execute 的同主机分支会调用 execute，后者即便禁用 bang command 仍读取 SHELL 构造终端按钮。因此不能只在 shell 命令文本中 export，必须在调用宿主接口前准备进程环境。
+
+恢复、同步、等待、取消和提交回执沿用此入口，后续原生下载也能使用相同进程默认值。不要捕获 KeyError 后重复远程命令，以免重放已有副作用。`test_cgyro_remote_environment` 从指定 OMFIT 源码提取未经改写的 execute/remote_execute 函数，隔离进程和连接边界，复现缺失环境及验证错误/Abort 仍可见；回归运行需提供 `--omfit-source`。

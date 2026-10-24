@@ -7,14 +7,14 @@ from builtins import RuntimeError, ValueError, any, dict, int, len, list, set, s
 import base64
 import posixpath
 import re
-from OMFITlib_cgyro_run_state import quote, slurm_queue_query, text_output
+from OMFITlib_cgyro_run_state import native_remote_execute, quote, slurm_queue_query, text_output
 from OMFITlib_cgyro_recovery_manifest import (MAX_MANIFEST_BYTES, MAX_SCRIPT_BYTES, SIDECAR,
                                              absolute_remote_path, job_number)
 
 
 def remote_text(ui, endpoint, script):
     output, errors = [], []
-    code = ui.remote_execute(endpoint['server'], '/bin/bash -c ' + quote(script), '/',
+    code = native_remote_execute(ui, endpoint['server'], '/bin/bash -c ' + quote(script), '/',
         endpoint.get('tunnel', ''), quiet=True, ignoreReturnCode=True,
         use_bang_command=False, std_out=output, std_err=errors)
     if code != 0:
