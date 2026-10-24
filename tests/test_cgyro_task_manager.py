@@ -69,24 +69,27 @@ class TaskManagerTests(unittest.TestCase):
         self.window.sort_rows('server')
         self.assertEqual(self.window.selected_tokens(), ['first'])
         with patch.object(manager, 'review_scope', return_value=True), patch.object(
-                manager.simpledialog, 'askstring', side_effect=lambda *args, **kwargs:
-                manager.preview_tasks(self.module, ['first'])['confirmation']):
+                manager.messagebox, 'askokcancel', return_value=True) as second:
             self.window.remove_selected()
+        self.assertEqual(second.call_count, 1)
+        self.assertEqual(second.call_args.kwargs['default'], 'cancel')
+        self.assertNotIn('DELETE', second.call_args.args[1])
+        self.assertNotIn('输入', second.call_args.args[1])
         self.assertEqual(self.delete.call_args.args, (['first'],))
         self.assertIn('other', self.module['RUN_HISTORY'])
         self.assertNotIn('first', self.module['RUN_HISTORY'])
         self.changed.assert_called_once()
         self.assertEqual(self.window.selected_tokens(), [])
 
-    def test_first_cancel_and_second_cancel_or_wrong_text_do_not_delete(self):
+    def test_first_cancel_and_second_cancel_or_close_do_not_delete(self):
         self.choose('draft')
         with patch.object(manager, 'review_scope', return_value=False), patch.object(
-                manager.simpledialog, 'askstring') as second:
+                manager.messagebox, 'askokcancel') as second:
             self.window.remove_selected()
             second.assert_not_called()
-        for answer in (None, '', 'DELETE', ' DELETE '):
+        for answer in (None, False):
             with self.subTest(answer=answer), patch.object(manager, 'review_scope', return_value=True), patch.object(
-                    manager.simpledialog, 'askstring', return_value=answer):
+                    manager.messagebox, 'askokcancel', return_value=answer):
                 self.window.remove_selected()
         self.delete.assert_not_called()
         self.assertIn('draft', self.module['RUN_HISTORY'])
@@ -94,11 +97,10 @@ class TaskManagerTests(unittest.TestCase):
     def test_modal_metadata_change_is_rejected_at_native_commit(self):
         self.choose('first')
         def change(*args, **kwargs):
-            challenge = manager.preview_tasks(self.module, ['first'])['confirmation']
             self.module['RUN_HISTORY']['first']['manifest']['job_id'] = '124'
-            return challenge
+            return True
         with patch.object(manager, 'review_scope', return_value=True), patch.object(
-                manager.simpledialog, 'askstring', side_effect=change):
+                manager.messagebox, 'askokcancel', side_effect=change):
             self.window.remove_selected()
         self.assertIn('first', self.module['RUN_HISTORY'])
         self.assertIn('已变化', self.error.call_args.args[1])
@@ -111,8 +113,7 @@ class TaskManagerTests(unittest.TestCase):
             self.choose('other')
             return True
         with patch.object(manager, 'review_scope', side_effect=change), patch.object(
-                manager.simpledialog, 'askstring', side_effect=lambda *args, **kwargs:
-                manager.preview_tasks(self.module, ['first'])['confirmation']):
+                manager.messagebox, 'askokcancel', return_value=True):
             self.window.remove_selected()
         self.delete.assert_not_called()
         self.assertIn('选择已变化', self.error.call_args.args[1])

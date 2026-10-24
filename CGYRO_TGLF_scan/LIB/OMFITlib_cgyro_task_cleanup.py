@@ -218,7 +218,7 @@ def preview_tasks(module, tokens):
 def remove_tasks(module, tokens, expected, confirmation, factory=dict):
     """Delete exactly the reviewed task group; never contact a scheduler.
 
-    GUI callers must complete both dialogs and send the exact typed challenge.
+    GUI callers must complete both dialogs and send the bound preview credential.
     Programmatic callers likewise need a fresh preview and explicit challenge.
     New retries/results/dependencies while dialogs are open invalidate it.
     """
@@ -227,6 +227,6 @@ def remove_tasks(module, tokens, expected, confirmation, factory=dict):
     if not isinstance(expected, dict) or report != expected:
         raise ValueError('任务或结果已变化，请刷新并重新确认；未执行删除。')
     if confirmation != report['confirmation']:
-        raise ValueError('第二次确认文字不一致，未执行删除。')
+        raise ValueError('确认凭据与预览不一致，未执行删除。')
     commit_cleanup(module, writes, prune_storage, factory)
     return report

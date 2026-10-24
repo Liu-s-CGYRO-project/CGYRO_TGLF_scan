@@ -4,7 +4,7 @@
 
 1. 输入作业号查找，也可按服务器、半径、离子或扫描参数筛选。
 2. 选择一条或多条任务。列表同时包含已归档、未归档、部分输出，以及尚未取得作业号的任务；默认不选择任何任务。筛选或刷新后会清空选择，“全选当前列表”只选择可见行。
-3. 点击“删除所选任务…”。第一次确认逐项列出完整任务标识、服务器、全部关联作业号和归档点数，可滚动核对。第二次要求输入本次显示的 `DELETE XXXXXXXX`。关闭窗口、取消或输错均不删除。
+3. 点击“删除所选任务…”。第一次确认逐项列出完整任务标识、服务器、全部关联作业号和归档点数，可滚动核对。第二次直接点击确定执行删除，无需输入或复制确认文字；默认选择取消。任一次取消或关闭窗口均不删除。
 4. 删除成功后另存工程；原先已保存的 ZIP 不会被改写。
 
 每行对应一次扫描提交及其自动重试。自动重试共享冻结输入和任务身份，因此作为一组删除，全部重试作业号均会列出；续算使用独立任务身份。相同作业号出现在不同服务器时是不同记录，不能只凭数字判断。这里删除整个所选任务，不是删除某个 Slurm 数组子作业。
@@ -24,8 +24,8 @@
 
 ## 程序接口
 
-`preview_tasks(cgyro_module, tokens)` 返回具体删除范围、元数据 revision 和本次确认文字；不启动求解器，不读取数值数组。旧格式元数据在生成预览前按现有 RUN_DB 契约规范化。
+`preview_tasks(cgyro_module, tokens)` 返回具体删除范围、元数据 revision 和本次内部确认凭据；不启动求解器，不读取数值数组。旧格式元数据在生成预览前按现有 RUN_DB 契约规范化。
 
-`remove_tasks(cgyro_module, tokens, expected, confirmation, factory)` 在写入前重新规划并比较完整预览，只接受对应确认文字。原生入口为 `CGYRO_scan/SCRIPTS/remove_tasks.py`，默认 `confirm=False` 仅预览；GUI 通过 `ProjectActions.remove_cgyro_tasks` 调用，保留 OMFIT 的日志和 Abort 行为。
+`remove_tasks(cgyro_module, tokens, expected, confirmation, factory)` 在写入前重新规划并比较完整预览，只接受对应内部凭据。GUI 在两次点击确认后自动传递该值，不要求用户输入。原生入口为 `CGYRO_scan/SCRIPTS/remove_tasks.py`，默认 `confirm=False` 仅预览；GUI 通过 `ProjectActions.remove_cgyro_tasks` 调用，保留 OMFIT 的日志和 Abort 行为。
 
 `tokens` 是列表中的完整任务标识，不是任意路径或作业名称。空列表不表示“全部”，未知或重复任务标识均拒绝。不要绕过预览直接修改 RUN_DB 的索引或物理所有者池。

@@ -6,7 +6,7 @@ revalidates the metadata revision after both modal confirmation dialogs.
 """
 from builtins import (Exception, ValueError, any, bool, enumerate, len, max, min, set, sorted, str, zip)
 import tkinter as tk
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import messagebox, ttk
 from OMFITlib_cgyro_db import ensure_layout
 from OMFITlib_cgyro_archive import case_parts
 from OMFITlib_cgyro_present import case_caption
@@ -76,16 +76,18 @@ def review_scope(title, text, parent=None, icon=None):
 
 
 def confirm_scope(parent, text, challenge, first=None, second=None):
-    first, second = first or review_scope, second or simpledialog.askstring
+    """Confirm twice by clicking; keep the preview credential internal."""
+    first, second = first or review_scope, second or messagebox.askokcancel
     if not first('第 1 次确认：核对删除范围', text, parent=parent, icon='warning'):
         return None
-    answer = second('第 2 次确认：执行不可撤销的删除',
-        '将删除当前工程内以上记录和结果。\n请完整输入：{}\n取消或输入不一致均不删除。'.format(challenge), parent=parent)
-    return challenge if answer == challenge else None
+    accepted = second('第 2 次确认：确认删除',
+        '确认删除已核对的记录和结果？\n此操作无法撤销。',
+        parent=parent, icon='warning', default='cancel')
+    return challenge if accepted is True else None
 
 
 def confirm_deletion(parent, report, first=None, second=None):
-    """Two independent cancellations; final text is bound to the exact preview."""
+    """Two independent cancellations; the backend still receives the bound preview."""
     return confirm_scope(parent, deletion_prompt(report), report['confirmation'], first, second)
 
 
@@ -223,7 +225,7 @@ class TaskManager:
         selected = self.selected_tokens()
         busy = any(self.rows[t]['busy'] for t in selected)
         self.delete_button.configure(state='normal' if selected and not busy and not self.confirming else 'disabled')
-        self.detail.set(('已选 {} 条任务；删除前还需核对范围并输入确认文字。'.format(len(selected)) if selected else
+        self.detail.set(('已选 {} 条任务；删除前还需核对范围并再次确认。'.format(len(selected)) if selected else
                          '共 {} 条已知任务；没有自动选中任何任务。'.format(len(self.rows))) +
                         (' 所选任务有本地操作未结束，暂不能删除。' if busy else ''))
 
