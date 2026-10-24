@@ -16,7 +16,7 @@ import shutil
 import zipfile
 from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, clean_run_id,
                                    point_coordinate, scan_branch, scan_key)
-from OMFITlib_cgyro_storage import result_view
+from OMFITlib_cgyro_storage import result_view, submission_file
 from OMFITlib_cgyro_db import run_cases, run_records
 from OMFITlib_cgyro_checkpoint import directory_checkpoint
 from OMFITlib_cgyro_launch import validate_checkpoint_runtime
@@ -149,7 +149,9 @@ def resume_source(module, token, point, context=None):
         if retained is not None and os.path.isfile(retained.filename):
             path = retained.filename
     if not os.path.isfile(path):
-        raise ValueError('Original prepared input ZIP is missing: ' + path)
+        # After job-ID recovery and project reopening, only the native RUN_DB
+        # input owner may survive; a former /tmp pathname is not authoritative.
+        path = submission_file(module, record, 'zip', point=point)
     hashes = record.get('input_sha256', {}).get(point, {})
     if not hashes:
         raise ValueError('Original input checksums are missing: ' + point)

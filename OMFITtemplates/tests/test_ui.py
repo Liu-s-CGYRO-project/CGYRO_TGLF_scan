@@ -377,6 +377,7 @@ class UITest(unittest.TestCase):
             with self.assertRaises(OSError):
                 self.app._manager_installed('/fixture/new')
         restore.assert_called_once_with(b'previous')
+        activate.assert_called_once_with(Path('/fixture/new'), receipt=True)
         self.assertTrue(self.app.alive)
 
     def test_omfit_window_reuses_existing_tk(self):

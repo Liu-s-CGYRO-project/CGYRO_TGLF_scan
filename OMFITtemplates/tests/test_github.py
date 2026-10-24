@@ -184,7 +184,7 @@ class GitHubTest(unittest.TestCase):
         target = self.client.pull(release, self.directory / 'cache')
         with Template(target) as template:
             template.verify()
-        self.assertIn('/github/team/demo/17/', target)
+        self.assertIn('/github/team/demo/17/', Path(target).as_posix())
         self.assertTrue(events)
         self.assertEqual(len(list_library(self.directory / 'cache')[0]), 1)
         count = len(self.state.calls)
@@ -352,6 +352,30 @@ class SessionTest(unittest.TestCase):
                 self.session.backup_and_open(self.target)
         self.assertEqual(load.call_count, 2)
         self.assertIn('__before_open_', load.call_args.args[0])
+
+    def test_native_abort_restores_backup_before_propagating_original(self):
+        for interrupted in (KeyboardInterrupt('OMFIT Abort'), SystemExit('stop')):
+            with self.subTest(interrupted=type(interrupted).__name__):
+                with patch.object(self.omfit, 'load', side_effect=[interrupted, None]) as load:
+                    with self.assertRaises(type(interrupted)) as caught:
+                        self.session.backup_and_open(self.target)
+                self.assertIs(caught.exception, interrupted)
+                self.assertEqual(load.call_count, 2)
+                self.assertIn('__before_open_', load.call_args.args[0])
+
+    def test_abort_during_restore_keeps_original_failure_and_backup_location(self):
+        for original in (OSError('partial load'), KeyboardInterrupt('OMFIT Abort')):
+            with self.subTest(original=type(original).__name__):
+                with patch.object(self.omfit, 'load', side_effect=[original, KeyboardInterrupt('restore interrupted')]):
+                    expected = TemplateError if isinstance(original, Exception) else KeyboardInterrupt
+                    with self.assertRaises(expected) as caught:
+                        self.session.backup_and_open(self.target)
+                self.assertTrue(Path(caught.exception.template_backup_path).is_file())
+                self.assertEqual(caught.exception.template_rollback_errors[0]['step'], 'project backup')
+                if isinstance(original, Exception):
+                    self.assertIs(caught.exception.__cause__, original)
+                else:
+                    self.assertIs(caught.exception, original)
 
     def test_snapshot_does_not_overwrite_and_worker_calls_are_rejected(self):
         with self.assertRaisesRegex(TemplateError, '已存在'):

@@ -339,6 +339,21 @@ class ProjectTest(unittest.TestCase):
             self.actions.collect()
         self.cg['SCRIPTS']['downsync.py'].run.assert_not_called()
 
+    def test_job_recovery_entry_is_available_without_current_input_or_manifest(self):
+        ui = self.render('cgyro')
+        callback, options = ui.button('按作业号恢复')
+        self.assertNotEqual(options.get('state', ''), 'disabled')
+        self.actions.settings['cgyro_recovery_job'] = '123'
+        self.actions.settings['cgyro_recovery_manifest'] = '/tmp/old/manifest.json'
+        self.actions.settings['cgyro_recovery_advanced'] = True
+        with patch.object(self.actions, 'sync_endpoint') as endpoint:
+            callback()
+        endpoint.assert_called_once_with('cgyro')
+        self.cg['SCRIPTS']['recover_job.py'].run.assert_called_once_with(
+            job_id='123', manifest_path='/tmp/old/manifest.json')
+        self.cg['SCRIPTS']['runCGYRO.py'].run.assert_not_called()
+        self.cg['SCRIPTS']['downsync.py'].run.assert_not_called()
+
     def test_collect_publishes_correct_dimension_without_resubmission(self):
         self.cg['RUN_MANIFEST'] = dict(status='submitted_or_finished', dimensions=2, points=['a'], workDir='/tmp/test')
         setup = self.cg['SETTINGS']['SETUP']; setup.update(dict(irun=1, idownsync=1, idimrun=1))

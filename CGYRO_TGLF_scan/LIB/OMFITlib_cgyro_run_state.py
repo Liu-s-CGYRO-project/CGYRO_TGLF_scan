@@ -43,6 +43,16 @@ def collection_recorded(manifest):
     return manifest.get('status', '') == 'published' or manifest.get('collection_status', '') in COLLECTED_STATES
 
 
+def uncollected_job(manifest):
+    """A terminal scheduler outcome still needs an explicit output collection.
+
+    Failed/cancelled allocations can contain useful output. Dropping their
+    batch before collection hides them from the normal collection entry point.
+    A rejected submission without a job ID has no such allocation to collect.
+    """
+    return bool(manifest.get('job_id', '')) and not collection_finished(manifest)
+
+
 def run_settled(manifest):
     """Both saved phase and any scheduler evidence must permit retirement.
 

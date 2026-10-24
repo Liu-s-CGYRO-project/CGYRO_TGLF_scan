@@ -141,6 +141,21 @@ def payload_size(value):
     return None
 
 
+def _staging_path(directory, name):
+    """Validate extraction using the host's path rules, including empty dirs.
+
+    Archive names preserve literal backslashes on Linux. On Windows those same
+    bytes may mean traversal or a drive path, so validation belongs immediately
+    before filesystem writes rather than rewriting names in the ZIP parser.
+    """
+    destination = (directory / name).resolve()
+    try:
+        destination.relative_to(directory)
+    except ValueError:
+        raise TemplateError('模板路径超出暂存目录：' + name) from None
+    return destination
+
+
 class Prepared:
     def __init__(self, template_path, data_policy='keep', settings_policy='keep', cancel=None):
         if data_policy not in ('keep', 'examples') or settings_policy not in ('keep', 'template'):
@@ -163,14 +178,13 @@ class Prepared:
                     check_cancel(cancel)
                     if name == 'OMFITsave.txt' or (spec['kind'] == 'data' and data_policy == 'keep'):
                         continue
-                    destination = (self.path / name).resolve()
-                    destination.relative_to(self.path)
+                    destination = _staging_path(self.path, name)
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     with source.z.open(source.files[name]) as reader, destination.open('xb') as writer:
                         shutil.copyfileobj(reader, writer)
                 for row in rows:
                     if row.ref and row.ref in source.directories:
-                        (self.path / row.ref).mkdir(parents=True, exist_ok=True)
+                        _staging_path(self.path, row.ref).mkdir(parents=True, exist_ok=True)
                 self.entry = self.path / 'OMFITsave.txt'
                 self.entry.write_bytes(tree_bytes(rows))
                 if source.stamp() != source._stat:

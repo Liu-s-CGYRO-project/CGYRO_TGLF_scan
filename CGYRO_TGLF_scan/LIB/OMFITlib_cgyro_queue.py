@@ -3,15 +3,16 @@
 RUN_MANIFEST is the active job view. RUN_HISTORY holds metadata only; point
 payloads and frozen inputs belong to RUN_DB/__RUNS__/<token>/cases.
 """
-from builtins import BaseException, Exception, RuntimeError, ValueError, any, dict, getattr, len, list, object, print, range, str
+from builtins import BaseException, Exception, RuntimeError, ValueError, any, dict, len, list, object, print, range, str
 from contextlib import nullcontext
 from copy import deepcopy
 import time
 from OMFITlib_cgyro_storage import compact_storage
-from OMFITlib_cgyro_db import ensure_layout, freeze_run_inputs, run_records
+from OMFITlib_cgyro_db import ensure_layout, freeze_run_inputs, rollback_actions, run_records
 from OMFITlib_cgyro_run_state import (STOP_POLL_ATTEMPTS, STOP_POLL_SECONDS, STOP_QUERY_ERROR_LIMIT,
                                     collection_finished, linked_kill_local, pbs_wait, quote as shell_quote,
-                                    refresh_run_state, slurm_wait, stop_message, stop_run, submission_pending)
+                                    refresh_run_state, slurm_wait, stop_message, stop_run, submission_pending,
+                                    uncollected_job)
 
 
 def collection_done(manifest):
@@ -81,7 +82,7 @@ def activate_run(root, token):
 def pending_runs(root):
     """Finished but uncollected jobs still protect their results from replacement."""
     return [manifest for _, entry in queue_records(root) for manifest in [entry['manifest']]
-            if manifest.get('submission_uncertain', False) or
+            if submission_pending(manifest) or uncollected_job(manifest) or
             (not collection_done(manifest) and manifest.get('status', '') not in ('failed', 'cancelled'))]
 
 
@@ -146,17 +147,7 @@ def _commit_synced_manifest(root, token, manifest, factory):
             # update independently, and never skip the other saved view because
             # one native mapping rejects its rollback assignment.
             rollback.extend([('current clear', current.clear), ('current restore', lambda: current.update(old_current))])
-        errors = []
-        for label, operation in rollback:
-            try:
-                operation()
-            except BaseException as rollback_error:
-                errors.append(label + ': ' + str(rollback_error))
-        if errors:
-            try:
-                original_error.cgyro_rollback_errors = list(getattr(original_error, 'cgyro_rollback_errors', [])) + errors
-            except BaseException:
-                pass  # Preserve the original Abort even for an immutable exception.
+        rollback_actions(original_error, rollback)
         raise
 
 

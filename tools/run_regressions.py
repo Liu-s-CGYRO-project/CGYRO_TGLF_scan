@@ -78,9 +78,9 @@ def run_suite(path, repo, logs, env, timeout, adapters, omfit_source):
     try:
         process = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, timeout=timeout)
-        output, code = process.stdout.decode('utf-8', 'replace'), process.returncode
+        output, code = process.stdout.decode('utf-8', 'replace').replace('\r\n', '\n'), process.returncode
     except subprocess.TimeoutExpired as error:
-        output = (error.stdout or b'').decode('utf-8', 'replace') + '\nTIMEOUT: suite did not complete\n'
+        output = (error.stdout or b'').decode('utf-8', 'replace').replace('\r\n', '\n') + '\nTIMEOUT: suite did not complete\n'
         code, timed_out = 2, True
     except OSError as error:
         output, code = 'RUNNER ERROR: ' + str(error) + '\n', 2

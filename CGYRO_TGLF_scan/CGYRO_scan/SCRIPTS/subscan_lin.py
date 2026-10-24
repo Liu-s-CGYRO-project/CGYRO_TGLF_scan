@@ -19,7 +19,8 @@ from OMFITlib_cgyro_read import num2str_xj
 from OMFITlib_cgyro_parameters import (FIELDS as CALCULATION_FIELDS, apply_parameters, initialize_parameters,
                                       parameter_value, validate_zeff)
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolved_scan_axes
-from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, submission_pending, text_output as output_to_text
+from OMFITlib_cgyro_run_state import (quote as shell_quote, refresh_run_state, submission_pending,
+                                    text_output as output_to_text, uncollected_job)
 from OMFITlib_cgyro_queue import advancing_batch, collection_done, pending_runs, save_current, wait_current
 from OMFITlib_cgyro_retry import execute_submission, retry_limit
 from OMFITlib_cgyro_continue import (archived_case, checkpoint_details, continuation_plan,
@@ -270,6 +271,9 @@ if submission_pending(previous_manifest):
 if not batch_id and pending_runs(root):
     raise ValueError('The queued CGYRO batch still needs synchronization or collection before another run.')
 previous_status = previous_manifest.get('status', None)
+if uncollected_job(previous_manifest) and not advancing_batch(root, batch_id):
+    raise ValueError('The previous CGYRO job has not been collected. Collect its outputs before starting another run, '
+                     'including after scheduler failure or cancellation.')
 previous_failed = previous_status in ('failed', 'cancelled') or (
     previous_status == 'submitted_or_finished' and bool(previous_manifest.get('failed_points', [])))
 if previous_manifest and not collection_done(previous_manifest) and not previous_failed and not advancing_batch(root, batch_id):
@@ -461,7 +465,8 @@ if scheduler not in ['local', 'pbs', 'slurm']:
     config_error('Selected scheduler must be local, pbs, or slurm')
 if local_submit != (scheduler == 'local'):
     config_error('localhost and local scheduler must be selected together')
-cpus_per_task = int(cfg_get(server_setup, 'cpus_per_task', cfg_get(setup, 'cpus_per_task', 1)))
+cpus_per_task = (execution['threads'] if execution is not None else
+                 int(cfg_get(server_setup, 'cpus_per_task', cfg_get(setup, 'cpus_per_task', 1))))
 if cpus_per_task < 1:
     config_error('cpus_per_task must be a positive integer')
 manifest['scheduler'] = scheduler

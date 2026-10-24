@@ -16,6 +16,7 @@ import zipfile
 
 PACKAGE = None  # Filled by build_maintenance_commandbox.py.
 PAYLOAD = None  # Filled by build_maintenance_commandbox.py.
+RUN_MAINTENANCE = True  # Filled by build_maintenance_commandbox.py.
 
 
 def verified_bytes():
@@ -75,6 +76,10 @@ def maintain(omfit):
             if archive.testzip() is not None:
                 raise ValueError('Maintenance package CRC failed; project unchanged')
         install(omfit, code, directory)
+    if not RUN_MAINTENANCE:
+        print('Code update completed. Reopen the CGYRO workbench, then use Results / Recover by job ID.')
+        print('Existing inputs, results and settings were kept. Save the project to retain this update.')
+        return dict(installed=PACKAGE['version'], maintenance=False)
     node = omfit['CGYRO_TGLF_scan']['CGYRO_scan']
     api = node['LIB']['OMFITlib_cgyro_storage'].importCode(_relLoc=dict(root=node))
     print('Checking archive references, replacement coverage and checkpoints ...')

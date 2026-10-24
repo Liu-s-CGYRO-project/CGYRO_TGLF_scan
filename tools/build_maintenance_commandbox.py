@@ -16,7 +16,7 @@ from OMFITlib_template_archive import Project
 from OMFITlib_template_service import new_file
 
 
-def build(project, output):
+def build(project, output, *, install_only=False):
     data = Path(project).read_bytes()
     if not 0 < len(data) < MAX_PROJECT_PACKAGE_BYTES:
         raise ValueError('Expected a code-only project smaller than 2 MiB')
@@ -42,6 +42,10 @@ def build(project, output):
     if source.count(package_marker) != 1 or source.count(payload_marker) != 1:
         raise ValueError('Unexpected maintenance source markers')
     source = source.replace(package_marker, 'PACKAGE = ' + repr(package))
+    mode_marker = 'RUN_MAINTENANCE = True  # Filled by build_maintenance_commandbox.py.'
+    if source.count(mode_marker) != 1:
+        raise ValueError('Unexpected maintenance mode marker')
+    source = source.replace(mode_marker, 'RUN_MAINTENANCE = ' + repr(not install_only))
     encoded = base64.b85encode(data).decode('ascii')
     payload = 'PAYLOAD = (\n' + ''.join('    b' + repr(line) + '\n' for line in textwrap.wrap(
         encoded, 100, break_on_hyphens=False, drop_whitespace=False)) + ')'
@@ -59,5 +63,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--project', required=True)
     parser.add_argument('--output', required=True)
+    parser.add_argument('--install-only', action='store_true', help='Update code while keeping data; do not run archive consolidation')
     args = parser.parse_args()
-    print(json.dumps(build(args.project, args.output), indent=2))
+    print(json.dumps(build(args.project, args.output, install_only=args.install_only), indent=2))

@@ -33,6 +33,7 @@ class CgyroPage:
         self.ui.Tab('计算参数')
         self.render_cgyro_parameters(node, rows)
         self.ui.Tab('结果与记录')
+        self.render_cgyro_recovery(node)
         manifest = node.get('RUN_MANIFEST', {})
         queued = queue_records(node)
         if queued:
@@ -54,6 +55,23 @@ class CgyroPage:
                              help='只读取、归档已有输出；运行中的案例提示后跳过。需要补算时，进入下方“选择点续算”。')
         ResultBrowser(self.root, self.ui, continue_callback=self.actions.continue_cgyro).render(title=False)
         self.nav('对比绘图（可选）', 'plots')
+
+    def render_cgyro_recovery(self, node):
+        """Available even in an empty reopened project after a desktop timeout."""
+        self.settings.setdefault('cgyro_recovery_job', '')
+        self.settings.setdefault('cgyro_recovery_manifest', '')
+        self.settings.setdefault('cgyro_recovery_advanced', False)
+        remote = node['SETTINGS'].get('REMOTE_SETUP', {})
+        self.ui.Separator('恢复已提交的作业')
+        self.label('服务器：' + str(remote.get('serverPicker', '') or '请先配置运行服务器'))
+        with self.ui.same_row():
+            self.ui.Entry(self.prefix + "['cgyro_recovery_job']", '主作业号', width=14, updateGUI=False)
+            self.ui.Button('按作业号恢复', self.actions.recover_cgyro_job, updateGUI=True)
+        self.ui.CheckBox(self.prefix + "['cgyro_recovery_advanced']", '指定旧清单位置（可选）', updateGUI=True)
+        if self.settings['cgyro_recovery_advanced']:
+            self.ui.Entry(self.prefix + "['cgyro_recovery_manifest']", '服务器上的 manifest.json',
+                          width=50, updateGUI=False, help='通常无需填写；自动查找失败时使用原 OMFIT 暂存目录中的清单绝对路径。')
+        self.label('OMFIT 意外退出后，按原作业号接回状态与收集入口。')
 
     def render_cgyro_scan_tabs(self):
         node = read(self.root, MODULES['cgyro'])

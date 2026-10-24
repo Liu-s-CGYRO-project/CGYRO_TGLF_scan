@@ -12,7 +12,7 @@ import math
 import re
 from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, case_sources, clean_run_id,
                                    grouped_case_path, install_case, output_final_time, scan_branch, store_scan)
-from OMFITlib_cgyro_db import PENDING, STATE, ensure_layout, metadata_value, run_records
+from OMFITlib_cgyro_db import PENDING, STATE, ensure_layout, metadata_value, rollback_actions, run_records
 
 
 def _point(case, path):
@@ -215,10 +215,24 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
     original = {key: db[key] for key in public}
     old_pending, old_state = db.get(PENDING, missing), db.get(STATE, missing)
     try:
-        for key in public:
-            del db[key]
+        # Install every replacement/recovery entry before removing legacy
+        # names. An early Abort must not leave their only index off-tree, even
+        # if a later native assignment rejects restoring the original name.
+        # Keep recovered old pending sources in this transitional view until
+        # every new public plan is reachable. Replacing PENDING immediately by
+        # its final filtered view could otherwise orphan its only source when
+        # native assignment mutates the tree and then raises Abort.
+        transition = factory()
+        transition.update(pending)
+        if old_pending is not missing:
+            for key, source in metadata_value(old_pending).items():
+                _retain_pending(transition, key, source)
+        db[PENDING] = transition
         for key, run in plans.items():
             db[key] = run
+        for key in public:
+            if key not in plans:
+                del db[key]
         retained = factory()
         retained.update(pending)
         db[PENDING] = retained
@@ -226,16 +240,30 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
         state.update(dict({} if old_state is missing else old_state))
         state.update(dict(version=max(6, state.get('version', 0)), case_layout='radius-scans'))
         db[STATE] = state
-    except BaseException:
-        for key in plans:
-            db.pop(key, None)
-        for key, value in original.items():
-            db[key] = value
-        for key, value in ((PENDING, old_pending), (STATE, old_state)):
-            if value is missing:
-                db.pop(key, None)
-            else:
-                db[key] = value
+    except BaseException as original_error:
+        # Do not remove a replacement before restoring its original branch:
+        # native assignment can itself fail during rollback. Continue all
+        # independent restorations and propagate the initial Abort unchanged.
+        actions = [(key, lambda key=key, value=value: db.__setitem__(key, value))
+                   for key, value in original.items()]
+        errors = rollback_actions(original_error, actions)
+        if not errors:
+            # A previously unclassified case can itself be the only source
+            # of a new public run. Restore that source before removing its
+            # replacement, and retain the replacement if this write fails.
+            errors = rollback_actions(original_error, [(PENDING,
+                (lambda: db.pop(PENDING, None)) if old_pending is missing else
+                (lambda: db.__setitem__(PENDING, old_pending)))])
+        if not errors:
+            # A renamed archive (for example Jet [partial ...] -> Jet) may be
+            # the sole remaining index when restoration of its old name fails.
+            # Its replacement and pending legacy entries must then survive;
+            # otherwise a later reachability prune would discard their owners.
+            actions = [(key, lambda key=key: db.pop(key, None))
+                       for key in plans if key not in original]
+            rollback_actions(original_error, actions)
+        rollback_actions(original_error, [(STATE, (lambda: db.pop(STATE, None)) if old_state is missing else
+                        (lambda: db.__setitem__(STATE, old_state)))])
         raise
     return dict(recovered=recovered, unresolved=issues,
                 grouped_cases=len(validated) if not grouped_before else 0)

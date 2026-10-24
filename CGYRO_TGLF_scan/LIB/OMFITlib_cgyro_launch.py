@@ -17,6 +17,35 @@ _WORD = re.compile(r'''(?:[^\s"'\\]|\\.|"(?:[^"\\]|\\.)*"|'[^']*')+''')
 _MANAGED = ('-n', '-nomp', '-numa', '-mpinuma')
 
 
+def _has_inline_control(raw):
+    """Recognize shell operators even when adjacent to a path/argument.
+
+    Decoded shlex words lose the distinction between a quoted semicolon in a
+    filename and a shell separator. Inspect raw quoting instead; redirections
+    such as ``2>&1`` remain valid and belong to the single solver invocation.
+    """
+    text, quote, escaped = ' '.join(raw), '', False
+    for index, char in enumerate(text):
+        if escaped:
+            escaped = False
+            continue
+        if char == '\\' and quote != "'":
+            escaped = True
+            continue
+        if quote:
+            if char == quote:
+                quote = ''
+            continue
+        if char in ('"', "'"):
+            quote = char
+        elif char in (';', '|'):
+            return True
+        elif char == '&' and not (index and text[index - 1] in ('<', '>')):
+            if text[index + 1:index + 2] != '>':
+                return True
+    return False
+
+
 def _invocation(command):
     lines = str(command).strip().splitlines()
     matches = [(index, line) for index, line in enumerate(lines) if _CALL.match(line)]
@@ -28,7 +57,7 @@ def _invocation(command):
     comment = next((i for i, word in enumerate(raw) if word.startswith('#')), len(raw))
     tail, raw = raw[comment:], raw[:comment]
     words = [shlex.split(word)[0] for word in raw]
-    if '-e' not in words or any(word in (';', '&&', '||', '|') for word in words):
+    if '-e' not in words or _has_inline_control(raw):
         raise ValueError('CGYRO command must use cgyro -e without inline shell control operators.')
     return lines, index, raw, words, tail
 
@@ -99,6 +128,7 @@ def launch_spec(config, setup=None):
         actual = command_layout(config.get('executable', ''))
         config = dict(config)
         config.update(dict(nodes=1, ntasks_per_node=actual['mpi_ranks']))
+        config.setdefault('cpus_per_task', actual['threads'])
     nodes = _positive(config.get('nodes', setup.get('num_nodes', 1)), 'nodes')
     per_node = config.get('ntasks_per_node', setup.get('num_cores', 1))
     per_node = _positive(per_node, 'MPI ranks per node')

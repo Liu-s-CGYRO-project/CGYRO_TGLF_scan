@@ -196,10 +196,23 @@ class OMFITSession:
         self.save_as(backup)
         try:
             self.omfit.load(str(target))
-        except Exception as exc:
+        except BaseException as exc:
+            # Native load can replace nodes before OMFIT Abort raises a
+            # KeyboardInterrupt. Restore for that path as well, then preserve
+            # the original interruption (including a second Abort in recovery).
+            failures = []
             try:
                 self.omfit.load(str(backup))
-            except Exception:
-                raise TemplateError('打开失败，自动恢复也未成功。请在 OMFIT 重新打开会话备份：' + str(backup)) from exc
-            raise TemplateError('打开失败，已从会话备份恢复：' + str(backup)) from exc
+            except BaseException as rollback:
+                failures.append(dict(step='project backup', error=type(rollback).__name__ + ': ' + str(rollback)))
+            setattr(exc, 'template_backup_path', str(backup))
+            setattr(exc, 'template_rollback_errors', failures)
+            if not isinstance(exc, Exception):
+                raise
+            message = ('打开失败，自动恢复也未成功。请在 OMFIT 重新打开会话备份：' if failures
+                       else '打开失败，已从会话备份恢复：')
+            failure = TemplateError(message + str(backup))
+            failure.template_backup_path = str(backup)
+            failure.template_rollback_errors = failures
+            raise failure from exc
         return str(backup)

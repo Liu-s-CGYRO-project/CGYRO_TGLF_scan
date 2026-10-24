@@ -5,8 +5,10 @@ import gzip
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -165,6 +167,40 @@ class IncrementalTest(unittest.TestCase):
         (Path(installed) / 'OMFITtemplates/launch.py').write_bytes(b'TAMPERED')
         with self.assertRaises(TemplateError):
             active_launch(self.updates)
+
+    def test_stale_activation_rollback_preserves_other_window(self):
+        installed = install_incremental(self.client, self.plan(), self.updates)
+        first = activate_installation(installed, self.updates, receipt=True)
+        # Even activating the same installation again belongs to a different
+        # window/transaction; comparing paths alone would miss this ABA case.
+        second = activate_installation(installed, self.updates, receipt=True)
+        current = (self.updates / 'active.json').read_bytes()
+        with self.assertRaisesRegex(TemplateError, '其他窗口'):
+            restore_activation(first, self.updates)
+        self.assertEqual((self.updates / 'active.json').read_bytes(), current)
+        restore_activation(second, self.updates)
+        self.assertEqual((self.updates / 'active.json').read_bytes(), first.installed)
+        restore_activation(first, self.updates)
+        self.assertIsNone(active_launch(self.updates))
+
+    def test_activation_lock_is_shared_between_processes(self):
+        from OMFITlib_template_incremental import _activation_lock
+        source = ('from pathlib import Path\n'
+                  'from OMFITlib_template_incremental import _activation_lock\n'
+                  'from OMFITlib_template_archive import TemplateError\n'
+                  'import sys\n'
+                  'try:\n'
+                  '    with _activation_lock(Path(sys.argv[1])): pass\n'
+                  'except TemplateError:\n'
+                  '    sys.exit(3)\n')
+        environment = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / 'LIB'))
+        with _activation_lock(self.updates):
+            result = subprocess.run([sys.executable, '-B', '-c', source, str(self.updates)],
+                                    env=environment, capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 3, result.stderr.decode('utf-8', 'replace'))
+        # Closing the owner's descriptor releases the lock after failures too.
+        with _activation_lock(self.updates):
+            pass
 
     def test_current_symlink_is_downloaded_instead_of_followed(self):
         source = self.old / 'OMFITtemplates/help.rst'

@@ -499,6 +499,27 @@ class StorageCases(unittest.TestCase):
         self.assertEqual(destination['__TASKS__']['p000003']['source_point_id'], 'p000001')
         self.assertEqual(destination['__TASKS__']['p000003']['run_token'], 'old_ids')
 
+    def test_nonfinite_final_time_cannot_replace_a_completed_coordinate(self):
+        root = {}
+        old = self.indexed_scan(root, 'finite_old', 'T', values=(16,), ky_count=1)
+        new = self.indexed_scan(root, 'nonfinite_new', 'T', values=(16,), ky_count=1)
+        old_row, new_row = old['__TASKS__']['p000001'], new['__TASKS__']['p000001']
+        old_row.update(final_time=0, status='loaded', resume_pending=False)
+        new_row.update(status='partial', resume_pending=True)
+        branch, tasks = old['N_THETA'], old['__TASKS__']
+        for value in (float('nan'), float('inf'), -float('inf')):
+            with self.subTest(final_time=value):
+                new_row['final_time'] = value
+                with self.assertRaisesRegex(ValueError, 'Non-finite archived final time'):
+                    archive_api.store_scan(old, new, new['__INFO__'], new['__TASKS__'])
+                self.assertIs(old['N_THETA'], branch)
+                self.assertIs(old['__TASKS__'], tasks)
+                self.assertEqual(old_row['final_time'], 0)
+        # A finite zero is a valid sample, not a missing-time sentinel.
+        new_row.update(final_time=0, status='loaded', resume_pending=False)
+        archive_api.store_scan(old, new, new['__INFO__'], new['__TASKS__'])
+        self.assertEqual(old['__TASKS__']['p000001']['run_token'], 'nonfinite_new')
+
     def test_grouping_abort_restores_original_public_catalog(self):
         root = {}
         case = self.indexed_scan(root, 'abort_grouping', 'T', values=(16,), ky_count=1)
@@ -520,6 +541,131 @@ class StorageCases(unittest.TestCase):
         self.assertIs(root['RUN_DB']['Jet'], original)
         self.assertIs(root['RUN_DB'][db_api.STATE], state)
         storage.resolve_result(root, case['N_THETA']['16']['lin']['0.01'])
+
+    def test_recovery_rollback_restores_other_catalogs_after_one_restore_fails(self):
+        root = {}
+        case = self.indexed_scan(root, 'recover_rollback', 'T', values=(16,), ky_count=1)
+        cid = case['__INFO__']['case_id']
+        original = {cid: case}
+        other = self.indexed_scan(root, 'recover_other', 'D', values=(16,), ky_count=1)
+        other['__INFO__']['runid'] = 'Other'
+        original_other = {other['__INFO__']['case_id']: other}
+        previous_state = root['RUN_DB'][db_api.STATE]
+        previous_pending = {}
+        original_abort = KeyboardInterrupt('Abort after recovery installation')
+        class FailingDB(dict):
+            def __setitem__(self, key, value):
+                if key == 'Jet' and value is original:
+                    raise OSError('Jet restoration rejected')
+                super().__setitem__(key, value)
+                if key == db_api.STATE and value is not previous_state:
+                    raise original_abort
+        db = FailingDB(root['RUN_DB'])
+        dict.update(db, Jet=original, Other=original_other)
+        dict.__setitem__(db, db_api.PENDING, previous_pending)
+        root['RUN_DB'] = db
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            storage.recover_archives(root, storage.resolve_result)
+        self.assertIs(caught.exception, original_abort)
+        self.assertIs(db['Other'], original_other)
+        self.assertIs(db[db_api.STATE], previous_state)
+        self.assertEqual(db[db_api.PENDING], previous_pending)
+        self.assertIn('Jet restoration rejected', original_abort.cgyro_rollback_errors[0])
+        # The replacement that could not be undone still resolves its owner.
+        storage.resolve_result(root, db['Jet']['nr=1_rho=0.33']['T']['N_THETA']['16']['lin']['0.01'])
+
+    def test_failed_renamed_archive_rollback_keeps_public_and_private_owners_reachable(self):
+        for abort_stage in ('source_removal', 'state_assignment'):
+            with self.subTest(abort_stage=abort_stage):
+                root = {}
+                case = self.indexed_scan(root, 'renamed_' + abort_stage, 'T', values=(16,), ky_count=1)
+                private = storage.store_result(root, self.result('private_' + abort_stage, b'private'))
+                case['__CUSTOM__'] = private
+                original = {case['__INFO__']['case_id']: case}
+                old_name = 'Jet [partial abcd]'
+                previous_state = root['RUN_DB'][db_api.STATE]
+                original_abort = KeyboardInterrupt('Abort after ' + abort_stage)
+
+                class FailingDB(dict):
+                    def __delitem__(self, key):
+                        super().__delitem__(key)
+                        if key == old_name and abort_stage == 'source_removal':
+                            raise original_abort
+                    def __setitem__(self, key, value):
+                        if key == old_name and value is original:
+                            raise OSError('old archive name restoration rejected')
+                        super().__setitem__(key, value)
+                        if key == db_api.STATE and value is not previous_state and abort_stage == 'state_assignment':
+                            raise original_abort
+
+                db = FailingDB(root['RUN_DB'])
+                dict.__setitem__(db, old_name, original)
+                dict.__setitem__(db, db_api.PENDING, {})
+                root['RUN_DB'] = db
+                with self.assertRaises(KeyboardInterrupt) as caught:
+                    storage.recover_archives(root, storage.resolve_result)
+                self.assertIs(caught.exception, original_abort)
+                self.assertNotIn(old_name, db)
+                result = db['Jet']['nr=1_rho=0.33']['T']['N_THETA']['16']['lin']['0.01']
+                storage.resolve_result(root, result)
+                self.assertIn(private, list(db[db_api.PENDING].values()))
+                self.assertEqual(storage.prune_storage(root), 0)
+                self.assertEqual(len(storage.result_pool(root)), 2)
+                self.assertIn('old archive name restoration rejected', original_abort.cgyro_rollback_errors[0])
+
+    def test_failed_pending_restore_keeps_its_new_public_archive_reachable(self):
+        for after_write in (False, True):
+            with self.subTest(after_write=after_write):
+                root = {}
+                case = self.indexed_scan(root, 'pending_restore_' + str(after_write), 'T', values=(16,), ky_count=1)
+                previous_pending = {'legacy_case': case}
+                previous_state = root['RUN_DB'][db_api.STATE]
+                original_abort = KeyboardInterrupt('Abort after pending recovery')
+                class FailingDB(dict):
+                    def __setitem__(self, key, value):
+                        if key == db_api.PENDING and value is previous_pending:
+                            if after_write:
+                                super().__setitem__(key, value)
+                            raise OSError('old pending restoration rejected')
+                        super().__setitem__(key, value)
+                        if key == db_api.STATE and value is not previous_state:
+                            raise original_abort
+                db = FailingDB(root['RUN_DB'])
+                dict.__setitem__(db, db_api.PENDING, previous_pending)
+                root['RUN_DB'] = db
+                with self.assertRaises(KeyboardInterrupt) as caught:
+                    storage.recover_archives(root, storage.resolve_result)
+                self.assertIs(caught.exception, original_abort)
+                result = db['Jet']['nr=1_rho=0.33']['T']['N_THETA']['16']['lin']['0.01']
+                storage.resolve_result(root, result)
+                self.assertEqual(storage.prune_storage(root), 0)
+                self.assertEqual(len(storage.result_pool(root)), 1)
+                self.assertIn('old pending restoration rejected', original_abort.cgyro_rollback_errors[0])
+
+    def test_first_pending_write_abort_keeps_its_source_before_public_installation(self):
+        root = {}
+        case = self.indexed_scan(root, 'pending_first_write', 'T', values=(16,), ky_count=1)
+        previous_pending = {'legacy_case': case}
+        original_abort = KeyboardInterrupt('Abort after transitional pending assignment')
+        class FailingDB(dict):
+            def __setitem__(self, key, value):
+                if key == db_api.PENDING:
+                    if value is previous_pending:
+                        raise OSError('old pending restoration rejected')
+                    super().__setitem__(key, value)
+                    raise original_abort
+                super().__setitem__(key, value)
+        db = FailingDB(root['RUN_DB'])
+        dict.__setitem__(db, db_api.PENDING, previous_pending)
+        root['RUN_DB'] = db
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            storage.recover_archives(root, storage.resolve_result)
+        self.assertIs(caught.exception, original_abort)
+        self.assertNotIn('Jet', db)
+        self.assertIs(db[db_api.PENDING]['legacy_case'], case)
+        self.assertEqual(storage.prune_storage(root), 0)
+        self.assertEqual(len(storage.result_pool(root)), 1)
+        self.assertIn('old pending restoration rejected', original_abort.cgyro_rollback_errors[0])
 
     def test_unknown_public_name_never_overwrites_retained_source(self):
         root = {}
@@ -654,6 +800,62 @@ class StorageCases(unittest.TestCase):
         self.assertEqual(saved['run_token'], 'ancestor')
         self.assertEqual(cases, {})
         self.assertEqual(continuation.archived_case(root, 'ancestor')[:2], ('Jet', cid))
+
+    def test_freeze_preserves_submission_script_when_target_assignment_aborts(self):
+        for error_type, after_write in ((KeyboardInterrupt, False), (KeyboardInterrupt, True),
+                                       (OSError, False), (OSError, True)):
+            with self.subTest(error_type=error_type.__name__, after_write=after_write):
+                original_error = error_type('frozen input assignment interrupted')
+                class RejectInput(dict):
+                    def __setitem__(self, key, value):
+                        if after_write:
+                            super().__setitem__(key, value)
+                        raise original_error
+                manifest = dict(run_token='freeze')
+                script = OMFITpath(self.base / 'scan.pbs')
+                Path(script.filename).write_text('#!/bin/bash\n', encoding='utf-8')
+                cases, inputs = {'scan.pbs': script}, RejectInput()
+                root = {'RUN_DB': {db_api.STATE: dict(version=db_api.STORAGE_SCHEMA_VERSION),
+                    db_api.RUNS: {'freeze': dict(manifest=manifest, cases=cases, inputs=inputs)}}}
+                with self.assertRaises(error_type) as caught:
+                    db_api.freeze_run_inputs(root, manifest)
+                self.assertIs(caught.exception, original_error)
+                self.assertIs(cases['scan.pbs'], script)
+                self.assertEqual(inputs, {'scan.pbs': script} if after_write else {})
+
+    def test_successful_freeze_moves_script_without_copying_it(self):
+        manifest = dict(run_token='freeze')
+        script = OMFITpath(self.base / 'scan.pbs')
+        record = dict(manifest=manifest, cases={'scan.pbs': script})
+        root = {'RUN_DB': {db_api.STATE: dict(version=db_api.STORAGE_SCHEMA_VERSION),
+                          db_api.RUNS: {'freeze': record}}}
+        db_api.freeze_run_inputs(root, manifest)
+        self.assertEqual(record['cases'], {})
+        self.assertEqual(set(record['inputs']), {'scan.pbs'})
+        self.assertIs(record['inputs']['scan.pbs'], script)
+
+    def test_freeze_keeps_destination_if_source_removal_aborts(self):
+        original_abort = KeyboardInterrupt('source removal interrupted')
+        class AbortOnRemoval(dict):
+            def pop(self, key, *args):
+                super().pop(key, *args)
+                raise original_abort
+        manifest = dict(run_token='freeze')
+        script = OMFITpath(self.base / 'scan.pbs')
+        cases = AbortOnRemoval({'scan.pbs': script})
+        record = dict(manifest=manifest, cases=cases)
+        root = {'RUN_DB': {db_api.STATE: dict(version=db_api.STORAGE_SCHEMA_VERSION),
+                          db_api.RUNS: {'freeze': record}}}
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            db_api.freeze_run_inputs(root, manifest)
+        self.assertIs(caught.exception, original_abort)
+        self.assertIs(record['inputs']['scan.pbs'], script)
+
+    def test_freeze_missing_token_does_not_create_a_placeholder_run(self):
+        root = {}
+        with self.assertRaisesRegex(ValueError, 'Missing frozen CGYRO run token'):
+            db_api.freeze_run_inputs(root, {})
+        self.assertEqual(root, {})
 
     def test_retired_snapshot_rejects_stale_current_and_history_dialogs(self):
         manifest = dict(run_token='retired', collection_status='partial')
@@ -1112,6 +1314,129 @@ class StorageCases(unittest.TestCase):
         self.assertIs(root['RUN_HISTORY'], history)
         self.assertNotIn('RESULT_STORE', root)
         self.assertNotIn('RESULT_STORAGE', root)
+
+    def test_layout_rollback_restores_other_branches_after_state_restore_fails(self):
+        cases = {'case': {'point': self.result('layout_rollback')}}
+        previous_state = {'version': 0}
+        original_abort = KeyboardInterrupt('Abort after removing legacy Cases')
+
+        class RejectStateRestore(dict):
+            def __setitem__(self, key, value):
+                if key == db_api.STATE and value is previous_state:
+                    raise OSError('state restore rejected')
+                super().__setitem__(key, value)
+
+        class AbortAfterRemoval(dict):
+            def pop(self, key, *args):
+                value = super().pop(key, *args)
+                if key == 'Cases':
+                    raise original_abort
+                return value
+
+        db = RejectStateRestore({db_api.STATE: previous_state})
+        history = {'old': {'manifest': {'status': 'published'}}}
+        root = AbortAfterRemoval(RUN_DB=db, Cases=cases, RUN_HISTORY=history)
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            db_api.ensure_layout(root)
+        self.assertIs(caught.exception, original_abort)
+        self.assertIs(root['Cases'], cases)
+        self.assertIs(root['RUN_HISTORY'], history)
+        self.assertNotIn(db_api.LEGACY, db)
+        self.assertNotIn(db_api.RUNS, db)
+        self.assertIn('state restore rejected', original_abort.cgyro_rollback_errors[0])
+
+    def test_migration_rejects_different_same_token_snapshots_before_writing(self):
+        for source in ('RUN_HISTORY', 'Cases'):
+            with self.subTest(source=source):
+                original = {'p000001': {reference_api.REF: 'a' * 64}}
+                incoming = {'p000002': {reference_api.REF: 'b' * 64}}
+                manifest = dict(run_token='same', case_tag='case')
+                record = dict(manifest=manifest, cases=original)
+                db = {db_api.STATE: dict(version=db_api.STORAGE_SCHEMA_VERSION),
+                      db_api.RUNS: {'same': record}}
+                root = dict(RUN_DB=db, RUN_MANIFEST=manifest)
+                old_source = ({'same': dict(manifest=manifest, cases=incoming)} if source == 'RUN_HISTORY'
+                              else {'case': incoming})
+                root[source] = old_source
+                with self.assertRaisesRegex(ValueError, 'Conflicting CGYRO case snapshots'):
+                    db_api.ensure_layout(root)
+                self.assertIs(root['RUN_DB'], db)
+                self.assertIs(db[db_api.RUNS]['same'], record)
+                self.assertIs(record['cases'], original)
+                self.assertIs(root[source], old_source)
+
+    def test_migration_accepts_equivalent_reference_snapshots_without_loading(self):
+        original = {'p000001': {reference_api.REF: 'a' * 64}}
+        incoming = copy.deepcopy(original)
+        manifest = dict(run_token='same', case_tag='case')
+        root = dict(RUN_DB={db_api.STATE: dict(version=db_api.STORAGE_SCHEMA_VERSION),
+                            db_api.RUNS: {'same': dict(manifest=manifest, cases=original)}},
+                    RUN_MANIFEST=manifest,
+                    RUN_HISTORY={'same': dict(manifest=manifest, cases=incoming)},
+                    Cases={'case': copy.deepcopy(original)})
+        db_api.ensure_layout(root)
+        self.assertEqual(db_api.run_cases(root), original)
+        self.assertNotIn('Cases', root)
+        self.assertNotIn('cases', root['RUN_HISTORY']['same'])
+
+    def test_compaction_rollback_preserves_new_owners_if_branch_restore_fails(self):
+        for reject_restore in (False, True):
+            with self.subTest(reject_restore=reject_restore):
+                first = {'result': self.result('compact_first_' + str(reject_restore), b'first')}
+                second = {'result': self.result('compact_second_' + str(reject_restore), b'second')}
+                previous_state = dict(version=db_api.STORAGE_SCHEMA_VERSION,
+                                      checkpoint_policy=storage.CHECKPOINT_POLICY_VERSION)
+                original_abort = KeyboardInterrupt('Abort after compaction state assignment')
+
+                class FailingDB(dict):
+                    def __setitem__(self, key, value):
+                        if key == 'Jet' and value is first and reject_restore:
+                            raise OSError('public branch restore rejected')
+                        super().__setitem__(key, value)
+                        if key == db_api.STATE and value is not previous_state:
+                            raise original_abort
+
+                db = FailingDB(Jet=first, Other=second)
+                dict.__setitem__(db, db_api.STATE, previous_state)
+                root = {'RUN_DB': db}
+                with self.assertRaises(KeyboardInterrupt) as caught:
+                    storage.compact_storage(root)
+                self.assertIs(caught.exception, original_abort)
+                self.assertIs(db['Other'], second)
+                self.assertIs(db[db_api.STATE], previous_state)
+                if reject_restore:
+                    owned = storage.resolve_result(root, db['Jet']['result'])
+                    self.assertEqual((Path(owned.filename) / 'out.cgyro.freq').read_bytes(), b'first')
+                    self.assertIn('public branch restore rejected', original_abort.cgyro_rollback_errors[0])
+                else:
+                    self.assertIs(db['Jet'], first)
+                    self.assertEqual(storage.result_pool(root), {})
+
+    def test_layout_keeps_migrated_payload_if_original_location_cannot_be_restored(self):
+        result = self.result('migration_remaining_owner')
+        cases = {'case': {'point': result}}
+        original_abort = KeyboardInterrupt('Abort after removing the original owner')
+
+        class RejectOriginalRestore(dict):
+            def pop(self, key, *args):
+                value = super().pop(key, *args)
+                if key == 'Cases':
+                    raise original_abort
+                return value
+            def __setitem__(self, key, value):
+                if key == 'Cases':
+                    raise OSError('original location is not writable')
+                super().__setitem__(key, value)
+
+        root = RejectOriginalRestore(Cases=cases)
+        with self.assertRaises(KeyboardInterrupt) as caught:
+            db_api.ensure_layout(root)
+        self.assertIs(caught.exception, original_abort)
+        self.assertNotIn('Cases', root)
+        retained = root['RUN_DB'][db_api.LEGACY]['Cases']['case']['point']
+        self.assertIs(retained, result)
+        self.assertTrue(Path(retained.filename).is_dir())
+        self.assertIn('original location is not writable', original_abort.cgyro_rollback_errors[0])
 
     def test_dangling_index_prevents_pruning_any_owner(self):
         bundle, _ = self.bundle('dangling', zip_only=True)

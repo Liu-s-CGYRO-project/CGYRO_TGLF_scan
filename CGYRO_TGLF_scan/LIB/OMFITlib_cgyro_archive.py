@@ -254,6 +254,22 @@ def _at(data, path):
     return data
 
 
+def _finite_final_time(row):
+    """Unknown time is allowed; non-finite metadata cannot prove progress.
+
+    In particular, every comparison with NaN is false, which would otherwise
+    let a partial recollection bypass the guard protecting a completed point.
+    Validate before changing any public scan or replacing its task index.
+    """
+    value = row.get('final_time', None)
+    if value is None:
+        return None
+    value = float(value)
+    if not math.isfinite(value):
+        raise ValueError('Non-finite archived final time; existing results are preserved')
+    return value
+
+
 def _install_point(payload, path, result, factory):
     """Reuse existing numeric keys so mixed float spelling cannot split curves."""
     node, actual = payload, []
@@ -298,6 +314,7 @@ def store_scan(destination, data, info, tasks, factory=dict, prefer_progress=Fal
         old_info, old_tasks = existing[key]
         for point, source in old_tasks.items():
             row = deepcopy(dict(metadata_value(source)))
+            _finite_final_time(row)
             row.setdefault('run_token', old_info.get('run_token', ''))
             coordinate = point_coordinate(row)
             if coordinate in points:
@@ -309,6 +326,7 @@ def store_scan(destination, data, info, tasks, factory=dict, prefer_progress=Fal
         saved_info['scan_axes'] = axes
     for point, source in metadata_value(tasks).items():
         row = deepcopy(dict(metadata_value(source)))
+        _finite_final_time(row)
         coordinate = point_coordinate(row)
         if coordinate in incoming:
             raise ValueError('Duplicate coordinate in incoming scan')
@@ -321,7 +339,7 @@ def store_scan(destination, data, info, tasks, factory=dict, prefer_progress=Fal
             old_point, old_row, old_result, _ = points[coordinate]
             old_complete = point_complete(old_row, legacy_default=True)
             new_complete = point_complete(row, legacy_default=True)
-            old_time, new_time = old_row.get('final_time', None), row.get('final_time', None)
+            old_time, new_time = _finite_final_time(old_row), _finite_final_time(row)
             if ((old_complete and not new_complete and
                     (old_time is None or new_time is None or float(new_time) <= float(old_time))) or
                     (not old_complete and not new_complete and old_time is not None

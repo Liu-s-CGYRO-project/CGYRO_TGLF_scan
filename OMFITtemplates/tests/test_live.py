@@ -1,13 +1,16 @@
 """Live updates: object identity, native-style expressions, rollback and stale plans."""
 import copy
+import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
 import threading
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock
+import zipfile
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'LIB'))
 from OMFITlib_template_archive import parse_tree, tree_bytes, TemplateError
@@ -113,6 +116,41 @@ class LiveTest(unittest.TestCase):
     def plan(self, settings='keep', data='keep'):
         prepared = Prepared(self.with_examples if data == 'examples' else self.template, data, settings)
         return self.session.preview_live(prepared)
+
+    def test_empty_directory_staging_obeys_host_path_boundary(self):
+        relative = r'..\outside'
+        template = self.directory / 'empty-directory.omfittpl.zip'
+        with zipfile.ZipFile(self.template) as archive:
+            entries = {info.filename: archive.read(info) for info in archive.infolist()}
+        records = parse_tree(entries['payload/OMFITsave.txt'])
+        records.append(row(['Demo', 'SCRIPTS', 'directory'], 'OMFITtree', relative))
+        data = entries['payload/OMFITsave.txt'] = tree_bytes(records)
+        manifest = json.loads(entries['manifest.json'])
+        manifest['files']['OMFITsave.txt'].update(bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+        entries['manifest.json'] = json.dumps(manifest).encode('utf-8')
+        entries['payload/' + relative + '/'] = b''
+        with zipfile.ZipFile(template, 'w') as archive:
+            for name, data in entries.items():
+                info = zipfile.ZipInfo(name)
+                # Reproduce a Linux-written ZIP verbatim on Windows, whose
+                # ZipInfo constructor otherwise rewrites literal backslashes.
+                info.filename = info.orig_filename = name
+                archive.writestr(info, data)
+        stage = self.directory / 'stage'
+        stage.mkdir()
+        with patch('OMFITlib_template_live.tempfile.mkdtemp', return_value=str(stage)):
+            if os.name == 'nt':
+                with self.assertRaisesRegex(TemplateError, '暂存目录'):
+                    Prepared(template)
+                self.assertFalse((self.directory / 'outside').exists())
+                self.assertFalse(stage.exists())
+            else:
+                # Linux ZIPs can intentionally use literal backslashes. Do not
+                # rewrite or reject their names merely to emulate Windows.
+                prepared = Prepared(template)
+                self.addCleanup(prepared.discard)
+                self.assertTrue((stage / relative).is_dir())
+                self.assertFalse((self.directory / 'outside').exists())
 
     def test_patch_retains_live_unsaved_results_module_and_settings_identities(self):
         module = self.omfit['Demo']

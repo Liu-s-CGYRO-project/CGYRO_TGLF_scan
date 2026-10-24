@@ -1129,6 +1129,17 @@ class ProjectActions:
                                     '作业仍在排队或运行。' if outcome == 'active' else
                                     '作业状态已同步；已结束的运行可继续收集结果。')
 
+    def recover_cgyro_job(self):
+        """Reconnect through the native script so its SSH/Abort UI stays usable."""
+        self.sync_endpoint('cgyro')
+        job_id = str(self.settings.get('cgyro_recovery_job', '')).strip()
+        original_manifest = (str(self.settings.get('cgyro_recovery_manifest', '')).strip()
+                             if self.settings.get('cgyro_recovery_advanced', False) else '')
+        self._cgyro_script('按作业号恢复 CGYRO', 'recover_job.py', job_id=job_id,
+                          manifest_path=original_manifest)
+        self.settings['message'] = ('作业 ' + job_id + ' 的记录已核对。运行中可同步状态；结束后点击'
+                                    '“重新收集未归档结果”。请保存工程，以保留恢复记录。')
+
     def save_command(self, name):
         command = self.settings.get('command_draft', '').strip()
         if not command:

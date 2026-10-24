@@ -123,17 +123,27 @@ def validate_result(result):
         raise ValueError('TGLF 输出不完整：需要增长率/频率谱和 gbflux。')
     spectrum = result['eigenvalue_spectrum']
     ky = np.asarray(spectrum['ky'], dtype=float)
-    if not len(ky) or not np.all(np.isfinite(ky)):
+    if ky.ndim != 1 or ky.size == 0 or not np.all(np.isfinite(ky)):
         raise ValueError('TGLF ky 网格无效。')
+    shapes = []
     for name in ('gamma', 'freq'):
         values = np.asarray(spectrum[name], dtype=float)
-        if values.ndim != 2 or values.shape[1] != len(ky) or not np.all(np.isfinite(values)):
+        if (values.ndim != 2 or values.shape[0] == 0 or values.shape[1] != len(ky)
+                or not np.all(np.isfinite(values))):
             raise ValueError('TGLF 谱数据无效：' + name)
+        shapes.append(values.shape)
+    if shapes[0] != shapes[1]:
+        raise ValueError('TGLF 频率与增长率谱的模态数不一致。')
     data = result['gbflux']['data']
     if not len(data):
         raise ValueError('TGLF gbflux 为空。')
     for row in data:
-        if not all(np.isfinite(float(value)) for value in list(row)[1:]):
+        values = list(row)
+        # The summary always reads species, particle flux and heat flux. An
+        # empty/truncated row must not be sealed as a successful calculation.
+        if len(values) < 3:
+            raise ValueError('TGLF gbflux 行缺少粒子通量或热通量。')
+        if not all(np.isfinite(float(value)) for value in values[1:]):
             raise ValueError('TGLF gbflux 包含无效数值。')
 
 

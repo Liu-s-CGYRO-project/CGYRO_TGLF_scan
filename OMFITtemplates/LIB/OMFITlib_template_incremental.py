@@ -1,5 +1,7 @@
 """Verified file-level manager updates staged outside the running installation."""
 from builtins import all, any, bool, dict, int, len, list, max, open, set, sorted, str, sum, tuple, type
+from collections import namedtuple
+from contextlib import contextmanager
 import ast
 import gzip
 import hashlib
@@ -22,6 +24,7 @@ MAX_MANIFEST = 512 * 1024
 MAX_FILE = 8 * 1024 ** 2
 MAX_TOTAL = 128 * 1024 ** 2
 RECEIPT = '.omfit-manager-install.json'
+Activation = namedtuple('Activation', 'previous installed')
 
 
 def manifest_name(version):
@@ -217,20 +220,54 @@ def verify_installation(path, directory=None):
     return path
 
 
-def activate_installation(path, directory=None):
+@contextmanager
+def _activation_lock(directory):
+    """Serialize short active.json transactions across manager processes.
+
+    Do not wait in Tk for another window. Descriptor locks are released by the
+    OS even if a process exits, unlike a sentinel directory that can go stale.
+    File verification and process startup both remain outside this lock.
+    """
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (directory / '.activation.lock').open('a+b') as stream:
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                if stream.seek(0, os.SEEK_END) == 0:
+                    stream.write(b'\0')
+                    stream.flush()
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            raise TemplateError('其他窗口正在切换管理器版本，请稍后重试') from exc
+        yield
+        # Closing the file releases either platform's lock, including Abort.
+
+
+def activate_installation(path, directory=None, receipt=False):
+    """Activate a verified version; optionally return an owned rollback token.
+
+    The default retains the legacy previous-bytes API. Interactive updates use
+    receipt=True so a failed launch cannot undo another window's later choice.
+    """
     directory = Path(directory) if directory is not None else update_directory()
     path = verify_installation(path, directory)
     state = directory / 'active.json'
-    previous = state.read_bytes() if state.exists() else None
-    temporary = state.with_name('.active-' + uuid.uuid4().hex + '.json')
-    try:
-        temporary.write_bytes(json_bytes(dict(path=str(path.resolve()),
-            previous=parse_json(previous).get('path', '') if previous is not None else '')))
-        os.replace(temporary, state)
-    finally:
-        if temporary.exists():
-            temporary.unlink()
-    return previous
+    with _activation_lock(directory):
+        previous = state.read_bytes() if state.exists() else None
+        installed = json_bytes(dict(path=str(path.resolve()), activation_id=uuid.uuid4().hex,
+            previous=parse_json(previous).get('path', '') if previous is not None else ''))
+        temporary = state.with_name('.active-' + uuid.uuid4().hex + '.json')
+        try:
+            temporary.write_bytes(installed)
+            os.replace(temporary, state)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+    return Activation(previous, installed) if receipt else previous
 
 
 def active_launch(directory=None):
@@ -245,13 +282,19 @@ def active_launch(directory=None):
 def restore_activation(previous, directory=None):
     directory = Path(directory) if directory is not None else update_directory()
     state = directory / 'active.json'
-    if previous is None:
-        state.unlink(missing_ok=True)
-    else:
-        temporary = state.with_name('.restore-' + uuid.uuid4().hex + '.json')
-        try:
-            temporary.write_bytes(previous)
-            os.replace(temporary, state)
-        finally:
-            if temporary.exists():
-                temporary.unlink()
+    with _activation_lock(directory):
+        if isinstance(previous, Activation):
+            current = state.read_bytes() if state.exists() else None
+            if current != previous.installed:
+                raise TemplateError('其他窗口已切换管理器版本，已保留其选择；未执行旧事务回滚')
+            previous = previous.previous
+        if previous is None:
+            state.unlink(missing_ok=True)
+        else:
+            temporary = state.with_name('.restore-' + uuid.uuid4().hex + '.json')
+            try:
+                temporary.write_bytes(previous)
+                os.replace(temporary, state)
+            finally:
+                if temporary.exists():
+                    temporary.unlink()

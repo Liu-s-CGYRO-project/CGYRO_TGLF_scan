@@ -5,8 +5,8 @@ physical owners, unfinished runs and preserved legacy data. Job history outside
 RUN_DB contains metadata only. Readers never fall back to an external result
 branch; migration is an explicit preparation/compaction operation.
 """
-from builtins import (ValueError, any, dict, getattr, hasattr, isinstance, len,
-                      list, max, object, set, str, tuple, type)
+from builtins import (BaseException, ValueError, all, any, bool, dict, float, getattr, hasattr, int, isinstance, len,
+                      list, max, object, set, str, tuple, type, zip)
 from copy import deepcopy
 from OMFITlib_cgyro_reference import REF, is_native_file, make_reference, metadata_value, validate_reference
 
@@ -16,6 +16,29 @@ PENDING, LEGACY = '__UNCLASSIFIED__', '__LEGACY__'
 OLD_BRANCHES = ('RESULT_STORE', 'RESULT_STORAGE', 'Cases', 'OUTPUTScan', 'OUTPUTS',
                 'LEGACY_UNCLASSIFIED', 'RUN_INDEX', '_PLOT_CACHE')
 _MISSING = object()
+
+
+def rollback_actions(original_error, actions):
+    """Try every restoration without hiding the error that interrupted commit.
+
+    Native tree assignment can fail even while restoring a journal. Retain
+    secondary diagnostics on the original exception, so callers still handle
+    an Abort as an Abort and can report any incomplete restoration separately.
+    Returning errors also lets owner transactions avoid deleting payloads when
+    a public reference could not be rolled back.
+    """
+    errors = []
+    for label, restore in actions:
+        try:
+            restore()
+        except BaseException as rollback_error:
+            errors.append(str(label) + ': ' + str(rollback_error))
+    if errors:
+        try:
+            original_error.cgyro_rollback_errors = list(getattr(original_error, 'cgyro_rollback_errors', [])) + errors
+        except BaseException:
+            pass
+    return errors
 
 
 def _mapping(node):
@@ -86,6 +109,36 @@ def _retain(mapping, key, value):
     mapping[key] = value
 
 
+def _same_snapshot(first, second):
+    """Prove metadata/index equality without loading or comparing file arrays.
+
+    Separate native readers are intentionally uncertain: old files may contain
+    unsaved edits. Such conflicts must be resolved before migration can choose
+    one snapshot. Literal owner references can safely compare their digests.
+    """
+    first, second = metadata_value(first), metadata_value(second)
+    if first is second:
+        return True
+    if is_native_file(first) or is_native_file(second):
+        return False
+    if hasattr(first, 'items') and hasattr(second, 'items'):
+        if REF in first or REF in second:
+            return (REF in first and REF in second and
+                    validate_reference(first, metadata_value(first[REF])) ==
+                    validate_reference(second, metadata_value(second[REF])))
+        return set(first) == set(second) and all(_same_snapshot(first[key], second[key]) for key in first)
+    if isinstance(first, (list, tuple)) and isinstance(second, (list, tuple)):
+        return len(first) == len(second) and all(_same_snapshot(a, b) for a, b in zip(first, second))
+    return type(first) is type(second) and isinstance(first, (str, int, float, bool)) and first == second
+
+
+def _set_migrated_cases(record, cases, token):
+    if 'cases' in record and not _same_snapshot(record['cases'], cases):
+        raise ValueError('Conflicting CGYRO case snapshots for run ' + str(token) +
+                         '; original RUN_DB, history and Cases are preserved')
+    record['cases'] = cases
+
+
 def ensure_layout(module, factory=dict):
     """Move old owners under RUN_DB, with a journal for Abort/error rollback.
 
@@ -138,7 +191,7 @@ def ensure_layout(module, factory=dict):
         record.setdefault('manifest', deepcopy(source.get('manifest', {})))
         records[str(token)] = record
         if 'cases' in source:
-            record['cases'] = source['cases']
+            _set_migrated_cases(record, source['cases'], token)
             record['manifest'] = deepcopy(source.get('manifest', {}))
             records[str(token)] = record
             clean.pop('cases', None)
@@ -165,7 +218,8 @@ def ensure_layout(module, factory=dict):
         for key, value in old_cases.items():
             if token and key == tag:
                 record = _tree(records.get(token, {}), factory)
-                record['cases'], record['manifest'] = value, deepcopy(current)
+                _set_migrated_cases(record, value, token)
+                record['manifest'] = deepcopy(current)
                 records[token] = record
             else:
                 unmatched = _tree(legacy.get('Cases', {}), factory)
@@ -184,22 +238,32 @@ def ensure_layout(module, factory=dict):
             module['RUN_HISTORY'] = _native(cleaned_history, factory)
         for key in original:
             module.pop(key, None)
-    except BaseException:
-        for key, value in previous.items():
-            if value is _MISSING:
-                db.pop(key, None)
-            else:
-                db[key] = value
-        if prior_db is _MISSING:
-            module.pop('RUN_DB', None)
-        else:
-            module['RUN_DB'] = prior_db
+    except BaseException as original_error:
+        # Restore the original owners *before* removing migrated branches. If
+        # a source restoration is rejected, the new RUN_DB is its remaining
+        # recovery location and must stay reachable despite the failed commit.
+        actions = []
         if old_history is not _MISSING:
-            module['RUN_HISTORY'] = old_history
-        for key, value in original.items():
-            module[key] = value
-            _rebind(value)
-        _rebind(db)
+            actions.append(('RUN_HISTORY', lambda: module.__setitem__('RUN_HISTORY', old_history)))
+        actions.extend((key, lambda key=key, value=value: module.__setitem__(key, value))
+                       for key, value in original.items())
+        errors = rollback_actions(original_error, actions)
+        if not errors:
+            actions = [('RUN_DB/' + str(key),
+                        (lambda key=key: db.pop(key, None)) if value is _MISSING else
+                        (lambda key=key, value=value: db.__setitem__(key, value)))
+                       for key, value in previous.items()]
+            errors = rollback_actions(original_error, actions)
+            if not errors:
+                rollback_actions(original_error, [('RUN_DB',
+                    (lambda: module.pop('RUN_DB', None)) if prior_db is _MISSING else
+                    (lambda: module.__setitem__('RUN_DB', prior_db)))])
+        # Rebinding is independent of restoring the enclosing branch: failure
+        # on one native owner must not skip other trees or overwrite the Abort.
+        actions = [('rebind ' + key, lambda value=value: _rebind(value))
+                   for key, value in original.items()]
+        actions.append(('rebind RUN_DB', lambda: _rebind(db)))
+        rollback_actions(original_error, actions)
         raise
     return db
 
@@ -243,6 +307,8 @@ def set_run_cases(module, manifest, cases, factory=dict):
 def freeze_run_inputs(module, manifest, factory=dict):
     """Keep original ZIP references before a download replaces point entries."""
     token = str(manifest.get('run_token', ''))
+    if not token:
+        raise ValueError('Missing frozen CGYRO run token')
     record = run_records(module, factory).setdefault(token, factory())
     cases = run_cases(module, manifest, factory)
     inputs = record.setdefault('inputs', factory())
@@ -250,7 +316,11 @@ def freeze_run_inputs(module, manifest, factory=dict):
         node = metadata_value(node)
         if is_native_file(node):
             if str(key).endswith(('.pbs', '.sh')) and key not in inputs:
-                inputs[key] = cases.pop(key)
+                # Native assignment can fail or receive Abort. Install the new
+                # owner before removing the old link, so either interruption
+                # leaves the original submission script available for retry.
+                inputs[key] = cases[key]
+                cases.pop(key)
         elif hasattr(node, 'get') and 'zip' in node and key not in inputs:
             frozen = factory()
             frozen['zip'] = deepcopy(node['zip'])

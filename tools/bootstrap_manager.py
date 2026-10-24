@@ -3,8 +3,8 @@
 Published as omfit-manager-bootstrap.py with a fixed manager version and digest.
 The current project is never loaded from a ZIP or replaced by this bootstrap.
 """
-from builtins import (Exception, RuntimeError, ValueError, any, bool, bytes, dict, getattr,
-                      globals, int, isinstance, len, list, open, print, range, set, str, tuple, type)
+from builtins import (BaseException, Exception, RuntimeError, ValueError, any, bool, bytes, dict, getattr,
+                      globals, int, isinstance, len, list, open, print, range, set, setattr, str, tuple, type)
 import ast
 import copy
 import hashlib
@@ -111,7 +111,8 @@ def install(omfit, proxy=DEFAULT_PROXY):
     data = fetch(proxy)
     directory = Path(tempfile.mkdtemp(prefix='omfit-manager-bootstrap-')).resolve()
     directory.relative_to(Path(tempfile.gettempdir()).resolve())
-    attached = False
+    attach_attempted = False
+    storage = None
     try:
         module_dir = extract(data, directory)
         current = OMFITmodule(str(module_dir / 'OMFITsave.txt'), quiet=True, developerMode=False)
@@ -124,26 +125,45 @@ def install(omfit, proxy=DEFAULT_PROXY):
         current.filename = ''
         if window is not None and window.alive:
             window.close()
-        omfit['OMFITtemplates'] = current
-        attached = True
-        current['GUIS']['main'].run()
         storage = getattr(omfit, '_template_bootstrap_storage', None)
         if storage is None:
             storage = []
             omfit._template_bootstrap_storage = storage
-        storage.append(str(directory))  # Retain backing files until normal project save.
+        # Keep backing files before the first live write: a native assignment
+        # can mutate the tree and then raise Abort, including during rollback.
+        storage.append(str(directory))
+        attach_attempted = True
+        omfit['OMFITtemplates'] = current
+        current['GUIS']['main'].run()
         print('Manager ready. Select a project release, preview, then update the current project.')
-    except Exception:
-        if attached:
-            if previous is None:
-                del omfit['OMFITtemplates']
-            else:
-                omfit['OMFITtemplates'] = previous
+    except BaseException as original:
+        errors = []
+        restored = not attach_attempted
+        if attach_attempted:
+            try:
+                if previous is None:
+                    if 'OMFITtemplates' in omfit:
+                        del omfit['OMFITtemplates']
+                else:
+                    omfit['OMFITtemplates'] = previous
+                restored = dict.get(omfit, 'OMFITtemplates', None) is previous
+            except BaseException as error:
+                errors.append('restore module: ' + str(error))
+            if restored and previous is not None:
                 try:
                     previous['GUIS']['main'].run()
-                except Exception:
-                    print('The previous manager module was restored; reopen its main GUI manually.')
-        shutil.rmtree(str(directory), ignore_errors=True)
+                except BaseException as error:
+                    errors.append('reopen previous manager: ' + str(error))
+        # Never remove files that may still be referenced after a failed restore.
+        if restored:
+            try:
+                shutil.rmtree(str(directory))
+                if storage is not None and str(directory) in storage:
+                    storage.remove(str(directory))
+            except BaseException as error:
+                errors.append('clean temporary files: ' + str(error))
+        if errors:
+            setattr(original, 'bootstrap_rollback_errors', tuple(errors))
         raise
 
 

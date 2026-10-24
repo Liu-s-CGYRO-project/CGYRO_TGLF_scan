@@ -1,6 +1,6 @@
 # 在 OMFIT Command Box 整理当前工程
 
-先安装配套模板管理器 1.10.26、工程 1.24.11，关闭旧结果窗口。在 Command Box 执行下面完整的一行：
+先安装配套模板管理器 1.10.27、工程 1.24.12，关闭旧结果窗口。在 Command Box 执行下面完整的一行：
 
 ```python
 OMFIT['CGYRO_TGLF_scan']['SCRIPTS']['compact_cgyro_storage'].run()
@@ -14,12 +14,12 @@ OMFIT['CGYRO_TGLF_scan']['SCRIPTS']['compact_cgyro_storage'].run()
 
 整理完成后使用 OMFIT“另存为”保存新的工程 ZIP，保存后体积才会变化。原 ZIP、来源目录和服务器文件不删除。哈希与复制可能需要数分钟和临时磁盘空间。关闭旧窗口后重新打开结果浏览，确保回调使用新版代码。
 
-如果旧工程缺少脚本或读取接口过旧，使用本版生成的 `omfit-maintain-1.24.11.py`。它内嵌经过 SHA-256 / CRC 校验的代码包，使用管理器事务同步更新工程和管理器，再整理数据；无需网络。输入和设置采用 keep 策略，额外用户脚本保留。它不调用 OMFIT.load()，不重新提交作业，不在原 ZIP 上删文件。
+如果旧工程缺少脚本或读取接口过旧，使用本版生成的 `omfit-maintain-1.24.12.py`。它内嵌经过 SHA-256 / CRC 校验的代码包，使用管理器事务同步更新工程和管理器，再整理数据；无需网络。输入和设置采用 keep 策略，额外用户脚本保留。它不调用 OMFIT.load()，不重新提交作业，不在原 ZIP 上删文件。
 
 完整文件可用单行命令执行（路径改为下载位置）：
 
 ```python
-exec(compile(open('/absolute/path/omfit-maintain-1.24.11.py', 'rb').read(), 'omfit-maintain-1.24.11.py', 'exec'), {'OMFIT': OMFIT})
+exec(compile(open('/absolute/path/omfit-maintain-1.24.12.py', 'rb').read(), 'omfit-maintain-1.24.12.py', 'exec'), {'OMFIT': OMFIT})
 ```
 
 结果格式更新后不会保留仅撤销读取代码的入口，以免新索引交给旧读取器。脚本本身仅含代码，不含此项目的结果 ZIP。更新后保存成新 ZIP；原 ZIP 可用于恢复。
@@ -35,3 +35,13 @@ exec(compile(open('/absolute/path/omfit-maintain-1.24.11.py', 'rb').read(), 'omf
 ## 旧维护入口
 
 仓库中的 `tools/compact_cgyro_project.py` 已退役：它直接拼接 ZIP 元数据，不能完整实现当前的浏览引用、冻结输入与续算保留约定，现在会在读写文件之前停止并指向上述流程。`tools/compact_commandbox.py` 仅转发已更新工程的原生整理任务，不再联网安装固定旧版。此前发布的历史附件保持不变；请使用与当前版本配套的新维护脚本。
+
+## 仅更新代码或恢复退出前的作业
+
+只需要安装新版代码时，执行 Release 的 `omfit-update-1.24.12.py`。此脚本与维护脚本使用相同的完整性校验和更新事务，但不会自动整理归档。
+
+```python
+exec(compile(open('/absolute/path/omfit-update-1.24.12.py', 'rb').read(), 'omfit-update-1.24.12.py', 'exec'), {'OMFIT': OMFIT})
+```
+
+关闭旧窗口后重开总控，在“CGYRO 扫描 → 结果与记录”按作业号恢复；结束的作业再点击“重新收集未归档结果”，随后保存工程。详见 [作业恢复](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。

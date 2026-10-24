@@ -21,9 +21,10 @@ from OMFITlib_cgyro_queue import (collection_done, require_retained_run, save_cu
 from OMFITlib_cgyro_run_state import linked_local_action, stop_run, submitted_job_id, text_output
 from OMFITlib_cgyro_submission import PROTOCOL, discover_submission, seal_unstarted, submit_command
 from OMFITlib_cgyro_storage import submission_file
-from OMFITlib_cgyro_db import run_cases, set_run_cases
+from OMFITlib_cgyro_db import rollback_actions, run_cases, set_run_cases
 from OMFITlib_cgyro_reference import copy_result_tree
 from OMFITlib_cgyro_launch import upgrade_slurm_limits, validate_slurm_script
+from OMFITlib_cgyro_recovery_manifest import write_sidecar
 
 
 NON_RETRYABLE_STATES = {'CANCELLED', 'TIMEOUT', 'OUT_OF_MEMORY', 'DEADLINE'}
@@ -184,8 +185,9 @@ def _execute_submission(root, ui, factory, ascii_reader, inputs, local, command)
     try:
         with open(marker, 'w', encoding='ascii') as stream:
             stream.write(manifest['submission_nonce'] + '\n')
+        recovery_file = write_sidecar(local, manifest)
         save_current(root, factory)
-        code = ui.executable(root, inputs=list(inputs) + [ascii_reader(marker)], outputs=[],
+        code = ui.executable(root, inputs=list(inputs) + [ascii_reader(marker), ascii_reader(recovery_file)], outputs=[],
             server=manifest['server'], tunnel=manifest.get('tunnel', ''), workdir=local,
             remotedir=manifest['workDir'], executable=':', clean=False, use_bang_command=False)
         if code != 0:
@@ -382,6 +384,26 @@ def submit_retry(root, ui, factory, path_reader, ascii_reader, points):
     save_current(root, factory)
 
 
+def _restore_collection_failure(root, manifest, preserved, error, factory):
+    """Restore each saved view even if another native assignment also fails.
+
+    A second disk/mapping error must not replace OMFIT Abort or authorize another
+    download into a partly restored archive. Keep secondary diagnostics on the
+    original exception and attempt the remaining metadata saves independently.
+    """
+    operations = []
+    if preserved is not None:
+        operations.extend([('manifest clear', manifest.clear),
+                           ('manifest restore', lambda: manifest.update(preserved[0])),
+                           ('cases restore', lambda: set_run_cases(root, manifest, preserved[1], factory))])
+    else:
+        operations.append(('collection status', lambda: manifest.__setitem__('collection_status', 'incomplete')))
+    operations.extend([('collection error', lambda: manifest.__setitem__(
+        'collection_error', str(error) or 'Local collection interrupted.')),
+                       ('save metadata', lambda: save_current(root, factory))])
+    return rollback_actions(error, operations)
+
+
 def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_retries=False):
     """Read saved outputs; only an explicit run action may enable solver retries."""
     require_retained_run(root, root.get('RUN_MANIFEST', {}).get('run_token', ''))
@@ -401,16 +423,10 @@ def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_r
         except BaseException as exc:
             manifest = root['RUN_MANIFEST']
             read_error = bool(manifest.get('load_errors', {}))
-            if preserved is not None:
-                manifest.clear()
-                manifest.update(preserved[0])
-                set_run_cases(root, manifest, preserved[1], factory)
-            else:
-                manifest['collection_status'] = 'incomplete'
-            manifest['collection_error'] = str(exc) or 'Local collection interrupted.'
-            save_current(root, factory)
+            rollback_errors = _restore_collection_failure(root, manifest, preserved, exc, factory)
             # A download/query failure gets another read; it never launches a solver.
-            if isinstance(exc, Exception) and collection_retries < 2 and (network_error(exc) or read_error):
+            if (not rollback_errors and isinstance(exc, Exception) and collection_retries < 2
+                    and (network_error(exc) or read_error)):
                 collection_retries += 1
                 time.sleep(collection_retries)
                 continue

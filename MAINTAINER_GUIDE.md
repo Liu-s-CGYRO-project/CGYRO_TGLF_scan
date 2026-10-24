@@ -1,8 +1,52 @@
 # 维护与扩展接口
 
-适用于工程 1.24.11。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.12。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 状态、选择与异常接口（1.24.11）
+
+### 按作业号恢复（本地开发版，2026-10-24）
+
+- `cgyro_recovery_manifest` 负责 JSON sidecar、身份和输入校验。`write_sidecar` 在无提交权限的上传阶段前调用，所有输入与清单上传完成后才进入既有 gate。新增元数据不得带结果数组或原生文件对象，不执行恢复文件中的 Python/shell。
+- `cgyro_job_probe` 只生成只读、已引用路径的 Bash 查询。查询失败与队列为空严格区分；用户、WorkDir、回执共同绑定作业身份。脚本使用 Base64 保留原始字节。旧清单只按当前用户暂存目录固定层次查找，不遍历结果目录。
+- `cgyro_job_recovery.recover_job` 注入 `remote_execute`、`remote_downsync` 和文件读取器。远端与输入验证完成后，以赋值日志提交 RUN_DB 内部记录、历史、当前清单和收集队列。Abort 尝试全部回滚；赋值开始后不删除可能获得原生 owner 的暂存文件。
+- 恢复不调用提交、取消、等待器或求解器重试。状态查询复用 `refresh_run_state`，结果由原有手动收集入口处理。GUI 物理参数不参与旧扫描身份推断。按钮只调用原生脚本 `recover_job.py`。
+- `RUN_DB` 是原输入及结果的 owner。`resume_source` 在旧 `/tmp` 不存在时通过 `submission_file` 查原生输入，保证另存、重开后的未启动点仍能续算。
+- `test_cgyro_job_recovery` 覆盖归档保留、重复恢复、错误身份、活动/取消状态、缺失 ZIP、损坏输入、并发回调和原生映射 Abort。实际远端查询仅验证读取链路，不代表已在用户 GUI 完成收集。
+
+离线更新可使用 `build_maintenance_commandbox.py --install-only`，保留数据和设置，只更新代码，不自动整理归档；用户随后在原工程点击恢复/收集。操作说明见 [按作业号恢复](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。
+
+### 本地审查修复的维护约定（2026-10-24，待发布）
+
+- `cgyro_db.rollback_actions(original_error, actions)` 是 CGYRO 多步恢复的共同接口。`actions` 为 `(步骤名, 无参恢复函数)` 序列，返回本轮失败的字符串列表。调用方仍须 `raise` 原异常；返回非空时不能继续自动重试，也不能清理可能仍被公开索引引用的新 owner。不要以捕获异常代替验证恢复是否完成。
+- `freeze_run_inputs` 必须先验证非空 token，先安装新引用、再移除来源。原生映射可能先修改再抛异常，不能使用 `target[key] = source.pop(key)`。迁移遇到同 token 的不同 cases 快照时，必须在写活树前拒绝；文件路径相同不证明两个未保存原生对象内容相同，不能猜选“较新”对象。
+- `cgyro_archive._finite_final_time` 在合并前检查双方元数据。`None` 表示未知，`0` 为有效时间；NaN/Inf 既不是未知也不能证明有进展。不得让浮点比较的 False 结果绕过旧完整点的保护。
+- `cgyro_run_state.uncollected_job` 保护已有 job_id 的未收集运行，包括 failed/cancelled；这些状态不代表没有部分输出。明确拒绝且没有作业号的提交可重新开始，提交不确定仍由 `submission_pending` 保护。
+- 启动参数只追加到一个明确的 `cgyro -e` 调用。带未引用 `;`、管道或后台操作符的同一行须拒绝，不能把核数追加到下一条 shell 命令。本地显式 `-nomp` 与生成的 `OMP_NUM_THREADS/OMP_THREAD_LIMIT` 必须一致，调度器配置明确指定时按配置处理。
+- TGLF 完成标记须在非空一维 ky、相同的非零模态数、有限谱值以及完整通量字段校验后写入。数值零不等于缺失；输出失败应保留失败尝试，允许修正后再计算。
+
+```python
+try:
+    commit_changes()
+except BaseException as original:
+    failures = rollback_actions(original, [
+        ('restore index', restore_index),
+        ('restore metadata', restore_metadata),
+    ])
+    # Only release newly created owners if all their references were restored.
+    if not failures:
+        rollback_actions(original, [('release new owners', release_new_owners)])
+    raise
+```
+
+更新工具的信任与并发边界：
+
+- 发布版离线安装器先用其内嵌摘要核验整个模板，包括本地 `--template`，再导入其中的更新引擎。源码目录运行时只导入仓库内的引擎。模板自述 author/id 和内部文件摘要只是完整性信息，不能授予自身代码执行信任；dry-run 也必须遵循此规则。
+- 验证、预览和写入使用同一份有大小上限的私有模板快照。`deploy_project._isolated_runtime` 仅用于独立 CLI；它暂时切换 `sys.modules` 并在退出时还原，不是多线程嵌入接口。
+- 管理器激活使用非阻塞跨进程文件锁；交互调用 `activate_installation(..., receipt=True)`，回滚传入原回执。回执同时包含写前和写后字节及唯一激活标识，旧窗口不得恢复掉另一窗口的后续选择。默认返回旧字节的接口只为已有调用者兼容保留。
+- 项目切换和 bootstrap 的 Abort 必须尝试恢复；若恢复失败，保留备份路径、临时文件与二次诊断，不隐藏最初的 Abort，也不能清理仍可能被活树引用的文件。
+- ZIP 文件和空目录都通过同一主机路径边界检查后才创建。Linux 合法的反斜杠文件名不能未经 Windows 路径检查直接解包。
+
+针对这些约定的用例集中在 `test_cgyro_storage`、`test_execution_audit`、`test_tool_entrypoints` 以及管理器 `test_github/test_incremental/test_live`，故障注入覆盖首次写入和回滚再次失败。完整发现与验证边界见 [本轮审查报告](CODE_REVIEW_20261024.md)。
 
 修改状态判断前，先区分以下证据；不能用一个 `done` 或 `failed` 替代全部阶段：
 

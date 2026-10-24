@@ -202,6 +202,25 @@ class MaintenanceToolsTests(unittest.TestCase):
             self.assertEqual(self.embedded(output, 'PACKAGE')['sha256'], hashlib.sha256(captured).hexdigest())
             self.assertNotIn(b'\r\n', output.read_bytes())
 
+    def test_install_only_updates_code_without_consolidating_user_archives(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            project, output = self.project_fixture(folder), folder / 'install-only.py'
+            build_maintenance_commandbox.build(project, output, install_only=True)
+            self.assertFalse(self.embedded(output, 'RUN_MAINTENANCE'))
+            tree = ast.parse(output.read_text(encoding='utf-8'))
+            function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'maintain')
+            calls = []
+            namespace = dict(RUN_MAINTENANCE=False, PACKAGE=dict(version='test'),
+                verified_bytes=project.read_bytes, install=lambda *args: calls.append(args),
+                tempfile=tempfile, Path=Path, zipfile=zipfile)
+            # No CGYRO LIB is provided: archive consolidation would fail here.
+            with patch.dict(sys.modules, {'omfit_classes.omfit_base': SimpleNamespace(OMFITtree=dict)}):
+                exec(compile(ast.Module(body=[function], type_ignores=[]), str(output), 'exec'), namespace)
+                report = namespace['maintain']({'CGYRO_TGLF_scan': {}})
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(report, dict(installed='test', maintenance=False))
+
     def test_deployer_and_maintenance_interruptions_never_publish_partial_script(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)

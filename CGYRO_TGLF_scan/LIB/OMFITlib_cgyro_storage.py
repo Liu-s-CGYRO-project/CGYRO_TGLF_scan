@@ -14,7 +14,7 @@ import re
 from omfit_classes.omfit_gacode import OMFITcgyro
 from OMFITlib_cgyro_checkpoint import select_checkpoint
 from OMFITlib_cgyro_db import (POOL, STATE, STORAGE_SCHEMA_VERSION, ensure_layout, metadata_value,
-                              result_pool, run_cases, run_records, storage_state)
+                              result_pool, rollback_actions, run_cases, run_records, storage_state)
 from OMFITlib_cgyro_recover import recover_archives
 from OMFITlib_cgyro_retention import retire_superseded
 from OMFITlib_cgyro_scratch import clean_stage, ensure_capacity
@@ -372,21 +372,25 @@ def compact_storage(module, factory=dict, browse=False):
                           checkpoint_policy=CHECKPOINT_POLICY_VERSION, bytes=sizes, checkpoints=checkpoints,
                           file_bytes=submissions.sizes))
         db[STATE] = state
-    except BaseException:
-        for branch, value in original.items():
-            db[branch] = value
-        for key in additions:
-            target.pop(key, None)
-        for key in submissions.additions:
-            target.get(FILE_STORE, {}).pop(key, None)
-        if created_files:
-            target.pop(FILE_STORE, None)
-        if created_pool:
-            db.pop(STORE, None)
-        if previous_sizes is None:
-            db.pop(STATE, None)
-        else:
-            db[STATE] = previous_sizes
+    except BaseException as original_error:
+        errors = rollback_actions(original_error,
+            ((branch, lambda branch=branch, value=value: db.__setitem__(branch, value))
+             for branch, value in original.items()))
+        if not errors:
+            # A rejected branch restoration may leave indexes to new owners.
+            # Keep those immutable owners reachable instead of turning a
+            # recoverable rollback error into missing scientific data.
+            cleanup = [(key, lambda key=key: target.pop(key, None)) for key in additions]
+            cleanup.extend((key, lambda key=key: target.get(FILE_STORE, {}).pop(key, None))
+                           for key in submissions.additions)
+            if created_files:
+                cleanup.append((FILE_STORE, lambda: target.pop(FILE_STORE, None)))
+            if created_pool:
+                cleanup.append((STORE, lambda: db.pop(STORE, None)))
+            rollback_actions(original_error, cleanup)
+        rollback_actions(original_error, [(STATE,
+            (lambda: db.pop(STATE, None)) if previous_sizes is None else
+            (lambda: db.__setitem__(STATE, previous_sizes)))])
         raise
     return summary(target)
 

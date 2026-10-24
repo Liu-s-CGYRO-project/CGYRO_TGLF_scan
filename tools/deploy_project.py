@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import importlib
+import io
 from http.client import IncompleteRead, RemoteDisconnected
 import json
 import os
@@ -93,43 +94,107 @@ def download(kind, folder, args):
             time.sleep(attempt + 1)
 
 
+def _capture_template(template, folder):
+    """Bind verification and every later read to one bounded, private snapshot."""
+    if LIMIT is None:
+        from release_policy import MAX_PROJECT_PACKAGE_BYTES
+        limit = MAX_PROJECT_PACKAGE_BYTES
+    else:
+        limit = LIMIT
+    with Path(template).open('rb') as stream:
+        data = stream.read(limit + 1)
+    if not 0 < len(data) < limit:
+        raise DeploymentError('Template exceeds the code-only package size limit')
+    if RELEASE is not None:
+        expected = RELEASE.get('template', {})
+        if (RELEASE.get('repository') != REPOSITORY or len(data) != expected.get('bytes')
+                or hashlib.sha256(data).hexdigest() != expected.get('sha256')):
+            raise DeploymentError('Local template does not match this installer release; no template code was loaded')
+    verified = folder / 'verified-template.zip'
+    with verified.open('xb') as stream:
+        stream.write(data)
+    return data, verified
+
+
+def _template_manifest(archive):
+    infos = archive.infolist()
+    if len({info.filename for info in infos}) != len(infos):
+        raise DeploymentError('Template contains duplicate ZIP members')
+    info = archive.getinfo('manifest.json')
+    if info.file_size > 1024 * 1024:
+        raise DeploymentError('Template manifest is too large')
+    manifest = json.loads(archive.read(info))
+    if not isinstance(manifest, dict):
+        raise DeploymentError('Template manifest must be an object')
+    roots = manifest.get('roots', [])
+    if (manifest.get('format') != 'omfit-template-v1'
+            or (manifest.get('author'), manifest.get('id')) != ('tdxy-liu', 'cgyro-tglf')
+            or manifest.get('examples') is not False
+            or not isinstance(roots, list) or not all(isinstance(root, str) for root in roots)
+            or set(roots) != {GROUP, 'OMFITtemplates'}
+            or not isinstance(manifest.get('files'), dict)):
+        raise DeploymentError('Select the official code-only cgyro-tglf template')
+    return manifest
+
+
+def _stage_runtime_sources(archive, manifest, folder):
+    for module in RUNTIME:
+        name = 'OMFITtemplates/LIB/' + module + '.py'
+        member = archive.getinfo('payload/' + name)
+        entry = manifest['files'].get(name, {})
+        if not 0 < member.file_size < 2 * 1024 * 1024:
+            raise DeploymentError('Invalid archive engine file: ' + module)
+        content = archive.read(member)
+        if (not isinstance(entry, dict) or len(content) != entry.get('bytes')
+                or hashlib.sha256(content).hexdigest() != entry.get('sha256')):
+            raise DeploymentError('Archive engine checksum mismatch: ' + module)
+        ast.parse(content, filename=module + '.py', feature_version=(3, 9))
+        if RELEASE is None:
+            # Author/id and internal hashes are self-asserted by an archive.
+            # In checkout mode only reviewed checkout code is executable.
+            source = Path(__file__).resolve().parents[1] / 'OMFITtemplates/LIB' / (module + '.py')
+            if not source.is_file():
+                raise DeploymentError('Use the published installer or a complete reviewed source checkout')
+            content = source.read_bytes()
+            ast.parse(content, filename=str(source), feature_version=(3, 9))
+        (folder / (module + '.py')).write_bytes(content)
+
+
+@contextmanager
+def _isolated_runtime(folder):
+    """Use fresh CLI engine imports, restoring the caller's cache on every exit."""
+    previous = {name: sys.modules[name] for name in RUNTIME if name in sys.modules}
+    try:
+        for name in RUNTIME:
+            sys.modules.pop(name, None)
+        sys.path.insert(0, str(folder))
+        importlib.invalidate_caches()
+        yield (importlib.import_module('OMFITlib_template_service'),
+               importlib.import_module('OMFITlib_template_archive'))
+    finally:
+        if str(folder) in sys.path:
+            sys.path.remove(str(folder))
+        for name in RUNTIME:
+            sys.modules.pop(name, None)
+        sys.modules.update(previous)
+        importlib.invalidate_caches()
+
+
 @contextmanager
 def runtime(template, folder):
-    """Load only the three verified, standard-library-only archive engine files."""
-    with zipfile.ZipFile(template) as archive:
-        infos = archive.infolist()
-        if len({info.filename for info in infos}) != len(infos):
-            raise DeploymentError('Template contains duplicate ZIP members')
-        info = archive.getinfo('manifest.json')
-        if info.file_size > 1024 * 1024:
-            raise DeploymentError('Template manifest is too large')
-        manifest = json.loads(archive.read(info))
-        if (manifest.get('format') != 'omfit-template-v1'
-                or (manifest.get('author'), manifest.get('id')) != ('tdxy-liu', 'cgyro-tglf')
-                or manifest.get('examples') is not False
-                or set(manifest.get('roots', [])) != {GROUP, 'OMFITtemplates'}):
-            raise DeploymentError('Select the official code-only cgyro-tglf template')
-        for module in RUNTIME:
-            name = 'OMFITtemplates/LIB/' + module + '.py'
-            member = archive.getinfo('payload/' + name)
-            entry = manifest.get('files', {}).get(name, {})
-            if not 0 < member.file_size < 2 * 1024 * 1024:
-                raise DeploymentError('Invalid archive engine file: ' + module)
-            content = archive.read(member)
-            if (len(content) != entry.get('bytes')
-                    or hashlib.sha256(content).hexdigest() != entry.get('sha256')):
-                raise DeploymentError('Archive engine checksum mismatch: ' + module)
-            ast.parse(content, filename=module + '.py', feature_version=(3, 9))
-            (folder / (module + '.py')).write_bytes(content)
-    sys.path.insert(0, str(folder))
-    try:
-        engine = importlib.import_module('OMFITlib_template_service')
-        structures = importlib.import_module('OMFITlib_template_archive')
-        with engine.Template(template) as checked:
+    """Treat --template as data, including --dry-run, until independently trusted.
+
+    Published installers pin the entire template. Checkout mode always uses
+    its own updater code. Both paths restore caller imports even after Abort.
+    """
+    data, verified = _capture_template(template, folder)
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        manifest = _template_manifest(archive)
+        _stage_runtime_sources(archive, manifest, folder)
+    with _isolated_runtime(folder) as (engine, structures):
+        with engine.Template(verified) as checked:
             checked.verify()
-        yield engine, structures, manifest
-    finally:
-        sys.path.remove(str(folder))
+        yield engine, structures, manifest, verified
 
 
 def relocate_expression(row, mapping, structures):
@@ -286,7 +351,7 @@ def main():
                         if sibling.exists():
                             sibling.unlink()
             else:
-                with runtime(package, work) as (engine, structures, metadata):
+                with runtime(package, work) as (engine, structures, metadata, package):
                     version = metadata['version']
                     output = (args.output.expanduser().absolute() if args.output else default_output(source, version))
                     check_output(output, source)

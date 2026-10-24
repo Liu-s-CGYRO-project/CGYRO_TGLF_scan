@@ -227,7 +227,7 @@ class ManagerUpdateUI:
                 _rollback_switch(exc, steps)
                 raise
         else:
-            previous = activate_installation(path)
+            previous = activate_installation(path, receipt=True)
             try:
                 subprocess.Popen([sys.executable, str(path / 'OMFITtemplates/launch.py'),
                     '--library', self.library.get(), '--project', self.current.get()],
