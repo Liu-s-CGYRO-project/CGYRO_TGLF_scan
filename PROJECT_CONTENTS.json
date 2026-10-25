@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.24.18",
-  "parent_release": "1.24.17",
+  "version": "1.24.19",
+  "parent_release": "1.24.18",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -265,7 +265,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_isotopes.py": "fffc1d2066fcfc7ad0aa11610a032a0d82cdeac8392d275cca7db9d1feb5150b",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_job_probe.py": "cb005f4e7ea98f406bed5b55ccac62b68d6021b6e951214836f7a498aded2844",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_job_recovery.py": "88b26ab78b70ea8b9066cee01d19dd17210558853bb39eb4ea12e3742b90013a",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_launch.py": "a01bf3b66b1e9587862a20020f61c3f5e85aab2a0a4d4c406c88d20fa077a7b3",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_launch.py": "845b1089aee912c43c8dfa247e6b3175eddb8faab04cb47fca95046e90e37290",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_parameter_help.py": "220080cd9e7b399e71ecd942dd3b970e70bbf23af55c0e08f3f5b2ee4014312e",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_parameters.py": "ee2f748a36f5fd40012ffcc702cd0d5bb4e549d6f7670d13f764a06ed167f950",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_payload.py": "80149eaff556e79858d874f6f19d770c7841e3f3d0a3734382b3e7c8ccf0ca0c",
@@ -333,7 +333,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_runtime.py": "1ebef39336dc945a36e8cd90549ec79dbb91e2132d87add43219b2f5adda5751",
     "CGYRO_TGLF_scan/LIB/OMFITlib_project_ui.py": "4bdf594b86d7f5ff2ebbfe79eb11e41f75e2251dcf06508903d0cdf8667a2060",
     "CGYRO_TGLF_scan/LIB/OMFITlib_result_cleanup.py": "8cdeecd1ddd067073ee31c5d26dff82053be8b3f4696fa3fae27ed913792e94a",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_server_capabilities.py": "3ced8d5b1b1f24336050829485204288ae222bbc732042087db30df329558cfe",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_server_capabilities.py": "b2edb79d8b877415cf4f921b5f8f86e1bbd0b865376ded82e12ecbd70d32a678",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_data.py": "c7a6018e6e1f40d6a3af8ce7d5b3fd1e4783c71b7a7821b5e51e2818bbae66d6",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_plot.py": "9d5f93f61c517910dcdd294839c826f003fffd49ec015b3c80b998dea40b1dad",
     "CGYRO_TGLF_scan/LIB/OMFITlib_tglf_multi_run.py": "02231f33e693d38c646250b85baf6afa308c3031f833773a55740aa606e6bac1",

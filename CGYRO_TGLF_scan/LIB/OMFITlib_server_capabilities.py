@@ -4,18 +4,19 @@ Detection never loads user environment scripts, changes remote files or submits
 jobs. Login limits are evidence for the UI, not limits to freeze into a batch
 job: the generated process-limit preamble inspects its own allocation again.
 """
-from builtins import KeyError, TypeError, ValueError, ZeroDivisionError, dict, hasattr, int, len, max, min, set, str
+from builtins import (KeyError, TypeError, ValueError, ZeroDivisionError, dict, hasattr, int,
+                      len, max, min, set, sorted, str, sum)
 from datetime import datetime, timezone
 import re
 
-VERSION = 1
+VERSION = 2  # v1 collapsed mixed-node partitions to their smallest CPU count.
 TOOLS = ('sbatch', 'sinfo', 'qsub', 'mpiexec', 'mpirun', 'srun')
 
 
 def probe_script():
     """Bound controller queries, retaining an explicit unknown status on failure."""
     return r'''
-printf 'OMFIT_SERVER\t1\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(hostname)" "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0)" "$(ulimit -Sn)" "$(ulimit -Hn)" "$(ulimit -Ss)" "$(ulimit -Hs)"
+printf 'OMFIT_SERVER\t2\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(hostname)" "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0)" "$(ulimit -Sn)" "$(ulimit -Hn)" "$(ulimit -Ss)" "$(ulimit -Hs)"
 omfit_find_tool() {
   command -v "$1" 2>/dev/null && return 0
   if [ -x "/opt/gridview/slurm/bin/$1" ]; then printf '%s\n' "/opt/gridview/slurm/bin/$1"; fi
@@ -26,7 +27,7 @@ for tool in sbatch sinfo qsub mpiexec mpirun srun; do
 done
 sinfo_path=$(omfit_find_tool sinfo)
 if [ -n "$sinfo_path" ] && command -v timeout >/dev/null 2>&1; then
-  if rows=$(LC_ALL=C timeout 12s "$sinfo_path" --local -h -e -o '%P|%c|%m|%l|%a|%B' 2>/dev/null); then
+  if rows=$(LC_ALL=C timeout 12s "$sinfo_path" --local -h -e -o '%P|%c|%m|%l|%a|%B|%D' 2>/dev/null); then
     while IFS= read -r row; do
       [ -z "$row" ] || printf 'OMFIT_SERVER_QUEUE\t%s\n' "$row"
     done <<< "$rows"
@@ -64,6 +65,41 @@ def time_seconds(value):
     return int(days or 0) * 86400 + int(first) * 3600 + int(second) * 60 + int(third or 0)
 
 
+def _partition_row(partitions, values):
+    """Retain each exact node shape instead of treating the minimum as a cap.
+
+    A partition can contain both 32- and 64-CPU nodes. Slurm can satisfy a
+    64-CPU/node request with the latter; only MaxCPUsPerNode is a policy cap.
+    Counts describe configured nodes, not currently idle nodes: busy resources
+    should make a job wait, not make an otherwise valid request illegal.
+    """
+    name, cpus, memory, walltime, state, maximum, count = values
+    default, name = name.endswith('*'), name.rstrip('*')
+    if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.+-]*', name):
+        raise ValueError('队列名称无效；原配置保留')
+    cpus, memory, count = _integer(cpus), _integer(memory), _integer(count)
+    limit = _integer(maximum) if maximum.isdigit() else None
+    if limit is None and maximum.lower() not in ('unlimited', 'infinite', 'n/a', '(null)', ''):
+        raise ValueError('队列 CPU 限额无效；原配置保留')
+    previous = partitions.get(name, None)
+    if previous and (previous['wall_time'], previous['available'], previous['partition_cpu_limit']) != (
+            walltime, state == 'up', limit):
+        raise ValueError('同一队列的限制信息不一致，请重新检测；原配置保留')
+    shapes = {(row['cpus'], row['memory_mib']): row['node_count']
+              for row in previous['node_groups']} if previous else {}
+    if count:
+        shapes[(cpus, memory)] = shapes.get((cpus, memory), 0) + count
+    groups = [dict(cpus=key[0], memory_mib=key[1], node_count=count)
+              for key, count in sorted(shapes.items())]
+    capacities = [min(row['cpus'], limit) if limit is not None else row['cpus'] for row in groups]
+    partitions[name] = dict(cpus_per_node=max(capacities, default=0),
+        cpu_counts=sorted({row['cpus'] for row in groups}), node_groups=groups,
+        node_count=sum(row['node_count'] for row in groups), partition_cpu_limit=limit,
+        memory_mib=min((row['memory_mib'] for row in groups), default=0),
+        max_memory_mib=max((row['memory_mib'] for row in groups), default=0),
+        wall_time=walltime, available=state == 'up', default=default or (previous or {}).get('default', False))
+
+
 def parse_probe(output, config):
     profile, complete, rows = {}, False, 0
     for line in '\n'.join(output).splitlines():
@@ -84,19 +120,9 @@ def parse_probe(output, config):
         elif fields[0] == 'OMFIT_SERVER_QUEUE' and profile:
             rows += 1
             values = fields[1].split('|') if len(fields) == 2 else []
-            if rows > 8192 or len(values) != 6:
+            if rows > 8192 or len(values) != 7:
                 raise ValueError('队列检测信息不完整或过多；原配置保留')
-            name, cpus, memory, walltime, state, maximum = [value.strip() for value in values]
-            default, name = name.endswith('*'), name.rstrip('*')
-            if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.+-]*', name):
-                raise ValueError('队列名称无效；原配置保留')
-            cpus, memory = _integer(cpus), _integer(memory)
-            if maximum.isdigit() and int(maximum) > 0:
-                cpus = min(cpus, _integer(maximum))
-            previous = profile['partitions'].get(name, {})
-            profile['partitions'][name] = dict(cpus_per_node=min(previous.get('cpus_per_node', cpus), cpus),
-                memory_mib=min(previous.get('memory_mib', memory), memory), wall_time=walltime,
-                available=state == 'up', default=default or previous.get('default', False))
+            _partition_row(profile['partitions'], [value.strip() for value in values])
         elif fields[0] == 'OMFIT_SERVER_SLURM' and profile:
             if len(fields) != 2 or fields[1] not in ('ok', 'unavailable'):
                 raise ValueError('Slurm 检测状态无效；原配置保留')
@@ -139,7 +165,14 @@ def resource_issues(config, profile):
         ranks = int(config.get('cores', config.get('ntasks_per_node', 1)))
         threads = int(config.get('cpus_per_task', 1))
         if ranks * threads > partition['cpus_per_node']:
-            issues.append('每节点 MPI × 线程数超过队列已检测的 {} CPU/节点'.format(partition['cpus_per_node']))
+            issues.append('每节点 MPI × 线程数超过队列已检测的最大可申请 {} CPU/节点'.format(partition['cpus_per_node']))
+        elif ranks > 0 and threads > 0:
+            eligible = sum(row['node_count'] for row in partition['node_groups']
+                           if min(row['cpus'], partition['cpus_per_node']) >= ranks * threads)
+            nodes = int(config.get('nodes', 1))
+            if nodes > eligible:
+                issues.append('队列中满足 {} CPU/节点的节点共 {} 个，申请了 {} 个节点'.format(
+                    ranks * threads, eligible, nodes))
     except (TypeError, ValueError):
         pass  # The existing settings validator supplies the numeric error.
     if _exceeds_time(config.get('wall_time', config.get('w', '')), partition['wall_time']):
@@ -187,7 +220,13 @@ def summary(config, profile):
     queue = str(config.get('queue', '') or '')
     row = profile.get('partitions', {}).get(queue, None)
     if row:
-        result.append('{}：{} CPU/节点 · 内存 {} MiB/节点'.format(queue, row['cpus_per_node'], row['memory_mib']))
+        counts = ' / '.join(str(value) for value in row['cpu_counts']) or '0'
+        result.append('{}：节点有 {} CPU/节点；每作业最多可申请 {} CPU/节点'.format(queue, counts, row['cpus_per_node']))
+        memory = str(row['memory_mib']) if row['memory_mib'] == row['max_memory_mib'] else '{}–{}'.format(
+            row['memory_mib'], row['max_memory_mib'])
+        result.append('队列节点内存：{} MiB/节点'.format(memory))
+        if len(row['cpu_counts']) > 1:
+            result.append('队列含不同 CPU 配置，按申请量匹配节点；不以较小节点限制整个队列。')
         result.append('队列最长时限：' + row['wall_time'])
     elif profile.get('slurm_status', '') != 'ok':
         result.append('队列信息未读取；保留原资源设置。')

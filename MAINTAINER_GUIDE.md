@@ -1,8 +1,16 @@
 # 维护与扩展接口
 
-适用于工程 1.24.18。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.19。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 
+
+## 服务器 CPU 容量检测（1.24.19）
+
+`server_capabilities.VERSION=2` 使旧版折叠 profile 失效。probe 使用只读、限时的 `sinfo --local -h -e`，保留 `%c` CPU/节点、`%m` 内存、`%B` MaxCPUsPerNode 和 `%D` 节点数。`_partition_row` 按节点配置累积 node_groups；不同节点规格不能用 min 折叠为队列上限。每节点可申请量是存在节点可满足的最大值，并受真实 MaxCPUsPerNode 限额约束，登录节点 CPU 数不参与判断。字段定义见 [Slurm sinfo](https://slurm.schedmd.com/sinfo.html)。
+
+`resource_issues` 按完整 MPI×线程数和 nodes 校验：32/64 混合队列的 64 CPU/node 合法；若请求三台但只有两台符合容量则提示。节点数是配置总量，不是瞬时空闲量；忙碌节点交由调度器排队。内存范围仅展示，不组合为虚假的单节点规格。分区政策不一致、缺失计数或聚合后的 `32+` 格式均拒绝整个探测，保留旧设置。
+
+`launch_spec` 先解析实际 nodes、ntasks_per_node、cpus_per_task 再检查容量，不能读取 UI 的 cores 旧副本代替实际启动值。检测只调整超过真实上限的草稿，不自动把 32 增大为 64，也不改变已提交运行。新增检测字段和版本时，应同时更新匹配、草稿应用、UI 摘要和实际启动回归。
 
 ## 快照退休与文件存储接口（1.24.18）
 

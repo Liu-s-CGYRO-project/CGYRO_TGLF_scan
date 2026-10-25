@@ -6,7 +6,7 @@ import unittest
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(path) for path in (REPO / 'CGYRO_TGLF_scan').rglob('LIB')]
-from OMFITlib_server_capabilities import (TOOLS, adapt_draft, matching_profile, parse_probe,
+from OMFITlib_server_capabilities import (TOOLS, VERSION, adapt_draft, matching_profile, parse_probe,
     probe_script, resource_issues, summary, time_seconds)
 from OMFITlib_cgyro_launch import launch_spec, validate_checkpoint_runtime
 from OMFITlib_gacode_installations import PROGRAMS, program_environment, program_guard
@@ -14,11 +14,11 @@ import test_cgyro_launch as launch_tests
 
 
 def output(queues=None, status='ok'):
-    rows = ['OMFIT_SERVER\t1\tlogin-test\t256\t1024\t4096\t8192\tunlimited']
+    rows = ['OMFIT_SERVER\t{}\tlogin-test\t256\t1024\t4096\t8192\tunlimited'.format(VERSION)]
     rows += ['OMFIT_SERVER_TOOL\t{}\t{}'.format(name, '/usr/bin/' + name if name in ('sbatch', 'sinfo') else '')
              for name in TOOLS]
     rows += ['OMFIT_SERVER_QUEUE\t' + row for row in (queues if queues is not None else
-             ['normal*|64|128000|01:00:00|up|32', 'normal*|128|256000|01:00:00|up|64'])]
+             ['normal*|64|128000|01:00:00|up|32|5'])]
     return rows + ['OMFIT_SERVER_SLURM\t' + status, 'OMFIT_SERVER_END']
 
 
@@ -34,6 +34,10 @@ class CapabilityTests(unittest.TestCase):
         value.update(changes)
         return value
 
+    def mixed(self, limit='UNLIMITED'):
+        return ['normal*|32|126536|01:00:00|up|{}|3'.format(limit),
+                'normal*|64|255500|01:00:00|up|{}|2'.format(limit)]
+
     def test_queue_capacity_uses_scheduler_nodes_and_partition_cap(self):
         value = self.profile()
         self.assertEqual(value['login_cpus'], 256)
@@ -41,6 +45,79 @@ class CapabilityTests(unittest.TestCase):
         self.assertEqual(value['partitions']['normal']['memory_mib'], 128000)
         self.assertEqual(resource_issues(self.config(), value), [])
         self.assertTrue(resource_issues(self.config(cores=64), value))
+
+    def test_mixed_partition_accepts_64_cpus_independent_of_report_order(self):
+        for rows in (self.mixed(), list(reversed(self.mixed()))):
+            profile = parse_probe(output(rows), self.config())
+            row = profile['partitions']['normal']
+            self.assertEqual(row['cpus_per_node'], 64)
+            self.assertEqual(row['cpu_counts'], [32, 64])
+            self.assertEqual(row['node_count'], 5)
+            self.assertEqual(resource_issues(self.config(cores=64), profile), [])
+            config = self.config(cores=64)
+            self.assertEqual(adapt_draft(config, profile), [])
+            self.assertEqual(config['cores'], 64)
+
+    def test_mixed_capacity_still_respects_real_partition_cpu_limit(self):
+        for limit in ('32', '48'):
+            profile = parse_probe(output(self.mixed(limit)), self.config())
+            row = profile['partitions']['normal']
+            self.assertEqual(row['cpus_per_node'], int(limit))
+            self.assertEqual(row['cpu_counts'], [32, 64])
+            self.assertTrue(resource_issues(self.config(cores=64), profile))
+            self.assertEqual(resource_issues(self.config(cores=int(limit)), profile), [])
+
+    def test_multinode_request_counts_only_shapes_large_enough_for_each_node(self):
+        profile = parse_probe(output(self.mixed()), self.config())
+        self.assertEqual(resource_issues(self.config(nodes=2, cores=32, cpus_per_task=2), profile), [])
+        issues = resource_issues(self.config(nodes=3, cores=32, cpus_per_task=2), profile)
+        self.assertEqual(len(issues), 1)
+        self.assertIn('节点共 2 个', issues[0])
+        self.assertEqual(resource_issues(self.config(nodes=5, cores=32), profile), [])
+
+    def test_summary_shows_mixed_hardware_and_separate_task_limit(self):
+        profile = parse_probe(output(self.mixed('48')), self.config())
+        text = '\n'.join(summary(self.config(), profile))
+        self.assertIn('32 / 64 CPU/节点', text)
+        self.assertIn('最多可申请 48 CPU/节点', text)
+        self.assertIn('126536–255500', text)
+
+    def test_only_invalid_128_cpu_draft_is_clamped_to_64_on_mixed_partition(self):
+        profile = parse_probe(output(self.mixed()), self.config())
+        config = self.config(cores=64, cpus_per_task=2)
+        self.assertEqual(adapt_draft(config, profile), ['MPI/节点 64 → 32'])
+        self.assertEqual((config['cores'], config['cpus_per_task']), (32, 2))
+
+    def test_old_collapsed_profile_is_invalidated_after_code_update(self):
+        config, profile = self.config(), self.profile()
+        profile['version'] = 1
+        self.assertEqual(matching_profile(config, dict(capabilities=profile)), {})
+        with self.assertRaises(ValueError):
+            parse_probe([line.replace('OMFIT_SERVER\t2\t', 'OMFIT_SERVER\t1\t')
+                         for line in output()], config)
+
+    def test_conflicting_partition_policy_and_malformed_counts_fail_before_mutation(self):
+        for queues in (self.mixed()[:1] + ['normal*|64|255500|01:00:00|up|32|2'],
+                       ['normal*|64|255500|01:00:00|up|UNLIMITED|bad'],
+                       ['normal*|64|255500|01:00:00|up|32+|2']):
+            with self.subTest(queues=queues), self.assertRaises(ValueError):
+                parse_probe(output(queues), self.config())
+
+    def test_empty_node_group_cannot_inflate_partition_capacity(self):
+        rows = ['normal*|32|126536|01:00:00|up|UNLIMITED|3',
+                'normal*|128|255500|01:00:00|up|UNLIMITED|0']
+        profile = parse_probe(output(rows), self.config())
+        self.assertEqual(profile['partitions']['normal']['cpus_per_node'], 32)
+        self.assertTrue(resource_issues(self.config(cores=64), profile))
+
+    def test_launch_validates_actual_ranks_even_if_ui_cores_alias_is_stale(self):
+        profile = parse_probe(output(self.mixed()), self.config())
+        config = dict(self.config(cores=16), ntasks_per_node=128,
+                      executable='cgyro -e . -n 128 -nomp 1', server_capabilities=profile)
+        with self.assertRaisesRegex(ValueError, '超过队列'):
+            launch_spec(config)
+        config.update(cores=128, ntasks_per_node=64)
+        self.assertEqual(launch_spec(config)['mpi_ranks'], 128)
 
     def test_truncated_and_malformed_results_are_rejected(self):
         for rows in (output()[:-1], output()[:1], output(queues=['normal|oops|2|01:00:00|up|32']),
@@ -117,7 +194,7 @@ TaskCapabilityDir=$(mktemp -d /tmp/omfit-cap-test.XXXXXX)
 trap 'case "$TaskCapabilityDir" in /tmp/omfit-cap-test.*) rm -rf -- "$TaskCapabilityDir";; esac' EXIT
 cat > "$TaskCapabilityDir/sinfo" <<'SH'
 #!/bin/sh
-printf 'normal*|64|128000|01:00:00|up|32\\n'
+printf 'normal*|64|128000|01:00:00|up|32|5\\n'
 SH
 cat > "$TaskCapabilityDir/sbatch" <<'SH'
 #!/bin/sh
@@ -132,6 +209,30 @@ export PATH="$TaskCapabilityDir:$PATH"
         self.assertNotIn('UNEXPECTED_SUBMIT', result.stdout)
         value = parse_probe(result.stdout.splitlines(), self.config())
         self.assertEqual(value['partitions']['normal']['cpus_per_node'], 32)
+
+    def test_real_shell_mixed_partition_preserves_64_cpu_request_without_submission(self):
+        fixture = '''set -e
+TaskCapabilityDir=$(mktemp -d /tmp/omfit-cap-test.XXXXXX)
+trap 'case "$TaskCapabilityDir" in /tmp/omfit-cap-test.*) rm -rf -- "$TaskCapabilityDir";; esac' EXIT
+cat > "$TaskCapabilityDir/sinfo" <<'SH'
+#!/bin/sh
+printf 'normal*|32|126536|01:00:00|up|UNLIMITED|3\\nnormal*|64|255500|01:00:00|up|UNLIMITED|2\\n'
+SH
+cat > "$TaskCapabilityDir/sbatch" <<'SH'
+#!/bin/sh
+echo UNEXPECTED_SUBMIT
+exit 90
+SH
+chmod u+x "$TaskCapabilityDir/sinfo" "$TaskCapabilityDir/sbatch"
+export PATH="$TaskCapabilityDir:$PATH"
+'''
+        result = launch_tests.LaunchTests().bash(fixture + probe_script())
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn('UNEXPECTED_SUBMIT', result.stdout)
+        profile = parse_probe(result.stdout.splitlines(), self.config())
+        config = self.config(cores=64)
+        self.assertEqual(resource_issues(config, profile), [])
+        self.assertEqual(adapt_draft(config, profile), [])
 
     def test_execution_guard_checks_helpers_and_platform_without_running_mpi(self):
         fixture = '''set -e
@@ -217,7 +318,7 @@ class DetectionActionTests(unittest.TestCase):
         self.calls.append(command)
         paths = list(dict.fromkeys(path for _, files in PROGRAMS.values() for path in files))
         kwargs['std_out'].extend(['OMFIT_GACODE\t/shared/gacode\t1\t1\t' + '\t'.join('1' for _ in paths),
-                                 'OMFIT_GACODE_END'] + output())
+                                 'OMFIT_GACODE_END'] + output(queues=getattr(self, 'queue_rows', None)))
         return 0
 
     def test_detect_updates_only_draft_and_apply_binds_profile_without_touching_results(self):
@@ -256,6 +357,21 @@ class DetectionActionTests(unittest.TestCase):
             self.actions.detect_gacode()
         self.assertEqual(self.config, previous)
         self.assertEqual(self.root['PROJECT_STATE']['gacode_detection'], {'old': 'kept'})
+
+    def test_detect_apply_and_launch_preserve_64_cpu_request_on_mixed_partition(self):
+        from OMFITlib_project_runtime import apply_runtime, shared_issues
+        self.queue_rows = ['normal*|64|255500|01:00:00|up|UNLIMITED|2',
+                           'normal*|32|126536|01:00:00|up|UNLIMITED|3']
+        self.config.update(nodes=1, cores=64, cpus_per_task=1, wall_time='01:00:00')
+        self.actions.remote_execute = self.remote
+        detection = self.actions.detect_gacode()
+        self.assertEqual(self.config['cores'], 64)
+        self.assertNotIn('MPI/节点', str(detection['capabilities'].get('draft_changes', [])))
+        apply_runtime(self.root, self.tree_factory)
+        selected = self.root['CGYRO_scan']['SETTINGS']['REMOTE_SETUP']['cluster']
+        self.assertEqual(selected['ntasks_per_node'], 64)
+        self.assertEqual(launch_spec(selected)['mpi_ranks'], 64)
+        self.assertEqual(shared_issues(self.root), [])
 
     def test_unsaved_server_edit_never_probes_the_previous_endpoint(self):
         self.actions.settings['server_draft'] = {}

@@ -119,9 +119,6 @@ def launch_spec(config, setup=None):
     if scheduler not in ('slurm', 'local'):
         raise ValueError('Managed CGYRO launch resources require Slurm or local execution.')
     profile = matching_profile(config, dict(capabilities=config.get('server_capabilities', {})))
-    issues = resource_issues(config, profile)
-    if issues:
-        raise ValueError('；'.join(issues))
     if scheduler == 'local' and 'nodes' not in config and 'ntasks_per_node' not in config:
         # A standalone localhost command has no scheduler allocation to enlarge.
         # Retain its explicit size until the shared resource settings are applied.
@@ -133,6 +130,10 @@ def launch_spec(config, setup=None):
     per_node = config.get('ntasks_per_node', setup.get('num_cores', 1))
     per_node = _positive(per_node, 'MPI ranks per node')
     threads = _positive(config.get('cpus_per_task', setup.get('cpus_per_task', 1)), 'threads per MPI rank')
+    # Validate the counts used below, not a stale UI-only "cores" alias.
+    issues = resource_issues(dict(config, nodes=nodes, cores=per_node, cpus_per_task=threads), profile)
+    if issues:
+        raise ValueError('；'.join(issues))
     mpi = nodes * per_node
     template = command_template(config.get('executable', ''))
     executable = template.replace('{mpi}', str(mpi)).replace('{threads}', str(threads))
