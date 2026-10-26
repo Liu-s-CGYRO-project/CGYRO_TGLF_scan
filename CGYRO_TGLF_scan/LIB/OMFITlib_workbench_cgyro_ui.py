@@ -3,7 +3,7 @@
 Public methods remain inherited by ProjectUI for saved GUIs and callbacks.
 Keep OMFITlib imports at module scope: native GUI execution clears its import hook.
 """
-from builtins import ValueError, any, dict, float, int, isinstance, len, list, next, range, sorted, str
+from builtins import ValueError, any, dict, float, getattr, int, isinstance, len, list, next, range, sorted, str
 from collections import OrderedDict
 import math
 import tkinter as tk
@@ -20,6 +20,8 @@ from OMFITlib_cgyro_run_state import submission_pending
 from OMFITlib_cgyro_radius_cleanup import preview_radius, radius_choices
 from OMFITlib_cgyro_task_manager import TaskManager, confirm_scope
 
+CGYRO_MAIN_TABS = ('input', 'parameters', 'results')
+
 
 class CgyroPage:
     """Page mixin; state belongs to the host, never to a module singleton."""
@@ -28,13 +30,46 @@ class CgyroPage:
         if node is None:
             self.label('工程缺少 CGYRO_scan 模块。')
             return
+        selected = self.settings.setdefault('cgyro_main_tab', 'input')
+        if selected not in CGYRO_MAIN_TABS:
+            selected = self.settings['cgyro_main_tab'] = 'input'
         self.ui.Tab('输入与扫描')
+        frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
+        self.cgyro_main_notebook = (frame.master if isinstance(frame, tk.Misc)
+                                    and isinstance(frame.master, ttk.Notebook) else None)
         self.compound(('GUIS', 'CGYRO_controls'), workbench=self)
         self.show_message(first_line=True)
         rows = self.cgyro_rows
         self.ui.Tab('计算参数')
         self.render_cgyro_parameters(node, rows)
         self.ui.Tab('结果与记录')
+        # Native Tab constructs every tab on each local refresh. A hidden
+        # result page can join stopped-run ancestry and open many old readers,
+        # so populate it only after an explicit selection of this outer tab.
+        if selected == 'results':
+            self.render_cgyro_results(node)
+        else:
+            self.label('选择“结果与记录”查看任务和结果。')
+        if self.cgyro_main_notebook is not None:
+            try:
+                self.cgyro_main_notebook.select(CGYRO_MAIN_TABS.index(selected))
+                self.cgyro_main_notebook.bind('<<NotebookTabChanged>>', self.cgyro_main_tab_changed, add='+')
+            except tk.TclError:
+                return  # The owning settings window may already be closing.
+
+    def cgyro_main_tab_changed(self, event):
+        if event.widget is not self.cgyro_main_notebook:
+            return
+        try:
+            page = CGYRO_MAIN_TABS[self.cgyro_main_notebook.index(self.cgyro_main_notebook.select())]
+        except tk.TclError:
+            return
+        if page != self.settings['cgyro_main_tab']:
+            self.settings['cgyro_main_tab'] = page
+            self.ui.UpdateGUI()  # The adapter refreshes only this owning GUI.
+
+    def render_cgyro_results(self, node):
+        """Results and task controls, invoked only for the visible outer tab."""
         self.render_cgyro_recovery(node)
         manifest = node.get('RUN_MANIFEST', {})
         queued = queue_records(node)

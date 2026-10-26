@@ -2,7 +2,8 @@
 
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
-from OMFITlib_cgyro_archive import catalog_runs
+from OMFITlib_cgyro_archive import catalog_runs, result_file
+from OMFITlib_cgyro_reference import is_native_file
 from OMFITlib_cgyro_scan_view import comparison_case_view, coordinate_label, linear_node, view_config
 from OMFITlib_cgyro_storage import result_view
 from OMFITlib_compare_cgyro_selection import iter_selected_parameter_items
@@ -68,20 +69,25 @@ def _read_cgyro_status_code(datadir):
       3 unfinished/unknown
       4 no out.cgyro.info
     """
-    if not hasattr(datadir, 'get'):
-        return 4
-
-    info_node = datadir.get('out.cgyro.info', None)
-    if info_node is None:
-        return 4
-
-    filename = getattr(info_node, 'filename', '')
+    if is_native_file(datadir):
+        try:
+            filename = result_file(datadir, 'out.cgyro.info')
+        except (OSError, ValueError):
+            return 4
+    else:
+        if not hasattr(datadir, 'get'):
+            return 4
+        filename = getattr(datadir.get('out.cgyro.info', None), 'filename', '')
     if not isinstance(filename, str) or len(filename.strip()) == 0 or (not os.path.isfile(filename)):
         return 4
 
     try:
-        with open(filename, 'r', errors='ignore') as fobj:
-            lines = fobj.readlines()
+        # Status lives at the end of this text log. Do not expand a result
+        # reader or scan megabytes of old iterations to draw a status curve.
+        with open(filename, 'rb') as fobj:
+            fobj.seek(0, 2)
+            fobj.seek(max(0, fobj.tell() - 32768))
+            lines = fobj.read().decode('utf-8', errors='replace').splitlines()
     except Exception:
         return 4
 
@@ -130,9 +136,9 @@ def _collect_cgyro_output_status_curves(root, mode_state, runid, nr, para, value
             status_vals = []
             for ky_key in cgyrodir.keys():
                 datadir = cgyrodir[ky_key]
-                ky_val = _to_float_scalar(_get_mapping_item(datadir, 'kyrhos'))
-                if ky_val is None:
-                    ky_val = _to_float_scalar(ky_key)
+                ky_val = _to_float_scalar(ky_key)
+                if ky_val is None and not is_native_file(datadir):
+                    ky_val = _to_float_scalar(_get_mapping_item(datadir, 'kyrhos'))
                 if ky_val is None:
                     continue
                 ky_val = _maybe_abs_ky(ky_val, mode_state.get('plot', {}))

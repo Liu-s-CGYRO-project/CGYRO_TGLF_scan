@@ -5,7 +5,7 @@ from OMFITlib_compare_options import STAT_DEFAULTS
 from builtins import Exception, abs, complex, float, getattr, hasattr, int, len, sorted
 import numpy as np
 from numpy import argmax, argmin, argsort, array, imag, interp, iscomplexobj, linspace, ones, pi, real, unique, zeros
-from OMFITlib_compare_cgyro_data import _get_cgyro_lin_node, compute_freq_stats, diagnostic
+from OMFITlib_compare_cgyro_data import _get_cgyro_lin_node, compute_freq_stats, diagnostic, selected_linear_keys
 from OMFITlib_compare_cgyro_selection import maybe_abs_ky
 
 
@@ -194,7 +194,8 @@ def collect_eigen_entries_for_value(root, ctx, nr, para, value):
         return []
 
     entries = []
-    for key in cgyrodir.keys():
+    targets = ctx['selected_eigen_ky'] if ctx['eigen_ky_mode'] == 'single ky' else []
+    for key in selected_linear_keys(cgyrodir, targets, ctx):
         datadir = cgyrodir[key]
         if 'kyrhos' not in datadir:
             continue

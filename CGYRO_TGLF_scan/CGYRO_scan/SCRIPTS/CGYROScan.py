@@ -58,7 +58,7 @@ def remember_collection(root):
 
 
 def publish_loaded_run(root):
-    compact_storage(root, OMFITtree)
+    compact_storage(root, OMFITtree, run_token=root.get('RUN_MANIFEST', {}).get('run_token', ''))
     # The current run is published below; only recover older retained sources.
     recover_archives(root, resolve_result, OMFITtree,
                      exclude_token=str(root.get('RUN_MANIFEST', {}).get('run_token', '')))

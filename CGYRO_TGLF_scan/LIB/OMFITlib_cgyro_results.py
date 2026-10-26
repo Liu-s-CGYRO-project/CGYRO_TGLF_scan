@@ -1,8 +1,8 @@
 """RUN_DB-backed CGYRO result browser for one-, two- and three-axis scans."""
-from OMFITlib_cgyro_archive import catalog_runs, case_destination
+from OMFITlib_cgyro_archive import catalog_runs, case_destination, output_final_time
 from OMFITlib_gui_fonts import configure_window_fonts, style_widget
 from OMFITlib_cgyro_archive import case_scans, latest_cases
-from OMFITlib_cgyro_continue import point_status, previous_final_time, resume_source, stopped_context
+from OMFITlib_cgyro_continue import point_status, previous_final_time, stopped_context
 from OMFITlib_cgyro_storage import resolve_result
 from OMFITlib_cgyro_db import legacy_branch, run_records, storage_state
 from OMFITlib_cgyro_present import record_options, record_details
@@ -337,7 +337,7 @@ class ResultBrowser:
             if dimensions == 3:
                 description += '，{} 由上方切片选择'.format(names[2])
             description += '，ky 由上方切片选择'
-        self.anchor = self.ui.Label('{}；{} 个已读取计算点。'.format(description, len(tasks)), align='left')
+        self.anchor = self.ui.Label('{}；{} 个已有结果计算点（点击绘图或数值表后读取）。'.format(description, len(tasks)), align='left')
         with self.ui.same_row():
             self.ui.Button('查看数值表', self._show_table)
             self.ui.Button('绘制当前结果', lambda: self.root['PLOTS']['CGYRO_results'].plot())
@@ -393,24 +393,23 @@ class ResultBrowser:
                 if physical is None:
                     raise ValueError('没有时间样本')
                 result = _result_node(self.root, entry, physical)
-                status = point_status(result)
-                times = np.asarray(result['t'], dtype=float).ravel()
-                last_time = _number_text(times[-1]) if len(times) else '—'
+                status = point_status(result, verify_checkpoint=False)
+                final_time = output_final_time(result)
+                last_time = _number_text(final_time) if final_time is not None else '—'
             except Exception as exc:
                 status = dict(convergence='unknown', checkpoint=None, reason=str(exc))
                 last_time = '—'
             status['restartable'] = status['checkpoint'] is not None
             mode = ''
-            if entry.get('stopped_run', False):
-                try:
-                    origin = resume_source(self.root['CGYRO_scan'], token, point, entry['resume_context'])
-                    mode = origin['mode']
+            if entry.get('stopped_run', False) and point not in entry.get('tasks', {}):
+                # An unstarted point may only retain its input ZIP. Listing
+                # candidates uses provenance, not ZIP hashing/extraction;
+                # resume_source validates the selected sources in planning.
+                source = entry['resume_context']['sources'].get(point, None)
+                if source is not None and source[0].get('input_sha256', {}).get(point, {}):
+                    mode = 'pending'
                     status['restartable'] = True
-                    if mode == 'fresh':
-                        status['reason'] = '未开始：沿用原输入重新计算'
-                except Exception as exc:
-                    status['reason'] = str(exc)
-                    status['restartable'] = False
+                    status['reason'] = '原始输入或检查点待校验；续算前检查所选点。'
             statuses[str(point)] = status
             warning = row.get('continuation_pending', '')
             scheduler_state = row.get('scheduler_state', '')
@@ -423,8 +422,8 @@ class ResultBrowser:
             table.insert('', 'end', iid=str(point), values=[point] + [
                 _number_text(row.get('values', {}).get(name, '—')) for name in names] + [
                 state_label, last_time,
-                _number_text(tag['time']) if tag else '原输入启动' if mode == 'fresh' else
-                '原检查点待校验' if mode == 'checkpoint_zip' else '不可重启'])
+                _number_text(tag['time']) + '（待校验）' if tag else
+                '原输入 / 检查点待校验' if mode == 'pending' else '不可重启'])
             effective = row.get('effective_time', {})
             try:
                 defaults.append(float(effective.get('MAX_TIME', 0)))

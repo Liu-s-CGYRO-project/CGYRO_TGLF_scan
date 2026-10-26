@@ -5,7 +5,7 @@ to a restart. Planning and staging do not change the successful result case.
 CGYRO rewinds its history to out.cgyro.tag and MAX_TIME adds a new time segment.
 """
 from OMFITlib_cgyro_archive import catalog_runs
-from builtins import (AttributeError, OSError, TypeError, ValueError, any, dict, float, int, len,
+from builtins import (AttributeError, OSError, TypeError, ValueError, abs, any, dict, float, int, len,
                       isinstance, iter, list, max, range, set, sorted, str, sum, type, zip)
 import copy
 import hashlib
@@ -15,7 +15,7 @@ import re
 import shutil
 import zipfile
 from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, clean_run_id,
-                                   point_coordinate, scan_branch, scan_key)
+                                   output_final_time, point_coordinate, result_file, scan_branch, scan_key)
 from OMFITlib_cgyro_storage import result_view, submission_file
 from OMFITlib_cgyro_db import run_cases, run_is_deleted, run_records
 from OMFITlib_cgyro_checkpoint import directory_checkpoint
@@ -299,27 +299,49 @@ def checkpoint_details(directory):
 
 
 def checkpoint_tag(directory):
-    """Keep the historical tag-only API for tables and continuation planning."""
+    """Return the tag only after full checkpoint validation for continuation."""
     return checkpoint_details(directory)['tag']
 
 
-def point_status(result):
-    """Solver termination is distinct from a small tail fluctuation estimate."""
+def checkpoint_preview(result):
+    """Read a bounded tag/time hint, never certify or read a restart binary.
+
+    Opening a point picker must not validate gigabytes of unselected restart
+    payloads. The continuation planner still calls checkpoint_tag on every
+    selected point before staging or submitting anything.
+    """
+    with open(result_file(result, 'out.cgyro.tag'), 'rb') as handle:
+        fields = handle.read(4096).split()
+    if len(fields) < 2:
+        raise ValueError('Missing checkpoint time metadata')
+    count = int(fields[0])
+    time = float(fields[1].replace(b'D', b'E').replace(b'd', b'e'))
+    last = output_final_time(result)
+    if count < 1 or not math.isfinite(time) or time < 0 or last is None or time > last + 1e-7 * max(1., abs(last)):
+        raise ValueError('Invalid checkpoint time metadata')
+    return dict(sample_count=count, time=time, last_time=last)
+
+
+def point_status(result, *, verify_checkpoint=True):
+    """Read solver status; UI previews defer binary validation to continuation."""
     status = dict(convergence='unknown', checkpoint=None, reason='')
     try:
-        directory = result.filename
-        with open(os.path.join(directory, 'out.cgyro.info'), encoding='utf-8', errors='replace') as handle:
-            for line in handle:
+        with open(result_file(result, 'out.cgyro.info'), 'rb') as handle:
+            handle.seek(0, 2)
+            handle.seek(max(0, handle.tell() - 32768))
+            for line in handle.read().decode('utf-8', errors='replace').splitlines():
                 if 'Linear converged' in line:
                     status['convergence'] = 'converged'
                 elif 'Linear terminated at max time' in line:
                     status['convergence'] = 'max_time'
                 elif 'Integration error exceeded limit' in line or line.lstrip().startswith('ERROR:'):
                     status['convergence'] = 'failed'
-    except (OSError, AttributeError):
+    except (OSError, AttributeError, ValueError):
         pass
     try:
-        status['checkpoint'] = checkpoint_tag(result.filename)
+        status['checkpoint'] = checkpoint_tag(result.filename) if verify_checkpoint else checkpoint_preview(result)
+        if not verify_checkpoint:
+            status['reason'] = '检查点时间仅作预览；续算前将完整校验所选点。'
     except (OSError, AttributeError, TypeError, ValueError) as exc:
         status['reason'] = str(exc)
     return status

@@ -340,6 +340,7 @@ class ProjectTest(unittest.TestCase):
         self.cg['SCRIPTS']['downsync.py'].run.assert_not_called()
 
     def test_job_recovery_entry_is_available_without_current_input_or_manifest(self):
+        self.actions.settings['cgyro_main_tab'] = 'results'
         ui = self.render('cgyro')
         callback, options = ui.button('按作业号恢复')
         self.assertNotEqual(options.get('state', ''), 'disabled')
@@ -356,6 +357,7 @@ class ProjectTest(unittest.TestCase):
 
     def test_recovery_panel_shows_only_requested_job_not_old_pending_history(self):
         import OMFITlib_workbench_cgyro_ui as cgyro_ui
+        self.actions.settings['cgyro_main_tab'] = 'results'
         old = dict(run_token='old', job_id='9537283', status='failed', collection_status='pending',
                    case_id='nr=11__rho=0.99__ion=BASE', batch_id='recovery')
         selected = dict(run_token='selected', job_id='9817420', status='submitted_or_finished',
@@ -375,6 +377,7 @@ class ProjectTest(unittest.TestCase):
 
     def test_radius_delete_cancel_and_confirm_use_exact_previewed_scope(self):
         import OMFITlib_workbench_cgyro_ui as cgyro_ui
+        self.actions.settings['cgyro_main_tab'] = 'results'
         old = dict(runid='Jet', run_token='old', nr=11, rho=.99,
                    case_id='nr=11__rho=0.99__ion=BASE', job_id='9537283', status='failed')
         self.cg['RUN_HISTORY'] = {'old': {'manifest': old}}
@@ -399,6 +402,7 @@ class ProjectTest(unittest.TestCase):
 
     def test_task_manager_entry_does_not_enumerate_or_delete_on_ordinary_render(self):
         import OMFITlib_workbench_cgyro_ui as cgyro_ui
+        self.actions.settings['cgyro_main_tab'] = 'results'
         with patch.object(cgyro_ui, 'TaskManager') as manager:
             ui = self.render('cgyro')
             _, options = ui.button('任务管理 / 删除任务…')

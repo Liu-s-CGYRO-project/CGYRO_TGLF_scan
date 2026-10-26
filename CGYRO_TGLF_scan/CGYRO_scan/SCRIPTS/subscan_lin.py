@@ -256,7 +256,7 @@ if check_temp_start:
     space = check_start_capacity(base_workdir)
     print('[CGYRO] Start check passed; preparing inputs. Later peaks above 100 GiB are allowed.', flush=True)
 print('[CGYRO] Checking saved result/input references before preparing this case.', flush=True)
-compact_storage(root, OMFITtree)
+compact_storage(root, OMFITtree, run_token=root.get('RUN_MANIFEST', {}).get('run_token', ''))
 previous_cases = result_view(root, run_cases(root))
 restart_mode = 0 if continuation else int(physics['restart_mode'])
 if restart_mode not in (0, 1):

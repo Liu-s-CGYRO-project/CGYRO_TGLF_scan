@@ -113,7 +113,7 @@ class ResultMetadataTests(unittest.TestCase):
                 self.assertIn('查看数值表', ui.buttons)
                 self.assertIn('绘制当前结果', ui.buttons)
                 self.assertTrue(any(args[2] == 'ky 切片' for args in ui.combos))
-                self.assertTrue(any('1 个已读取计算点' in value for value in ui.labels))
+                self.assertTrue(any('1 个已有结果计算点' in value for value in ui.labels))
 
     def test_coordinate_choices_preserve_signed_values_and_tolerance(self):
         values = [1., 1. + 5e-11, 1. + 2e-10, -.1, -.1, .1, -0., 0.,
@@ -137,7 +137,7 @@ class ResultMetadataTests(unittest.TestCase):
         with patch.object(browser, 'stopped_context', side_effect=AssertionError('opened restart ancestry')), \
                 patch.object(browser, 'resolve_result', side_effect=AssertionError('opened a result')):
             browser.ResultBrowser(root, ui, continue_callback=lambda *args: None).render(title=False)
-        self.assertTrue(any('1 个已读取计算点' in value for value in ui.labels))
+        self.assertTrue(any('1 个已有结果计算点' in value for value in ui.labels))
         self.assertIn('时间曲线 / 选择点续算…', ui.buttons)
         self.assertEqual(root['CGYRO_scan'], before)
 
@@ -172,7 +172,7 @@ class ResultMetadataTests(unittest.TestCase):
                                       values=dict(N_THETA=16, KY=-.2))
         ui = UI()
         browser.ResultBrowser(root, ui).render(title=False)
-        self.assertTrue(any('2 个已读取计算点' in value for value in ui.labels))
+        self.assertTrue(any('2 个已有结果计算点' in value for value in ui.labels))
         self.assertFalse(any('cache' in key.lower() for key in root['SETTINGS']['WORKBENCH']))
 
 

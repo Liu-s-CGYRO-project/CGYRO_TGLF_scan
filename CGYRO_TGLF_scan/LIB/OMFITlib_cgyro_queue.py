@@ -70,7 +70,7 @@ def save_current(root, factory=dict):
         # historical metadata is already retained; never recreate input/case
         # branches or overwrite that record from the stale live manifest.
         return
-    compact_storage(root, factory)
+    compact_storage(root, factory, run_token=manifest['run_token'])
     batch = root.get('RUN_BATCH', {})
     token = manifest['run_token']
     if (batch.get('batch_id', '') and manifest.get('batch_id', '') == batch['batch_id']

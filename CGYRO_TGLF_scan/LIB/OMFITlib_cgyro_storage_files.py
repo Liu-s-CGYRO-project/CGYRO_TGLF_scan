@@ -12,6 +12,7 @@ import re
 import zipfile
 from omfit_classes.omfit_path import OMFITpath
 from OMFITlib_cgyro_db import metadata_value, result_pool, storage_state
+from OMFITlib_cgyro_reference import is_native_file
 from OMFITlib_cgyro_scratch import ensure_capacity
 
 FILE_STORE = '__FILES__'
@@ -30,7 +31,9 @@ def native_kind(node, name):
 
 def file_reference_id(node):
     node = metadata_value(node)
-    if not isinstance(node, dict) or FILE_REF not in node:
+    # Native dict subclasses are opaque file readers, not reference indexes.
+    # Even ``FILE_REF in node`` would load an entire CGYRO result directory.
+    if is_native_file(node) or not isinstance(node, dict) or FILE_REF not in node:
         return None
     key = metadata_value(node[FILE_REF])
     if len(node) != 1 or not isinstance(key, str) or re.fullmatch(r'[0-9a-f]{64}', key) is None:
@@ -113,7 +116,7 @@ class SubmissionFiles:
         return node
 
     def bundle(self, node):
-        return (isinstance(node, dict) and 'zip' in node and
+        return (not is_native_file(node) and isinstance(node, dict) and 'zip' in node and
                 ('input.cgyro' in node or set(node) == {'zip'}) and
                 (native_kind(node['zip'], 'OMFITpath') or file_reference_id(node['zip']) is not None))
 

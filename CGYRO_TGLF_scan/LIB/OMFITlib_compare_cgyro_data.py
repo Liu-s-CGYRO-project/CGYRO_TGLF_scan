@@ -1,5 +1,5 @@
 """Read CGYRO spectra once and prepare numeric scan data without making figures."""
-from OMFITlib_cgyro_archive import catalog_runs
+from OMFITlib_cgyro_archive import catalog_runs, result_file
 from builtins import IndexError, KeyError, OSError, TypeError, ValueError, any, dict, float, hasattr, int, len, list, max, str, tuple
 import numpy as np
 from OMFITlib_compare_core import cgyro_frequency_history, cgyro_frequency_stats, apply_divide_by_ky, normalize_if_needed, resolve_key
@@ -7,6 +7,7 @@ from OMFITlib_compare_cgyro_selection import maybe_abs_ky, maybe_abs_ky_list, pa
 from OMFITlib_compare_state import stable_keys
 from OMFITlib_cgyro_scan_view import coordinate_label, linear_node
 from OMFITlib_cgyro_storage import result_view
+from OMFITlib_cgyro_reference import is_native_file
 
 
 def diagnostic(ctx, nr, para, value, message, ky=None):
@@ -51,7 +52,52 @@ def compute_freq_stats(datadir, ave_window):
             'omega_rel_err': stats[0][2], 'gamma_rel_err': stats[1][2]}
 
 
-def collect_value_series(root, ctx, nr, para, value):
+def _selection_input(data):
+    """Read only generated input when display ky needs main-ion scaling.
+
+    Selection must precede the OMFITcgyro mapping API: even asking that reader
+    for input.cgyro.gen first parses frequency, field and flux arrays as well.
+    Plain/custom in-memory mappings retain their existing input interface.
+    """
+    if not is_native_file(data):
+        return data
+    try:
+        from omfit_classes.omfit_gacode import OMFITgacode
+        return {'input.cgyro.gen': OMFITgacode(result_file(data, 'input.cgyro.gen'))}
+    except (OSError, ValueError):
+        return {}
+
+
+def selected_linear_keys(linear, targets, ctx, normalized=False):
+    """Select from saved ky coordinates before opening any science arrays.
+
+    Signed coordinates remain distinct even when the display uses abs(ky).
+    Empty targets mean the whole *selected spectrum*, never other scans.
+    Non-numeric old keys may use their in-memory reader metadata as fallback.
+    """
+    keys = stable_keys(linear)
+    if not len(targets):
+        return keys
+    candidates = []
+    for key in keys:
+        try:
+            ky = float(key)
+        except (TypeError, ValueError):
+            data = linear[key]
+            if is_native_file(data):
+                raise ValueError('Missing numeric ky coordinate in saved result index: ' + str(key))
+            ky = float(data['kyrhos'])
+        if normalized and ctx.get('normalize_main_ion', False):
+            ky, _, _ = normalize_if_needed(_selection_input(linear[key]), ky, 0., 0.,
+                                           True)
+        ky = float(maybe_abs_ky(ky, ctx))
+        if np.isfinite(ky):
+            candidates.append((key, ky))
+    chosen = filter_single_ky(np.asarray([ky for _, ky in candidates]), targets)
+    return [key for key, ky in candidates if ky in chosen]
+
+
+def collect_value_series(root, ctx, nr, para, value, selected_ky=()):
     """Return sorted ky, omega, gamma, relative fluctuations and absolute std.
 
     Raw signed means precede display /ky scaling. Invalid samples are reported;
@@ -63,7 +109,7 @@ def collect_value_series(root, ctx, nr, para, value):
         diagnostic(ctx, nr, para, value, 'No saved linear spectrum')
         return _empty_series_arrays()
     rows, rejected = [], 0
-    for key in stable_keys(linear):
+    for key in selected_linear_keys(linear, selected_ky, ctx, normalized=True):
         try:
             data = linear[key]
             stats = frequency_stats(data, ctx.get('ave_window', .02))
@@ -99,22 +145,13 @@ def collect_time_series(root, ctx, nr, para, value):
     if linear is None or not len(linear):
         diagnostic(ctx, nr, para, value, 'No saved linear histories')
         return []
-    candidates = []
-    for key in stable_keys(linear):
+    traces = []
+    for key in selected_linear_keys(linear, ctx.get('selected_time_ky', []), ctx):
         try:
             data = linear[key]
             ky = float(data['kyrhos'])
             if not np.isfinite(ky):
                 raise ValueError('Non-finite saved ky')
-            candidates.append((key, ky, data))
-        except (KeyError, IndexError, OSError, TypeError, ValueError) as exc:
-            diagnostic(ctx, nr, para, value, exc, ky=key)
-    selected = filter_single_ky(np.asarray([ky for _, ky, _ in candidates]), ctx.get('selected_time_ky', []))
-    traces = []
-    for key, ky, data in candidates:
-        if ky not in selected:
-            continue
-        try:
             times, omega, gamma = cgyro_frequency_history(data)
             traces.append(dict(ky=ky, time=times, omega=omega, gamma=gamma))
         except (KeyError, IndexError, OSError, TypeError, ValueError) as exc:
@@ -129,7 +166,8 @@ def build_param_cloud(root, ctx, nr, para, para_values):
         numeric_value = float(value)
         if not np.isfinite(numeric_value):
             raise ValueError('Scan-axis values must be finite numbers: {}'.format(para))
-        ky, omega, gamma, *_ = collect_value_series(root, ctx, nr, para, value)
+        targets = ctx.get('selected_single_ky', []) if ctx.get('single_ky', False) else []
+        ky, omega, gamma, *_ = collect_value_series(root, ctx, nr, para, value, selected_ky=targets)
         omega, gamma, _, _ = apply_divide_by_ky(
             ky, omega, gamma, ctx['divide_by_ky'], ctx.get('divide_by_ky2', False))
         valid = np.isfinite(ky) & np.isfinite(omega) & np.isfinite(gamma)
@@ -190,7 +228,7 @@ def get_gamma_ratio_curve(root, ctx, nr, para, para_values):
         numeric_value = float(value)
         if not np.isfinite(numeric_value):
             raise ValueError('Scan-axis values must be finite numbers: {}'.format(para))
-        ky, _, gamma, *_ = collect_value_series(root, ctx, nr, para, value)
+        ky, _, gamma, *_ = collect_value_series(root, ctx, nr, para, value, selected_ky=targets)
         if not len(gamma):
             continue
         if single:

@@ -1,8 +1,26 @@
 # 维护与扩展接口
 
-适用于工程 1.24.19。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.20。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 
+
+## 历史结果按需读取（1.24.20）
+
+`CgyroPage.render_cgyro` 只为当前外层标签页构建结果控件，`cgyro_main_tab` 保存普通标签页标识。内层扫描标签和结果标签不是同一个 Notebook；回调必须核对事件所属 Notebook，并且只在选择变化后调用本窗口的适配器 UpdateGUI。不可让隐藏结果页在每次扫描参数刷新时重建未完成任务的 ancestry。结果页的公开索引和未归档任务切片入口仍保留。
+
+`cgyro_payload.resolve_browser` 调用 `resolve_owner(..., defer_native=True)`，让旧原生目录及文件清单两种所有者都先返回 DeferredResult。原生 OMFIT 加载工程时会求值全部保存的表达式，并调用 iter(value) 判断类型；因此 `DeferredResult.__iter__` 必须是生成器，不能直接返回 iter(self._payload_reader())。前者直到 next/实际遍历才触发读者，后者在分类时已经完整加载。不要通过静音 pygacode 日志掩盖实际 I/O，也不要把此运行时类型或数组缓存存进 RUN_DB。
+
+`_payload_file` 对旧原生所有者只返回指定小文件路径，对文件清单验证并读取对应文件；小文件检查不必复制整个检查点目录。普通 resolve_owner 的旧目录兼容行为不变，明确的数据动作仍使用原生读者。
+
+主树的 `_update_treeGUI` / `itemTagsValues` 会对折叠结果检查 `dynaLoad`、`modifyOriginal`、`readOnly` 和 `__tree_repr__`。这些属性必须在适配器本地回答；不要通过通用 `__getattribute__` 转发而创建读者。已打开读者仅用弱引用跟踪，目录缓存仍有容量上限。不要用 `__getattr__` 回退到原生 SortedDict 的自动加载。
+
+`OMFITcgyro` 本身是 dict 子类；判断 `__CGYRO_FILES__`、`__FILE_REF__` 或 `zip` 等标记之前必须先排除 `is_native_file`。成员检查、`get`、`len`、`items` 都可能加载全部科学数组。删除/引用回收只遍历元数据。提交和 `save_current` 调用 `compact_storage(..., run_token=token)`，只转换当前记录；`None` 才代表显式全工程维护，空 token 也不扩大范围。局部整理不提升全局 checkpoint_policy，事务回滚恢复原目标分支及物理所有者。
+
+`selected_linear_keys` 在调用原生数据映射前根据持久 ky 索引筛选。时间曲线保留带符号原始 ky，显示绝对值及主离子归一化仍遵守原绘图语义；归一化预选只读 input.cgyro.gen。指定 ky 模式只读所选结果；谱图和最大 γ 需要当前选中半径/参数的候选谱，不能扩大到其他案例。TGLF/cross-model 沿用 `plot_sources` 的按项读取。
+
+`point_status(..., verify_checkpoint=False)` 仅用于时间曲线列表，读取日志尾、tag 与末采样时间，显示待校验。它不能作为提交安全条件。真正续算的 `resume_source` / `continuation_plan` / staging 仍完整校验选中点；不能因列表显示时间而跳过二进制尺寸、SHA、有限值和物理输入检查。未开始点先按原输入溯源显示候选，不在列出全部点时解压或哈希每份 ZIP。
+
+`test_cgyro_scan_refresh` 使用真实 Tk 与未经改写的原生 Tab 函数体，检查普通刷新无结果枚举、显式切页、选择恢复和无重复刷新循环。`test_cgyro_file_dedup` 使用原生表达式、主树与 dynaLoader 函数体，覆盖超过运行时目录缓存容量的旧目录与文件清单，分类/折叠行不物化，主动展开仍能读取。两套需指定 --omfit-source。`test_cgyro_read_boundaries` 使用 dict 子类读者，未授权的数值读取立即报错，覆盖任务删除、提交、回滚、各绘图范围、归一化和真实 Tk 选点窗口；完整续算校验仍可拒绝损坏检查点。Linux 真实 Tk 需 DISPLAY。
 
 ## 服务器 CPU 容量检测（1.24.19）
 
@@ -123,7 +141,7 @@ TGLF 多剖面恢复先调用 `tglf_multi_data.prepared_run_issues(run, plan, di
 
 退休、可达性剪枝各自带 BaseException 回滚；外层事务还保留物理池的浅引用日志，覆盖 prune 返回之后的 Abort。这里仅解除保存树的引用，源目录和原工程 ZIP 不删除。`require_retained_run` 是旧窗口续算、激活、手动收集的统一保护入口。批量收集跳过退休记录，不能重新下载它的旧数据。
 
-普通状态保存仍检查活树中新插入的数据，但没有转换时不再复制整个 __STORAGE__。不要用长期 bool 缓存跳过检查；用户可能在两次保存之间导入旧原生结果。性能测试应分别报告目录 I/O、解析、元数据复制和真实界面延迟，不能把合成本机基准说成集群实测。
+普通状态保存只检查当前运行记录中新插入的数据，没有转换时不再复制整个 __STORAGE__；其他历史只由显式整理处理。不要用长期 bool 缓存跳过当前记录检查；用户可能在两次保存之间导入旧原生结果。性能测试应分别报告目录 I/O、解析、元数据复制和真实界面延迟，不能把合成本机基准说成集群实测。
 
 `archived_case(..., allow_inherited=True)` 只供停止续算的祖先重建使用：扫描头可能已指向子运行，祖先仅剩部分公开坐标。匹配必须同时核对原 token、运行/案例/参数组及完整坐标，再映回原冻结点号；禁止只靠同名 p000001，也不能让过期窗口使用此回退。数值表和绘图传入选定 token，不为列出选择项展开其他运行的祖先链。
 

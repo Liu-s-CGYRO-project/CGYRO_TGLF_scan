@@ -257,12 +257,14 @@ def _storage_totals(pool, result_sizes, file_sizes, checkpoints):
                 backup_checkpoints=sum(1 for report in reports if report.get('selected', '') == 'bin.cgyro.restart.old'))
 
 
-def compact_storage(module, factory=dict, browse=False):
+def compact_storage(module, factory=dict, browse=False, *, run_token=None):
     """Plan all replacements before committing; retain every unique result.
 
     In particular, partial/unpublished history is not a disposable cache. It
     receives the same references as published scans and remains restartable.
     No solver directory or prior project ZIP is deleted by this operation.
+    Normal submission/queue callers pass the current token. Only explicit
+    maintenance may migrate/hash unrelated legacy results across the project.
     """
     db = ensure_layout(module, factory)
     pool = result_pool(module)
@@ -287,7 +289,7 @@ def compact_storage(module, factory=dict, browse=False):
 
     # Also accept an earlier indexed project: install new owners first, then
     # redirect its public indexes. Unreferenced old owners are pruned later.
-    if previous_state.get('checkpoint_policy', 0) != CHECKPOINT_POLICY_VERSION:
+    if run_token is None and previous_state.get('checkpoint_policy', 0) != CHECKPOINT_POLICY_VERSION:
         for old, node in pool.items():
             if old != FILE_STORE:
                 remapped[old] = plan_result(node)
@@ -344,9 +346,17 @@ def compact_storage(module, factory=dict, browse=False):
             return True
         return any(has_raw(value) for value in node.values())
 
-    for branch, value in db.items():
-        if branch not in (STORE, STATE) and has_raw(value):
-            plans[branch] = convert(value)
+    plan_target = db
+    if run_token is None:
+        for branch, value in db.items():
+            if branch not in (STORE, STATE) and has_raw(value):
+                plans[branch] = convert(value)
+    else:
+        records = run_records(module)
+        token = str(run_token)
+        if token in records and has_raw(records[token]):
+            plan_target = records
+            plans[token] = convert(records[token])
     submissions.verify_sources()
 
     def summary(target):
@@ -360,14 +370,15 @@ def compact_storage(module, factory=dict, browse=False):
         return report
 
     if (not plans and not additions and not submissions.additions and
-            previous_state.get('checkpoint_policy', 0) == CHECKPOINT_POLICY_VERSION and STORE in db):
+            (run_token is not None or previous_state.get('checkpoint_policy', 0) == CHECKPOINT_POLICY_VERSION)
+            and STORE in db):
         # Queue bookkeeping calls this repeatedly. A verified, already indexed
         # tree needs no commit: avoid deep-copying/replacing all saved size and
         # checkpoint metadata, which also invalidates native GUI/lazy views.
         # Still inspect live branches above; users can import legacy owners at
         # any time, so a persistent "compacted" flag would be unsafe.
         return summary(pool)
-    original = {branch: db[branch] for branch in plans}
+    original = {branch: plan_target[branch] for branch in plans}
     previous_sizes = db.get(STATE, None)
     created_pool = STORE not in db
     target = result_pool(module, factory)
@@ -380,16 +391,19 @@ def compact_storage(module, factory=dict, browse=False):
             for key, value in submissions.additions.items():
                 files[key] = value
         for branch, replacement in plans.items():
-            db[branch] = replacement
+            plan_target[branch] = replacement
         state = factory()
         state.update(deepcopy(dict(previous_state)))
+        # A scoped pass has not revalidated the other legacy owners. Do not
+        # advertise a project-wide checkpoint migration that never happened.
+        policy = CHECKPOINT_POLICY_VERSION if run_token is None else previous_state.get('checkpoint_policy', 0)
         state.update(dict(version=max(STORAGE_SCHEMA_VERSION, previous_state.get('version', 0)),
-                          checkpoint_policy=CHECKPOINT_POLICY_VERSION, bytes=sizes, checkpoints=checkpoints,
+                          checkpoint_policy=policy, bytes=sizes, checkpoints=checkpoints,
                           file_bytes=submissions.sizes))
         db[STATE] = state
     except BaseException as original_error:
         errors = rollback_actions(original_error,
-            ((branch, lambda branch=branch, value=value: db.__setitem__(branch, value))
+            ((branch, lambda branch=branch, value=value: plan_target.__setitem__(branch, value))
              for branch, value in original.items()))
         if not errors:
             # A rejected branch restoration may leave indexes to new owners.

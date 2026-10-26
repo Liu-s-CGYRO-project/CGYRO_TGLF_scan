@@ -1,12 +1,16 @@
 """File-level compaction: persistent identities, private readers and rollback."""
+import ast
 import copy
 from collections import OrderedDict
 import hashlib
 import importlib
+import inspect
 import json
+import re
 import shutil
 from pathlib import Path
 from types import SimpleNamespace
+from textwrap import dedent
 import unittest
 from unittest.mock import patch
 
@@ -14,6 +18,7 @@ import test_cgyro_storage as fixture
 
 storage, db = fixture.storage, fixture.db_api
 payload = importlib.import_module('OMFITlib_cgyro_payload')
+SOURCE = fixture.REPO.parents[2] / 'OMFIT-source-ASIPP_unstable/omfit'
 
 
 class FileDedupTests(unittest.TestCase):
@@ -88,6 +93,124 @@ class FileDedupTests(unittest.TestCase):
             # without copying its files or pretending it is an unindexed file.
             self.assertEqual(storage.reference_id(storage.store_result(root, view['point'])),
                              storage.reference_id(refs[0]))
+
+    def test_native_expression_startup_does_not_read_legacy_or_packed_owners(self):
+        # The native loader evaluates every saved expression, then calls iter
+        # on its value merely to classify it. Exercise that unchanged method,
+        # rather than only checking that our expression text is inert.
+        source = SOURCE / 'omfit_classes/omfit_base.py'
+        tree = ast.parse(source.read_text(encoding='utf-8'))
+        definition = next(node for node in tree.body
+                          if isinstance(node, ast.ClassDef) and node.name == 'OMFITexpression')
+        definition.body = [node for node in definition.body if isinstance(node, ast.FunctionDef)
+                           and node.name in ('_value_', '_godeep')]
+        namespace = dict(OMFITexpressionsReturnNone=False,
+                         OMFITexpressionError=type('OMFITexpressionError', (), {}))
+        exec(compile(ast.Module(body=[definition], type_ignores=[]), str(source), 'exec'), namespace)
+        expression_type = namespace['OMFITexpression']
+        namespace['OMFITiterableExpression'] = type('OMFITiterableExpression', (expression_type,), {})
+        root, refs = {}, []
+        for number in range(payload.VIEW_CACHE_SIZE + 3):
+            refs.append(storage.store_result(root, self.result('point-' + str(number), str(number).encode())))
+        root['RUN_DB']['__UNCLASSIFIED__'] = dict(enumerate(refs))
+        root['LIB'] = {'OMFITlib_cgyro_payload': SimpleNamespace(importCode=lambda **kwargs: payload)}
+        expression_type.__value__ = lambda self, dependencies: eval(
+            self.expression, {'root': root})
+        readers = []
+        for packed in (False, True):
+            if packed:
+                self.pack(root)
+            with self.subTest(packed=packed), patch.object(
+                    payload, 'materialize_owner', side_effect=AssertionError('eager result read')):
+                for ref in refs:
+                    expression = expression_type()
+                    expression.expression = fixture.reference_api.browse_code(storage.reference_id(ref))
+                    readers.append(expression._value_())
+                    self.assertIsInstance(readers[-1], fixture.OMFITcgyro)
+        # Calling iter remains cheap; consuming the selected reader is an
+        # explicit data access and must still delegate to the native mapping.
+        with patch.object(payload, 'materialize_owner', return_value={'freq': {}}) as resolve:
+            pending = iter(readers[0])
+            resolve.assert_not_called()
+            self.assertEqual(next(pending), 'freq')
+            resolve.assert_called_once_with(root, storage.reference_id(refs[0]))
+
+    def test_legacy_browser_adapter_keeps_small_file_access_and_owner_identity(self):
+        root, refs = self.pair()
+        key = storage.reference_id(refs[0])
+        original = storage.result_pool(root)[key]
+        with patch.object(payload, 'materialize_owner', side_effect=AssertionError('full result read')):
+            reader = payload.resolve_browser(root, key)
+            path = fixture.archive_api.result_file(reader, 'input.cgyro')
+            self.assertEqual(Path(path).read_bytes(), b'KY=0.1\n')
+            self.assertEqual(storage.reference_id(storage.store_result(root, reader)), key)
+        self.assertIs(storage.result_pool(root)[key], original)
+
+    def test_native_tree_refresh_and_row_captions_leave_collapsed_results_unopened(self):
+        # Run the unchanged native traversal and row formatter. Both probe
+        # attributes even on collapsed rows; testing iter() alone misses this.
+        from unittest.mock import Mock
+        import numpy as np
+        root = {}
+        refs = [storage.store_result(root, self.result('row-' + str(i), str(i).encode()))
+                for i in range(payload.VIEW_CACHE_SIZE + 3)]
+        root['RUN_DB']['kept'] = dict(enumerate(refs))
+        namespace = dict(np=np, re=re, inspect=inspect, tk=SimpleNamespace(END='end'),
+                         SortedDict=OrderedDict, OrderedDict=OrderedDict,
+                         OMFITobject=fixture.OMFITobject, OMFITtree=dict,
+                         pandas=SimpleNamespace(Series=type('Series', (), {})),
+                         Dataset=type('Dataset', (), {}), DataArray=type('DataArray', (), {}),
+                         OMFITexpression=type('OMFITexpression', (), {}),
+                         OMFITaux={'dynaLoad_switch': True}, hide_ptrn=r'^__.*__$',
+                         sortHuman=lambda item: item, omfit_hash=lambda text, size: text[:size])
+        for path, name in (('omfit_gui.py', '_update_treeGUI'),
+                           ('omfit_classes/omfit_base.py', 'itemTagsValues'),
+                           ('omfit_classes/sortedDict.py', 'dynaLoader')):
+            source = SOURCE / path
+            # The local native GUI checkout has an unrelated incomplete
+            # startup expression; parse this exact function body in isolation.
+            lines = source.read_text(encoding='utf-8').splitlines(keepends=True)
+            start = next(i for i, line in enumerate(lines) if line.lstrip().startswith('def ' + name + '('))
+            indent = len(lines[start]) - len(lines[start].lstrip())
+            end = next((i for i in range(start + 1, len(lines))
+                        if lines[i].strip() and not lines[i].lstrip().startswith('#')
+                        and len(lines[i]) - len(lines[i].lstrip()) <= indent), len(lines))
+            definition = ast.parse(dedent(''.join(lines[start:end]))).body[0]
+            definition.decorator_list = []
+            exec(compile(ast.Module(body=[definition], type_ignores=[]), str(source), 'exec'), namespace)
+        for packed in (False, True):
+            if packed:
+                self.pack(root)
+            readers = [payload.resolve_browser(root, storage.reference_id(ref)) for ref in refs]
+            errors = []
+            namespace.update(OMFIT=dict(enumerate(readers)), printe=errors.append, printt=errors.append)
+            tree_gui = Mock()
+            tree_gui.selection.return_value, tree_gui.focus.return_value = (), ''
+            tree_gui.get_children.return_value = []
+            def rows():
+                for reader in readers:
+                    _, caption = namespace['itemTagsValues'](reader)
+                    self.assertIn('expand to load', caption[0])
+            view = SimpleNamespace(treeGUI=tree_gui, showHidden=False, onlyTree=None, attributes={},
+                                   browserSearch='', opened_closed_bkp=None, opened_closed={},
+                                   display_row_info=rows)
+            with self.subTest(packed=packed), patch.object(
+                    payload, 'materialize_owner', side_effect=AssertionError('collapsed result opened')) as load:
+                namespace['_update_treeGUI'](view)
+                load.assert_not_called()
+                self.assertFalse(errors)
+                self.assertEqual(tree_gui.insert.call_count, len(readers) * 2)
+            class Loaded(dict):
+                dynaLoad = True
+                def load(self):
+                    self['freq'] = 'selected data'
+                    self.dynaLoad = False
+            selected = Loaded()
+            with patch.object(payload, 'materialize_owner', return_value=selected) as load:
+                namespace['dynaLoader'](readers[0])  # Explicit native tree-open action.
+                self.assertFalse(readers[0].dynaLoad)
+                self.assertEqual(readers[0]['freq'], 'selected data')
+                self.assertEqual({call.args[1] for call in load.call_args_list}, {storage.reference_id(refs[0])})
 
     def test_new_results_reuse_the_file_pool_after_compaction(self):
         root, refs = self.pair()
