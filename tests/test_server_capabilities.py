@@ -135,7 +135,7 @@ class CapabilityTests(unittest.TestCase):
 
     def test_profile_cannot_be_reused_on_another_endpoint_or_tunnel(self):
         config, profile = self.config(), self.profile()
-        self.assertIs(matching_profile(config, dict(capabilities=profile)), profile)
+        self.assertEqual(matching_profile(config, dict(capabilities=profile)), profile)
         for change in (dict(server='other@cluster'), dict(tunnel='another-jump')):
             self.assertEqual(matching_profile(self.config(**change), dict(capabilities=profile)), {})
 
@@ -341,7 +341,7 @@ class DetectionActionTests(unittest.TestCase):
         self.assertEqual(selected['executable'], 'cgyro -e . -n 16 -nomp 2')
         self.assertEqual(shared_issues(self.root), [])
         detection['capabilities']['checked'] = 'changed'
-        self.assertTrue(shared_issues(self.root))
+        self.assertEqual(shared_issues(self.root), [])
         self.assertEqual(cg['RUN_MANIFEST'], original)
         self.assertIs(cg['RUN_DB']['retained'], marker)
 

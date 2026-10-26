@@ -1,5 +1,5 @@
 """Maintain installation roots and inspect files without running GACODE."""
-from builtins import all, any, dict, isinstance, len, list, ord, set, str, zip
+from builtins import all, any, dict, hasattr, isinstance, len, list, ord, set, str, zip
 from collections import OrderedDict
 import copy
 from datetime import datetime, timezone
@@ -133,6 +133,20 @@ def sync_environment(config):
     return True
 
 
+def same_endpoint(first, second):
+    """Compare the two saved identity fields, including on OMFITlazyLoad.
+
+    Project-tree dictionaries reopen as pickle proxies, which delegate get()
+    but do not implement value equality. Never compare a proxy to a dict or
+    traverse the project to unwrap it: these two small fields are sufficient.
+    Missing fields are not evidence of a matching endpoint.
+    """
+    return (hasattr(first, 'get') and hasattr(second, 'get')
+            and all(first.get(key, None) is not None
+                    and first.get(key, None) == second.get(key, None)
+                    for key in ('server', 'tunnel')))
+
+
 def installation_issues(config, detection=None):
     issues = []
     installs = config.get('gacode_installs', {})
@@ -167,7 +181,7 @@ def detection_is_current(config, detection, max_age=300):
         if not 0 <= age <= max_age:
             return False
         endpoint = {key: str(config.get(key, '') or '') for key in ('server', 'tunnel')}
-        if detection.get('endpoint', {}) != endpoint:
+        if not same_endpoint(detection.get('endpoint', {}), endpoint):
             return False
         if detection.get('probe_version', None) != 2:
             return False  # Older inventories did not inspect required helpers.
@@ -264,7 +278,8 @@ def merge_probe(config, records, factory=dict):
 def choices(config, detection=None, program=None):
     result = OrderedDict() if program is None else OrderedDict([('沿用环境脚本', '')])
     entries = (detection or {}).get('entries', {})
-    if (detection or {}).get('endpoint', {}) != {key: str(config.get(key, '') or '') for key in ('server', 'tunnel')}:
+    if not same_endpoint((detection or {}).get('endpoint', {}),
+                         {key: str(config.get(key, '') or '') for key in ('server', 'tunnel')}):
         entries = {}
     for name, root in config.get('gacode_installs', {}).items():
         record = entries.get(str(root), {})

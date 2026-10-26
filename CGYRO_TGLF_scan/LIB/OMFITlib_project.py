@@ -27,7 +27,7 @@ import uuid
 from collections import OrderedDict
 from OMFITlib_project_runtime import initialize_runtime, apply_runtime, applied_runtime, runtime_values, shared_issues
 from OMFITlib_gacode_installations import (PROGRAMS, detection_is_current, installation_issues, merge_probe,
-    parse_probe, probe_script, sync_environment, valid_path)
+    parse_probe, probe_script, same_endpoint, sync_environment, valid_path)
 from OMFITlib_server_capabilities import (adapt_draft, matching_profile, parse_probe as parse_capabilities,
     probe_script as capability_probe, resource_issues)
 from OMFITlib_transfer_workflow import (discard_legacy_outputs, generation_issues, initialize_generation,
@@ -797,7 +797,7 @@ class ProjectActions:
         added, detection = merge_probe(config, records, self.factory)
         state = self.root.setdefault('PROJECT_STATE', self.factory())
         previous = state.get('gacode_detection', {})
-        if previous.get('endpoint', {}) == detection['endpoint']:
+        if same_endpoint(previous.get('endpoint', {}), detection['endpoint']):
             entries = dict(previous.get('entries', {}))
             entries.update(records)
             detection['entries'] = entries

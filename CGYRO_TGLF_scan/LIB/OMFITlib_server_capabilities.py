@@ -8,6 +8,7 @@ from builtins import (KeyError, TypeError, ValueError, ZeroDivisionError, dict, 
                       len, max, min, set, sorted, str, sum)
 from datetime import datetime, timezone
 import re
+from OMFITlib_gacode_installations import same_endpoint
 
 VERSION = 2  # v1 collapsed mixed-node partitions to their smallest CPU count.
 TOOLS = ('sbatch', 'sinfo', 'qsub', 'mpiexec', 'mpirun', 'srun')
@@ -140,8 +141,40 @@ def parse_probe(output, config):
 def matching_profile(config, detection):
     profile = detection.get('capabilities', {})
     endpoint = {key: str(config.get(key, '') or '') for key in ('server', 'tunnel')}
+    # A saved plain dict under PROJECT_STATE reopens as OMFITlazyLoad. Its
+    # get/items methods load the small report, but equality compares the proxy
+    # itself. Return actual configuration values, never that transient wrapper.
+    profile = dict(profile.items()) if hasattr(profile, 'items') else {}
     return profile if (hasattr(profile, 'get') and profile.get('version', None) == VERSION
-                       and profile.get('endpoint', {}) == endpoint) else {}
+                       and same_endpoint(profile.get('endpoint', {}), endpoint)) else {}
+
+
+def runtime_capability_contract(config, profile):
+    """Values that can invalidate the applied allocation, independent of reload.
+
+    Detection timestamps, login hosts/limits and draft messages are diagnostic
+    evidence, not allocation policy. The batch preamble checks its own limits.
+    Only the selected queue matters here; checking field values also avoids
+    equality of nested lazy wrappers. Keep resource_issues() in sync when it
+    starts consuming new policy fields. Do not pass result trees to this helper.
+    """
+    value = dict(profile.items()) if hasattr(profile, 'items') else {}
+    if not value:
+        return {}
+    endpoint = value.get('endpoint', {})
+    queue = str(config.get('queue', '') or '')
+    partition = value.get('partitions', {}).get(queue, None)
+    policy = None
+    if partition is not None:
+        policy = dict(cpus_per_node=partition.get('cpus_per_node', None),
+                      available=partition.get('available', None),
+                      wall_time=time_seconds(partition.get('wall_time', '')),
+                      node_groups=sorted((row.get('cpus', None), row.get('memory_mib', None),
+                                          row.get('node_count', None))
+                                         for row in partition.get('node_groups', [])))
+    return dict(version=value.get('version', None),
+                endpoint={key: endpoint.get(key, None) for key in ('server', 'tunnel')},
+                slurm_status=value.get('slurm_status', ''), queue=queue, partition=policy)
 
 
 def _exceeds_time(requested, limit):

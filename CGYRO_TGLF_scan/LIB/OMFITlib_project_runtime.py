@@ -7,7 +7,7 @@ from pathlib import PurePosixPath
 from OMFITlib_cgyro_launch import command_template
 from OMFITlib_gacode_installations import (INSTALL_DEFAULTS, initialize_installations,
     installation_issues, program_environment, sync_environment)
-from OMFITlib_server_capabilities import matching_profile, resource_issues
+from OMFITlib_server_capabilities import matching_profile, resource_issues, runtime_capability_contract
 
 
 TARGETS = OrderedDict([
@@ -207,8 +207,10 @@ def shared_issues(root):
             if not isinstance(actual, dict) or any(str(actual.get(key, None)).strip() != str(value).strip()
                    for key, value in expected.items()):
                 return ['Module runtime differs from the applied configuration: ' + name]
-        if name == 'cgyro' and selected.get('server_capabilities', {}) != (profile or {}):
-            return ['Server capabilities changed; apply the runtime configuration again']
+        if (name == 'cgyro'
+                and runtime_capability_contract(config, selected.get('server_capabilities', {}))
+                != runtime_capability_contract(config, profile)):
+            return ['所选队列的运行能力已变化，请在“环境配置”页重新应用']
     return []
 
 

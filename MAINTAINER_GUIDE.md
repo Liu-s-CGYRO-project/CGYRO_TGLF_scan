@@ -1,8 +1,18 @@
 # 维护与扩展接口
 
-适用于工程 1.24.21。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.22。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 
+
+## 已应用配置的持久化身份（1.24.22）
+
+PROJECT_STATE 下普通 dict 会保存为 pickle，重开时由 OMFITlazyLoad 代理；SETTINGS 下同样数据通过 JSON/SettingsName 保存。不要对代理与字典直接做 ==/!=，也不要用“不是 dict”判断配置丢失。server_capabilities.matching_profile 只对指定的小型能力报告调用 items 并返回实际映射；gacode_installations.same_endpoint 只读取 server/tunnel 字段。绝不能通过全工程递归加载解决身份比较。
+
+shared_issues 比较 runtime_capability_contract，并继续调用 resource_issues。契约包括检测格式、服务器/隧道、Slurm 检测状态、所选队列的可用性、CPU 上限、按规格分组的节点数量/内存与数值化时限；其他队列、checked、hostname、登录限制、tools 和 draft_changes 不影响已应用配置。节点组排序后比较；同一时限的不同 Slurm 写法视为相同。新增会影响运行的能力字段时，同时更新契约与 resource_issues 的测试。缺失报告、过期格式和端点变化不能当作“没变化”。
+
+安装自动检测的时间戳继续用于显式应用时的短期安装文件复核，不代表队列能力的有效期；普通切页不触发网络检测。scan=False 复核必须保留同一端点的能力报告。apply_runtime 保持配置事务与回滚，不悄悄改写用户选择或已提交作业。
+
+test_runtime_persistence 使用未修改的原生 OMFITlazyLoad、SortedDict 与 SettingsName，宿主路径解析和 pickle/JSON I/O 是隔离适配；覆盖首次读取、重复重开、安装状态、复核保留、真实变化拦截与结果文件零读取。它不是完整服务器 OMFIT 会话的保存验收。测试仅恢复注入的注册表模块，不可通过恢复整个 sys.modules 快照反复移除/导入 C 扩展；结束时解除原生节点的宿主引用。
 
 ## 历史结果按需读取（1.24.20）
 
