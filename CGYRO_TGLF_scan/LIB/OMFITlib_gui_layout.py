@@ -54,6 +54,19 @@ def finish_gui_layout(label, ui=None, compact=True, fit_tabs=True):
     content._cgyro_gui_layout = NativeLayout(content, label, compact, resize_window, fit_tabs)
 
 
+def finish_gui_subtree(content):
+    """Style newly populated controls without rebinding the existing window."""
+    parent = content.master
+    while isinstance(parent, tk.Misc):
+        layout = getattr(parent, '_cgyro_gui_layout', None)
+        if layout is not None:
+            layout._walk(content)
+            layout.reflow()
+            layout._queue_scroll()
+            return
+        parent = parent.master
+
+
 def _style_console(console):
     """Use a real CJK font so Tk measures the glyphs that it actually draws."""
     try:

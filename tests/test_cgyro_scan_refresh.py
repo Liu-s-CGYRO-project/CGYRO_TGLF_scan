@@ -2,11 +2,15 @@
 import ast
 from pathlib import Path
 from types import SimpleNamespace
+import sys
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 REPO = Path(__file__).resolve().parents[1]
 SOURCE = REPO.parents[2] / 'OMFIT-source-ASIPP_unstable/omfit'
+sys.path.insert(0, str(REPO / 'CGYRO_TGLF_scan/LIB'))
+from OMFITlib_gui_deferred import deferred_section
+from OMFITlib_gui_layout import finish_gui_layout
 
 
 class Notebook:
@@ -42,7 +46,8 @@ class ScanRefreshTests(unittest.TestCase):
         self.browser, self.queue = Mock(), Mock(return_value=[])
         namespace = dict(tk=SimpleNamespace(Misc=Frame, TclError=RuntimeError),
             ttk=SimpleNamespace(Notebook=Notebook), MODULES={'cgyro': ('CGYRO_scan',)},
-            read=lambda root, path: root[path[0]], ResultBrowser=self.browser, queue_records=self.queue)
+            read=lambda root, path: root[path[0]], ResultBrowser=self.browser, queue_records=self.queue,
+            deferred_section=lambda ui, render: None)
         exec(compile(ast.Module(body=constants + [cls], type_ignores=[]), str(source), 'exec'), namespace)
         self.page = namespace['CgyroPage']()
         self.notebook = Notebook()
@@ -69,19 +74,25 @@ class ScanRefreshTests(unittest.TestCase):
         self.browser.return_value.render.assert_called_once_with(title=False)
         self.assertEqual(self.notebook.select(), '2')
 
-    def test_user_switch_requests_only_one_refresh_and_ignores_other_notebook(self):
+    def test_user_switch_never_requests_owner_refresh_and_ignores_other_notebook(self):
         self.page.render_cgyro()
+        section = self.page.cgyro_results_section = SimpleNamespace(show=Mock())
         self.assertIsNotNone(self.notebook.callback)
         self.notebook.select(2)
         event = SimpleNamespace(widget=self.notebook)
         self.notebook.callback(event)
         self.assertEqual(self.page.settings['cgyro_main_tab'], 'results')
-        self.page.ui.UpdateGUI.assert_called_once_with()
+        section.show.assert_called_once_with()
         self.notebook.callback(event)  # Rebuild/programmatic duplicate event.
+        self.assertEqual(section.show.call_count, 2)  # The section handles idempotency.
         self.notebook.callback(SimpleNamespace(widget=Notebook()))
-        self.page.ui.UpdateGUI.assert_called_once_with()
-        self.page.render_cgyro()
-        self.browser.return_value.render.assert_called_once_with(title=False)
+        self.assertEqual(section.show.call_count, 2)
+        self.notebook.select(0)
+        self.notebook.callback(event)
+        self.notebook.select(1)
+        self.notebook.callback(event)
+        self.page.ui.UpdateGUI.assert_not_called()
+        self.browser.assert_not_called()
 
     def test_invalid_saved_tab_falls_back_to_input_without_loading_results(self):
         self.page.settings['cgyro_main_tab'] = 'removed-page'
@@ -90,51 +101,164 @@ class ScanRefreshTests(unittest.TestCase):
         self.assertEqual(self.notebook.select(), '0')
         self.browser.assert_not_called()
 
-    def test_native_tab_events_keep_input_refreshes_separate_from_results(self):
-        # Use the actual native Tab body and real Tk events. Mock-only tab
-        # selection misses queued <<NotebookTabChanged>> events during rebuild.
+    def native_host(self, selected='input'):
+        # Reuse the real native GUI/control harness, not just a Notebook stub.
+        # Its original GUI.update destroys controls and emits tree events, so
+        # the tests below detect the visible whole-window redraw regression.
         import tkinter as tk
         from tkinter import ttk
-        try:
-            root = tk.Tk()
-        except tk.TclError as error:
-            self.skipTest('A Tk display is required: ' + str(error))
-        root.withdraw()
-        self.addCleanup(root.destroy)
-        errors = []
-        root.report_callback_exception = lambda kind, error, trace: errors.append(error)
-        source = SOURCE / 'omfit_classes/OMFITx.py'
-        definition = next(node for node in ast.parse(source.read_text(encoding='utf-8')).body
-                          if isinstance(node, ast.FunctionDef) and node.name == 'Tab')
-        definition.decorator_list = []
-        parent = ttk.Frame(root)
-        auxiliary = dict(parentGUI=parent, notebook=None, tab_name='', tab_list={'': parent},
-                         open_tabs={}, compoundGUIid='', topGUI=root)
-        namespace = dict(tk=tk, ttk=ttk, _aux=auxiliary,
-                         _GUIs={str(root): SimpleNamespace(notebooks={})})
-        exec(compile(ast.Module(body=[definition], type_ignores=[]), str(source), 'exec'), namespace)
-        self.page.render_cgyro.__globals__.update(tk=tk, ttk=ttk)
-        self.page.ui = SimpleNamespace(Tab=namespace['Tab'], _aux=auxiliary, UpdateGUI=Mock())
-        self.page.render_cgyro()
-        root.update()
-        notebook = auxiliary['notebook']
-        self.assertIs(self.page.cgyro_main_notebook, notebook)
+        import test_gui_refresh_native as native
+        import OMFITlib_gui_fonts as fonts
+        # Geometry/selection tests use an installed font, never a downloader.
+        font = patch.object(fonts, 'font_family', return_value='DejaVu Sans')
+        font.start()
+        self.addCleanup(font.stop)
+        with patch.object(native, 'SOURCE', SOURCE):
+            host = native.NativeTkRefreshTests()
+            self.addCleanup(host.doCleanups)
+            host.setUp()
+        self.addCleanup(host.tearDown)
+        self.addCleanup(host.drain)
+        native.native_definitions(SOURCE / 'omfit_classes/OMFITx.py',
+            {'Tab', 'Label', '_Label', '_absLocation'}, host.api.__dict__)
+        host.owner.pythonFile.identity, host.other.pythonFile.identity = 'owner', 'other'
+        host.api.OMFIT = {'owner': host.tree, 'other': dict(number=-1)}
+        host.api.relativeLocations = lambda file: {'key': file.identity}
+        host.api.absLocation = lambda location, context, **kwargs: (
+            "OMFIT[" + repr(context['key']) + "]" + location[len('root'):])
+        self.page.render_cgyro.__globals__.update(tk=tk, ttk=ttk, deferred_section=deferred_section)
+        self.page.settings['cgyro_main_tab'] = selected
+        self.page.label.side_effect = lambda text: self.page.ui.Label(text, align='left')
+        self.page.compound.side_effect = lambda *args, **kwargs: host.controls.update(
+            input=self.page.ui.Entry("root['number']", 'Input', updateGUI=False))
+        self.page.render_cgyro_parameters.side_effect = lambda *args: self.page.label('Parameters')
+        self.browser.return_value.render.side_effect = lambda **kwargs: host.controls.update(
+            result=self.page.ui.Entry("root['number']", 'Result', updateGUI=False))
+        def build(ui):
+            self.page.ui = ui
+            intro = ui.Label('CGYRO scan')
+            self.page.render_cgyro()
+            finish_gui_layout(intro, ui, fit_tabs=True)
+        host.render(build)
+        # The entire process-global context now belongs to another window.
+        host.api._aux.update(parentGUI=host.other.parentGUI, topGUI=host.other.top,
+                             notebook=None, configure_size=[], tab_list={})
+        host.tree_events = []
+        host.root.bind('<<update_treeGUI>>', lambda event: host.tree_events.append(event), add='+')
+        return host
+
+    def test_native_switch_keeps_widgets_and_does_not_emit_tree_refresh(self):
+        host = self.native_host()
+        notebook = self.page.cgyro_main_notebook
+        entry = host.controls['input']
+        entry.delete(0, 'end')
+        entry.insert(0, '42')  # Uncommitted text must not vanish on tab switch.
         self.browser.assert_not_called()
-        self.page.ui.UpdateGUI.assert_not_called()
-        notebook.select(2)
-        root.update()
-        self.page.ui.UpdateGUI.assert_called_once_with()
-        self.page.render_cgyro()
-        root.update()
+        for index in (1, 0, 1, 2, 0, 2, 1, 0):
+            notebook.select(index)
+            host.root.update()
+        host.drain()
         self.browser.return_value.render.assert_called_once_with(title=False)
-        self.page.ui.UpdateGUI.assert_called_once_with()  # No rebuild loop.
-        notebook.select(0)
-        root.update()
-        self.page.render_cgyro()
-        root.update()
-        self.browser.return_value.render.assert_called_once_with(title=False)
+        self.assertEqual(host.updates, [])
+        self.assertEqual(host.tree_events, [])
+        self.assertTrue(entry.winfo_exists())
+        self.assertEqual(entry.get(), '42')
         self.assertEqual(self.page.settings['cgyro_main_tab'], 'input')
-        self.assertFalse(errors)
+
+    def test_native_initial_results_selection_builds_once(self):
+        host = self.native_host('results')
+        host.drain()
+        self.browser.return_value.render.assert_called_once_with(title=False)
+        self.assertTrue(self.page.cgyro_results_section.built)
+        self.assertEqual(self.page.cgyro_main_notebook.index('current'), 2)
+        self.assertEqual(host.updates, [])
+
+    def test_deferred_controls_use_captured_module_and_restore_other_gui(self):
+        host = self.native_host()
+        previous = dict(host.api._aux)
+        original_file = host.owner.pythonFile
+        host.owner.pythonFile = host.other.pythonFile  # CompoundGUI has since returned.
+        self.page.cgyro_main_notebook.select(2)
+        host.root.update()
+        self.assertEqual(host.api._aux, previous)
+        self.assertIs(host.owner.pythonFile, host.other.pythonFile)
+        entry = host.controls['result']
+        entry.delete(0, 'end')
+        entry.insert(0, '25')
+        # Deliver the unchanged Return binding as a widget-targeted virtual
+        # event: WSL and parallel Tk tests need not steal OS keyboard focus.
+        entry.bind('<<TestCommit>>', entry.bind('<Return>'))
+        entry.event_generate('<<TestCommit>>')
+        host.root.update()
+        self.assertEqual(host.tree['number'], 25)
+        self.assertEqual(host.api.OMFIT['other']['number'], -1)
+        host.owner.pythonFile = original_file
+
+    def test_failed_panel_is_removed_and_context_restored_before_retry(self):
+        host = self.native_host()
+        section = self.page.cgyro_results_section
+        previous = dict(host.api._aux)
+        original = self.browser.return_value.render.side_effect
+        def fail(**kwargs):
+            original(**kwargs)
+            raise ValueError('Cannot enumerate selected result metadata')
+        self.browser.return_value.render.side_effect = fail
+        with self.assertRaisesRegex(ValueError, 'selected result metadata'):
+            section.show()
+        self.assertFalse(section.built)
+        self.assertFalse(section.running)
+        self.assertEqual(section.parent.winfo_children(), [])
+        self.assertEqual(host.api._aux, previous)
+        self.browser.return_value.render.side_effect = original
+        section.show()
+        self.assertTrue(section.built)
+        self.assertEqual(len(section.parent.winfo_children()), 1)
+        self.assertEqual(host.updates, [])
+
+    def test_save_lock_delays_only_visible_section_and_close_cancels_timer(self):
+        host = self.native_host()
+        section = self.page.cgyro_results_section
+        host.api.OMFITaux['GUI'].lockSave = True
+        self.page.cgyro_main_notebook.select(2)
+        host.root.update()
+        self.assertIsNotNone(section.pending)
+        self.browser.assert_not_called()
+        self.page.cgyro_main_notebook.select(0)
+        host.api.OMFITaux['GUI'].lockSave = False
+        host.drain(130)
+        self.browser.assert_not_called()
+        host.api.OMFITaux['GUI'].lockSave = True
+        self.page.cgyro_main_notebook.select(2)
+        host.root.update()
+        host.owner.top.destroy()
+        self.assertIsNone(section.pending)
+        host.drain(130)
+        section.show()  # Stale callbacks cannot recreate a closed window.
+        self.browser.assert_not_called()
+
+    def test_save_lock_resumes_visible_panel_without_refresh(self):
+        host = self.native_host()
+        host.api.OMFITaux['GUI'].lockSave = True
+        self.page.cgyro_main_notebook.select(2)
+        host.root.update()
+        host.api.OMFITaux['GUI'].lockSave = False
+        host.drain(130)
+        self.browser.return_value.render.assert_called_once_with(title=False)
+        self.assertEqual(host.updates, [])
+        self.assertEqual(host.tree_events, [])
+
+    def test_rebuild_invalidates_section_and_does_not_reuse_dead_widgets(self):
+        host = self.native_host('results')
+        old_section = self.page.cgyro_results_section
+        self.page.settings['cgyro_main_tab'] = 'input'
+        host.owner.update()
+        host.root.update()
+        old_section.show()
+        self.browser.return_value.render.assert_called_once_with(title=False)
+        self.page.cgyro_main_notebook.select(2)
+        host.root.update()
+        self.assertEqual(self.browser.return_value.render.call_count, 2)
+        self.assertIsNot(self.page.cgyro_results_section, old_section)
 
 
 if __name__ == '__main__':

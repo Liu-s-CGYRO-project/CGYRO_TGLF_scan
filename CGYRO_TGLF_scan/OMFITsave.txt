@@ -208,6 +208,7 @@
 ['TGLF_scan']['LIB']['OMFITlib_tglf'] <-:-:-> OMFITpythonTask <-:-:-> ./TGLF_scan/LIB/OMFITlib_tglf.py <-:-:-> {}
 ['TGLF_scan']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
 ['TGLF_scan']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
+['TGLF_scan']['LIB']['OMFITlib_gui_deferred'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_deferred.py <-:-:-> {}
 ['TGLF_scan']['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./TGLF_scan/SettingsNamelist.txt <-:-:-> {}
 ['TGLF_scan']['SETTINGS']['SETUP']['workDir'] <-:-:-> OMFITexpression <-:-:-> _"OMFITworkDir(root,'')" <-:-:-> {}
 ['TGLF_scan']['__SETTINGS_AT_IMPORT__'] <-:-:-> OMFITjson <-:-:-> ./TGLF_scan/SettingsNamelist.txt_2_dd6fdf5b36/SettingsNamelist.txt <-:-:-> {}
@@ -415,6 +416,7 @@
 ['CGYRO_scan']['LIB']['OMFITlib_cgyro_scan_values'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_scan_values.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
 ['CGYRO_scan']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
+['CGYRO_scan']['LIB']['OMFITlib_gui_deferred'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_deferred.py <-:-:-> {}
 ['CGYRO_scan']['SETTINGS'] <-:-:-> OMFITsettings <-:-:-> ./CGYRO_scan/SettingsNamelist.txt <-:-:-> {}
 ['CGYRO_scan']['SETTINGS']['SETUP']['workDir'] <-:-:-> OMFITexpression <-:-:-> _"OMFITworkDir(root,'')" <-:-:-> {}
 ['CGYRO_scan']['SETTINGS']['SETUP']['executable'] <-:-:-> OMFITexpression <-:-:-> _"'cgyro -e . -n ' + str(root['SETTINGS']['SETUP']['num_cores'])" <-:-:-> {}
@@ -460,6 +462,7 @@
 ['PROJECT_STATE'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
 ['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
+['LIB']['OMFITlib_gui_deferred'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_deferred.py <-:-:-> {}
 ['LIB']['OMFITlib_project_runtime'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_runtime.py <-:-:-> {}
 ['LIB']['OMFITlib_gacode_installations'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gacode_installations.py <-:-:-> {}
 ['Transfer_tool']['LIB']['OMFITlib_gacode_installations'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gacode_installations.py <-:-:-> {}
@@ -476,6 +479,7 @@
 ['LIB']['OMFITlib_transfer_zeff'] <-:-:-> OMFITpythonTask <-:-:-> ./Transfer_tool/LIB/OMFITlib_transfer_zeff.py <-:-:-> {}
 ['Transfer_tool']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
 ['Transfer_tool']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
+['Transfer_tool']['LIB']['OMFITlib_gui_deferred'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_deferred.py <-:-:-> {}
 ['LIB']['OMFITlib_tglf_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_workbench.py <-:-:-> {}
 ['LIB']['OMFITlib_tglf_preparation'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_preparation.py <-:-:-> {}
 ['TGLF_scan']['LIB']['OMFITlib_tglf_preparation'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_preparation.py <-:-:-> {}

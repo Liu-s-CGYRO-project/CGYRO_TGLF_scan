@@ -19,6 +19,7 @@ from OMFITlib_project import ION_CASES, MODULES, cgyro_ion_mode, cgyro_plan_issu
 from OMFITlib_cgyro_run_state import submission_pending
 from OMFITlib_cgyro_radius_cleanup import preview_radius, radius_choices
 from OMFITlib_cgyro_task_manager import TaskManager, confirm_scope
+from OMFITlib_gui_deferred import deferred_section
 
 CGYRO_MAIN_TABS = ('input', 'parameters', 'results')
 
@@ -43,13 +44,12 @@ class CgyroPage:
         self.ui.Tab('计算参数')
         self.render_cgyro_parameters(node, rows)
         self.ui.Tab('结果与记录')
-        # Native Tab constructs every tab on each local refresh. A hidden
-        # result page can join stopped-run ancestry and open many old readers,
-        # so populate it only after an explicit selection of this outer tab.
-        if selected == 'results':
+        # Ordinary tab selection only changes visibility. Build result controls
+        # once inside their existing tab; UpdateGUI would destroy the whole
+        # workbench and emit a main-tree refresh after every tab click.
+        self.cgyro_results_section = deferred_section(self.ui, lambda: self.render_cgyro_results(node))
+        if selected == 'results' and self.cgyro_results_section is None:
             self.render_cgyro_results(node)
-        else:
-            self.label('选择“结果与记录”查看任务和结果。')
         if self.cgyro_main_notebook is not None:
             try:
                 self.cgyro_main_notebook.select(CGYRO_MAIN_TABS.index(selected))
@@ -64,9 +64,9 @@ class CgyroPage:
             page = CGYRO_MAIN_TABS[self.cgyro_main_notebook.index(self.cgyro_main_notebook.select())]
         except tk.TclError:
             return
-        if page != self.settings['cgyro_main_tab']:
-            self.settings['cgyro_main_tab'] = page
-            self.ui.UpdateGUI()  # The adapter refreshes only this owning GUI.
+        self.settings['cgyro_main_tab'] = page
+        if page == 'results' and self.cgyro_results_section is not None:
+            self.cgyro_results_section.show()
 
     def render_cgyro_results(self, node):
         """Results and task controls, invoked only for the visible outer tab."""

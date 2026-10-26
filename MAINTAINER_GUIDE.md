@@ -1,12 +1,16 @@
 # 维护与扩展接口
 
-适用于工程 1.24.20。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.21。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 
 
 ## 历史结果按需读取（1.24.20）
 
-`CgyroPage.render_cgyro` 只为当前外层标签页构建结果控件，`cgyro_main_tab` 保存普通标签页标识。内层扫描标签和结果标签不是同一个 Notebook；回调必须核对事件所属 Notebook，并且只在选择变化后调用本窗口的适配器 UpdateGUI。不可让隐藏结果页在每次扫描参数刷新时重建未完成任务的 ancestry。结果页的公开索引和未归档任务切片入口仍保留。
+`CgyroPage.render_cgyro` 为结果页捕获 `gui_deferred.DeferredSection`。内层扫描标签和外层结果标签不是同一个 Notebook；回调必须核对所属 Notebook，只记录 `cgyro_main_tab`，不得调用 UpdateGUI（即使局限于本窗口，它仍会销毁控件并广播主树更新）。首次选中结果页只在现有 Frame 内补建控件，重复事件与来回切页复用该页。实际参数/任务操作需要刷新时仍走已有适配器；重建后旧 Frame 失效，新结果页按需重新构建。
+
+延后构造时，必须恢复捕获的 `_aux` 和所属 GUI 的 `pythonFile`，使相对位置、锁和控件回调仍指向原工程；`finally` 恢复此前其他窗口的构造上下文。不能在事件回调中借用进程最后一次渲染的全局状态。只对新子树应用布局和按钮绑定，保留其他控件与尚未提交的文字。保存锁未释放时延后；已经切走则取消这次加载，关闭 Frame 时取消定时器。构造失败销毁未完成子树，下一次选择可重试。运行时 Frame/回调只属于当前窗口，不写入 SETTINGS。
+
+不可让隐藏结果页在每次扫描参数刷新时重建未完成任务的 ancestry。结果页的公开索引和未归档任务切片入口仍保留。
 
 `cgyro_payload.resolve_browser` 调用 `resolve_owner(..., defer_native=True)`，让旧原生目录及文件清单两种所有者都先返回 DeferredResult。原生 OMFIT 加载工程时会求值全部保存的表达式，并调用 iter(value) 判断类型；因此 `DeferredResult.__iter__` 必须是生成器，不能直接返回 iter(self._payload_reader())。前者直到 next/实际遍历才触发读者，后者在分类时已经完整加载。不要通过静音 pygacode 日志掩盖实际 I/O，也不要把此运行时类型或数组缓存存进 RUN_DB。
 
@@ -20,7 +24,7 @@
 
 `point_status(..., verify_checkpoint=False)` 仅用于时间曲线列表，读取日志尾、tag 与末采样时间，显示待校验。它不能作为提交安全条件。真正续算的 `resume_source` / `continuation_plan` / staging 仍完整校验选中点；不能因列表显示时间而跳过二进制尺寸、SHA、有限值和物理输入检查。未开始点先按原输入溯源显示候选，不在列出全部点时解压或哈希每份 ZIP。
 
-`test_cgyro_scan_refresh` 使用真实 Tk 与未经改写的原生 Tab 函数体，检查普通刷新无结果枚举、显式切页、选择恢复和无重复刷新循环。`test_cgyro_file_dedup` 使用原生表达式、主树与 dynaLoader 函数体，覆盖超过运行时目录缓存容量的旧目录与文件清单，分类/折叠行不物化，主动展开仍能读取。两套需指定 --omfit-source。`test_cgyro_read_boundaries` 使用 dict 子类读者，未授权的数值读取立即报错，覆盖任务删除、提交、回滚、各绘图范围、归一化和真实 Tk 选点窗口；完整续算校验仍可拒绝损坏检查点。Linux 真实 Tk 需 DISPLAY。
+`test_cgyro_scan_refresh` 使用真实 Tk 与未经改写的原生 Tab 函数体，结合原生 GUI.update / Entry，检查普通刷新无结果枚举、切页不重建窗口/不发主树更新、输入文字保留、首次与重复选择、跨窗口相对位置、保存锁、关闭与失败重试。几何测试使用本机字体以避免网络字体下载。`test_cgyro_file_dedup` 使用原生表达式、主树与 dynaLoader 函数体，覆盖超过运行时目录缓存容量的旧目录与文件清单，分类/折叠行不物化，主动展开仍能读取。两套需指定 --omfit-source。`test_cgyro_read_boundaries` 使用 dict 子类读者，未授权的数值读取立即报错，覆盖任务删除、提交、回滚、各绘图范围、归一化和真实 Tk 选点窗口；完整续算校验仍可拒绝损坏检查点。Linux 真实 Tk 需 DISPLAY。
 
 ## 服务器 CPU 容量检测（1.24.19）
 
