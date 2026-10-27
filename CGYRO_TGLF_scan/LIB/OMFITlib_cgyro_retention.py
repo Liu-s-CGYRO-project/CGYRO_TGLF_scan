@@ -17,7 +17,7 @@ import math
 import re
 
 from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, catalog_runs,
-                                   clean_run_id, output_final_time, point_coordinate, result_file, scan_key)
+                                   clean_run_id, full_point_coordinate, output_final_time, result_file, scan_key)
 from OMFITlib_cgyro_db import metadata_value, result_pool, run_records, storage_state
 from OMFITlib_cgyro_storage_files import FILE_STORE, file_reference_id, native_kind
 from OMFITlib_cgyro_run_state import collection_recorded, point_complete, run_settled
@@ -54,27 +54,6 @@ def _settled(manifest):
     return run_settled(manifest)
 
 
-def _cyclic_ancestry(manifests):
-    """Find cycles and descendants that cannot prove a valid frozen ancestry.
-
-    Each run has at most one continuation source, so memoizing finished paths
-    keeps this linear in the number of records. A cycle consisting entirely of
-    otherwise replaceable candidates must not disappear simply because the
-    retained-child protection pass below would skip all of its members.
-    """
-    resolved = {}
-    for token in manifests:
-        path, positions, source = [], {}, token
-        while source in manifests and source not in resolved and source not in positions:
-            positions[source] = len(path)
-            path.append(source)
-            source = str(manifests[source].get('continuation', {}).get('source_token', '') or '')
-        cyclic = source in positions or resolved.get(source, False)
-        for visited in path:
-            resolved[visited] = cyclic
-    return {token for token, cyclic in resolved.items() if cyclic}
-
-
 def _public_coverage(module):
     """Index exact coordinates and visible scan anchors without changing them."""
     public, ambiguous, public_anchors = {}, set(), set()
@@ -91,7 +70,7 @@ def _public_coverage(module):
                 identity = (clean_run_id(rid), canonical_case_key(cid, info), scan_key(info, name))
                 for source in tasks.values():
                     row = metadata_value(source)
-                    coordinate = identity + (point_coordinate(row),)
+                    coordinate = identity + (full_point_coordinate(info, row),)
                     if coordinate in public:
                         ambiguous.add(coordinate)
                     public[coordinate] = (row, _at(case, row['result_path']))
@@ -164,7 +143,7 @@ def _physical_input(result):
 
 def _point_evidence(token, point, table, cases, identity, public, ambiguous,
                     final_time, has_checkpoint, reference, converged_replacement):
-    coordinate = identity + (point_coordinate(table[point]),)
+    coordinate = identity + (full_point_coordinate({}, table[point]),)
     if coordinate in ambiguous or coordinate not in public:
         raise ValueError('Not every original coordinate is archived')
     row, new_node = public[coordinate]
@@ -276,32 +255,7 @@ def retention_plan(module, resolve, reference):
             if covered:
                 partial[token] = dict(points=covered, retained=uncovered)
 
-    # Fixed point: an unretired partial child needs its ancestors, including an
-    # otherwise replaceable parent. Complete published children use the public
-    # archive directly and do not require stopped_context's ancestry traversal.
-    manifests = {str(token): metadata_value(entry.get('manifest', {})) for token, entry in records.items()}
-    active = module.get('RUN_MANIFEST', {})
-    if current:
-        manifests[current] = active
-    for token in _cyclic_ancestry(manifests):
-        if token in candidates or token in partial:
-            candidates.pop(token, None)
-            partial.pop(token, None)
-            kept[token] = 'cyclic continuation ancestry'
-    for token, manifest in manifests.items():
-        if token in candidates or manifest.get('status', '') == 'published' and _settled(manifest):
-            continue
-        if records.get(token, {}).get('payload_retired', None):
-            continue
-        seen, source = set(), str(manifest.get('continuation', {}).get('source_token', '') or '')
-        while source and source not in seen:
-            seen.add(source)
-            if source in candidates or source in partial:
-                candidates.pop(source, None)
-                partial.pop(source, None)
-                kept[source] = 'required by retained continuation ' + token
-            parent = manifests.get(source, {})
-            source = str(parent.get('continuation', {}).get('source_token', '') or '')
+    # Results are self-contained. Parent/child job links do not retain payloads.
     return dict(retire=candidates, partial=partial, retained=kept)
 
 

@@ -2,13 +2,14 @@
 from OMFITlib_cgyro_archive import catalog_runs, case_destination, output_final_time
 from OMFITlib_gui_fonts import configure_window_fonts, style_widget
 from OMFITlib_cgyro_archive import case_scans, latest_cases
-from OMFITlib_cgyro_continue import point_status, previous_final_time, stopped_context
+from OMFITlib_cgyro_continue import point_status, previous_final_time
+from OMFITlib_cgyro_result_index import (result_records, find_record, select_result, selected_result, scan_scope)
 from OMFITlib_cgyro_storage import resolve_result
 from OMFITlib_cgyro_db import legacy_branch, run_records, storage_state
 from OMFITlib_cgyro_present import record_options, record_details
 from OMFITlib_compare_core import cgyro_frequency_history
 from OMFITlib_plot_window import fit_figure_window
-from builtins import (Exception, TypeError, ValueError, abs, any, dict, float, int,
+from builtins import (Exception, KeyError, TypeError, ValueError, abs, all, any, dict, float, int, iter, next,
                       len, list, max, min, range, set, sorted, str, tuple, zip)
 from collections import OrderedDict
 import math
@@ -35,91 +36,8 @@ def _view_settings(root):
 
 
 def _run_options(root, resolve_stopped=True, stopped_token=None):
-    """List metadata, resolving ancestry only for the requested data action.
-
-    ``None`` retains the full-context API for explicit compatibility callers.
-    GUI readers pass their selected token, so another radius/ion's unfinished
-    run cannot open result files or block the user's selected plot/table.
-    """
-    module = root.get('CGYRO_scan', {})
-    run_db = catalog_runs(module)
-    records = OrderedDict()
-    covered = set()
-    for runid in _stable_keys(run_db):
-        if str(runid).startswith('__'):
-            continue
-        run = run_db[runid]
-        cases, aliases = latest_cases(module, runid, catalog=run_db)
-        active = set()
-        for case_id in cases:
-            if str(case_id).startswith('__'):
-                continue
-            case = run[case_id]
-            if not hasattr(case, 'get'):
-                continue
-            for scan, info, tasks in case_scans(case):
-                active.add(case_id)
-                token = str(info.get('run_token', '')).strip() or '{}::{}::{}'.format(runid, case_id, scan)
-                if (token in records and records[token].get('collection_status', '') == 'complete'
-                        and info.get('collection_status', '') == 'partial'):
-                    continue
-                entry = dict(info)
-                entry.update(dict(runid=runid, case_id=case_id, tasks=tasks,
-                                  destination=case_destination(module, runid, case_id, info)))
-                records[token] = entry
-                entry.setdefault('scan_key', scan)  # View metadata only; never rename archived branches.
-        covered.update((str(runid), str(key)) for key, target in aliases.items() if target in active)
-
-    # Pre-1.13 records remain readable, while new records use RUN_DB only.
-    # The grouped catalog already contains every verified scan. Old indexes
-    # retain obsolete directory paths and must not recreate duplicate choices.
-    legacy = ({} if storage_state(module).get('case_layout', '') in ('radius-ion', 'radius-scans')
-              else legacy_branch(module, 'RUN_INDEX'))
-    for token in _stable_keys(legacy):
-        if token in records:
-            continue
-        entry = dict(legacy[token])
-        entry['legacy_record'] = True
-        if (str(entry.get('runid', '')), str(entry.get('case_id', ''))) in covered:
-            continue
-        records[token] = entry
-    saved = {str(token): entry.get('manifest', {}) for token, entry in run_records(module).items()}
-    current = module.get('RUN_MANIFEST', {})
-    if current.get('run_token', ''):
-        saved[str(current['run_token'])] = current
-    for token, manifest in saved.items():
-        if manifest.get('collection_status', '') not in ('partial', 'empty'):
-            continue
-        # A stopped job's results already share the ordinary scan record.
-        # Keep only the current empty-job entry when it needs a resume action.
-        if token not in records and token != str(current.get('run_token', '')):
-            continue
-        indexed_or_empty = (token in records or not (
-            manifest.get('collection_status', '') == 'partial' or manifest.get('loaded_points', [])
-            or manifest.get('partial_points', []) or manifest.get('continuation', {}).get('source_token', '')))
-        selected = stopped_token is None or token == stopped_token
-        if not selected or (not resolve_stopped and indexed_or_empty):
-            # Ordinary control changes need only labels and indexed coordinates.
-            # Joining continuation ancestry resolves physical result owners and
-            # can open many lazy files. Indexed records defer that to a data
-            # action. The single unindexed current job retains the legacy path
-            # so inherited results and their slice controls stay accessible.
-            entry = dict(records.get(token, manifest))
-            entry['stopped_run'] = True
-            records[token] = entry
-            continue
-        try:
-            context = stopped_context(module, token)
-        except (KeyError, ValueError) as exc:
-            entry = dict(records.get(token, manifest))
-            entry['resume_error'] = str(exc)
-            records[token] = entry
-            continue
-        entry = dict(records.get(token, context['info']))
-        if token not in records:
-            entry.update(dict(tasks=context['view']['__TASKS__'], resume_view=context['view']))
-        entry.update(dict(resume_tasks=context['rows'], resume_context=context, stopped_run=True))
-        records[token] = entry
+    """List only RUN_DB metadata; old arguments remain for API compatibility."""
+    records = result_records(root.get('CGYRO_scan', {}), include_tasks=False)
     return records, record_options(records)
 
 
@@ -157,46 +75,39 @@ def _select_numeric(text, choices, label):
     return min(choices, key=lambda value: abs(value - requested))
 
 
-def selected_record(root, resolve_stopped=True):
+def selected_record(root, resolve_stopped=True, list_options=True):
     view = _view_settings(root)
-    current = str(root.get('CGYRO_scan', {}).get('RUN_MANIFEST', {}).get('run_token', ''))
-    requested = view.get('run_token', '')
-    if current and view.get('observed_run', '') != current:
-        requested = current
-    records, options = _run_options(root, resolve_stopped=resolve_stopped, stopped_token=requested)
+    if not list_options and view.get('run_token', ''):
+        entry = find_record(root['CGYRO_scan'], view['run_token'])
+        return view, entry['selection_key'], entry, {}
+    records, options = _run_options(root)
     if not options:
         raise ValueError('尚无已收集的 CGYRO 扫描结果。')
     token = view.get('run_token', '')
-    if current in records and view.get('observed_run', '') != current:
-        token = current
-        view['observed_run'] = current
-        view['run_token'] = token
     if token not in records:
-        current = str(root.get('CGYRO_scan', {}).get('RUN_MANIFEST', {}).get('run_token', ''))
-        token = current if current in records else list(options.values())[-1]
+        try:
+            token = find_record(root['CGYRO_scan'], token)['selection_key']
+        except ValueError:
+            if token:
+                raise ValueError('所选结果版本已不存在或不唯一，请在“结果记录”中重新选择。')
+            public = [key for key, item in records.items() if item.get('kind', '') == 'scan']
+            token = (public or list(options.values()))[-1]
         view['run_token'] = token
-    if token != requested:
-        # A saved selection may disappear after consolidation. Resolve the
-        # final fallback, never every stopped record just to populate labels.
-        records, options = _run_options(root, resolve_stopped=resolve_stopped, stopped_token=token)
-    return view, token, records[token], options
+    return view, token, find_record(root['CGYRO_scan'], token), options
 
 
 def _result_node(root, entry, row):
-    if entry.get('resume_view', None) is not None:
-        node = entry['resume_view']
-        for key in row['result_path']:
-            node = node[key]
-        return resolve_result(root['CGYRO_scan'], node)
-    node = root['CGYRO_scan']['RUN_DB']
-    result_path = row.get('result_path', None)
-    if result_path is not None:
-        destination = list(entry.get('destination', [])) + list(result_path)
-    else:
-        destination = row.get('destination', [])
-    for key in destination:
-        node = node[key]
-    return resolve_result(root['CGYRO_scan'], node)
+    module = root['CGYRO_scan']
+    if row.get('result_selection', None):
+        return selected_result(module, row['result_selection'])
+    point = next((point for point, candidate in entry['tasks'].items() if candidate is row), None)
+    if point is None:
+        matches = [point for point, candidate in entry['tasks'].items()
+                   if candidate.get('result_path', None) == row.get('result_path', None)]
+        if len(matches) != 1:
+            raise ValueError('Ambiguous selected result coordinate')
+        point = matches[0]
+    return selected_result(module, select_result(module, entry, point))
 
 
 def _frequency_summary(result, fraction):
@@ -219,7 +130,7 @@ def _frequency_summary(result, fraction):
 
 
 def result_grid(root):
-    view, token, entry, _ = selected_record(root)
+    view, token, entry, _ = selected_record(root, list_options=False)
     axes = list(entry.get('scan_axes', []))
     dimensions = int(entry.get('dimensions', len(axes)))
     if dimensions not in (1, 2, 3) or len(axes) != dimensions:
@@ -266,12 +177,13 @@ def result_grid(root):
         x_index = min(range(len(x_values)), key=lambda i: abs(x_values[i] - x_value))
         y_index = min(range(len(y_values)), key=lambda i: abs(y_values[i] - y_value))
         try:
-            om, ga, om_error, ga_error = _frequency_summary(
-                _result_node(root, entry, row), fraction)
+            result = _result_node(root, entry, row)
+            om, ga, om_error, ga_error = _frequency_summary(result, fraction)
+            window = frequency_window(result, fraction)
             omega[y_index, x_index], gamma[y_index, x_index] = om, ga
             table_rows.append(dict(task_id=str(point),
                                    values=numeric, omega=om, gamma=ga,
-                                   omega_error=om_error, gamma_error=ga_error))
+                                   omega_error=om_error, gamma_error=ga_error, statistics_window=window))
         except (KeyError, TypeError, ValueError) as exc:
             diagnostics.append('{}：{}'.format(point, exc))
     if not np.any(np.isfinite(omega)) and not np.any(np.isfinite(gamma)):
@@ -279,7 +191,16 @@ def result_grid(root):
     return dict(token=token, entry=entry, dimensions=dimensions, axes=axes,
                 x_name=names[0], x=x_values, y_name=y_name, y=y_values,
                 filters=filters, omega=omega, gamma=gamma, rows=table_rows,
-                diagnostics=diagnostics)
+                diagnostics=diagnostics, tail_fraction=fraction)
+
+
+def frequency_window(result, fraction):
+    """Describe the exact sample window used by this requested average."""
+    count = int(result['n_time'])
+    used = min(count, max(2, int(count * fraction)))
+    times = result['t']
+    return dict(tail_fraction=float(fraction), samples=used, total_samples=count,
+                start_time=float(times[count - used]), end_time=float(times[-1]))
 
 
 class ResultBrowser:
@@ -294,6 +215,9 @@ class ResultBrowser:
         try:
             view, token, entry, options = selected_record(self.root, resolve_stopped=False)
         except ValueError as exc:
+            _, options = _run_options(self.root)
+            if options:
+                self.ui.ComboBox(self.prefix + "['run_token']", options, '结果记录', state='readonly', updateGUI=True)
             self.ui.Label(str(exc), align='left')
             return
         self.ui.ComboBox(self.prefix + "['run_token']", options, '结果记录', state='readonly',
@@ -307,9 +231,9 @@ class ResultBrowser:
                 self.ui.Button('选择未完成点继续计算…', self._show_points)
             return
         if entry.get('collection_status', '') == 'empty':
-            self.ui.Label('本次没有新增时间样本；以下显示续算来源中已保留的结果。', align='left')
+            self.ui.Label('本次没有新增时间样本；当前结果由 RUN_DB 索引提供。', align='left')
         if entry.get('continuation_pending', {}):
-            self.ui.Label('{} 个续算点尚未超过旧末时刻，已单独保留；在时间曲线与续算窗口查看详情。'.format(
+            self.ui.Label('{} 个续算点尚未超过旧末时刻；当前结果按收敛状态与模拟时间择一保留。'.format(
                 len(entry['continuation_pending'])), align='left', wraplength=600)
         axes = list(entry.get('scan_axes', []))
         tasks = list(entry.get('tasks', {}).values())
@@ -348,13 +272,8 @@ class ResultBrowser:
 
     def _show_points(self):
         """Select full task coordinates, independently of the heatmap slice."""
-        _, token, entry, _ = selected_record(self.root)
+        _, token, entry, _ = selected_record(self.root, list_options=False)
         tasks = entry.get('resume_tasks', entry.get('tasks', {}))
-        if entry.get('stopped_run', False):
-            # A merged archive can reuse IDs for another job. This dialog
-            # inspects the stopped job's frozen coordinates and time histories.
-            view = entry['resume_context']['view']
-            entry = dict(entry, tasks=view['__TASKS__'], resume_view=view)
         if not tasks:
             raise ValueError('所选运行没有可选择的计算点。')
         names = [str(axis['name']) for axis in entry.get('scan_axes', []) if not axis.get('fixed', False)]
@@ -368,16 +287,18 @@ class ResultBrowser:
                   anchor='w', wraplength=width - 40).pack(fill=tk.X, padx=10, pady=10)
         ttk.Label(window, text='选择计算点（Ctrl / Shift 多选）。收敛状态取自求解器日志；时间曲线使用原始采样数据。',
                   wraplength=width - 40).pack(fill=tk.X, padx=10, pady=(0, 8))
-        missing = entry.get('resume_context', {}).get('missing_points', [])
+        scope = scan_scope(entry)
+        missing = scope['unknown']
+        bindings = {}
         if missing:
             ttk.Label(window, text='{} 个旧点的结果文件未保留；其他点可从各自保存的检查点续算。'.format(len(missing)),
                       wraplength=width - 40).pack(fill=tk.X, padx=10, pady=(0, 8))
         frame = ttk.Frame(window)
         frame.pack(fill=tk.BOTH, expand=True, padx=10)
-        columns = ['task'] + names + ['state', 'last_time', 'checkpoint']
+        columns = ['task'] + names + ['state', 'last_time', 'samples', 'size', 'checkpoint']
         table = ttk.Treeview(frame, columns=columns, show='headings', selectmode='extended')
         style_widget(table)
-        headings = ['计算点'] + names + ['求解器状态', '最后采样时间', '重启时间 / 状态']
+        headings = ['计算点'] + names + ['求解器状态', '最后采样时间', '样本数', '结果大小 (MiB)', '重启时间 / 状态']
         for column, heading in zip(columns, headings):
             table.heading(column, text=heading)
             table.column(column, width=160 if column in ('state', 'checkpoint') else 112, anchor='center')
@@ -392,29 +313,31 @@ class ResultBrowser:
         statuses, defaults = {}, []
         states = {'converged': '已收敛', 'max_time': '到时未收敛', 'failed': '求解失败', 'unknown': '未确认'}
         for point, row in tasks.items():
-            try:
-                physical = entry.get('tasks', {}).get(point, None)
-                if physical is None:
-                    raise ValueError('没有时间样本')
-                result = _result_node(self.root, entry, physical)
-                status = point_status(result, verify_checkpoint=False)
-                final_time = output_final_time(result)
-                last_time = _number_text(final_time) if final_time is not None else '—'
-            except Exception as exc:
-                status = dict(convergence='unknown', checkpoint=None, reason=str(exc))
-                last_time = '—'
-            status['restartable'] = status['checkpoint'] is not None
+            summary = row.get('result_summary', {})
+            physical = entry.get('tasks', {}).get(point, None)
+            status = dict(convergence=row.get('solver_status', 'unknown'), checkpoint=None, reason='', restartable=False)
             mode = ''
-            if entry.get('stopped_run', False) and point not in entry.get('tasks', {}):
-                # An unstarted point may only retain its input ZIP. Listing
-                # candidates uses provenance, not ZIP hashing/extraction;
-                # resume_source validates the selected sources in planning.
-                source = entry['resume_context']['sources'].get(point, None)
-                if (point not in missing and source is not None
-                        and source[0].get('input_sha256', {}).get(point, {})):
+            last_time = _number_text(row['final_time']) if row.get('final_time', None) is not None else '—'
+            if physical is not None:
+                try:
+                    bindings[point] = select_result(self.root['CGYRO_scan'], entry, point)
+                    status['restartable'] = summary.get('checkpoint_available', True)
+                    status['reason'] = summary.get('checkpoint_reason', '') or '续算时只校验所选点的输入、检查点与配套文件。'
+                    if row.get('checkpoint_time', None) is not None:
+                        status['checkpoint'] = dict(time=row['checkpoint_time'], last_time=row.get('final_time', 0))
                     mode = 'pending'
+                except (KeyError, TypeError, ValueError) as exc:
+                    status['reason'] = str(exc)
+            elif entry.get('input_sha256', {}).get(point, None):
+                try:
+                    bindings[point] = select_result(self.root['CGYRO_scan'], entry, point)
                     status['restartable'] = True
-                    status['reason'] = '原始输入或检查点待校验；续算前检查所选点。'
+                    mode = 'pending'
+                    status['reason'] = '所选点的原输入 / 检查点 ZIP 将在续算前校验。'
+                except (KeyError, TypeError, ValueError) as exc:
+                    status['reason'] = str(exc)
+            if point not in bindings:
+                bindings[point] = dict(error=status['reason'] or '该点没有保存结果或原始输入。', row=dict(row))
             statuses[str(point)] = status
             warning = row.get('continuation_pending', '')
             scheduler_state = row.get('scheduler_state', '')
@@ -426,7 +349,10 @@ class ResultBrowser:
             tag = status['checkpoint']
             table.insert('', 'end', iid=str(point), values=[point] + [
                 _number_text(row.get('values', {}).get(name, '—')) for name in names] + [
-                state_label, last_time,
+                state_label, last_time, summary.get('sample_count', '—'),
+                _number_text(summary['bytes'] / 1048576.) if summary.get('bytes', None) is not None else '—',
+                '检查点不可用' if summary.get('checkpoint_available', None) is False else
+                _number_text(tag['time']) + '（收集时已核验）' if tag and summary.get('checkpoint_available', False) else
                 _number_text(tag['time']) + '（待校验）' if tag else
                 '原输入 / 检查点待校验' if mode == 'pending' else '不可重启'])
             effective = row.get('effective_time', {})
@@ -462,14 +388,15 @@ class ResultBrowser:
                     raise ValueError('所选点尚无时间样本。')
                 self.root['PLOTS']['CGYRO_results'].plot(
                     time_traces=True, run_token=token, point_ids=points,
-                    stopped_points=entry.get('stopped_run', False))
+                    stopped_points=entry.get('stopped_run', False),
+                    selections={point: bindings[point] for point in points})
             except Exception as exc:
                 messagebox.showerror('时间曲线', str(exc), parent=window)
 
         table.bind('<<TreeviewSelect>>', selection_changed)
         if entry.get('stopped_run', False):
             table.selection_set([str(point) for point in tasks if statuses[str(point)]['restartable']
-                and point in entry['resume_context']['unfinished']])
+                and point not in entry.get('loaded_points', [])])
             selection_changed()
         selections = ttk.Frame(window)
         selections.pack(fill=tk.X, padx=10, pady=(0, 8))
@@ -489,12 +416,11 @@ class ResultBrowser:
             def resume():
                 try:
                     points = selected_points()
-                    missing = [point for point in points if not statuses[point]['restartable']]
-                    if missing:
-                        raise ValueError('以下点缺少有效重启文件，不能从原进度续算：' + ', '.join(missing))
                     button.configure(state='disabled')
                     window.update_idletasks()
-                    self.continue_callback(token, points, float(duration.get()))
+                    self.continue_callback(token, points, float(duration.get()),
+                        selections={point: bindings[point] for point in points},
+                        scope=scope)
                 except Exception as exc:
                     if window.winfo_exists():
                         messagebox.showerror('CGYRO 续算', str(exc), parent=window)
@@ -534,8 +460,8 @@ class ResultBrowser:
         ttk.Label(window, text=title, anchor='w', wraplength=width - 48).pack(fill=tk.X, padx=10, pady=(10, 6))
         frame = ttk.Frame(window)
         frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
-        columns = ['task'] + names + ['KY', 'omega', 'gamma', 'omega_error', 'gamma_error', 'peak']
-        headings = ['计算点'] + names + ['ky', '平均 ω', '平均 γ', 'ω 相对波动', 'γ 相对波动', '当前最大 γ']
+        columns = ['task'] + names + ['KY', 'omega', 'gamma', 'omega_error', 'gamma_error', 'window', 'samples', 'peak']
+        headings = ['计算点'] + names + ['ky', '平均 ω', '平均 γ', 'ω 相对波动', 'γ 相对波动', '统计时间窗口', '窗口样本数', '当前最大 γ']
         table = ttk.Treeview(frame, columns=columns, show='headings')
         style_widget(table)
         for column, heading in zip(columns, headings):
@@ -556,30 +482,30 @@ class ResultBrowser:
                        '{:.8g}'.format(row['gamma']),
                        '{:.3%}'.format(row['omega_error']) if np.isfinite(row['omega_error']) else '—',
                        '{:.3%}'.format(row['gamma_error']) if np.isfinite(row['gamma_error']) else '—',
+                       '{:.7g}–{:.7g}'.format(row['statistics_window']['start_time'], row['statistics_window']['end_time']),
+                       row['statistics_window']['samples'],
                        '✓' if row is peak else ''])
             table.insert('', 'end', values=values, tags=('peak',) if row is peak else ())
         table.tag_configure('peak', background='#fff2b2')
-        ttk.Label(window, text='共 {} 行；相对波动为当前末段时间序列的标准差 / |平均值|。'.format(len(ordered)),
+        ttk.Label(window, text='共 {} 行；末段比例 {:.3%}，窗口与样本数逐点列出。相对波动为窗口内标准差 / |平均值|。'.format(len(ordered), data['tail_fraction']),
                   anchor='w', wraplength=width - 48).pack(fill=tk.X, padx=10, pady=(0, 10))
 
 
-def plot_time_traces(root, notebook, token, point_ids, legend_font_size=10, stopped_points=False):
+def plot_time_traces(root, notebook, token, point_ids, legend_font_size=10, stopped_points=False, selections=None):
     """Plot native cumulative time samples; never average or re-zero a restart."""
-    records, _ = _run_options(root, stopped_token=token)
-    if token not in records:
-        raise ValueError('结果记录已改变，请重新打开计算点选择窗口。')
-    entry = records[token]
-    if stopped_points and entry.get('stopped_run', False):
-        view = entry['resume_context']['view']
-        entry = dict(entry, tasks=view['__TASKS__'], resume_view=view)
-    tasks = entry.get('tasks', {})
+    if selections is None:
+        entry = find_record(root['CGYRO_scan'], token)
+        selections = {point: select_result(root['CGYRO_scan'], entry, point) for point in point_ids}
+    else:
+        entry = next(iter(selections.values()))['info'] if selections else {}
+    tasks = {point: binding['row'] for point, binding in selections.items()}
     if not point_ids or any(point not in tasks for point in point_ids):
         raise ValueError('请选择有效的计算点。')
     names = [str(axis['name']) for axis in entry.get('scan_axes', []) if not axis.get('fixed', False)]
     series = []
     for point in point_ids:
         row = tasks[point]
-        result = _result_node(root, entry, row)
+        result = selected_result(root['CGYRO_scan'], selections[point])
         times, omega, gamma = cgyro_frequency_history(result)
         values = row.get('values', {})
         label = ', '.join('{}={}'.format('ky' if name == 'KY' else name, _number_text(values[name]))
@@ -648,6 +574,7 @@ def plot_selected(root, notebook):
     suffix = ', '.join('{}={:.6g}'.format(name, value) for name, value in fixed_values.items())
     if suffix:
         title += ' | ' + suffix
+    title += ' | tail {:.3%} (per-point time windows in the numeric table)'.format(data['tail_fraction'])
     nb = notebook(0, 'CGYRO result browser')
     fig, axes = nb.subplots(1, 2, figsize=(12, 5.2), label=title)
     for axis, values, label, cmap in zip(axes, plot_values,

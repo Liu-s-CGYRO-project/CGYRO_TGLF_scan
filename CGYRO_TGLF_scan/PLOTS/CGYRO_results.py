@@ -12,6 +12,7 @@ with plot_context(root) as style:
     if _plot_options.get('time_traces', False):
         plot_time_traces(root, FigureNotebook, _plot_options.get('run_token', ''),
                          _plot_options.get('point_ids', None), style['legend_font_size'],
-                         stopped_points=_plot_options.get('stopped_points', False))
+                         stopped_points=_plot_options.get('stopped_points', False),
+                         selections=_plot_options.get('selections', None))
     else:
         plot_selected(root, FigureNotebook)

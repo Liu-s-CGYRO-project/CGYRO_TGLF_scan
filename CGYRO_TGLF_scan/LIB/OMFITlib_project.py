@@ -1076,29 +1076,33 @@ class ProjectActions:
             problems.append('CGYRO 输入与扫描：' + '；'.join(issues))
         self.settings['message'] = '需要修改：\n' + '\n'.join(problems) if problems else '配置检查通过'
 
-    def continue_cgyro(self, token, point_ids, additional_time):
+    def continue_cgyro(self, token, point_ids, additional_time, selections=None, scope=None):
         """Continue frozen archived inputs, then merge only the selected points."""
         issues = runtime_issues(self.root, 'cgyro')
         if issues:
             raise ValueError('；'.join(issues))
         node = module(self.root, 'cgyro')
-        plan = continuation_plan(node, token, point_ids, additional_time)
+        plan = continuation_plan(node, token, point_ids, additional_time, selections=selections, scope=scope)
+        for point, reason in plan['rejected'].items():
+            print('CGYRO 续算跳过 {}：{}'.format(point, reason))
         setup = node['SETTINGS']['SETUP']
         previous = {key: setup.get(key, None) for key in ('irun', 'idownsync', 'idimrun')}
         try:
             setup['irun'], setup['idownsync'] = 1, 1
             setup['idimrun'] = int(plan['info'].get('scan_dimensions', plan['info']['dimensions']))
             self.call('CGYRO 选定计算点续算', MODULES['cgyro'] + ('SCRIPTS', 'runCGYRO.py'),
-                      continuation={key: plan[key] for key in ('source_token', 'points', 'additional_time')})
+                      continuation={key: plan[key] for key in ('source_token', 'points', 'additional_time', 'selections', 'scope')})
             manifest = node.get('RUN_MANIFEST', {})
             if manifest.get('status', '') == 'published':
-                self.settings['message'] = '已续算并更新 {} 个计算点，其余结果保留。'.format(len(point_ids))
+                self.settings['message'] = '已续算并更新 {} 个计算点，其余结果保留。'.format(len(plan['points']))
             elif collection_done(manifest):
                 self.settings['message'] = stop_message(manifest)
             elif manifest.get('stop_requested', False):
                 self.settings['message'] = stop_message(manifest)
         finally:
             setup.update(previous)
+            if plan['rejected']:
+                self.settings['message'] += ' {} 个点未提交，原因见控制台。'.format(len(plan['rejected']))
 
     def collect(self):
         issues = collect_issues(self.root)
@@ -1154,8 +1158,10 @@ class ProjectActions:
         """Only the reviewed task IDs enter the native deletion script."""
         self._cgyro_script('删除指定 CGYRO 任务', 'remove_tasks.py', tokens=list(tokens),
                           confirm=True, expected=expected, confirmation=confirmation)
-        self.settings.pop('cgyro_result_view', None)
-        self.settings['message'] = '已删除所选 {} 条任务及工程内结果，请另存工程。'.format(len(tokens))
+        if expected.get('delete_results', False):
+            self.settings.pop('cgyro_result_view', None)
+        self.settings['message'] = '已删除所选 {} 条任务记录{}；物理文件清理请使用存储整理。'.format(
+            len(tokens), '及已确认的结果引用' if expected.get('delete_results', False) else '，已归档结果保留')
 
     def save_command(self, name):
         command = self.settings.get('command_draft', '').strip()

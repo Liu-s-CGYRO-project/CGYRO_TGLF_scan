@@ -21,6 +21,7 @@ class RetentionTests(unittest.TestCase):
             point = 'p{:06d}'.format(number)
             raw = self.result(token + point, token.encode())
             (Path(raw.filename) / 'out.cgyro.time').write_text(str(time) + ' 0 0\n')
+            (Path(raw.filename) / 'input.cgyro').write_text('{}=16\nKY={}\n'.format(axis, ky))
             cases[point] = storage.store_result(module, raw)
             table[point] = dict(task_id=point, run_token=token, values={axis: 16, 'KY': ky},
                                 result_path=[axis, '16.00000', 'lin', str(ky)])
@@ -35,7 +36,8 @@ class RetentionTests(unittest.TestCase):
         info.update(source_nr=1, ion_case='T', scan_dimensions=1)
         tasks, payload = copy.deepcopy(manifest['point_table']), {}
         for point, row in tasks.items():
-            row.update(status=status, resume_pending=status != 'loaded')
+            row.update(status=status, resume_pending=status != 'loaded',
+                       final_time=archive_api.output_final_time(storage.resolve_result(module, cases[point])))
             node = payload
             for key in row['result_path'][:-1]:
                 node = node.setdefault(key, {})
@@ -78,7 +80,7 @@ class RetentionTests(unittest.TestCase):
         root['RUN_MANIFEST'] = child
         return root, merged, first_cases, child_cases
 
-    def test_partial_subset_resolves_surviving_published_ancestor_by_coordinate(self):
+    def test_partial_subset_keeps_only_its_own_files_and_public_scan_is_separate(self):
         root, merged, first_cases, child_cases = self.subset_continuation()
         # Catalog IDs can be reassigned on a merge. The frozen p000002 must
         # resolve from owner+coordinate, not a currently matching row ID.
@@ -87,29 +89,25 @@ class RetentionTests(unittest.TestCase):
         tasks['p000099'].update(task_id='p000099', source_point_id='p000002')
         with self.assertRaises(ValueError):
             fixtures.continuation.archived_case(root, 'first')  # stale dialog
-        context = fixtures.continuation.stopped_context(root, 'child')
-        self.assertEqual(set(context['results']), {'p000001', 'p000002'})
-        self.assertEqual(context['unfinished'], {'p000001'})
-        self.assertIs(context['results']['p000001'], storage.resolve_result(root, child_cases['p000001']))
-        self.assertIs(context['results']['p000002'], storage.resolve_result(root, first_cases['p000002']))
+        self.assertIsNone(fixtures.continuation.stopped_context(root, 'child'))
+        self.assertEqual(len(fixtures.index_api.result_records(root)), 1)
+        entry = next(e for e in fixtures.index_api.result_records(root).values() if e['kind'] == 'scan')
+        binding = fixtures.index_api.select_result(root, entry, 'p000099')
+        self.assertEqual(binding['result_id'], storage.reference_id(first_cases['p000002']))
 
-    def test_ancestor_fallback_rejects_foreign_owner_or_changed_signed_ky(self):
-        for changed in ('owner', 'signed_ky'):
-            with self.subTest(changed=changed):
-                # Distinct temporary fixture directories for each scenario.
-                root, merged, first_cases, child_cases = self.subset_continuation(suffix=changed)
-                row = merged['__TASKS__']['p000002']
-                if changed == 'owner':
-                    row['run_token'] = 'foreign'
-                else:
-                    row['result_path'][-1] = '-0.2'
-                context = fixtures.continuation.stopped_context(root, root['RUN_MANIFEST']['run_token'])
-                self.assertEqual(context['missing_points'], ['p000002'])
-                self.assertEqual(set(context['results']), {'p000001'})
-                # Missing unselected data no longer blocks the child's files,
-                # but cannot be replaced by a foreign result or original input.
-                with self.assertRaisesRegex(ValueError, 'no retained result files'):
-                    fixtures.continuation.resume_source(root, root['RUN_MANIFEST']['run_token'], 'p000002', context)
+    def test_job_provenance_does_not_redirect_results_and_signed_ky_is_checked(self):
+        root, merged, first_cases, child_cases = self.subset_continuation()
+        row = merged['__TASKS__']['p000002']
+        row['run_token'] = 'foreign-provenance'
+        entry = next(iter(fixtures.index_api.result_records(root).values()))
+        binding = fixtures.index_api.select_result(root, entry, 'p000002')
+        self.assertEqual(binding['result_id'], storage.reference_id(first_cases['p000002']))
+        row['result_path'][-1] = '-0.2'
+        with self.assertRaises((KeyError, ValueError)):
+            fixtures.index_api.select_result(root, entry, 'p000002')
+        # The inconsistent other point cannot interfere with this selection.
+        good = fixtures.index_api.select_result(root, entry, 'p000001')
+        self.assertEqual(good['result_id'], storage.reference_id(child_cases['p000001']))
 
     def test_child_checkpoint_plan_survives_missing_retired_or_circular_ancestry(self):
         for damage in ('missing', 'retired', 'circular'):
@@ -125,11 +123,13 @@ class RetentionTests(unittest.TestCase):
                 else:
                     child['continuation']['source_token'] = child['run_token']
                 result = storage.resolve_result(root, child_cases['p000001'])
-                with patch.object(fixtures.continuation, 'checkpoint_tag', return_value={'time': 20}) as check:
+                with patch.object(fixtures.continuation, 'resume_source', return_value=dict(mode='checkpoint', directory=result.filename)) as check:
                     plan = fixtures.continuation.continuation_plan(root, child['run_token'], ['p000001'], 100)
-                check.assert_called_once_with(result.filename)
+                self.assertEqual(check.call_count, 1)
+                self.assertEqual(check.call_args.kwargs['binding']['result_id'], storage.reference_id(child_cases['p000001']))
                 self.assertEqual(plan['sources']['p000001'], dict(mode='checkpoint', directory=result.filename))
                 self.assertEqual(plan['source_points'], ['p000001', 'p000002'])
+                self.assertEqual(plan['scope']['unknown'], [])
                 self.assertEqual(plan['rows']['p000001']['values'], child['point_table']['p000001']['values'])
 
     def test_missing_history_never_bypasses_selected_checkpoint_validation(self):
@@ -193,7 +193,8 @@ class RetentionTests(unittest.TestCase):
         retry_case = archive_api.catalog_runs(root)['Jet'][retry['case_id']]
         self.publish(root, first, first_cases)
         first_case = archive_api.catalog_runs(root)['Jet'][first['case_id']]
-        merged = archive_api.combine_cases([first_case, retry_case])
+        merged = archive_api.combine_cases([first_case])
+        archive_api.store_scan(merged, retry_case, retry_case['__INFO__'], retry_case['__TASKS__'], prefer_progress=True)
         archive_api.install_case(run, retry['case_id'], merged)
         _, info, tasks = archive_api.case_scans(merged)[0]
         self.assertEqual(info['run_token'], 'retry')
@@ -221,13 +222,13 @@ class RetentionTests(unittest.TestCase):
         storage.storage_state(root)['checkpoints'][new_key] = json.dumps(dict(resume_ready=True))
         self.assertIn('old', self.plan(root)['retire'])
 
-    def test_uncollected_and_partial_child_protect_ancestors(self):
+    def test_uncollected_and_partial_child_do_not_retain_unneeded_parent_files(self):
         root, old, old_cases, new, new_cases = self.pair()
         for status, collection in [('running', 'pending'), ('cancelled', 'partial')]:
             child = dict(run_token='child', status=status, collection_status=collection,
                          continuation=dict(source_token='old'))
             db_api.run_records(root)['child'] = dict(manifest=child)
-            self.assertNotIn('old', self.plan(root)['retire'])
+            self.assertIn('old', self.plan(root)['retire'])
         child.update(status='published', collection_status='complete')
         self.assertIn('old', self.plan(root)['retire'])
 
@@ -258,13 +259,13 @@ class RetentionTests(unittest.TestCase):
         old.update(status='failed', scheduler_sync=dict(active=False, terminal=True, outcome='failed'))
         self.assertIn('old', self.plan(root)['retire'])
 
-    def test_inconsistent_published_child_still_protects_source_chain(self):
+    def test_child_scheduler_state_does_not_control_parent_result_retention(self):
         root, old, old_cases, new, new_cases = self.pair()
         child = dict(run_token='child', status='published', collection_status='complete',
                      continuation=dict(source_token='old'),
                      scheduler_sync=dict(active=True, terminal=False, outcome='active'))
         db_api.run_records(root)['child'] = dict(manifest=child)
-        self.assertNotIn('old', self.plan(root)['retire'])
+        self.assertIn('old', self.plan(root)['retire'])
         child['scheduler_sync'] = dict(active=False, terminal=True, outcome='completed')
         self.assertIn('old', self.plan(root)['retire'])
 
@@ -397,7 +398,7 @@ class RetentionTests(unittest.TestCase):
         self.assertNotIn('cases', record)
         self.assertIn('cases restore rejected', original_abort.cgyro_rollback_errors[0])
 
-    def test_circular_candidate_ancestry_is_retained_with_its_descendants(self):
+    def test_circular_provenance_does_not_retain_replaced_payloads(self):
         root, old, old_cases, new, new_cases = self.pair()
         peer, _ = self.snapshot(root, 'peer', times=(11, 21))
         descendant, _ = self.snapshot(root, 'descendant', times=(12, 22))
@@ -410,9 +411,7 @@ class RetentionTests(unittest.TestCase):
             records = db_api.run_records(root)
             root['RUN_DB'][db_api.RUNS] = dict(reversed(list(records.items()))) if reverse else dict(records)
             plan = self.plan(root)
-            self.assertFalse({'old', 'peer', 'descendant'} & set(plan['retire']))
-            for token in ('old', 'peer', 'descendant'):
-                self.assertIn('cyclic', plan['retained'][token])
+            self.assertTrue({'old', 'peer', 'descendant'} <= set(plan['retire']))
 
 
 if __name__ == '__main__':

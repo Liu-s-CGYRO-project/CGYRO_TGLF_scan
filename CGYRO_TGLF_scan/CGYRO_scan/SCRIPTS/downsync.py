@@ -3,13 +3,15 @@
 Probe completion before parsing outputs. The retry controller consumes probe
 failures separately from transport/reader errors and decides whether to rerun.
 """
-from builtins import Exception, RuntimeError, ValueError, any, enumerate, float, int, len, list, set, str
+from builtins import Exception, RuntimeError, ValueError, any, bool, dict, enumerate, float, int, len, list, set, str
+from copy import deepcopy
 import os
 import re
 from OMFITlib_cgyro_run_state import quote as shell_quote, refresh_run_state, text_output as output_text
 from OMFITlib_cgyro_continue import validate_continued_result
-from OMFITlib_cgyro_retry import point_scheduler_states
+from OMFITlib_cgyro_retry import collected_points, point_scheduler_states
 from OMFITlib_cgyro_storage import store_result
+from OMFITlib_cgyro_input_identity import cache_parameters
 from OMFITlib_cgyro_db import run_cases
 from OMFITlib_cgyro_queue import save_current
 from OMFITlib_cgyro_scratch import directory_bytes, ensure_capacity
@@ -283,8 +285,10 @@ local = rmtserver == 'localhost'
 caseTag = manifest['case_tag']
 point_results = run_cases(root, manifest, OMFITtree)
 point_ids = list(manifest['points'])
-loaded_cases = []
-partial_cases = []
+reused = collected_points(root, manifest)
+loaded_cases = [point for point in point_ids if point in reused and manifest['point_table'][point]['status'] == 'loaded']
+partial_cases = [point for point in point_ids if point in reused and manifest['point_table'][point]['status'] == 'partial']
+pending_reads = [point for point in point_ids if point not in reused]
 skipped_cases = []
 terminal_status = ''
 if icgyro == 1:
@@ -301,10 +305,12 @@ if icgyro == 1:
             raise RuntimeError('Could not confirm the CGYRO job state; its existing record is preserved.')
         if scheduler_record['outcome'] in ('cancelled', 'failed'):
             terminal_status = scheduler_record['outcome']
-    failed_cases = probe_run_outputs(manifest, point_ids, read_files, str(manifest.get('job_id', '') or ''), scheduler_record)
+    failed_cases = (probe_run_outputs(manifest, pending_reads, read_files, str(manifest.get('job_id', '') or ''), scheduler_record)
+                    if pending_reads else [])
     manifest['probe_failed_points'] = list(failed_cases)
+failed_cases += partial_cases
 manifest['point_states'] = point_scheduler_states(manifest)
-for point_id in point_ids:
+for point_id in pending_reads:
     missing = manifest.get('missing_outputs', {}).get(point_id, '')
     if missing:
         # Input-only directories are normal for tasks cancelled in the queue.
@@ -344,7 +350,21 @@ for point_id in point_ids:
             manifest['skipped_reasons'][point_id] = 'No time samples'
             continue
         warning = validate_continued_result(candidate, manifest.get('point_table', {}).get(point_id, {}))
-        point_results[point_id] = store_result(root, candidate, OMFITtree) if icgyro == 1 else candidate
+        # Validate this point before changing its index. A failed read leaves
+        # the old immutable owner reachable; no other point is opened here.
+        row = deepcopy(dict(manifest.get('point_table', {}).get(point_id, {})))
+        if icgyro == 1:
+            if row.get('result_path', None):
+                cache_parameters(row, manifest, candidate)
+            retained = store_result(root, candidate, OMFITtree, summary_row=row)
+        else:
+            retained = candidate
+        row.update(dict(status='partial' if point_id in failed_cases or warning else 'loaded',
+                        resume_pending=bool(point_id in failed_cases or warning),
+                        scheduler_state=manifest.get('point_states', {}).get(point_id, ''),
+                        source_directory=result_dir))
+        point_results[point_id] = retained
+        manifest.setdefault('point_table', {})[point_id] = row
         if warning:
             manifest['continuation_pending'][point_id] = warning
             print(point_id + ': ' + warning)

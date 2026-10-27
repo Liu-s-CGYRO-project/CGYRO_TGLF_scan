@@ -20,7 +20,7 @@ from OMFITlib_cgyro_queue import (collection_done, require_retained_run, save_cu
                                  shell_quote, stop_queue, wait_current)
 from OMFITlib_cgyro_run_state import linked_local_action, native_remote_execute, stop_run, submitted_job_id, text_output
 from OMFITlib_cgyro_submission import PROTOCOL, discover_submission, seal_unstarted, submit_command
-from OMFITlib_cgyro_storage import submission_file
+from OMFITlib_cgyro_storage import reference_id, submission_file
 from OMFITlib_cgyro_db import rollback_actions, run_cases, set_run_cases
 from OMFITlib_cgyro_reference import copy_result_tree
 from OMFITlib_cgyro_launch import upgrade_slurm_limits, validate_slurm_script
@@ -404,6 +404,26 @@ def _restore_collection_failure(root, manifest, preserved, error, factory):
     return rollback_actions(error, operations)
 
 
+def collected_points(root, manifest):
+    """Reuse verified local owners for this exact point directory/attempt.
+
+    Retrying a failed download or a subset must not parse/hash successful
+    immutable owners again. A solver retry changes the point directory and
+    therefore cannot satisfy this check with an earlier attempt's summary.
+    """
+    cases, reusable = run_cases(root, manifest), set()
+    for point in manifest.get('points', []):
+        row = manifest.get('point_table', {}).get(point, {})
+        summary = row.get('result_summary', {})
+        directory = posixpath.join(manifest.get('point_workdirs', {}).get(point, manifest.get('workDir', '')), point)
+        if (summary.get('version', 0) == 1 and summary.get('sample_count', 0) > 0
+                and summary.get('result_id', '') == reference_id(cases.get(point, None))
+                and row.get('source_directory', '') == directory
+                and row.get('status', '') in ('loaded', 'partial')):
+            reusable.add(point)
+    return reusable
+
+
 def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_retries=False):
     """Read saved outputs; only an explicit run action may enable solver retries."""
     require_retained_run(root, root.get('RUN_MANIFEST', {}).get('run_token', ''))
@@ -413,6 +433,12 @@ def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_r
     collection_retries = 0
     while True:
         manifest = root['RUN_MANIFEST']
+        # The download succeeded but publication was interrupted. Return to
+        # publication with those exact verified owners, without downloading.
+        if (not allow_solver_retries and manifest.get('collection_status', '') == 'ready'
+                and not manifest.get('load_errors', {})
+                and set(manifest.get('loaded_points', []) + manifest.get('partial_points', [])) <= collected_points(root, manifest)):
+            return
         # Re-reading a finished partial archive is transactional. An Abort or
         # failed read must not remove its resume entry or mix old rows/new files.
         preserved = None
@@ -423,6 +449,20 @@ def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_r
         except BaseException as exc:
             manifest = root['RUN_MANIFEST']
             read_error = bool(manifest.get('load_errors', {}))
+            readable = set(manifest.get('loaded_points', []) + manifest.get('partial_points', []))
+            if isinstance(exc, Exception) and read_error and readable and readable <= collected_points(root, manifest):
+                # Each successful point already passed validation. Keep these
+                # owners across retries; one unreadable neighbor cannot block
+                # their publication or replace its own old usable result.
+                manifest['collection_error'] = str(exc)
+                save_current(root, factory)
+                if collection_retries < 2:
+                    collection_retries += 1
+                    time.sleep(collection_retries)
+                    continue
+                manifest['collection_status'] = 'ready'
+                print('Archiving verified points; unreadable points remain pending: ' + str(manifest['load_errors']))
+                return
             rollback_errors = _restore_collection_failure(root, manifest, preserved, exc, factory)
             # A download/query failure gets another read; it never launches a solver.
             if (not rollback_errors and isinstance(exc, Exception) and collection_retries < 2

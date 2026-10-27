@@ -20,22 +20,34 @@ def mapping(value):
     return value if not is_native_file(value) and hasattr(value, 'items') else {}
 
 
-def manifest_sources(module):
+def manifest_sources(module, tokens=None):
     """Include parked/unarchived tasks, independently of the current queue focus."""
     sources = []
     for label, entries in (('history', module.get('RUN_HISTORY', {})), ('retained', run_records(module))):
-        for token, entry in mapping(entries).items():
+        entries = mapping(entries)
+        selected = entries.items() if tokens is None else ((token, entries[token]) for token in tokens if token in entries)
+        for token, entry in selected:
             manifest = mapping(mapping(entry).get('manifest', {}))
             if manifest:
                 sources.append((str(token), manifest, label))
     current = mapping(module.get('RUN_MANIFEST', {}))
-    if current.get('run_token', ''):
+    if current.get('run_token', '') and (tokens is None or str(current['run_token']) in tokens):
         sources.append((str(current['run_token']), current, 'current'))
     return sources
 
 
-def indexed_sources(module):
+def indexed_sources(module, tokens=None):
     """Yield actual storage paths, never writable synthetic case views."""
+    if tokens is not None:
+        from OMFITlib_cgyro_result_index import _public_headers, at
+        seen = set()
+        for info in _public_headers(module).values():
+            linked = set(info.get('merged_run_tokens', [])) | {info.get('run_token', '')}
+            path = tuple(info['destination'])
+            if linked & set(tokens) and path not in seen:
+                seen.add(path)
+                yield path, info['case_id'], at(module['RUN_DB'], path)
+        return
     db = mapping(module.get('RUN_DB', {}))
     for runid, cases in case_sources(module).items():
         for case_id, case, path in cases:
@@ -61,11 +73,11 @@ def task_jobs(manifest):
                    if mapping(m).get('job_id', '')})
 
 
-def task_catalog(module):
+def task_catalog(module, include_results=True, tokens=None):
     """Build unsaved rows only on opening/refreshing the task manager."""
     found = {}
     def remember(token, manifest):
-        if not token or run_is_deleted(module, token):
+        if not token or tokens is not None and token not in tokens or run_is_deleted(module, token):
             return None
         row = found.setdefault(token, dict(token=token, jobs=set(), servers=set(), runids=set(), cases=set(),
             scans=set(), statuses=set(), archived_points=0, retained_points=0, has_inputs=False, busy=False))
@@ -78,13 +90,26 @@ def task_catalog(module):
         row['statuses'].add(str(manifest.get('status', '') or 'unknown'))
         row['busy'] |= manifest.get('status', '') in BUSY_STATES or manifest.get('collection_status', '') == 'collecting'
         return row
-    for token, manifest, _ in manifest_sources(module):
+    for token, manifest, _ in manifest_sources(module, tokens):
         row = remember(token, manifest)
         if row is not None:
             record = mapping(run_records(module).get(token, {}))
             row['retained_points'] = len(mapping(record.get('cases', {})))
             row['has_inputs'] = bool(record.get('inputs', {}))
-    for path, case_id, case in indexed_sources(module):
+    if include_results and tokens is None:
+        from OMFITlib_cgyro_result_index import _public_headers
+        for info in _public_headers(module).values():
+            header = str(info.get('run_token', '') or '')
+            counts = info.get('task_counts', {})
+            linked = set(info.get('merged_run_tokens', [])) | {header}
+            for token in linked:
+                row = remember(token, info if token == header else dict(runid=info['runid'], case_id=info['case_id']))
+                if row is not None:
+                    count = counts.get(token, info.get('points', 0) if len(linked) == 1 else None)
+                    row['archived_points'] = (None if count is None or row['archived_points'] is None
+                                              else row['archived_points'] + count)
+                    row['scans'].add(scan_key(info))
+    for path, case_id, case in (indexed_sources(module, tokens) if include_results and tokens is not None else ()):
         for name, info, tasks in case_scans(case):
             header = str(info.get('run_token', '') or '')
             remember(header, info)
@@ -108,7 +133,7 @@ def task_catalog(module):
     return sorted(found.values(), key=lambda row: (row['servers'], row['runids'], row['jobs'], row['token']))
 
 
-def metadata_revision(module):
+def metadata_revision(module, tokens=None, case_paths=()):
     """Bind confirmation to live indexes, not just a count or list of tokens.
 
     A modal Tk confirmation processes events: a download or queue update may
@@ -151,6 +176,20 @@ def metadata_revision(module):
                 encoded = str(type(value)) + ':' + str(id(value))
             digest.update(encoded.encode('utf-8'))
             digest.update(b';')
+    if tokens is not None:
+        # A task-only deletion binds exactly its records. It need not open or
+        # hash any unrelated result indexes or the physical owner catalog.
+        for token, manifest, label in manifest_sources(module, tokens):
+            visit((token, label, manifest))
+        for token in sorted(tokens):
+            visit(run_records(module).get(token, {}))
+        visit(module.get('RUN_BATCH', {}))
+        for path in case_paths:
+            node = module.get('RUN_DB', {})
+            for key in path:
+                node = node[key]
+            visit((path, node))
+        return digest.hexdigest()
     for name in ('RUN_DB', 'RUN_HISTORY', 'RUN_MANIFEST', 'RUN_BATCH'):
         visit(name)
         visit(module.get(name, {}))

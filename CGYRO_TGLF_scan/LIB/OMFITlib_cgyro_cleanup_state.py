@@ -56,7 +56,7 @@ def commit_cleanup(module, writes, prune, factory=dict):
     Rollback restores owners first so restored public references remain valid.
     """
     missing, journal = object(), []
-    owners = pool_journal(module)
+    owners = pool_journal(module) if prune is not None else []
     try:
         for mapping, key, value in writes:
             journal.append((mapping, key, mapping.get(key, missing)))
@@ -64,7 +64,8 @@ def commit_cleanup(module, writes, prune, factory=dict):
                 mapping.pop(key)
             else:
                 mapping[key] = _native_scaffolding(value, factory, {})
-        prune(module)
+        if prune is not None:
+            prune(module)
     except BaseException as error:
         def restore(mapping, key, old):
             if old is missing:

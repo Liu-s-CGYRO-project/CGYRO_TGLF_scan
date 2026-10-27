@@ -5,7 +5,7 @@ Legacy owners are native directories. Explicit maintenance replaces them with
 file manifests, so identical files share one native owner in a saved project.
 The visible ``data`` child saves only expression text; readers resolve it lazily.
 """
-from builtins import (BaseException, OSError, RuntimeError, ValueError, any, dict, getattr, hasattr,
+from builtins import (BaseException, OSError, RuntimeError, ValueError, any, bool, dict, float, getattr, hasattr,
                       int, isinstance, iter, len, list, max, open, set, sorted, str, sum, tuple, type)
 from copy import copy, deepcopy
 import hashlib
@@ -82,7 +82,7 @@ def result_view(module, node):
     return values
 
 
-def submission_file(module, manifest, name, point=None):
+def submission_file(module, manifest, name, point=None, *, stored_only=False):
     """Find a frozen input even after reopening a project on another machine.
 
     Point ZIP names on disk may belong to another deduplicated point. Callers
@@ -90,7 +90,7 @@ def submission_file(module, manifest, name, point=None):
     """
     token = manifest.get('run_token', '')
     record = run_records(module).get(str(token), {})
-    candidates = [record.get('inputs', {}), run_cases(module, manifest)]
+    candidates = [record.get('inputs', {}), record.get('cases', {}) if stored_only else run_cases(module, manifest)]
     for cases in candidates:
         node = cases.get(point, {}) if point is not None else cases
         if not _file_node(node) and hasattr(node, 'get'):
@@ -100,6 +100,8 @@ def submission_file(module, manifest, name, point=None):
                 path = getattr(value, 'filename', '')
                 if path and os.path.isfile(path):
                     return path
+    if stored_only:
+        raise ValueError('Frozen CGYRO submission file is missing from RUN_DB: ' + str(point or name))
     original = manifest.get('source_local_workDir', manifest.get('local_workDir', ''))
     path = os.path.join(str(original), str(point) + '.zip' if point is not None else name)
     if not original or not os.path.isfile(path):
@@ -200,7 +202,29 @@ def _reference(key, factory):
     return make_reference(key, factory)
 
 
-def store_result(module, result, factory=dict):
+def _collection_summary(module, key, result, files):
+    """Capture facts once, while this newly collected point is already open.
+
+    Reuse the storage validator's checkpoint report and inventory. Lists never
+    stat directories or hash files to regenerate this persisted row summary.
+    Time-averaged values are deliberately absent: their window is user-selected.
+    """
+    from OMFITlib_cgyro_archive import solver_state
+    state = storage_state(module)
+    checkpoint = json.loads(state.get('checkpoints', {}).get(key, '{}'))
+    tag = checkpoint.get('tag', {}) or {}
+    times = result['t']
+    summary = dict(version=1, result_id=key, solver_status=solver_state(result),
+                   sample_count=int(result['n_time']), final_time=float(times[-1]),
+                   checkpoint_available=bool(checkpoint.get('resume_ready', False)),
+                   checkpoint_time=tag.get('time', None),
+                   checkpoint_reason=checkpoint.get('warning', ''),
+                   bytes=state.get('bytes', {}).get(key, None),
+                   file_sizes={name: size for name, size, _ in files})
+    return summary
+
+
+def store_result(module, result, factory=dict, *, summary_row=None):
     """Freeze a verified downloaded point before installing any public view."""
     ensure_layout(module, factory)
     deferred = deferred_key(module, result)
@@ -232,6 +256,10 @@ def store_result(module, result, factory=dict):
                       checkpoint_policy=CHECKPOINT_POLICY_VERSION))
     state.setdefault('bytes', factory())[key] = sum(row[1] for row in files)
     state.setdefault('checkpoints', factory())[key] = json.dumps(checkpoint, sort_keys=True)
+    if summary_row is not None:
+        summary = _collection_summary(module, key, result, files)
+        summary_row['result_summary'] = summary
+        summary_row.update(dict((name, summary[name]) for name in ('solver_status', 'final_time', 'checkpoint_time')))
     return _reference(key, factory)
 
 
@@ -360,7 +388,12 @@ def compact_storage(module, factory=dict, browse=False, *, run_token=None):
     submissions.verify_sources()
 
     def summary(target):
-        report = _storage_totals(target, sizes, submissions.sizes, checkpoints)
+        # Queue bookkeeping needs only this attempt's conversion counts.
+        # Enumerating every packed inventory for global totals defeats the
+        # scoped fast path even when no file is parsed. Explicit maintenance
+        # remains responsible for complete physical/logical space statistics.
+        report = (_storage_totals(target, sizes, submissions.sizes, checkpoints)
+                  if run_token is None else dict(scope='run', run_token=str(run_token)))
         report.update(dict(converted_copies=raw_copies,
                     converted_input_zips=submissions.converted, expanded_input_bytes=submissions.omitted_bytes,
                     retained_expanded_files=submissions.retained_files,
@@ -424,7 +457,7 @@ def compact_storage(module, factory=dict, browse=False, *, run_token=None):
     return summary(target)
 
 
-def prune_storage(module):
+def prune_storage(module, *, result_ids=None):
     """Drop unreachable pool entries atomically; never delete physical files.
 
     Validate the complete reference graph before changing any owner. Keep a
@@ -434,6 +467,8 @@ def prune_storage(module):
     db = ensure_layout(module)
     pool = result_pool(module)
     used, used_files = set(), set()
+    bounded = result_ids is not None
+    candidates = set(result_ids or [])
 
     def visit(node):
         # Resolve reopened metadata before classifying native file leaves.
@@ -445,14 +480,15 @@ def prune_storage(module):
             return
         file_key = file_reference_id(node)
         if file_key is not None:
-            resolve_file(module, node)
+            if not bounded:
+                resolve_file(module, node)
             used_files.add(file_key)
             return
         key = reference_id(node)
         if key is not None:
-            if key not in pool or not (is_result(pool[key]) or is_packed(pool[key])):
+            if not bounded and (key not in pool or not (is_result(pool[key]) or is_packed(pool[key]))):
                 raise ValueError('Missing physical CGYRO result: ' + key)
-            if key not in used and is_packed(pool[key]):
+            if not bounded and key not in used and is_packed(pool[key]):
                 used_files.update(row[2] for row in payload_sources(module, pool[key], key))
             used.add(key)
         elif not _file_node(node) and hasattr(node, 'items'):
@@ -462,9 +498,27 @@ def prune_storage(module):
     for key, value in db.items():
         if key not in (STORE, STATE):
             visit(value)
-    stale = [key for key in pool if key != FILE_STORE and key not in used]
+    stale = [key for key in pool if key != FILE_STORE and key not in used and (not bounded or key in candidates)]
     files = pool.get(FILE_STORE, {})
-    stale_files = [key for key in files if key not in used_files]
+    if bounded:
+        # Publication only releases the replaced owners. Inventory is metadata:
+        # never stat/hash/read unrelated result files as part of this cleanup.
+        candidate_files = set()
+        for key, owner in pool.items():
+            if key == FILE_STORE or not is_packed(owner):
+                continue
+            try:
+                digests = {row[2] for row in payload_inventory(owner, key)}
+            except ValueError:
+                used_files.update(files)  # An unknown owner may still need any blob.
+                continue
+            (candidate_files if key in stale else used_files).update(digests)
+        # Every retained packed owner and input reference has contributed its
+        # digests above. This also releases ZIPs detached by save_current without
+        # inspecting any physical file or pruning unrelated result owners.
+        stale_files = [key for key in files if key not in used_files]
+    else:
+        stale_files = [key for key in files if key not in used_files]
     state = storage_state(module)
     sizes = state.get('bytes', {})
     checkpoints = state.get('checkpoints', {})

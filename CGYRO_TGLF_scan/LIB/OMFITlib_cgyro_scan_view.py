@@ -4,12 +4,12 @@ The saved task table owns coordinates and physical paths. Virtual 1D slices
 contain references to those results, never copies, averages or archive edits.
 One varying axis and fixed remaining coordinates keep every ky grid separate.
 """
-from builtins import (KeyError, TypeError, ValueError, all, dict, float, hasattr,
+from builtins import (KeyError, TypeError, ValueError, all, any, dict, float, hasattr,
                       len, list, set, sorted, str, tuple)
 from collections import OrderedDict
 import json
 import math
-from OMFITlib_cgyro_archive import case_scans, scan_branch
+from OMFITlib_cgyro_archive import case_scans, coordinate_path, point_values, scan_branch
 from OMFITlib_compare_options import parse_float_list_text
 
 
@@ -41,9 +41,19 @@ def multiaxis_scans(case):
     """Inspect metadata only; linked parameters are not independent axes."""
     scans = OrderedDict()
     for key, info, tasks in case_scans(case):
-        axes = [axis for axis in info.get('scan_axes', []) if not axis.get('fixed', False)]
+        axes = [dict(axis) for axis in info.get('scan_axes', []) if not axis.get('fixed', False)]
+        if any(row.get('coordinate_path', None) for row in tasks.values()):
+            # Different linked/fixed values at one primary/ky location are
+            # independent choices in the comparison UI, never averaged curves.
+            values = [point_values(info, row, include_input=True) for row in tasks.values()]
+            names = {axis['name'] for axis in axes} | {'KY'}
+            for name in sorted(set().union(*(set(row) for row in values)) - names):
+                choices = sorted({row[name] for row in values if name in row})
+                if len(choices) > 1:
+                    axes.append(dict(name=name, values=choices))
         if len(axes) > 1:
-            scans[key] = dict(axes=axes, tasks=tasks, branch=scan_branch(case, info, tasks))
+            scans[key] = dict(axes=axes, tasks=tasks, info=info,
+                              path_dimensions=len(info.get('scan_axes', [])), branch=scan_branch(case, info, tasks))
     return scans
 
 
@@ -135,19 +145,21 @@ def comparison_case_view(case, selected, config=None):
         if not all(filters.values()):
             continue
         coordinate_names = [str(item['name']) for item in scan['axes']]
-        coordinate_names.extend(str(link['name']) for item in scan['axes'] for link in item.get('linked', []))
+        coordinate_names.extend(str(link['name']) for item in scan['axes'] for link in item.get('linked', [])
+                                if str(link['name']) not in coordinate_names)
         view.pop(scan['branch'], None)
         count = 0
         for point, row in scan['tasks'].items():
-            values = row.get('values', {})
             try:
+                values = point_values(scan['info'], row, include_input=True)
                 coordinates = {name: float(values[name]) for name in coordinate_names}
                 if not all(math.isfinite(value) for value in coordinates.values()):
                     raise ValueError('Non-finite archived coordinates')
                 if not all(coordinates[name] in filters[name] for name in names):
                     continue
                 path = list(row['result_path'])
-                if len(path) != 2 * len(names) + 2 or path[-2] != 'lin':
+                coordinate = coordinate_path(row)
+                if len(coordinate) != 2 * scan['path_dimensions'] + 2 or coordinate[-2] != 'lin':
                     raise ValueError('Invalid archived multi-axis result path')
                 path[0] = scan['branch']
                 node = case
@@ -170,9 +182,10 @@ def comparison_case_view(case, selected, config=None):
                 selections[token] = list(filters[axis])
             value = coordinates[axis]
             linear = view[token].setdefault(value, {}).setdefault('lin', {})
-            if path[-1] in linear:
+            ky = coordinate[-1]
+            if ky in linear:
                 raise ValueError('Duplicate ky at one complete parameter coordinate: ' + str(path))
-            linear[path[-1]] = node
+            linear[ky] = node
             previous = metadata[token]['coordinates'].get(value, None)
             if previous is not None and previous != coordinates:
                 raise ValueError('Linked coordinates disagree within one saved spectrum')

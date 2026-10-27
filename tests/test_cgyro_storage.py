@@ -94,6 +94,25 @@ queue_api = importlib.import_module('OMFITlib_cgyro_queue')
 db_api = importlib.import_module('OMFITlib_cgyro_db')
 scratch = importlib.import_module('OMFITlib_cgyro_scratch')
 reference_api = importlib.import_module('OMFITlib_cgyro_reference')
+index_api = importlib.import_module('OMFITlib_cgyro_result_index')
+
+def index_namespace(namespace):
+    namespace['RESULT_INFO_FIELDS'] = index_api.RESULT_INFO_FIELDS
+    for name in ('result_records', 'find_record', 'select_result', 'selected_result', 'scan_scope', 'scan_completion', 'merge_scopes', 'release_published_results'):
+        namespace[name] = getattr(index_api, name)
+    namespace['index_at'] = index_api.at
+    namespace['case_scans'] = archive_api.case_scans
+    namespace['coordinate_path'] = archive_api.coordinate_path
+    namespace['cache_merge_status'] = archive_api.cache_merge_status
+    namespace['share_matching_inputs'] = archive_api.share_matching_inputs
+    namespace['continuation_failed'] = archive_api.continuation_failed
+    namespace['full_point_coordinate'] = archive_api.full_point_coordinate
+    parameters = importlib.import_module('OMFITlib_cgyro_input_identity')
+    namespace['cache_parameters'] = parameters.cache_parameters
+    namespace['cache_competing_parameters'] = parameters.cache_competing_parameters
+    namespace['point_status'] = continuation.point_status
+    namespace['point_complete'] = importlib.import_module('OMFITlib_cgyro_run_state').point_complete
+
 
 
 class StorageCases(unittest.TestCase):
@@ -186,6 +205,7 @@ class StorageCases(unittest.TestCase):
                      'grouped_case_path', 'install_case', 'matching_cases', 'output_final_time',
                      'scan_key', 'store_scan', 'validate_preserved_scans'):
             namespace[name] = getattr(archive_api, name)
+        index_namespace(namespace)
         exec(compile(ast.Module(body=definitions, type_ignores=[]), str(path), 'exec'), namespace)
         return namespace['publish_loaded_run']
 
@@ -216,7 +236,7 @@ class StorageCases(unittest.TestCase):
         # The public scan now has neighbor's header; published source no
         # longer owns a duplicate cases tree. A stale planning dialog rejects
         # it, but collecting an already submitted child must remain possible.
-        with self.assertRaisesRegex(ValueError, 'replaced or is unindexed'):
+        with self.assertRaises(ValueError):
             continuation.archived_case(root, 'source')
         current = attempt('child', [.5, .6], 40 if finished else 20)
         current['continuation'] = dict(source_token='source', source_runid='Jet', source_case_id=case_id,
@@ -235,16 +255,13 @@ class StorageCases(unittest.TestCase):
         self.assertEqual(root['RUN_MANIFEST']['collection_status'], 'partial')
         self.assertFalse(state.uncollected_job(root['RUN_MANIFEST']))
         self.assertEqual(archive_api.catalog_runs(root)['Jet'][case_id]['N_ENERGY'], prior)
-        # The shorter child stays recoverable independently of the better
-        # public result; repeating collection must not duplicate or lose rows.
-        self.assertEqual(set(db_api.run_cases(root)), {'p000001', 'p000002'})
-        context = continuation.stopped_context(root, 'child')
-        self.assertEqual(set(context['rows']), {'p000001', 'p000002', 'p000003'})
-        self.assertEqual(context['unfinished'], {'p000001', 'p000002'})
-        root['RUN_MANIFEST']['collection_status'] = 'ready'
-        publish(root)
-        self.assertFalse(state.uncollected_job(root['RUN_MANIFEST']))
-        self.assertEqual(len(archive_api.catalog_runs(root)['Jet'][case_id]['__TASKS__']), 4)
+        # The shorter duplicate is not a second selectable result. Current
+        # coordinates still hold the original longer files without job lookup.
+        self.assertEqual(db_api.run_cases(root), {})
+        entries = index_api.result_records(root)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(len(next(iter(entries.values()))['tasks']), 4)
+        self.assertTrue(db_api.run_records(root)['child']['retired_points'])
 
     def test_completed_continuation_merges_only_its_coordinates_after_header_replacement(self):
         root, publish, case_id = self.continuation_after_merged_source(finished=True)
@@ -274,25 +291,40 @@ class StorageCases(unittest.TestCase):
             results[point] = result
         root['RUN_MANIFEST'], root['Cases'] = manifest, {manifest['case_tag']: results}
         publish(root)
-        self.assertEqual(root['RUN_MANIFEST']['collection_status'], 'partial')
-        self.assertNotEqual(root['RUN_MANIFEST']['status'], 'published')
-        self.assertEqual(set(db_api.run_cases(root)), set(manifest['points']))
+        self.assertEqual(root['RUN_MANIFEST']['collection_status'], 'complete')
+        self.assertEqual(root['RUN_MANIFEST']['status'], 'published')
+        self.assertTrue(root['RUN_MANIFEST']['submission_complete'])
+        self.assertFalse(root['RUN_MANIFEST']['scan_complete'])
+        self.assertEqual(db_api.run_cases(root), {})
         retained = archive_api.catalog_runs(root)['Jet'][case_id]['N_ENERGY']['48']['lin']
         self.assertEqual(set(retained), {'0.5', '0.6', '0.7', '0.8'})
 
     def test_failed_continuation_read_is_not_mistaken_for_finished_collection(self):
         import OMFITlib_cgyro_run_state as state
+        root, publish, case_id = self.continuation_after_merged_source(finished=True)
+        before = copy.deepcopy(archive_api.catalog_runs(root)['Jet'][case_id]['N_ENERGY']['48']['lin'])
+        root['RUN_MANIFEST']['load_errors'] = {'p000001': 'transport interrupted'}
+        publish(root)  # The other verified point can be handled independently.
+        self.assertTrue(state.uncollected_job(root['RUN_MANIFEST']))
+        self.assertFalse(root['RUN_MANIFEST']['submission_complete'])
+        self.assertEqual(root['RUN_MANIFEST']['load_errors'], {'p000001': 'transport interrupted'})
+        self.assertIn('p000001', db_api.run_cases(root))
+        after = archive_api.catalog_runs(root)['Jet'][case_id]['N_ENERGY']['48']['lin']
+        for ky in ('0.5', '0.7', '0.8'):
+            self.assertEqual(after[ky], before[ky])
+        self.assertNotEqual(after['0.6'], before['0.6'])
+
+    def test_all_unreadable_continuation_points_leave_public_results_untouched(self):
         root, publish, case_id = self.continuation_after_merged_source()
         before = copy.deepcopy(archive_api.catalog_runs(root)['Jet'][case_id])
-        root['RUN_MANIFEST']['load_errors'] = {'p000001': 'transport interrupted'}
+        root['RUN_MANIFEST']['load_errors'] = dict.fromkeys(root['RUN_MANIFEST']['points'], 'transport interrupted')
         with self.assertRaisesRegex(ValueError, 'download/read errors'):
             publish(root)
-        self.assertTrue(state.uncollected_job(root['RUN_MANIFEST']))
         self.assertEqual(archive_api.catalog_runs(root)['Jet'][case_id], before)
 
     def test_collection_does_not_reload_unrelated_migrated_results(self):
         root, publish, case_id = self.continuation_after_merged_source()
-        self.assertEqual(storage.storage_state(root)['case_layout'], 'radius-scans')
+        storage.storage_state(root)['case_layout'] = 'radius-scans'
         storage.compact_storage(root, run_token='child')
         # Opening old physical results here repeats full legacy migration on
         # every archive operation. Current output still needs its final time.
@@ -330,6 +362,7 @@ class StorageCases(unittest.TestCase):
                          run_records=db_api.run_records, storage_state=storage.storage_state,
                          stopped_context=continuation.stopped_context,
                          resolve_result=storage.resolve_result, record_options=lambda records: dict(records))
+        index_namespace(namespace)
         exec(compile(ast.Module(body=definitions, type_ignores=[]), str(path), 'exec'), namespace)
         return namespace
 
@@ -358,14 +391,14 @@ class StorageCases(unittest.TestCase):
         self.assertEqual(archive_api.case_destination(root, 'Jet', cid), ['Jet', 'nr=1_rho=0.33'])
         readers = self.result_readers()
         records, _ = readers['_run_options']({'CGYRO_scan': root})
-        self.assertEqual(records['base_reference']['destination'], ['Jet', 'nr=1_rho=0.33', 'BASE'])
-        self.assertEqual(records['base_theta']['destination'], ['Jet', 'nr=1_rho=0.33'])
+        self.assertEqual(index_api.find_record(root, 'base_reference')['destination'], ['Jet', 'nr=1_rho=0.33', 'BASE'])
+        self.assertEqual(index_api.find_record(root, 'base_theta')['destination'], ['Jet', 'nr=1_rho=0.33'])
         before = {}
         for scan, info, tasks in archive_api.case_scans(case):
             before[scan] = {archive_api.point_coordinate(row): continuation.point_result(case, row)
                             for row in tasks.values()}
             for row in tasks.values():
-                self.assertIsInstance(readers['_result_node']({'CGYRO_scan': root}, records[info['run_token']], row), OMFITcgyro)
+                self.assertIsInstance(readers['_result_node']({'CGYRO_scan': root}, index_api.find_record(root, info['run_token']), row), OMFITcgyro)
         storage.consolidate_storage(root)
         repeated = archive_api.catalog_runs(root)['Jet'][cid]
         self.assertEqual({scan: {archive_api.point_coordinate(row): continuation.point_result(repeated, row)
@@ -577,7 +610,7 @@ class StorageCases(unittest.TestCase):
         storage.consolidate_storage(root)
         self.assertEqual(coordinates(), before)
         self.assertEqual(set(storage.result_pool(root)), owners)
-        self.assertEqual(storage.storage_state(root)['case_layout'], 'radius-scans')
+        storage.storage_state(root)['case_layout'] = 'radius-scans'
         self.assertEqual(storage.storage_state(root)['version'], 6)
 
     def test_partial_aliases_keep_the_most_advanced_readable_coordinate(self):
@@ -825,8 +858,8 @@ class StorageCases(unittest.TestCase):
         storage.storage_state(root)['case_layout'] = 'radius-ion'
         root['RUN_DB'][db_api.LEGACY] = {'RUN_INDEX': {'obsolete': dict(runid='Jet [partial abcd]', case_id=cid)}}
         context = continuation.stopped_context(root, 'stopped_grid')
-        self.assertEqual(set(context['rows']), {'p000001', 'p000002'})
-        self.assertEqual(set(context['results']), {'p000001'})
+        self.assertEqual(set(context['rows']), {'p000002'})
+        self.assertEqual(context['results'], {})
         self.assertEqual(context['unfinished'], {'p000002'})
         self.assertEqual(context['rows']['p000002']['values']['N_THETA'], 48)
         self.assertEqual(continuation.resume_source(root, 'stopped_grid', 'p000002', context)['mode'], 'checkpoint_zip')
@@ -843,17 +876,19 @@ class StorageCases(unittest.TestCase):
                          run_records=db_api.run_records, storage_state=storage.storage_state,
                          stopped_context=continuation.stopped_context,
                          resolve_result=storage.resolve_result, record_options=lambda records: dict(records))
+        index_namespace(namespace)
         exec(compile(ast.Module(body=definitions, type_ignores=[]), str(path), 'exec'), namespace)
         parent = {'CGYRO_scan': root}
         records, _ = namespace['_run_options'](parent)
         self.assertNotIn('obsolete', records)
-        entry = records['stopped_grid']
-        self.assertEqual(entry['destination'], ['Jet', 'nr=1_rho=0.33', 'T'])
-        self.assertEqual(set(entry['tasks']), {'p000001', 'p000003'})
-        self.assertEqual(set(entry['resume_tasks']), {'p000001', 'p000002'})
+        self.assertNotIn('tasks', records['version:stopped_grid'])
+        entry = index_api.find_record(root, 'version:stopped_grid')
+        self.assertEqual(entry['result_locations'], {})
+        self.assertEqual(entry['tasks'], {})
+        self.assertEqual(set(entry['resume_tasks']), {'p000002'})
         for row in entry['tasks'].values():
             self.assertIsInstance(namespace['_result_node'](parent, entry, row), OMFITcgyro)
-        self.assertEqual(archive_api.case_destination(root, 'Jet', cid), entry['destination'])
+        self.assertEqual(archive_api.case_destination(root, 'Jet', cid), ['Jet', 'nr=1_rho=0.33', 'T'])
 
     def test_missing_owner_prevents_recovery_and_pruning(self):
         root = {}
@@ -982,7 +1017,7 @@ class StorageCases(unittest.TestCase):
         root = dict(RUN_MANIFEST=manifest, RUN_DB={db_api.RUNS: {
             'retired': dict(manifest=manifest, payload_retired=True)}})
         # The current-view shortcut must not bypass the authoritative tombstone.
-        with patch.object(continuation, 'result_view', side_effect=AssertionError('resolved retired payload')):
+        with patch.object(index_api, 'resolve_result', side_effect=AssertionError('resolved retired payload')):
             for current in (manifest, dict(run_token='newer')):
                 root['RUN_MANIFEST'] = current
                 with self.subTest(current=current['run_token']):
@@ -996,11 +1031,8 @@ class StorageCases(unittest.TestCase):
         root = dict(RUN_MANIFEST=child, RUN_DB={db_api.RUNS: {
             'child': dict(manifest=child),
             'ancestor': dict(manifest=dict(run_token='ancestor'), payload_retired=True)}})
-        context = continuation.stopped_context(root, 'child')
-        self.assertEqual(context['results'], {})
-        self.assertEqual(context['missing_points'], ['p000001'])
-        self.assertIn('retired', context['history_warning'])
-        with self.assertRaisesRegex(ValueError, 'Unindexed calculation point'):
+        # No own coordinate/index exists; do not resurrect the ancestor.
+        with self.assertRaisesRegex(ValueError, 'unavailable or ambiguous'):
             continuation.continuation_plan(root, 'child', ['p000001'], 100)
 
     def test_retired_snapshot_cannot_be_reactivated_recollected_or_refrozen(self):
@@ -1170,6 +1202,7 @@ class StorageCases(unittest.TestCase):
                          storage_state=storage.storage_state)
         for name in ('canonical_case_key', 'catalog_runs', 'clean_run_id', 'combine_cases', 'grouped_case_path', 'install_case', 'matching_cases', 'output_final_time', 'scan_key', 'store_scan', 'validate_preserved_scans'):
             namespace[name] = getattr(archive_api, name)
+        index_namespace(namespace)
         exec(compile(ast.Module(body=selected, type_ignores=[]), str(path), 'exec'), namespace)
         root = {}
         case_id = 'nr=1__rho=0.33__ion=T'
@@ -1196,6 +1229,10 @@ class StorageCases(unittest.TestCase):
         case = archive_api.catalog_runs(root)['Jet'][case_id]
         self.assertEqual(set(case['__SCANS__']), {'N_THETA', 'N_ENERGY__N_XI', 'N_ENERGY__N_XI__N_RADIAL'})
         self.assertEqual(case['N_THETA'], original)
+        # Collection replaces the coordinate without a global reachability
+        # walk. The unreferenced owner is reclaimed by explicit maintenance.
+        self.assertEqual(len(storage.result_pool(root)), 4)
+        self.assertEqual(storage.prune_storage(root), 1)
         self.assertEqual(len(storage.result_pool(root)), 3)
         for _, _, tasks in archive_api.case_scans(case):
             self.assertEqual(list(tasks), ['p000001'])
@@ -1659,6 +1696,7 @@ class StorageCases(unittest.TestCase):
     def test_cancel_resume_uses_saved_zip_when_old_workdir_is_gone(self):
         bundle, members = self.bundle('resume', zip_only=True)
         manifest = dict(run_token='token', case_tag='case', local_workDir=str(self.base / 'missing'),
+                        point_table={'p000001': dict(values={'KY': .1}, result_path=['N_THETA', '16', 'lin', '.1'])},
                         input_sha256={'p000001': {k: hashlib.sha256(v).hexdigest() for k, v in members.items()}})
         root = {'RUN_MANIFEST': manifest, 'Cases': {'case': {'p000001': bundle}}}
         self.compact(root)

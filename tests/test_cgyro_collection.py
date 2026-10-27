@@ -123,7 +123,7 @@ class NativeCollectionEntryTests(unittest.TestCase):
         with ExitStack() as stack:
             stack.enter_context(patch.object(queue, 'save_current'))
             stack.enter_context(patch.object(fixtures.db_api, 'run_cases', return_value=stored))
-            stack.enter_context(patch.object(fixtures.storage, 'store_result', side_effect=lambda node, candidate, factory: candidate))
+            stack.enter_context(patch.object(fixtures.storage, 'store_result', side_effect=lambda node, candidate, factory, **kwargs: candidate))
             stack.enter_context(patch.object(fixtures.scratch, 'ensure_capacity', return_value={}))
             stack.enter_context(patch.object(state, 'refresh_run_state', return_value=dict(
                 active=False, terminal=True, outcome='completed', queue_verified=True)))
@@ -360,6 +360,35 @@ class QueueMetadataTests(unittest.TestCase):
 
 
 class StateContractTests(unittest.TestCase):
+    def test_one_unreadable_point_does_not_block_verified_neighbors(self):
+        from types import SimpleNamespace
+        manifest = dict(run_token='x', collection_status='pending')
+        calls = []
+        def download():
+            calls.append(True)
+            manifest.update(load_errors={'bad': 'truncated download'}, loaded_points=['good'],
+                            partial_points=[], collection_status='ready')
+            raise RuntimeError('download failed for bad')
+        root = dict(RUN_MANIFEST=manifest, SCRIPTS={'downsync.py': SimpleNamespace(run=download)})
+        with patch.object(retry, 'require_retained_run'), patch.object(retry, 'save_current'), \
+                patch.object(retry, 'collected_points', return_value={'good'}), patch.object(retry.time, 'sleep'), \
+                patch.object(retry, 'submit_retry', side_effect=AssertionError('unexpected solver submission')):
+            retry.collect_current(root, object(), dict, None, None)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(manifest['collection_status'], 'ready')
+        self.assertEqual(manifest['loaded_points'], ['good'])
+        self.assertEqual(manifest['load_errors'], {'bad': 'truncated download'})
+
+    def test_publication_retry_never_downloads_already_verified_points(self):
+        from types import SimpleNamespace
+        manifest = dict(run_token='x', collection_status='ready', loaded_points=['good'], partial_points=[])
+        def forbidden():
+            raise AssertionError('duplicate download')
+        root = dict(RUN_MANIFEST=manifest, SCRIPTS={'downsync.py': SimpleNamespace(run=forbidden)})
+        with patch.object(retry, 'require_retained_run'), patch.object(retry, 'save_current'), \
+                patch.object(retry, 'collected_points', return_value={'good'}):
+            retry.collect_current(root, object(), dict, None, None)
+
     def test_collection_completion_and_retirement_have_distinct_requirements(self):
         complete = dict(status='loaded', collection_status='complete')
         self.assertFalse(state.collection_finished(complete))

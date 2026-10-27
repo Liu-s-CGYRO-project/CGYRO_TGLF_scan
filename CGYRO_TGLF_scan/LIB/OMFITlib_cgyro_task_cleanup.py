@@ -2,29 +2,28 @@
 
 Plan off-tree; delete only indexed points owned by selected submissions. A
 same-coordinate replacement from a newer job belongs to that newer job. The
-shared physical owner pool is pruned only after all remaining references are
-installed. Unknown legacy provenance is preserved, never guessed from a name.
+shared physical owner pool is reclaimed by explicit maintenance, separately
+from record/result unlinking. Unknown legacy provenance is never guessed.
 """
 from builtins import (ValueError, any, bool, dict, enumerate, float, isinstance, len, list,
                       set, sorted, str, sum, tuple)
 from copy import deepcopy
 import hashlib
 from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, clean_run_id,
-                                   point_coordinate, scan_branch)
+                                   point_coordinate, scan_branch, summarize_tasks)
 from OMFITlib_cgyro_cleanup_state import DELETE, commit_cleanup, deletion_markers
 from OMFITlib_cgyro_db import DELETED_TASKS, ensure_layout, run_records, storage_state
-from OMFITlib_cgyro_storage import prune_storage
 from OMFITlib_cgyro_task_catalog import (indexed_sources, manifest_sources, mapping,
                                         metadata_revision, row_token, task_catalog)
 
 
-def _validate_selection(module, tokens):
+def _validate_selection(module, tokens, delete_results):
     if not isinstance(tokens, (list, tuple)) or not tokens or any(not isinstance(t, str) or not t for t in tokens):
         raise ValueError('请明确选择至少一条任务，不能以空选择删除全部任务。')
     selected = set(tokens)
     if len(selected) != len(tokens):
         raise ValueError('任务选择重复，请刷新列表。')
-    catalog = {row['token']: row for row in task_catalog(module)}
+    catalog = {row['token']: row for row in task_catalog(module, include_results=delete_results, tokens=selected)}
     if selected - set(catalog):
         raise ValueError('所选任务已不存在，请刷新列表。')
     for token in selected:
@@ -33,21 +32,10 @@ def _validate_selection(module, tokens):
             raise ValueError('任务正在提交、运行流程或收集，请先结束本地操作：' + token)
         if any(len(row[field]) > 1 for field in ('servers', 'runids', 'cases')):
             raise ValueError('任务身份存在冲突，未删除任何数据：' + token)
-    sources = manifest_sources(module)
+    sources = manifest_sources(module, selected)
     for token, manifest, _ in sources:
         if token in selected and str(manifest.get('run_token', token)) != token:
             raise ValueError('任务记录与冻结清单身份不一致：' + token)
-        parent = str(mapping(manifest.get('continuation', {})).get('source_token', '') or '')
-        if token not in selected and parent in selected:
-            raise ValueError('保留任务仍依赖所选任务的续算输入，请保留来源或同时选择依赖任务：' + token)
-    # Imported/public-only archives may have lost their separate history entry.
-    # Their recorded ancestry still protects frozen parents from deletion.
-    for _, _, case in indexed_sources(module):
-        for _, info, _ in case_scans(case):
-            child = str(info.get('run_token', ''))
-            parents = [mapping(info.get('continuation', {}))] + list(info.get('continuations', []))
-            if child not in selected and any(str(mapping(p).get('source_token', '')) in selected for p in parents):
-                raise ValueError('保留归档仍记录续算来源，请保留来源或同时选择依赖任务：' + child)
     return selected, [catalog[token] for token in sorted(selected)]
 
 
@@ -99,6 +87,7 @@ def _retained_info(info, tasks, manifests):
         # coordinate/ky slice disappeared with this task.
         values = {float(row['result_path'][index * 2 + 1]) for row in tasks.values()}
         axis['values'] = [v for v in axis.get('values', []) if float(v) in values]
+    summarize_tasks(saved, tasks)
     return saved
 
 
@@ -119,7 +108,8 @@ def _rewrite_case(case, selected, manifests):
         if deleting:
             paths = [list(row['result_path']) for row in deleting.values()]
             # Validate coordinates before path removal, including signed ky.
-            coordinates = [point_coordinate(row) for row in tasks.values()]
+            from OMFITlib_cgyro_archive import full_point_coordinate
+            coordinates = [full_point_coordinate(info, row) for row in tasks.values()]
             if len(set(coordinates)) != len(coordinates):
                 raise ValueError('归档包含重复坐标，原归档保留：' + str(name))
             branch = scan_branch(case, info, tasks)
@@ -173,12 +163,13 @@ def _batch_after(module, selected):
     return saved
 
 
-def _plan(module, tokens):
-    selected, rows = _validate_selection(module, tokens)
-    manifests = {t: m for t, m, _ in manifest_sources(module)}
+def _plan(module, tokens, delete_results=False):
+    selected, rows = _validate_selection(module, tokens, delete_results)
+    manifests = {t: m for t, m, _ in manifest_sources(module, None if delete_results else selected)}
     db, replacements, archives = module.get('RUN_DB', {}), {}, []
     unknown = 0
-    for path, _, _ in indexed_sources(module):
+    changed_paths = []
+    for path, _, _ in (indexed_sources(module, selected) if delete_results else ()):
         # case_sources exposes a filtered view for direct radius scans. Start
         # from the actual node so replacing that scan cannot drop H/D/T beside it.
         case = replacements.get(path[0], db[path[0]])
@@ -191,6 +182,7 @@ def _plan(module, tokens):
             branch = replacements.get(path[0], db[path[0]])
             replacements[path[0]] = _replace_path(branch, path[1:], changed)
             archives.append(dict(path='/'.join(str(p) for p in path), points=len(points)))
+            changed_paths.append(path)
     writes = [(db, key, value if value else DELETE) for key, value in replacements.items()]
     for entries in (module.get('RUN_HISTORY', {}), run_records(module)):
         writes.extend((entries, token, DELETE) for token in selected if token in entries)
@@ -201,18 +193,19 @@ def _plan(module, tokens):
     batch = _batch_after(module, selected)
     if batch is not None and module.get('RUN_BATCH', {}):
         writes.append((module, 'RUN_BATCH', batch))
-    revision = metadata_revision(module)
+    revision = metadata_revision(module, tokens=selected, case_paths=changed_paths)
     code = hashlib.sha256((revision + '\n' + '\n'.join(sorted(selected))).encode('utf-8')).hexdigest()[:8].upper()
     report = dict(tokens=sorted(selected), tasks=rows, archives=archives,
+        delete_results=bool(delete_results),
         archived_points=sum(a['points'] for a in archives), unknown_points_preserved=unknown,
         revision=revision, confirmation='DELETE ' + code)
     return report, writes
 
 
-def preview_tasks(module, tokens):
+def preview_tasks(module, tokens, delete_results=False):
     """No solver/file reads. Normalize old metadata before binding the preview."""
     ensure_layout(module)
-    return _plan(module, tokens)[0]
+    return _plan(module, tokens, delete_results)[0]
 
 
 def remove_tasks(module, tokens, expected, confirmation, factory=dict):
@@ -223,10 +216,12 @@ def remove_tasks(module, tokens, expected, confirmation, factory=dict):
     New retries/results/dependencies while dialogs are open invalidate it.
     """
     ensure_layout(module, factory)
-    report, writes = _plan(module, tokens)
+    report, writes = _plan(module, tokens, bool(expected.get('delete_results', False)) if isinstance(expected, dict) else False)
     if not isinstance(expected, dict) or report != expected:
         raise ValueError('任务或结果已变化，请刷新并重新确认；未执行删除。')
     if confirmation != report['confirmation']:
         raise ValueError('确认凭据与预览不一致，未执行删除。')
-    commit_cleanup(module, writes, prune_storage, factory)
+    # Unlink the reviewed records/results only. Physical reclamation belongs
+    # to explicit maintenance, which checks all surviving/pending references.
+    commit_cleanup(module, writes, None, factory)
     return report

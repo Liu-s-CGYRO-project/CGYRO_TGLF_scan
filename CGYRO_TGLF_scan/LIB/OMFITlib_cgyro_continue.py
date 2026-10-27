@@ -4,195 +4,106 @@ The archive is the source of truth: live input/scan controls are never applied
 to a restart. Planning and staging do not change the successful result case.
 CGYRO rewinds its history to out.cgyro.tag and MAX_TIME adds a new time segment.
 """
-from OMFITlib_cgyro_archive import catalog_runs
-from builtins import (AttributeError, OSError, TypeError, ValueError, abs, any, dict, float, int, len,
-                      isinstance, iter, list, max, range, set, sorted, str, sum, type, zip)
+from builtins import (AttributeError, KeyError, OSError, TypeError, ValueError, abs, any, dict, float, int, len,
+                      bool, isinstance, iter, list, max, open, range, set, sorted, str, sum, type, zip)
 import copy
 import hashlib
+import json
 import math
 import os
 import re
 import shutil
 import zipfile
-from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, clean_run_id,
-                                   output_final_time, point_coordinate, result_file, scan_branch, scan_key)
-from OMFITlib_cgyro_storage import result_view, submission_file
+from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, clean_run_id, coordinate_path,
+                                   output_final_time, point_coordinate, result_file, scan_branch, scan_key, solver_state)
+from OMFITlib_cgyro_storage import submission_file, store_result, reference_id, storage_state
+from OMFITlib_cgyro_result_index import (at as index_at, find_record, select_result,
+                                        selected_result, scan_scope)
 from OMFITlib_cgyro_db import run_cases, run_is_deleted, run_records
 from OMFITlib_cgyro_checkpoint import directory_checkpoint
 from OMFITlib_cgyro_launch import validate_checkpoint_runtime
 from OMFITlib_cgyro_scratch import directory_bytes, ensure_capacity
 from OMFITlib_cgyro_run_state import point_complete
+from OMFITlib_cgyro_input_identity import effective_parameters, read_parameters, RUN_CONTROL_PARAMETERS
 
 
 def saved_run(module, token):
-    """Resolve frozen state, rejecting stale dialogs after payload retirement.
-
-    RUN_MANIFEST can still describe an older selection after archive cleanup.
-    Check the authoritative run record before the current-view shortcut: its
-    point IDs must never be rebound to newer public results with reused IDs.
-    """
-    if run_is_deleted(module, token):
-        raise ValueError('This task was explicitly deleted; close the old result window.')
+    """Read one RUN_DB input record for an explicitly unstarted point."""
     entry = run_records(module).get(str(token), {})
+    if run_is_deleted(module, token):
+        raise ValueError('This task input was explicitly deleted; select a retained result instead.')
     if entry.get('payload_retired', False):
-        raise ValueError('This historical result was superseded and its payload was retired. '
-                         'Reopen the result table and select the latest retained scan.')
-    current = module.get('RUN_MANIFEST', {})
-    if str(current.get('run_token', '')) == str(token):
-        manifest = current
-    else:
-        manifest = entry.get('manifest', {})
+        raise ValueError('This task input was superseded and retired; select a retained result instead.')
+    manifest = copy.deepcopy(dict(entry.get('manifest', {})))
     retired = set(entry.get('retired_points', {}))
-    if retired:
-        # Keep the original manifest as an audit record, but never advertise a
-        # retired point as an unstarted job eligible for a fresh resubmission.
-        manifest = copy.deepcopy(dict(manifest))
-        for field in ('points', 'loaded_points', 'partial_points'):
-            if field in manifest:
-                manifest[field] = [point for point in manifest[field] if point not in retired]
-        manifest['point_table'] = {point: row for point, row in manifest.get('point_table', {}).items()
-                                   if point not in retired}
-        continuation = manifest.get('continuation', {})
-        if 'source_points' in continuation:
-            continuation['source_points'] = [point for point in continuation['source_points'] if point not in retired]
-    return manifest, result_view(module, run_cases(module, manifest))
+    manifest['points'] = [point for point in manifest.get('points', []) if point not in retired]
+    manifest['point_table'] = {point: row for point, row in manifest.get('point_table', {}).items() if point not in retired}
+    return manifest, entry.get('cases', {})
 
 
 def stopped_context(module, token):
-    """Use retained point files; older records only fill missing coordinates.
-
-    A collected checkpoint already contains its restart history. An unavailable
-    ancestor must not veto an unrelated, self-contained point in this run.
-    Keep the original scan scope separately so a partial reconstruction is
-    never published as a complete scan.
-    """
-    manifest, _ = saved_run(module, token)
-    if manifest.get('collection_status', '') not in ('partial', 'empty'):
+    """Compatibility view of one retained version, with no ancestry lookup."""
+    entry = find_record(module, token)
+    if not entry.get('stopped_run', False):
         return None
-    records, seen, current = [], set(), str(token)
-    history_warning = ''
-    while current:
-        if current in seen:
-            history_warning = 'Circular continuation history: ' + current
-            break
-        seen.add(current)
-        try:
-            record, cases = saved_run(module, current)
-        except ValueError as exc:
-            if current == str(token):
-                raise
-            history_warning = str(exc)
-            break
-        if not record:
-            history_warning = 'Missing frozen continuation history: ' + current
-            break
-        records.append((record, cases))
-        current = str(record.get('continuation', {}).get('source_token', '') or '')
-    rows, sources, results, readable, unfinished = {}, {}, {}, {}, set()
-    for record, cases in reversed(records):
-        complete_points = set(record.get('loaded_points', []))
-        unfinished.difference_update(complete_points)
-        unfinished.update(set(record.get('points', [])) - complete_points)
-        try:
-            _, _, archived = archived_case(module, record['run_token'], allow_inherited=True)
-        except ValueError:
-            archived = None
-        if archived is not None:
-            for point, row in archived['__TASKS__'].items():
-                rows[point] = copy.deepcopy(dict(row))
-                readable[point] = copy.deepcopy(dict(row))
-                results[point] = point_result(archived, row)
-        for point, row in record.get('point_table', {}).items():
-            row = copy.deepcopy(dict(row))
-            row.update(dict(continuation_pending=record.get('continuation_pending', {}).get(point, ''),
-                            scheduler_state=record.get('point_states', {}).get(point, '')))
-            rows[point] = row
-            sources[point] = (record, cases)
-            node = cases.get(point, None)
-            if (point in list(record.get('loaded_points', [])) + list(record.get('partial_points', []))
-                    and node is not None and any(base.__name__ == 'OMFITcgyro' for base in type(node).__mro__)):
-                readable[point] = copy.deepcopy(dict(row))
-                readable[point].update(dict(status='partial' if point in record.get('partial_points', []) else 'loaded',
-                    run_token=record['run_token'], runid=record['runid'], case_id=record['case_id'],
-                    source_nr=record['nr'], rho=record.get('rho', None), ion_case=record['mass'],
-                    result_workDir=record.get('point_workdirs', {}).get(point, record['workDir'])))
-                results[point] = node
-    try:
-        _, _, case = archived_case(module, token)
-    except ValueError:
-        case = None
-    if case is not None:
-        # An unchanged point may have been inherited from an earlier segment.
-        for point, row in case['__TASKS__'].items():
-            rows.setdefault(point, copy.deepcopy(dict(row)))
-    # Ancestor reconstruction can bring a superseded point back. Retirement
-    # is explicit for this frozen job, so remove it from every runtime view.
-    for point in run_records(module).get(str(token), {}).get('retired_points', {}):
-        for mapping in (rows, sources, results, readable):
-            mapping.pop(point, None)
-        unfinished.discard(point)
-    planned = set(manifest.get('continuation', {}).get('source_points', manifest.get('points', [])))
-    missing = (planned - set(rows)) | ((planned - unfinished) - set(results))
-    info = copy.deepcopy(dict(case['__INFO__'] if case is not None else manifest))
-    info.update(dict(source_nr=manifest['nr'], ion_case=manifest['mass'],
-                     runid=manifest['runid'], points=len(rows)))
-    view = dict(__INFO__=info, __TASKS__=readable)
-    for point, result in results.items():
-        readable[point]['resume_pending'] = point in unfinished
-        path = list(readable[point]['result_path'])
-        path[0] = scan_key(info, path[0])
-        readable[point]['result_path'] = path
+    rows = entry.get('resume_tasks', entry['tasks'])
+    manifest = run_records(module).get(str(entry.get('run_token', '')), {}).get('manifest', entry)
+    view = dict(__INFO__=entry, __TASKS__=entry['tasks'])
+    results = {}
+    for point, row in entry['tasks'].items():
         node = view
-        for key in path[:-1]:
+        for key in row['result_path'][:-1]:
             node = node.setdefault(key, {})
-        node[path[-1]] = result
-    return dict(manifest=manifest, info=info, case=case, view=view, rows=rows, sources=sources,
-                results=results, unfinished=unfinished, planned_points=sorted(planned | set(rows)),
-                missing_points=sorted(missing), history_warning=history_warning)
+        result = index_at(module['RUN_DB'], entry['result_locations'][point])
+        node[row['result_path'][-1]] = result
+        results[point] = result
+    scope = scan_scope(entry)
+    return dict(manifest=manifest, info=entry, case=view, view=view, rows=rows,
+                sources={point: (manifest, {}) for point in rows}, results=results,
+                unfinished=set(rows) - set(manifest.get('loaded_points', [])),
+                planned_points=list(rows) + scope['unknown'], missing_points=scope['unknown'],
+                history_warning='', entry=entry)
 
 
 def continuation_case(module, token):
-    context = stopped_context(module, token)
-    if context is not None:
-        return context['view']
     return archived_case(module, token)[2]
 
 
-def resume_source(module, token, point, context=None):
-    """Choose a verified checkpoint or original input, never current GUI data."""
-    context = stopped_context(module, token) if context is None else context
-    if context is None:
-        _, _, case = archived_case(module, token)
-        result = point_result(case, case['__TASKS__'][point])
-        checkpoint_tag(result.filename)
-        return dict(mode='checkpoint', directory=result.filename)
-    if point in context['results']:
-        result = context['results'][point]
-        checkpoint_tag(result.filename)  # Existing samples never silently restart from zero.
-        return dict(mode='checkpoint', directory=result.filename)
-    if point in context.get('missing_points', []):
-        raise ValueError('This point has no retained result files: ' + point +
-                         '. Recover its job outputs or select its retained result.')
-    if point not in context['sources']:
-        raise ValueError('No original input provenance for ' + point)
-    record, cases = context['sources'][point]
-    node = cases.get(point, None)
-    if node is not None and any(base.__name__ == 'OMFITcgyro' for base in type(node).__mro__):
-        checkpoint_tag(node.filename)
-        return dict(mode='checkpoint', directory=node.filename)
-    original = record.get('source_local_workDir', record.get('local_workDir', ''))
-    path = os.path.join(str(original), point + '.zip')
-    if isinstance(node, dict):
-        retained = node.get('zip', None)
-        if retained is not None and os.path.isfile(retained.filename):
-            path = retained.filename
-    if not os.path.isfile(path):
-        # After job-ID recovery and project reopening, only the native RUN_DB
-        # input owner may survive; a former /tmp pathname is not authoritative.
-        path = submission_file(module, record, 'zip', point=point)
+def resume_source(module, token, point, context=None, binding=None):
+    """Use the selected owner, or the exact RUN_DB input of an unstarted point."""
+    if binding is None:
+        entry = context.get('entry', None) if context is not None else find_record(module, token)
+        if entry is not None and point in entry.get('tasks', {}):
+            binding = select_result(module, entry, point)
+    if binding is not None and binding.get('mode', None) != 'input':
+        result = selected_result(module, binding)
+        actual = validate_selected_input(result, binding['info'], binding['row'])
+        report = checkpoint_details(result.filename)
+        saved = storage_state(module).get('checkpoints', {}).get(binding.get('result_id', ''), '')
+        if saved:
+            expected = json.loads(saved)['candidates'].get('bin.cgyro.restart', {}).get('sha256', '')
+            if expected and report['candidates']['bin.cgyro.restart'].get('sha256', '') != expected:
+                raise ValueError('Selected checkpoint checksum disagrees with the stored result')
+        restart_files(result.filename, {name: float(actual.get(name, 1)) for name in ('N_TOROIDAL', 'PROFILE_MODEL')}, verified=True)
+        _, parameter_source, parameter_digest = effective_parameters(result)
+        return dict(mode='checkpoint', directory=result.filename, checkpoint=report['tag'],
+                    checkpoint_sha256=report['candidates']['bin.cgyro.restart']['sha256'],
+                    input_sha256=_file_sha256(result_file(result, 'input.cgyro')),
+                    generated_sha256=parameter_digest if parameter_source == 'input.cgyro.gen' else '',
+                    runtime=copy.deepcopy(dict(binding['info'].get('runtime', {}))))
+    if binding is not None:
+        token = binding['record_token']
+    record, _ = saved_run(module, token.removeprefix('version:') if str(token).startswith('version:') else token)
+    # Only this job's frozen input may restart an unstarted point. In particular
+    # source_token is not followed when the parent result has been collected.
+    if point not in record.get('point_table', {}):
+        raise ValueError(str(point) + ': no retained result or frozen input in RUN_DB')
+    path = submission_file(module, record, 'zip', point=point, stored_only=True)
     hashes = record.get('input_sha256', {}).get(point, {})
     if not hashes:
         raise ValueError('Original input checksums are missing: ' + point)
+    if binding is not None and dict(hashes) != binding['input_hashes']:
+        raise ValueError('The selected frozen input changed: ' + point)
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
     if {'bin.cgyro.restart', 'out.cgyro.tag', 'out.cgyro.time'} <= names:
@@ -205,93 +116,57 @@ def resume_source(module, token, point, context=None):
     return dict(mode=mode, zip=path, sha256=copy.deepcopy(dict(hashes)))
 
 
-def archived_case(module, token, allow_inherited=False):
-    """Resolve one retained scan; reject a dialog for a replaced scan token.
+def _file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, 'rb') as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
 
-    Only ancestry reconstruction may use surviving points from a newer scan
-    header. It requires the original owner token, full case/scan/coordinates
-    and frozen point IDs; a stale dialog never opts into this fallback.
-    """
-    manifest, points = saved_run(module, token)
-    stopped = manifest.get('collection_status', '') in ('partial', 'empty')
-    for runid, run in catalog_runs(module).items():
-        if stopped:
-            break  # A stopped job uses its frozen IDs, never merged catalog IDs.
-        if str(runid).startswith('__'):
-            continue
-        for case_id, case in run.items():
-            if str(case_id).startswith('__') or not hasattr(case, 'get'):
-                continue
-            for _, info, tasks in case_scans(case):
-                if str(info.get('run_token', '')) == str(token):
-                    branch = scan_branch(case, info, tasks)
-                    # A view of only this scan prevents continuation from
-                    # copying unrelated axes or reusing their point IDs.
-                    view = {'__INFO__': info, '__TASKS__': tasks}
-                    for row in tasks.values():
-                        path = row.get('result_path', [])
-                        if path:
-                            view[path[0]] = case[branch]
-                    return runid, case_id, result_view(module, view)
-                if (allow_inherited and manifest.get('status', '') == 'published'
-                        and clean_run_id(runid) == clean_run_id(manifest.get('runid', ''))
-                        and canonical_case_key(case_id, info) == canonical_case_key(
-                            manifest.get('case_id', ''), manifest)
-                        and scan_key(info) == scan_key(manifest)):
-                    # A subset continuation replaces the public header but
-                    # retains unselected points from its published ancestor.
-                    # Published snapshots no longer own duplicate cases, so
-                    # recover only those exact, still-owned public points.
-                    expected = {}
-                    for point, row in manifest.get('point_table', {}).items():
-                        coordinate = point_coordinate(row)
-                        if coordinate in expected:
-                            raise ValueError('Ambiguous frozen ancestor coordinates')
-                        expected[coordinate] = (point, row)
-                    inherited = {}
-                    for source in tasks.values():
-                        if str(source.get('run_token', '')) != str(token) or not point_complete(source):
-                            continue
-                        coordinate = point_coordinate(source)
-                        if coordinate not in expected:
-                            continue
-                        point, original = expected[coordinate]
-                        if point in inherited:
-                            raise ValueError('Ambiguous inherited ancestor coordinates')
-                        row = copy.deepcopy(dict(source))
-                        row.update(copy.deepcopy(dict(original)))
-                        row.update(dict(task_id=point, result_path=list(source['result_path'])))
-                        inherited[point] = row
-                    if inherited:
-                        source_info = copy.deepcopy(dict(manifest))
-                        source_info.update(dict(source_nr=manifest.get('nr', ''), ion_case=manifest.get('mass', '')))
-                        view = dict(__INFO__=source_info, __TASKS__=inherited)
-                        for row in inherited.values():
-                            view[row['result_path'][0]] = case[row['result_path'][0]]
-                        return runid, case_id, result_view(module, view)
-    # Older stopped jobs retain their original point IDs internally, even
-    # after their public results merge into Jet/radius/isotope. Use that
-    # frozen table rather than another job's identically named p000001.
-    tasks, view = {}, {}
-    for point, source in manifest.get('point_table', {}).items():
-        result = points.get(point, None)
-        if result is None or not any(base.__name__ == 'OMFITcgyro' for base in type(result).__mro__):
-            continue
-        row = copy.deepcopy(dict(source))
-        loaded = point in manifest.get('loaded_points', []) and point not in manifest.get('partial_points', [])
-        row.update(dict(task_id=point, run_token=str(token),
-                        status='loaded' if loaded else 'partial', resume_pending=not loaded))
-        tasks[point] = row
+
+def validate_selected_input(result, info, row):
+    """Check the selected owner's input against its stored coordinate/hash."""
+    with open(result_file(result, 'input.cgyro'), 'rb') as handle:
+        data = handle.read()
+    expected_hash = row.get('input_sha256', '')
+    if expected_hash and hashlib.sha256(data).hexdigest() != expected_hash:
+        raise ValueError('Selected input.cgyro checksum disagrees with the result index')
+    actual, _ = read_parameters(result_file(result, 'input.cgyro'))
+    effective, source, digest = effective_parameters(result)
+    if source == 'input.cgyro.gen':
+        for name, value in actual.items():
+            if name not in effective or not math.isclose(value, effective[name], rel_tol=1e-9, abs_tol=1e-12):
+                raise ValueError('Selected input.cgyro.gen disagrees with input.cgyro: ' + name)
+    if row.get('input_parameters', None) is not None:
+        parameters = {name: value for name, value in effective.items() if name not in RUN_CONTROL_PARAMETERS}
+        if parameters != dict(row['input_parameters']):
+            raise ValueError('Selected input.cgyro.gen disagrees with saved effective parameters')
+    if row.get('input_parameter_sha256', '') and digest != row['input_parameter_sha256']:
+        raise ValueError('Selected generated input checksum disagrees with the result index')
+    expected = dict(info.get('numeric_parameters', {}))
+    expected.update(info.get('fixed_parameters', {}))
+    expected.update(row.get('values', {}))
+    expected.update(row.get('effective_time', {}))
+    for name, value in expected.items():
+        if name not in effective or not math.isclose(effective[name],
+                                                   float(value), rel_tol=1e-9, abs_tol=1e-12):
+            raise ValueError('Selected input.cgyro disagrees with coordinate: ' + str(name))
+    return effective
+
+
+def archived_case(module, token, allow_inherited=False):
+    """Adapt the explicit RUN_DB version for older callers; never join parents."""
+    entry = find_record(module, token)
+    if not entry['tasks']:
+        raise ValueError('The selected version has no retained results')
+    view = dict(__INFO__=entry, __TASKS__=entry['tasks'])
+    for point, row in entry['tasks'].items():
         node = view
         for part in row['result_path'][:-1]:
             node = node.setdefault(part, {})
-        node[row['result_path'][-1]] = result
-    if tasks:
-        info = copy.deepcopy(dict(manifest))
-        info.update(dict(ion_case=manifest.get('mass', ''), source_nr=manifest.get('nr', '')))
-        view.update(dict(__INFO__=info, __TASKS__=tasks))
-        return manifest.get('runid', ''), manifest.get('case_id', ''), view
-    raise ValueError('The selected result was replaced or is unindexed. Reopen the result table.')
+        # Resolving the selected leaf is the caller's responsibility.
+        node[row['result_path'][-1]] = index_at(module['RUN_DB'], entry['result_locations'][point])
+    return entry['runid'], entry['case_id'], view
 
 
 def point_result(case, row):
@@ -340,20 +215,7 @@ def checkpoint_preview(result):
 
 def point_status(result, *, verify_checkpoint=True):
     """Read solver status; UI previews defer binary validation to continuation."""
-    status = dict(convergence='unknown', checkpoint=None, reason='')
-    try:
-        with open(result_file(result, 'out.cgyro.info'), 'rb') as handle:
-            handle.seek(0, 2)
-            handle.seek(max(0, handle.tell() - 32768))
-            for line in handle.read().decode('utf-8', errors='replace').splitlines():
-                if 'Linear converged' in line:
-                    status['convergence'] = 'converged'
-                elif 'Linear terminated at max time' in line:
-                    status['convergence'] = 'max_time'
-                elif 'Integration error exceeded limit' in line or line.lstrip().startswith('ERROR:'):
-                    status['convergence'] = 'failed'
-    except (OSError, AttributeError, ValueError):
-        pass
+    status = dict(convergence=solver_state(result), checkpoint=None, reason='')
     try:
         status['checkpoint'] = checkpoint_tag(result.filename) if verify_checkpoint else checkpoint_preview(result)
         if not verify_checkpoint:
@@ -378,45 +240,67 @@ def history_prefix(directory, count, names):
     return checksums
 
 
-def continuation_plan(module, token, point_ids, additional_time):
-    """Freeze identity and rows; stage from the archive again at execution time."""
+def continuation_plan(module, token, point_ids, additional_time, selections=None, scope=None):
+    """Freeze selected versions, retaining scan coverage as metadata only.
+
+    UI and submission pass the same owner IDs; a public merge between them
+    cannot silently switch to a different checkpoint at the same coordinate.
+    """
     duration = float(additional_time)
     if not math.isfinite(duration) or duration <= 0:
         raise ValueError('Additional simulation time must be finite and positive')
-    stopped = stopped_context(module, token)
-    if stopped is None:
-        runid, case_id, case = archived_case(module, token)
-        tasks, info = case.get('__TASKS__', {}), case['__INFO__']
-    else:
-        tasks, info = stopped['rows'], stopped['info']
-        runid, case_id = stopped['manifest']['runid'], stopped['manifest']['case_id']
     selected = list(point_ids)
     if not selected or len(set(selected)) != len(selected):
         raise ValueError('Select at least one distinct calculation point')
-    for point_id in selected:
-        if point_id not in tasks or not re.fullmatch(r'p[0-9]{6,}', str(point_id)):
-            raise ValueError('Unindexed calculation point: ' + str(point_id))
-    sources = {point: resume_source(module, token, point, stopped) for point in selected}
+    entry = find_record(module, token) if selections is None else None
+    if entry is not None:
+        tasks = entry.get('resume_tasks', entry['tasks'])
+        scope = scan_scope(entry)
+    else:
+        tasks = {point: binding.get('row', {}) for point, binding in selections.items()}
+    bindings, sources, rejected = {}, {}, {}
+    for point in selected:
+        try:
+            if point not in tasks or not re.fullmatch(r'p[0-9]{6,}', str(point)):
+                raise ValueError('Unindexed calculation point: ' + str(point))
+            binding = select_result(module, entry, point) if selections is None else selections[point]
+            source = resume_source(module, token, point, binding=binding)
+            if source.get('checkpoint', None) is not None:
+                tag = source['checkpoint']
+                if tag['time'] + duration <= previous_final_time(binding['row'], tag):
+                    raise ValueError('Additional time must extend beyond this point\'s previous final sample')
+            if binding.get('legacy_object_id', None) is not None:
+                # Upgrade only this validated native point, using the existing
+                # content owner store. Querying/listing never performs hashing.
+                owner = selected_result(module, binding)
+                factory = type(module['RUN_DB'])
+                reference = store_result(module, owner, factory)
+                parent = index_at(module['RUN_DB'], binding['location'][:-1])
+                parent[binding['location'][-1]] = reference
+                binding = dict(binding, result_id=reference_id(reference))
+                binding.pop('legacy_object_id', None)
+                source['directory'] = selected_result(module, binding).filename
+            bindings[point], sources[point] = copy.deepcopy(binding), source
+        except (KeyError, OSError, TypeError, ValueError) as exc:
+            if len(selected) == 1:
+                raise
+            rejected[point] = str(exc)
+    selected = [point for point in selected if point in sources]
+    if not selected:
+        raise ValueError('No selected point can restart:\n' + '\n'.join(point + ': ' + reason for point, reason in rejected.items()))
+    info = copy.deepcopy(bindings[selected[0]]['info'] if selected[0] in bindings else
+                         {key: value for key, value in entry.items() if key not in
+                          ('tasks', 'resume_tasks', 'result_locations')})
     rows = {point: copy.deepcopy(dict(tasks[point])) for point in selected}
-    if stopped is not None:
-        for point in selected:
-            if sources[point]['mode'] == 'checkpoint' and point in stopped['view']['__TASKS__']:
-                rows[point] = copy.deepcopy(dict(stopped['view']['__TASKS__'][point]))
-    info = copy.deepcopy(dict(info))
-    previous = module.get('RUN_HISTORY', {}).get(str(token), {}).get('manifest', {})
-    if not previous and str(module.get('RUN_MANIFEST', {}).get('run_token', '')) == str(token):
-        previous = module['RUN_MANIFEST']
-    return dict(source_token=str(token), source_runid=runid, source_case_id=case_id,
-                additional_time=duration, info=info, points=selected,
-                rows=rows,
-                sources=sources, stopped_run=stopped is not None,
-                source_points=stopped['planned_points'] if stopped is not None else list(tasks),
-                runtime=copy.deepcopy(dict(info.get('runtime', previous.get('runtime', {})))),
-                server=info.get('server', previous.get('server', '')),
-                case_tag=previous.get('case_tag', 'linear'))
+    return dict(source_token=str(token), source_runid=info['runid'], source_case_id=info['case_id'],
+                additional_time=duration, info=info, points=selected, rows=rows, sources=sources,
+                selections=bindings, scope=copy.deepcopy(scope), rejected=rejected,
+                stopped_run=bool(entry and entry.get('stopped_run', False)),
+                source_points=list(tasks), runtime=copy.deepcopy(dict(info.get('runtime', {}))),
+                server=info.get('server', ''), case_tag=info.get('case_tag', 'linear'))
 
 
-def restart_files(directory, source):
+def restart_files(directory, source, verified=False):
     """Carry standard histories with the checkpoint; omit old exit/batch files.
 
     CGYRO opens existing time/frequency/precision streams while rewinding. An
@@ -424,7 +308,8 @@ def restart_files(directory, source):
     Version-specific optional outputs are copied when present, without inventing
     histories for files that were never written by that solver version.
     """
-    checkpoint_tag(directory)
+    if not verified:
+        checkpoint_tag(directory)
     required = ['out.cgyro.prec']
     required.append('out.cgyro.freq' if int(source.get('N_TOROIDAL', 1)) == 1 else 'bin.cgyro.freq')
     if int(source.get('PROFILE_MODEL', 1)) == 2:
@@ -449,17 +334,23 @@ def restart_files(directory, source):
 
 
 def previous_final_time(metadata, tag):
-    """Keep the longest saved tail as the target across pending segments."""
-    restart = metadata.get('continuation', {})
-    previous = float(restart.get('previous_final_time', restart.get('checkpoint', {}).get('last_time', tag['last_time'])))
+    """The selected result's own time stream defines the tail to recalculate."""
+    previous = float(tag['last_time'])
     if not math.isfinite(previous):
-        raise ValueError('Invalid previous continuation final time')
-    return max(float(tag['last_time']), previous)
+        raise ValueError('Invalid selected result final time')
+    return previous
 
 
 def prepare_point(module, plan, point_id, stage, reader, runtime=None):
     """Copy to a new run directory and change only the segment duration."""
-    row = plan['rows'][point_id]
+    row = copy.deepcopy(plan['rows'][point_id])
+    axes = plan.get('info', {}).get('scan_axes', [])
+    if axes:
+        # Job manifests use the primary axis name; the public archive uses a
+        # combined scan key. Preserve any extra physical coordinate leaf.
+        for name in ('result_path', 'coordinate_path'):
+            if row.get(name, None):
+                row[name][0] = axes[0]['name']
     origin = plan['sources'][point_id]
     if origin['mode'] == 'checkpoint':
         ensure_capacity(stage, directory_bytes(origin['directory']))
@@ -470,6 +361,10 @@ def prepare_point(module, plan, point_id, stage, reader, runtime=None):
         # The collected directory is immutable. Copy it to a new staging path,
         # preserving optional histories and leaving the original run intact.
         shutil.copytree(origin['directory'], stage)
+        if _file_sha256(os.path.join(stage, 'input.cgyro')) != origin['input_sha256']:
+            raise ValueError('Selected input changed while preparing continuation: ' + point_id)
+        if origin.get('generated_sha256', '') and _file_sha256(os.path.join(stage, 'input.cgyro.gen')) != origin['generated_sha256']:
+            raise ValueError('Selected generated input changed while preparing continuation: ' + point_id)
     else:
         os.makedirs(stage)
         with zipfile.ZipFile(origin['zip']) as archive:
@@ -486,6 +381,11 @@ def prepare_point(module, plan, point_id, stage, reader, runtime=None):
                 if digest.hexdigest() != expected:
                     raise ValueError('Original prepared input changed: ' + point_id + '/' + name)
     source = reader(os.path.join(stage, 'input.cgyro'))
+    if origin.get('generated_sha256', ''):
+        generated, _ = read_parameters(os.path.join(stage, 'input.cgyro.gen'), generated=True)
+        for name, value in generated.items():
+            if name not in source:
+                source[name] = value  # Freeze the selected solver's defaults too.
     for name, value in row.get('values', {}).items():
         if name in ('DELTA_T', 'MAX_TIME', 'PRINT_STEP'):
             value = row.get('effective_time', {}).get(name, value)
@@ -504,13 +404,15 @@ def prepare_point(module, plan, point_id, stage, reader, runtime=None):
         return current, metadata, [name for name in origin['sha256'] if name.startswith('input.')]
     verified = checkpoint_details(stage)
     checkpoint = verified['candidates']['bin.cgyro.restart']
+    if origin['mode'] == 'checkpoint' and checkpoint['sha256'] != origin['checkpoint_sha256']:
+        raise ValueError('Selected checkpoint changed while preparing continuation: ' + point_id)
     if runtime is not None:
-        validate_checkpoint_runtime(plan['runtime'], runtime, checkpoint=checkpoint)
+        validate_checkpoint_runtime(origin.get('runtime', plan['runtime']), runtime, checkpoint=checkpoint)
     tag = verified['tag']
     delta_t = float(source.get('DELTA_T', 0))
     print_step = int(source.get('PRINT_STEP', 0))
-    # A pending segment can have a shorter tail than its ancestor. Keep the
-    # original end-time target across further resumes; never lower the bar.
+    # The checkpoint can precede this result's last output sample. Recalculate
+    # that tail, then require at least one new sample beyond the selected result.
     previous_final = previous_final_time(row, tag)
     # Require progress beyond the previous saved tail as well as one new sample.
     # The checkpoint may precede the last output; that tail is recalculated.
@@ -541,8 +443,8 @@ def validate_continued_result(result, metadata):
     """Raise for damaged history; return a warning for a valid pending segment.
 
     Replaying the tail after a checkpoint is readable work, not a download
-    error. Retain the segment/checkpoint in the run's internal record without
-    replacing a longer public result or automatically rerunning it.
+    error. The publisher selects one result per coordinate, preferring actual
+    convergence and then simulation time. This function never requests a rerun.
     """
     restart = metadata.get('continuation', {})
     if not restart or not restart.get('checkpoint', None):
@@ -562,6 +464,6 @@ def validate_continued_result(result, metadata):
     if len(times) == count or (float(times[-1]) <= previous_final
                               and point_status(result)['convergence'] != 'converged'):
         return ('Continuation pending: final time {:g}, previous final time {:g}, source checkpoint {:g}. '
-                'Readable data retained separately; previous scans preserved.').format(
+                'Archive selection will retain the converged or more advanced result.').format(
                     float(times[-1]), previous_final, float(tag['time']))
     return ''

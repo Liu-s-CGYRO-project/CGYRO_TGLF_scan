@@ -241,6 +241,7 @@ class RecoveryTests(unittest.TestCase):
         self.recover()
         frozen = copy.deepcopy(self.root['RUN_MANIFEST'])
         frozen.update(source_local_workDir='/missing/old-session', skipped_reasons={'p000001': 'No time samples'})
+        self.root['RUN_DB']['__RUNS__'][TOKEN]['manifest'] = frozen
         original = self.root['RUN_DB']['__RUNS__'][TOKEN]['inputs']['p000001']['zip']
         saved = self.path / 'saved-project-input.zip'
         shutil.copyfile(original.filename, saved)

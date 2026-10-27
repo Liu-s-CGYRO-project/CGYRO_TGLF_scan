@@ -1,18 +1,27 @@
 # 维护与扩展接口
 
-适用于工程 1.24.25。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.26。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 
 
-## 所选点续算与状态同步边界（1.24.25）
+## 结果定位、摘要与续算（1.24.26）
 
-`stopped_context` 仍使用当前任务冻结点号和坐标，首先保留自己的文件来源；祖先记录可补充未选择点，但缺失、退休或循环关联只记录诊断，不再整体拒绝子任务。`missing_points` 只限制没有保留结果的点，`resume_source` 对选中的本地文件继续完整校验。外来 owner 和带符号 ky 的检查仍保留；不能用目录合并后碰巧相同的 p 点号猜测来源。
+`OMFITlib_cgyro_result_index` 复用 `__SCANS__/{info,tasks}` 和 `__RESULT_REF__`。`scan:` 选择键按 runid/case_id/scan 直接取索引；点选择冻结 owner ID、完整参数身份与文件路径。缺失/替换的 owner 不得改选另一份结果。`RUN_HISTORY`、`source_token` 和作业号仅用于追溯或准确的作业管理，不参与当前结果读取、绘图、续算。
 
-上下文中的 `planned_points` 与当前可解析的 `rows` 分开：`continuation_plan.source_points` 保留原计划和可用行的并集。否则在缺祖先时只拿现有行生成新计划，会错误宣称整次扫描完成。归档仍按完整参数坐标合并，不改其他扫描；保存较短片段、历史前缀检查、原文件不变等约束继续执行。新增测试使用完整 v3 二进制结构暂存续算，同时验证缺历史时损坏检查点仍被拒绝。
+`OMFITlib_cgyro_input_identity` 读取实际 `input.cgyro.gen` 的 `value NAME` 格式，规范化数值后缓存在现有点行。身份包括半径、物种、全部扫描/联动维度、实际默认参数和带符号 ky。MAX_TIME、输出/并行控制不形成新的物理坐标；DELTA_T、ERROR_TOL 等精度参数仍参与比较。旧工程缺 gen 时只使用已知参数；收集冲突点时定向补读它的小输入文件，不猜缺失默认值。
 
-`refresh_queue` 同时承接批量和单作业状态同步，使用脱离数据树的 `RUN_MANIFEST` / `SETTINGS` 小视图。这里不得调用 `save_current`、`compact_storage`、`freeze_run_inputs` 或 `ensure_layout`，否则读取状态会执行结果整理或大文件复制。`_commit_synced_manifest` 只写三个元数据视图并保留原 payload 对象；输入与结果的整理仍属于收集、提交和明确的整理动作。
+`store_result(..., summary_row=row)` 在新点验证完成后写入 `result_summary`：结果 ID、求解器状态、末模拟时间、样本数、检查点可用性/时间/原因、总字节和逐文件大小。检查点摘要复用既有 `__STORAGE__/checkpoints`；不可变 owner/文件复用原校验信息。摘要不缓存时间平均值，数值表每次按所选比例计算并列出实际时间窗口和样本数；图题标注末段比例。
 
-`_refresh_manifest` 复用 `stop_run` 已完成的状态查询，避免取消后每个任务查询两遍。原生远端执行会泵送 Tk 事件，所以提交查询结果前比对原任务记录，防止重入操作替换记录后被旧响应覆盖；finally 在 Abort 时保留已恢复身份。不得在线程中直接调用带 Tk / cwd / 环境变量副作用的原生 `remote_execute`。本版减少了本地文件工作及重复查询，没有声称消除了网络响应时间，也未实测服务器端按钮耗时。
+选择器只读扫描头，选定结果直接取一个扫描的点表。任务列表使用头部 `task_counts`；旧索引缺少计数时显示未计数，不为了填数字解析全部点。同步只查询当前任务元数据。下载重试复用同点目录、匹配 owner 的已验证摘要；一个点下载失败不覆盖它的旧结果，其他验证完成的点仍可归档。全库哈希、统计与清理只在明确维护入口执行。
+
+归档在树外准备和验证后安装：新扫描替换相同完整坐标；续算优先收敛，再比较最后模拟时间，失败续算不能覆盖原有正常结果。未选坐标保留。不同扫描视图指向相同完整输入时复用同一当前物理结果，不保存整批历史快照。`submission_complete` 与 `scan_complete` 分开；未知旧计划不宣称完整。尚未发布的独有输出留在 RUN_DB 的任务记录，处理完成才释放冗余引用。
+
+续算只从所选点自己的 input/gen、检查点与 tag/time/freq/prec/timing 等配套文件暂存。逐点验证 SHA、v3 结构、尺寸、有限值和输入一致性；准备阶段再校验，防止选择后文件变化。坏点单独报告，可用点继续。新运行目录和作业身份独立；追加 MAX_TIME 不改变冻结物理参数。
+
+任务删除默认只删记录。显式勾选结果删除才解除对应公开点引用；两次点击确认仍绑定范围和版本。无历史链保护。物理文件清理由显式维护检查所有当前结果及待处理任务引用后执行；任务删除不触发全库剪枝、哈希或统计。
+
+旧工程用 1.24.26 仅更新代码并保留输入/结果/设置，关闭旧结果窗口后重新打开；无需先整理整库或恢复历史快照。已有索引直接使用，缺少轻量摘要显示待校验；实际使用或收集对应点时补齐必要信息。不能确定坐标或文件的旧点单独报告并保留，不凭 p 点号或目录猜匹配。
+
 
 ## 热更新时布局对象的生命周期（1.24.24）
 
@@ -29,10 +38,6 @@
 页面内编辑通过 `_cgyro_local_refresh` 定位最近的局部区域；原生回调先提交值，再合并一次重绘。普通数值编辑使用 `updateGUI=False`，只让其他已缓存页失效；打开“运行”或“检查配置”、真正提交时仍执行完整校验。结构、预览会随之改变的下拉项保留局部重绘。按钮改变任务/结果或顶层提示时刷新所属窗口；运行配置页使用 `local=False`，保证“应用”状态与表头同步，不因追求局部刷新而显示旧状态。
 
 `gui._cgyro_view_revision` 是窗口内瞬态失效代数，只缓存控件，不缓存科学结果或验证结论。修改参数后其他页在下次选中时重建；当前区域及其祖先标为最新，避免切回父页又整体重绘。`DeferredSection` 保留原生 `_aux`/`pythonFile` 上下文，保存锁期间延后，关闭时撤销回调；构造失败保留旧区域。销毁旧区域后须剔除 `gui.notebooks` 和布局记录中的失效 Tk 对象，否则下一次原生 GUI.update 会访问已不存在的 Tcl 路径。适配器缓存构造函数，不得长期持有旧 Entry 或已关闭页面。
-
-`CGYROScan.publish_loaded_run` 区分“选择一个旧结果发起新续算”和“归档已提交续算”两个阶段。前者的 `archived_case` 仍拒绝过期窗口；后者直接使用冻结的 manifest/point_table，不能再要求来源 token 仍是公开索引头。另一次归档合并可能已替换该头并退休旧快照，但这不使已提交任务的输入身份失效。按完整参数与带符号 ky 合并，保留未选坐标，较短部分结果不覆盖完整结果；下载/解析错误依旧阻止完成归档。
-
-正常续算历史从相同 `scan_key` 的索引读取，当前 run_token 只追加一次。`stopped_run` 恢复原批次时仍尝试继承其已完成点，来源缺失不能据此认证整批完成，但本次可读部分可以归档。调度终态与 collection_status 分开报告：cancelled/failed 不代表已归档，不能清空清单或直接放行下一次提交来掩盖收集失败。
 
 已迁移的 `case_layout=radius-scans` 在普通发布中仅处理当前运行；`recover_archives` 的全库兼容恢复只用于旧布局首次迁移或显式维护。手工导入未迁移的旧分支后应使用整理入口，不能让每次提交/收集都遍历物理结果。布局标志不替代所选点的输入、检查点与结果保留校验。
 
@@ -66,7 +71,7 @@ test_runtime_persistence 使用未修改的原生 OMFITlazyLoad、SortedDict 与
 
 `selected_linear_keys` 在调用原生数据映射前根据持久 ky 索引筛选。时间曲线保留带符号原始 ky，显示绝对值及主离子归一化仍遵守原绘图语义；归一化预选只读 input.cgyro.gen。指定 ky 模式只读所选结果；谱图和最大 γ 需要当前选中半径/参数的候选谱，不能扩大到其他案例。TGLF/cross-model 沿用 `plot_sources` 的按项读取。
 
-`point_status(..., verify_checkpoint=False)` 仅用于时间曲线列表，读取日志尾、tag 与末采样时间，显示待校验。它不能作为提交安全条件。真正续算的 `resume_source` / `continuation_plan` / staging 仍完整校验选中点；不能因列表显示时间而跳过二进制尺寸、SHA、有限值和物理输入检查。未开始点先按原输入溯源显示候选，不在列出全部点时解压或哈希每份 ZIP。
+时间曲线列表只读点行 `result_summary`，旧点没有摘要时显示待校验；不能在列出候选时调用 `point_status` 补扫。`point_status(..., verify_checkpoint=False)` 只供实际收集的当前旧点补读小型元数据。它不能作为提交安全条件。真正续算的 `resume_source` / `continuation_plan` / staging 仍完整校验选中点；不能因列表显示时间而跳过二进制尺寸、SHA、有限值和物理输入检查。未开始点先按原输入溯源显示候选，不在列出全部点时解压或哈希每份 ZIP。
 
 `test_cgyro_scan_refresh` 使用真实 Tk 与未经改写的原生 Tab 函数体，结合原生 GUI.update / Entry，检查普通刷新无结果枚举、切页不重建窗口/不发主树更新、输入文字保留、首次与重复选择、跨窗口相对位置、保存锁、关闭与失败重试。几何测试使用本机字体以避免网络字体下载。`test_cgyro_file_dedup` 使用原生表达式、主树与 dynaLoader 函数体，覆盖超过运行时目录缓存容量的旧目录与文件清单，分类/折叠行不物化，主动展开仍能读取。两套需指定 --omfit-source。`test_cgyro_read_boundaries` 使用 dict 子类读者，未授权的数值读取立即报错，覆盖任务删除、提交、回滚、各绘图范围、归一化和真实 Tk 选点窗口；完整续算校验仍可拒绝损坏检查点。Linux 真实 Tk 需 DISPLAY。
 
@@ -185,13 +190,13 @@ TGLF 多剖面恢复先调用 `tglf_multi_data.prepared_run_issues(run, plan, di
 
 `cgyro_reference` 是结果引用格式的唯一入口。`__RESULT_REF__` 保存内容摘要；可选的 `data` 是受控原生表达式，供树浏览器展开同一物理结果。保存只写表达式文本，禁止把解析后的对象或 `result_view` 写回这个节点。元数据遍历必须先识别引用并停止，不能递归进入 `data`；归档合并须通过引用工厂复制，避免表达式 deepcopy 在离树时求值。管理器迁移器需要同步识别这两个键。新增引用字段必须更新格式验证及原生保存重开测试。
 
-`cgyro_retention.retention_plan(module, resolve, reference)` 只计划，不改树。`retire_superseded` 在发布或显式整理时提交：要求旧作业每个完整坐标都被公开 loaded 点覆盖，时间不回退且不损失已验证检查点；缺少索引、未知输入字段、当前/未收集记录、公开扫描 info.run_token 锚点以及仍被保留续算依赖的祖先都保留。`payload_retired` 只保存替代来源和原点号，原 manifest 不变。禁止仅按 failed 状态、运行名或 p000001 进行清理。
+`cgyro_retention.retention_plan(module, resolve, reference)` 只计划，不改树。`retire_superseded` 仅用于显式维护：要求旧作业每个完整坐标都被公开 loaded 点覆盖，时间不回退且不损失已验证检查点；缺少索引、未知输入字段和当前/未收集记录仍保留，历史祖先不构成保护依赖。普通收集使用 `release_published_results` 更新已验证坐标的冗余引用，不运行全库可达性剪枝。`payload_retired` 只保存替代来源和原点号，原 manifest 不变。禁止仅按 failed 状态、运行名或 p000001 进行清理。
 
-退休、可达性剪枝各自带 BaseException 回滚；外层事务还保留物理池的浅引用日志，覆盖 prune 返回之后的 Abort。这里仅解除保存树的引用，源目录和原工程 ZIP 不删除。`require_retained_run` 是旧窗口续算、激活、手动收集的统一保护入口。批量收集跳过退休记录，不能重新下载它的旧数据。
+退休、可达性剪枝各自带 BaseException 回滚；外层事务还保留物理池的浅引用日志，覆盖 prune 返回之后的 Abort。这里仅解除保存树的引用，源目录和原工程 ZIP 不删除。`require_retained_run` 保护已删除/退休任务的激活和手动收集；从公开 RUN_DB 结果发起续算不经过该历史任务门禁。批量收集跳过退休记录，不能重新下载它的旧数据。
 
 普通状态保存只检查当前运行记录中新插入的数据，没有转换时不再复制整个 __STORAGE__；其他历史只由显式整理处理。不要用长期 bool 缓存跳过当前记录检查；用户可能在两次保存之间导入旧原生结果。性能测试应分别报告目录 I/O、解析、元数据复制和真实界面延迟，不能把合成本机基准说成集群实测。
 
-`archived_case(..., allow_inherited=True)` 只供停止续算的祖先重建使用：扫描头可能已指向子运行，祖先仅剩部分公开坐标。匹配必须同时核对原 token、运行/案例/参数组及完整坐标，再映回原冻结点号；禁止只靠同名 p000001，也不能让过期窗口使用此回退。数值表和绘图传入选定 token，不为列出选择项展开其他运行的祖先链。
+`archived_case(..., allow_inherited=True)` 参数仅为旧调用方保留；实现直接查询结果索引，不重建祖先。选择冻结 owner 与完整坐标，旧窗口引用被替换时要求重新选择。
 
 离线维护脚本由 `tools/build_maintenance_commandbox.py` 从代码包生成，内嵌校验摘要且不联网。必须同时更新工程和管理器，使用 `Prepared(..., data_policy='keep', settings_policy='keep')`，不能直接加载覆盖当前项目。`LivePlan.apply/undo` 覆盖 BaseException；回滚逐步尝试并保留原中断，二次错误只存字符串。Session 在第一处写入前持有 Prepared，防止半回滚时临时新代码被清理。
 

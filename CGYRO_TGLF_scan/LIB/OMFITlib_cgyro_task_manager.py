@@ -29,10 +29,11 @@ def task_description(row):
 def deletion_prompt(report):
     rows = [task_description(row) for row in report['tasks']]
     rows += ['', '删除 {} 条任务记录、冻结输入和 {} 个归档计算点。'.format(len(report['tokens']), report['archived_points']),
-             '未归档输出/检查点随所选任务删除；共享物理数据有其他引用时保留。',
+             '未归档输出随任务解除引用；归档结果仅在勾选相应选项时解除引用。',
+             '物理文件留到明确的存储整理时清理；共享文件仍有引用时始终保留。',
              '其他任务、参数及 ky 结果保留。服务器作业和文件保留，不执行 scancel。',
              '一次扫描及其自动重试作为一条任务；上面已列出该任务的全部作业号。',
-             '依赖这些输入的续算任务必须保留来源，或显式一并选择删除。',
+             '已准备续算使用自身冻结输入，结果续算使用 RUN_DB 所选文件，不依赖此任务历史。',
              '只修改当前工程；已有 ZIP、服务器目录和 /tmp 文件不在本次删除范围。']
     if report['unknown_points_preserved']:
         rows.append('另有 {} 个身份不明的旧计算点保留，不按名称猜测删除。'.format(report['unknown_points_preserved']))
@@ -148,6 +149,9 @@ class TaskManager:
         ttk.Entry(filters, textvariable=self.query).grid(row=0, column=1, sticky='ew')
         ttk.Button(filters, text='刷新任务', command=self.refresh).grid(row=0, column=2, padx=8)
         self.query.trace_add('write', lambda *args: self.filter_rows())
+        self.delete_results = tk.BooleanVar(master=self.window, value=False)
+        ttk.Checkbutton(filters, text='同时删除所选任务的归档结果引用', variable=self.delete_results).grid(
+            row=1, column=0, columnspan=3, sticky='w', pady=(6, 0))
         self._build_table()
         self.detail = tk.StringVar(master=self.window, value='尚未选择任务。')
         ttk.Label(self.window, textvariable=self.detail, wraplength=width - 40).grid(
@@ -193,8 +197,8 @@ class TaskManager:
             values = (', '.join(row['jobs']) or '未提交/未知', ', '.join(row['servers']) or '未知',
                 ', '.join(row['runids']), ', '.join(task_case_caption(c) for c in row['cases']),
                 ', '.join(row['scans']), ('本地操作中' if row['busy'] else
-                ('已归档' if row['archived_points'] else '未归档')) + ' / ' + ', '.join(row['statuses']),
-                row['archived_points'], row['retained_points'], token)
+                ('已归档' if row['archived_points'] is None or row['archived_points'] else '未归档')) + ' / ' + ', '.join(row['statuses']),
+                row['archived_points'] if row['archived_points'] is not None else '旧索引未计数', row['retained_points'], token)
             if not query or query in ' '.join(str(v) for v in values).casefold():
                 self.table.insert('', 'end', iid=token, values=values)
         self.selection_changed()
@@ -203,7 +207,7 @@ class TaskManager:
         reverse = self.sort_reverse.get(column, False)
         def key(token):
             row = self.rows[token]
-            return (row['archived_points'] if column == 'archived' else row['retained_points'] if column == 'retained'
+            return ((row['archived_points'] if row['archived_points'] is not None else -1) if column == 'archived' else row['retained_points'] if column == 'retained'
                     else str(self.table.set(token, column)).casefold())
         for index, token in enumerate(sorted(self.table.get_children(), key=key, reverse=reverse)):
             self.table.move(token, '', index)
@@ -238,7 +242,7 @@ class TaskManager:
         self.confirming = True
         self.selection_changed()
         try:
-            report = preview_tasks(self.module, selected)
+            report = preview_tasks(self.module, selected, delete_results=self.delete_results.get())
             challenge = confirm_deletion(self.window, report)
             if challenge is None:
                 return

@@ -89,10 +89,10 @@ class ReadBoundaryTests(unittest.TestCase):
         before = case.public_rows()
         reads = guard_pool(module)
         with patch.object(payload, 'materialize_owner', side_effect=AssertionError('Result expanded')):
-            report = task_fixture.cleanup.preview_tasks(module, ['old'])
+            report = task_fixture.cleanup.preview_tasks(module, ['old'], delete_results=True)
             task_fixture.cleanup.remove_tasks(module, ['old'], report, report['confirmation'])
         self.assertEqual(case.public_rows(), [row for row in before if row[3] != 'old'])
-        self.assertEqual(len(storage.result_pool(module)), 4)
+        self.assertEqual(len(storage.result_pool(module)), 6)  # Unlink only; explicit maintenance reclaims owners.
         self.assertFalse(reads)
 
     def test_indexed_queue_bookkeeping_and_reachability_read_no_arrays(self):
@@ -195,15 +195,13 @@ class ReadBoundaryTests(unittest.TestCase):
 
     def test_continuation_validates_only_selected_checkpoint_and_still_rejects_damage(self):
         first, second = self.result('selected'), self.result('unselected')
-        case = dict(__INFO__={}, __TASKS__={
-            'p000001': dict(result_path=['first']), 'p000002': dict(result_path=['second'])},
-            first=first, second=second)
         api = fixture.continuation
-        with patch.object(api, 'stopped_context', return_value=None), \
-                patch.object(api, 'archived_case', return_value=('Jet', 'case', case)), \
-                patch.object(api, 'checkpoint_tag', side_effect=ValueError('Damaged checkpoint')) as check:
+        binding = dict(result_id='a' * 64, row=dict(values={'KY': .1}), info={})
+        with patch.object(api, 'selected_result', return_value=first), \
+                patch.object(api, 'validate_selected_input', return_value={}), \
+                patch.object(api, 'checkpoint_details', side_effect=ValueError('Damaged checkpoint')) as check:
             with self.assertRaisesRegex(ValueError, 'Damaged checkpoint'):
-                api.continuation_plan({}, 'run', ['p000001'], 10)
+                api.continuation_plan({}, 'run', ['p000001'], 10, selections={'p000001': binding})
         check.assert_called_once_with(first.filename)
 
     def test_point_picker_and_selection_do_not_read_arrays_or_validate_all_binaries(self):
@@ -230,13 +228,13 @@ class ReadBoundaryTests(unittest.TestCase):
         context = dict(view=view, unfinished={unstarted}, sources={unstarted: (
             dict(input_sha256={unstarted: {'input.cgyro': 'a' * 64}}), {})})
         entry = dict(tasks=rows, resume_tasks=dict(rows, p000003=dict(values=dict(KY=.3))),
-                     stopped_run=True, resume_context=context, scan_axes=[], runid='Jet')
+                     stopped_run=True, loaded_points=list(rows), input_sha256={unstarted: {'input.cgyro': 'a' * 64}}, scan_axes=[], runid='Jet')
         plot = Mock()
         root = dict(CGYRO_scan={}, PLOTS={'CGYRO_results': SimpleNamespace(plot=plot)})
         browser_ui = browser.ResultBrowser(root, None, continue_callback=Mock())
         browser_ui.anchor = ttk.Frame(window)
         with patch.object(browser, 'selected_record', return_value=({}, 'run', entry, {})), \
-                patch.object(browser, '_result_node', side_effect=lambda root, entry, row: results[row['task_id']]), \
+                patch.object(browser, 'select_result', side_effect=lambda root, entry, point: {'result_id': point, 'row': dict(rows.get(point, {}))}), \
                 patch.object(browser, 'configure_window_fonts'), patch.object(browser, 'style_widget'), \
                 patch.object(fixture.continuation, 'checkpoint_tag', side_effect=AssertionError('Binary read')), \
                 patch.object(fixture.continuation, 'resume_source', side_effect=AssertionError('Input ZIP read')):
@@ -253,7 +251,7 @@ class ReadBoundaryTests(unittest.TestCase):
             table.selection_set('p000002')
             next(child for child in children if isinstance(child, ttk.Button) and
                  child.cget('text') == '绘制 omega & gamma vs time').invoke()
-        plot.assert_called_once_with(time_traces=True, run_token='run', point_ids=['p000002'], stopped_points=True)
+        plot.assert_called_once_with(time_traces=True, run_token='run', point_ids=['p000002'], stopped_points=True, selections={'p000002': {'result_id': 'p000002', 'row': rows['p000002']}})
         self.assertFalse(reads)
 
 

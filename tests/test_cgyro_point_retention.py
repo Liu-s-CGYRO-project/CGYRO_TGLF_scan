@@ -78,13 +78,13 @@ class PointRetentionTests(unittest.TestCase):
         (old_directory / 'input.cgyro').write_text('KY=0.2\nNONLINEAR_FLAG=1\nMAX_TIME=20\n')
         self.assertNotIn('old', self.plan(root)['retire'])
 
-    def test_uncollected_child_blocks_partial_parent_retirement_too(self):
+    def test_uncollected_child_does_not_pin_replaced_parent_files(self):
         root, old, old_cases, new, new_cases = self.partial_pair()
         db_api.run_records(root)['child'] = dict(manifest=dict(run_token='child', status='submitted',
             continuation=dict(source_token='old')))
         plan = self.plan(root)
-        self.assertNotIn('old', plan['partial'])
-        self.assertIn('required by retained continuation', plan['retained']['old'])
+        self.assertIn('old', plan['partial'])
+        self.assertEqual(set(plan['partial']['old']['points']), {'p000001'})
 
     def test_old_callback_cannot_recreate_retired_point_payloads(self):
         root, old, old_cases, new, new_cases = self.partial_pair()
@@ -95,16 +95,16 @@ class PointRetentionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'remaining points'):
             fixtures.queue_api.require_retained_run(root, 'old')
 
-    def test_remaining_points_still_build_a_stopped_continuation_context(self):
+    def test_old_snapshot_does_not_duplicate_public_coordinates_in_result_picker(self):
         root, old, old_cases, new, new_cases = self.partial_pair()
         old.update(workDir='/old', loaded_points=[], partial_points=list(old_cases))
         retire_superseded(root, storage.resolve_result, storage.reference_id, prune=storage.prune_storage)
-        context = fixtures.continuation.stopped_context(root, 'old')
-        self.assertEqual(set(context['rows']), {'p000002'})
-        self.assertEqual(set(context['results']), {'p000002'})
-        self.assertEqual(context['unfinished'], {'p000002'})
-        with self.assertRaises(ValueError):
-            fixtures.continuation.continuation_plan(root, 'old', ['p000001'], 200)
+        entries = fixtures.index_api.result_records(root)
+        self.assertEqual(len(entries), 1)
+        entry = next(iter(entries.values()))
+        self.assertEqual(set(entry['tasks']), {'p000001', 'p000002'})
+        binding = fixtures.index_api.select_result(root, entry, 'p000002')
+        self.assertEqual(binding['result_id'], storage.reference_id(new_cases['p000002']))
 
 
 if __name__ == '__main__':

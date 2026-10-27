@@ -34,19 +34,31 @@ def fixture(empty=False):
     info = dict(run_token='current', runid='Jet', case_id='nr=1__rho=0.33__ion=BASE',
                 source_nr=1, nr=1, rho=.33, ion_case='BASE', mass='BASE',
                 scan_axes=[dict(name='N_THETA', values=[16], linked=[])],
-                dimensions=1, scan_dimensions=1, collection_status='empty' if empty else 'partial')
+                dimensions=1, scan_dimensions=1, collection_status='empty' if empty else 'partial',
+                unpublished_points=['p000001'] if empty else [])
     task = dict(task_id='p000001', result_path=['N_THETA', '16', 'lin', '0.1'],
                 values=dict(N_THETA=16, KY=.1))
     tasks = {} if empty else {'p000001': task}
     archive = {} if empty else {'Jet': {'nr=1_rho=0.33': {
-        'N_THETA': {'16': {'lin': {'0.1': {'__RESULT_REF__': 'physical-result'}}}},
+        'N_THETA': {'16': {'lin': {'0.1': {'__RESULT_REF__': 'a' * 64}}}},
         '__SCANS__': {'N_THETA': dict(info=copy.deepcopy(info), tasks=tasks)}}}}
     archive['__STORAGE__'] = dict(case_layout='radius-scans')
-    archive['__RUNS__'] = {'current': {'manifest': copy.deepcopy(info)}}
+    saved = dict(info, point_table={'p000001': copy.deepcopy(task)}, points=['p000001'], input_sha256={'p000001': {'input.cgyro': 'a' * 64}})
+    archive['__RUNS__'] = {'current': {'manifest': saved, 'cases': {} if empty else {'p000001': {'__RESULT_REF__': 'a' * 64}}}}
     return dict(SETTINGS=dict(WORKBENCH={}), CGYRO_scan=dict(RUN_DB=archive, RUN_MANIFEST=info))
 
 
 class ResultMetadataTests(unittest.TestCase):
+    def test_averages_and_window_follow_each_requested_fraction(self):
+        result = dict(n_time=10, t=np.arange(10.), freq=dict(omega=[np.arange(10.)], gamma=[2 * np.arange(10.)]))
+        short = browser._frequency_summary(result, .2)
+        long = browser._frequency_summary(result, .5)
+        self.assertEqual(short[:2], (8.5, 17.))
+        self.assertEqual(long[:2], (7., 14.))
+        self.assertEqual(browser.frequency_window(result, .2),
+                         dict(tail_fraction=.2, samples=2, total_samples=10, start_time=8., end_time=9.))
+        self.assertEqual(browser.frequency_window(result, .5)['start_time'], 5.)
+
     def two_partial_records(self):
         root = fixture()
         db = root['CGYRO_scan']['RUN_DB']
@@ -60,60 +72,44 @@ class ResultMetadataTests(unittest.TestCase):
 
     def test_reader_does_not_resolve_an_unselected_radius(self):
         root = self.two_partial_records()
-        context = dict(info={}, view={'__TASKS__': {'frozen': {}}}, rows={'frozen': {}})
-        def selected_only(module, token):
-            if token != 'current':
-                raise AssertionError('Opened unrelated result files for ' + token)
-            return context
-        with patch.object(browser, 'stopped_context', side_effect=selected_only) as resolve:
-            _, token, entry, options = browser.selected_record(root)
-        self.assertEqual(token, 'current')
-        self.assertEqual(set(options.values()), {'current', 'other'})
-        self.assertIs(entry['resume_context'], context)
-        resolve.assert_called_once_with(root['CGYRO_scan'], 'current')
+        root['SETTINGS']['WORKBENCH']['cgyro_result_view'] = dict(run_token='current')
+        with patch.object(browser, 'selected_result', side_effect=AssertionError('Opened a payload')):
+            _, _, entry, options = browser.selected_record(root)
+        self.assertEqual(entry['run_token'], 'current')
+        self.assertEqual(len(options), 2)
 
-    def test_explicit_selection_and_stale_fallback_resolve_only_final_token(self):
-        for selected, expected in (('other', 'other'), ('deleted-record', 'current')):
-            with self.subTest(selected=selected):
-                root = self.two_partial_records()
-                root['SETTINGS']['WORKBENCH']['cgyro_result_view'] = dict(
-                    run_token=selected, observed_run='current')
-                context = dict(info={}, view={'__TASKS__': {}}, rows={})
-                with patch.object(browser, 'stopped_context', return_value=context) as resolve:
-                    _, token, _, _ = browser.selected_record(root)
-                self.assertEqual(token, expected)
-                resolve.assert_called_once_with(root['CGYRO_scan'], expected)
+    def test_explicit_selection_is_kept_and_missing_version_is_not_substituted(self):
+        root = self.two_partial_records()
+        view = dict(run_token='other'); root['SETTINGS']['WORKBENCH']['cgyro_result_view'] = view
+        _, key, entry, _ = browser.selected_record(root)
+        self.assertEqual(entry['run_token'], 'other')
+        self.assertEqual(view['run_token'], key)
+        view['run_token'] = 'deleted-record'
+        with self.assertRaisesRegex(ValueError, '重新选择'):
+            browser.selected_record(root)
+        self.assertEqual(view['run_token'], 'deleted-record')
 
     def test_unselected_unindexed_continuation_does_not_open_its_source(self):
         root = self.two_partial_records()
-        manifest = root['CGYRO_scan']['RUN_MANIFEST']
-        manifest.update(run_token='unindexed', continuation={'source_token': 'unreadable-ancestor'})
-        root['SETTINGS']['WORKBENCH']['cgyro_result_view'] = dict(run_token='other', observed_run='unindexed')
-        context = dict(info={}, view={'__TASKS__': {}}, rows={})
-        with patch.object(browser, 'stopped_context', return_value=context) as resolve:
-            _, token, _, options = browser.selected_record(root)
-        self.assertEqual(token, 'other')
-        self.assertIn('unindexed', options.values())
-        resolve.assert_called_once_with(root['CGYRO_scan'], 'other')
+        root['CGYRO_scan']['RUN_MANIFEST'].update(run_token='unindexed', continuation={'source_token': 'missing'})
+        root['SETTINGS']['WORKBENCH']['cgyro_result_view'] = dict(run_token='other')
+        with patch.object(browser, 'selected_result', side_effect=AssertionError('Result files')):
+            _, _, entry, options = browser.selected_record(root)
+        self.assertEqual(entry['run_token'], 'other')
+        self.assertNotIn('unindexed', options.values())
 
-    def test_unindexed_partial_and_inherited_results_keep_slice_controls(self):
-        for status in ('partial', 'empty'):
-            with self.subTest(status=status):
-                root, ui = fixture(empty=True), UI()
-                manifest = root['CGYRO_scan']['RUN_MANIFEST']
-                manifest.update(collection_status=status,
-                                continuation={'source_token': 'ancestor'} if status == 'empty' else {})
-                info = dict(manifest, dimensions=2,
-                            scan_axes=[dict(name='N_ENERGY'), dict(name='N_XI')])
-                tasks = {'p000001': dict(values=dict(N_ENERGY=8, N_XI=16, KY=.1))}
-                context = dict(info=info, view={'__TASKS__': tasks}, rows=tasks)
-                with patch.object(browser, 'stopped_context', return_value=context) as resolve:
-                    browser.ResultBrowser(root, ui).render(title=False)
-                resolve.assert_called_once_with(root['CGYRO_scan'], 'current')
-                self.assertIn('查看数值表', ui.buttons)
-                self.assertIn('绘制当前结果', ui.buttons)
-                self.assertTrue(any(args[2] == 'ky 切片' for args in ui.combos))
-                self.assertTrue(any('1 个已有结果计算点' in value for value in ui.labels))
+    def test_collected_partial_version_keeps_slice_controls_without_parent(self):
+        root, ui = fixture(empty=True), UI()
+        record = root['CGYRO_scan']['RUN_DB']['__RUNS__']['current']
+        record['manifest'].update(dimensions=2, collection_status='partial',
+            scan_axes=[dict(name='N_ENERGY'), dict(name='N_XI')], continuation={'source_token': 'missing'})
+        record['manifest']['point_table']['p000001'] = dict(values=dict(N_ENERGY=8, N_XI=16, KY=.1),
+            result_path=['N_ENERGY__N_XI', '8', 'N_XI', '16', 'lin', '.1'])
+        record['cases'] = {'p000001': {'__RESULT_REF__': 'a' * 64}}
+        with patch.object(browser, 'selected_result', side_effect=AssertionError('Result files')):
+            browser.ResultBrowser(root, ui).render(title=False)
+        self.assertIn('查看数值表', ui.buttons)
+        self.assertTrue(any(args[2] == 'ky 切片' for args in ui.combos))
 
     def test_coordinate_choices_preserve_signed_values_and_tolerance(self):
         values = [1., 1. + 5e-11, 1. + 2e-10, -.1, -.1, .1, -0., 0.,
@@ -134,7 +130,7 @@ class ResultMetadataTests(unittest.TestCase):
     def test_render_partial_record_uses_metadata_only(self):
         root, ui = fixture(), UI()
         before = copy.deepcopy(root['CGYRO_scan'])
-        with patch.object(browser, 'stopped_context', side_effect=AssertionError('opened restart ancestry')), \
+        with patch.object(browser, 'selected_result', side_effect=AssertionError('opened result files')), \
                 patch.object(browser, 'resolve_result', side_effect=AssertionError('opened a result')):
             browser.ResultBrowser(root, ui, continue_callback=lambda *args: None).render(title=False)
         self.assertTrue(any('1 个已有结果计算点' in value for value in ui.labels))
@@ -143,26 +139,24 @@ class ResultMetadataTests(unittest.TestCase):
 
     def test_empty_current_run_keeps_resume_button_without_resolving(self):
         root, ui = fixture(empty=True), UI()
-        with patch.object(browser, 'stopped_context', side_effect=AssertionError('opened restart ancestry')):
+        with patch.object(browser, 'selected_result', side_effect=AssertionError('opened result files')):
             browser.ResultBrowser(root, ui, continue_callback=lambda *args: None).render(title=False)
         self.assertIn('选择未完成点继续计算…', ui.buttons)
         self.assertTrue(any('原始输入已保留' in value for value in ui.labels))
 
-    def test_explicit_reader_still_checks_ancestry_and_reports_failure(self):
+    def test_explicit_reader_reports_missing_selected_files_without_substitution(self):
         root = fixture()
-        with patch.object(browser, 'stopped_context', side_effect=ValueError('missing frozen ancestry')) as check:
-            _, token, entry, _ = browser.selected_record(root)
-        check.assert_called_once_with(root['CGYRO_scan'], 'current')
-        self.assertEqual(token, 'current')
-        self.assertEqual(entry['resume_error'], 'missing frozen ancestry')
+        _, _, entry, _ = browser.selected_record(root)
+        with self.assertRaisesRegex(ValueError, 'Missing physical'):
+            browser._result_node(root, entry, entry['tasks']['p000001'])
 
-    def test_explicit_reader_receives_frozen_point_identity(self):
+    def test_explicit_reader_receives_frozen_result_identity(self):
         root = fixture()
-        context = dict(info={}, view={'__TASKS__': {'frozen': {}}}, rows={'frozen': {}})
-        with patch.object(browser, 'stopped_context', return_value=context):
-            _, _, entry, _ = browser.selected_record(root)
-        self.assertIs(entry['resume_context'], context)
-        self.assertIs(entry['resume_tasks'], context['rows'])
+        _, _, entry, _ = browser.selected_record(root)
+        binding = browser.select_result(root['CGYRO_scan'], entry, 'p000001')
+        self.assertEqual(binding['result_id'], 'a' * 64)
+        self.assertEqual(binding['identity']['values'], dict(N_THETA=16., KY=.1))
+        self.assertEqual(binding['identity']['case_id'], 'nr=1__rho=0.33__ion=BASE')
 
     def test_next_render_sees_new_archive_metadata(self):
         root = fixture()

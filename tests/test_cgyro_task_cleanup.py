@@ -53,7 +53,7 @@ class TaskCleanupTests(unittest.TestCase):
 
     def delete(self, tokens, module=None, factory=dict):
         module = self.module if module is None else module
-        report = cleanup.preview_tasks(module, tokens)
+        report = cleanup.preview_tasks(module, tokens, delete_results=True)
         return cleanup.remove_tasks(module, tokens, report, report['confirmation'], factory)
 
     def public_rows(self, module=None):
@@ -116,6 +116,8 @@ class TaskCleanupTests(unittest.TestCase):
         self.assertEqual(rows[token]['jobs'], [])
         self.delete([token])
         self.assertNotIn(token, fixture.db_api.run_records(self.module))
+        self.assertEqual(len(fixture.storage.result_pool(self.module)), old_count)
+        fixture.storage.prune_storage(self.module)  # Explicit physical cleanup is separate.
         self.assertEqual(len(fixture.storage.result_pool(self.module)), old_count - 1)
 
     def test_shared_physical_owner_and_source_directories_survive(self):
@@ -156,7 +158,7 @@ class TaskCleanupTests(unittest.TestCase):
         self.assertIn('old', self.module['RUN_HISTORY'])
 
     def test_metadata_changes_same_point_count_invalidate_modal_preview(self):
-        report = cleanup.preview_tasks(self.module, ['old'])
+        report = cleanup.preview_tasks(self.module, ['old'], delete_results=True)
         case = self.module['RUN_DB']['Jet']['nr=1_rho=0.33']['T']
         row = next(r for r in case['__SCANS__']['N_ENERGY']['tasks'].values() if r['run_token'] == 'old')
         row['final_time'] = 120  # Same token, number of points and archives.
@@ -164,15 +166,14 @@ class TaskCleanupTests(unittest.TestCase):
             cleanup.remove_tasks(self.module, ['old'], report, report['confirmation'])
         self.assertIn('old', self.module['RUN_HISTORY'])
 
-    def test_local_collection_busy_and_retained_continuation_block_deletion(self):
+    def test_local_collection_busy_blocks_but_historical_ancestry_does_not(self):
         current = self.module['RUN_MANIFEST']
         current['collection_status'] = 'collecting'
         with self.assertRaisesRegex(ValueError, '本地操作'):
             cleanup.preview_tasks(self.module, ['old'])
         current.pop('collection_status')
         self.module['RUN_HISTORY']['new']['manifest']['continuation'] = dict(source_token='old')
-        with self.assertRaisesRegex(ValueError, '依赖'):
-            cleanup.preview_tasks(self.module, ['old'])
+        cleanup.preview_tasks(self.module, ['old'])
         self.delete(['old', 'new'])
         self.assertIn('theta', self.module['RUN_HISTORY'])
 
@@ -186,9 +187,9 @@ class TaskCleanupTests(unittest.TestCase):
         row = next(r for r in case['__SCANS__']['N_ENERGY']['tasks'].values() if r['run_token'] == 'old')
         row.pop('run_token')
         with self.assertRaisesRegex(ValueError, '缺少逐点任务身份'):
-            cleanup.preview_tasks(self.module, ['old'])
+            cleanup.preview_tasks(self.module, ['old'], delete_results=True)
 
-    def test_abort_after_native_write_and_after_pool_pruning_restore_exact_objects(self):
+    def test_abort_after_native_write_restores_indexes_and_delete_never_prunes(self):
         class AbortOnPop(OMFITMapping):
             failed = False
             def pop(self, key, *args):
@@ -206,18 +207,11 @@ class TaskCleanupTests(unittest.TestCase):
         self.assertIs(history['old'], record)
         self.assertFalse(fixture.db_api.run_is_deleted(self.module, 'old'))
         owners = dict(fixture.storage.result_pool(self.module))
-        original = cleanup.prune_storage
-        def after_prune(module):
-            original(module)
-            self.assertLess(len(fixture.storage.result_pool(module)), len(owners))
-            raise KeyboardInterrupt('after prune abort')
-        with patch.object(cleanup, 'prune_storage', after_prune):
-            with self.assertRaisesRegex(KeyboardInterrupt, 'after prune abort'):
-                self.delete(['old'])
-        self.assertIs(self.module['RUN_DB']['Jet'], archive)
+        with patch.object(fixture.storage, 'prune_storage', side_effect=AssertionError('implicit physical cleanup')):
+            self.delete(['old'])
         self.assertEqual(fixture.storage.result_pool(self.module), owners)
-        self.assertIs(history['old'], record)
-        self.assertFalse(fixture.db_api.run_is_deleted(self.module, 'old'))
+        self.assertNotIn('old', history)
+        self.assertTrue(fixture.db_api.run_is_deleted(self.module, 'old'))
 
     def test_stale_window_save_collect_and_continue_cannot_revive_deleted_task(self):
         import OMFITlib_cgyro_queue as queue
@@ -243,7 +237,7 @@ class TaskCleanupTests(unittest.TestCase):
 
     def test_preview_does_not_read_solver_files_or_array_methods(self):
         with patch.object(fixture.storage, 'resolve_result', side_effect=AssertionError('result read')):
-            report = cleanup.preview_tasks(self.module, ['old'])
+            report = cleanup.preview_tasks(self.module, ['old'], delete_results=True)
         self.assertEqual(report['archived_points'], 2)
         self.assertEqual(len(report['revision']), 64)
 
@@ -257,14 +251,17 @@ class TaskCleanupTests(unittest.TestCase):
         info = self.module['RUN_DB']['Jet']['nr=1_rho=0.33']['T']['__SCANS__']['N_ENERGY']['info']
         self.assertEqual(info['fixed_parameters'], dict(N_THETA=16))
 
-    def test_public_only_continuation_ancestry_protects_parent_without_history(self):
+    def test_public_only_continuation_ancestry_does_not_control_record_deletion(self):
         self.module['RUN_HISTORY'].pop('new')
         fixture.db_api.run_records(self.module).pop('new')
         case = self.module['RUN_DB']['Jet']['nr=1_rho=0.33']['T']
         case['__SCANS__']['N_ENERGY']['info']['continuations'] = [dict(source_token='old')]
-        with self.assertRaisesRegex(ValueError, '保留归档仍记录续算来源'):
-            cleanup.preview_tasks(self.module, ['old'])
-        self.assertIn('old', self.module['RUN_HISTORY'])
+        before = self.public_rows()
+        with patch.object(catalog, 'indexed_sources', side_effect=AssertionError('result index traversal')):
+            report = cleanup.preview_tasks(self.module, ['old'])
+            cleanup.remove_tasks(self.module, ['old'], report, report['confirmation'])
+        self.assertNotIn('old', self.module['RUN_HISTORY'])
+        self.assertEqual(before, self.public_rows())
 
 
 if __name__ == '__main__':

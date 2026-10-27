@@ -103,10 +103,15 @@ def _point_index(manifest):
     coordinates = set()
     for point in points:
         row = table[point]
-        values, path = row.get('values', {}), row.get('result_path', [])
+        values, physical = row.get('values', {}), row.get('result_path', [])
+        path = row.get('coordinate_path', physical)
         if (not isinstance(path, list) or len(path) != 2 * dimensions + 2 or path[-2] != 'lin'
                 or path[:-2:2] != names or any(not isinstance(key, str) or '/' in key or '\\' in key for key in path)):
             raise ValueError('Invalid archived result path for ' + point)
+        if (physical != path and (not isinstance(physical, list) or len(physical) != len(path) + 1
+                or physical[:-1] != path or not isinstance(physical[-1], str) or not physical[-1]
+                or '/' in physical[-1] or '\\' in physical[-1])):
+            raise ValueError('Invalid physical result location for ' + point)
         try:
             numeric = tuple(float(values[name]) for name in names + ['KY'])
             indexed = tuple(float(value) for value in path[1:-2:2] + [path[-1]])
@@ -120,9 +125,11 @@ def _point_index(manifest):
             raise ValueError('Missing numeric coordinates for ' + point) from exc
         if not all(math.isfinite(value) for value in numeric + indexed) or not matches or numeric[-1] == 0:
             raise ValueError('Frozen coordinates disagree with result path for ' + point)
-        if tuple(path) in coordinates:
+        from OMFITlib_cgyro_archive import full_point_coordinate
+        identity = full_point_coordinate(manifest, row)
+        if identity in coordinates:
             raise ValueError('Duplicate frozen result coordinates: ' + point)
-        coordinates.add(tuple(path))
+        coordinates.add(identity)
     return points
 
 

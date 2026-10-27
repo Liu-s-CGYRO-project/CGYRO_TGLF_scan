@@ -1,18 +1,18 @@
 # Run and collect a 1D, 2D, or 3D CGYRO parameter scan.
 import copy
-from builtins import ValueError, any, dict, int, len, list, set, str
+from builtins import ValueError, all, any, bool, dict, int, len, list, set, sorted, str
 from datetime import datetime, timezone
-from OMFITlib_cgyro_archive import (canonical_case_key, catalog_runs, clean_run_id, combine_cases,
+from OMFITlib_cgyro_archive import (cache_merge_status, canonical_case_key, case_scans, catalog_runs, clean_run_id, combine_cases, continuation_failed, coordinate_path, full_point_coordinate,
                                   grouped_case_path, install_case, matching_cases, output_final_time,
-                                  scan_key, store_scan, validate_preserved_scans)
+                                  scan_key, share_matching_inputs, store_scan, validate_preserved_scans)
 from OMFITlib_cgyro_retry import collect_current
-from OMFITlib_cgyro_continue import continuation_case, point_result
+from OMFITlib_cgyro_continue import point_status
+from OMFITlib_cgyro_result_index import (RESULT_INFO_FIELDS, at as index_at, release_published_results, scan_scope, merge_scopes, scan_completion)
 from OMFITlib_cgyro_queue import save_current
-from OMFITlib_cgyro_storage import compact_storage, prune_storage, reference_id, resolve_result, storage_state, store_result
-from OMFITlib_cgyro_retention import retire_superseded
+from OMFITlib_cgyro_storage import compact_storage, reference_id, resolve_result
 from OMFITlib_cgyro_db import run_cases
 from OMFITlib_cgyro_reference import copy_result_tree
-from OMFITlib_cgyro_recover import recover_archives
+from OMFITlib_cgyro_input_identity import cache_parameters, cache_competing_parameters
 defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False, continuation=None,
             allow_solver_retries=None, check_temp_start=True)
 
@@ -42,7 +42,8 @@ def result_path(manifest, point_id):
     table = manifest.get('point_table', {})
     if point_id in table:
         path = list(table[point_id]['result_path'])
-        if len(path) != 2 * int(manifest['dimensions']) + 2 or path[-2] != 'lin':
+        coordinate = coordinate_path(table[point_id])
+        if len(coordinate) != 2 * int(manifest['dimensions']) + 2 or coordinate[-2] != 'lin':
             raise ValueError('Invalid point index for ' + point_id)
         path[0] = scan_key(manifest, path[0])
         return path
@@ -59,61 +60,34 @@ def remember_collection(root):
 
 def publish_loaded_run(root):
     compact_storage(root, OMFITtree, run_token=root.get('RUN_MANIFEST', {}).get('run_token', ''))
-    # Legacy layout migration may inspect every saved result. Once migrated,
-    # collection merges only this run; full recovery belongs to maintenance.
-    if storage_state(root).get('case_layout', '') != 'radius-scans':
-        recover_archives(root, resolve_result, OMFITtree,
-                         exclude_token=str(root.get('RUN_MANIFEST', {}).get('run_token', '')))
     manifest = root.get('RUN_MANIFEST', None)
     if not manifest or manifest.get('collection_status', '') != 'ready' and manifest.get('status', '') != 'loaded':
         return
-    if manifest.get('load_errors', {}):
-        raise ValueError('Result download/read errors remain; collect again before archiving.')
     if int(manifest['dimensions']) not in (1, 2, 3):
         raise ValueError('Unsupported run manifest dimension')
-    loaded = list(manifest.get('loaded_points', []))
-    partial = list(manifest.get('partial_points', []))
+    errors = manifest.get('load_errors', {})
+    loaded = [point for point in manifest.get('loaded_points', []) if point not in errors]
+    partial = [point for point in manifest.get('partial_points', []) if point not in errors]
     readable = list(dict.fromkeys(loaded + partial))
     expected = list(manifest.get('points', loaded))
     if not readable:
+        if errors:
+            raise ValueError('Result download/read errors remain; no verified points can be archived: ' + str(errors))
+        manifest['submission_complete'] = False
+        manifest['scan_complete'] = False
         manifest['collection_status'] = 'empty'
         remember_collection(root)
         print('Collection finished: no readable results; {} empty/incomplete points skipped. Previous results are unchanged.'.format(len(expected)))
         return
-    complete = set(loaded) == set(expected) and not manifest.get('failed_points', []) and not partial
+    complete = (set(loaded) == set(expected) and not manifest.get('failed_points', [])
+                and not partial and not manifest.get('load_errors', {}))
     continuation = manifest.get('continuation', None)
-    source_case = None
-    if continuation:
-        if set(expected) != set(continuation['points']):
-            raise ValueError('Continuation point list changed; the previous case is preserved')
-        if continuation.get('stopped_run', False):
-            # An interrupted multi-point run may inherit finished points from
-            # its ancestors. Missing ancestry cannot certify full completion,
-            # but must not prevent archiving this attempt's readable outputs.
-            try:
-                source_case = continuation_case(root, continuation['source_token'])
-            except ValueError:
-                source_case = None
-            finished = {point for point, row in (source_case or {}).get('__TASKS__', {}).items()
-                        if row.get('status', '') == 'loaded' and not row.get('resume_pending', False)}
-            complete = complete and set(continuation['source_points']) <= (finished | set(loaded))
-        # Normal continuation already froze its point identities at submission.
-        # Do not run the stale-dialog lookup again here: another archive merge
-        # can replace the source header while its physical points remain valid.
-        # combine_cases/store_scan below retain all unselected coordinates.
+    if continuation and set(expected) != set(continuation['points']):
+        raise ValueError('Continuation point list changed; the previous case is preserved')
+    # This attempt is self-contained. All existing coordinates are retained by
+    # store_scan; neither files nor completion evidence are borrowed from jobs.
     case_tag = manifest['case_tag']
     fresh_output = OMFITtree()
-    if source_case is not None:
-        # Rebuild native scaffolding even when a stopped run's view is a plain
-        # metadata blueprint; each retained result receives a native parent.
-        for row in source_case['__TASKS__'].values():
-            path = row['result_path']
-            node = fresh_output
-            for key in path[:-1]:
-                if key not in node:
-                    node[key] = OMFITtree()
-                node = node[key]
-            node[path[-1]] = store_result(root, point_result(source_case, row), OMFITtree)
     for point_id in readable:
         path = result_path(manifest, point_id)
         node = fresh_output
@@ -130,7 +104,7 @@ def publish_loaded_run(root):
     legacy = 'case_id' not in manifest
     base_case_key = ('nr=' + str(manifest['nr']) if legacy else str(manifest['case_id']))
     case_key = canonical_case_key(base_case_key, {'rho': manifest.get('rho', None), 'ion_case': manifest['mass']})
-    previous = catalog_runs(root).get(run_id, {})
+    previous = catalog_runs(root, run_id, case_key).get(run_id, {})
     replaced = []
     old_keys = matching_cases(root, run_id, case_key)
     for key in old_keys:
@@ -139,12 +113,9 @@ def publish_loaded_run(root):
         replaced.extend(str(value) for value in old_info.get('replaced_case_keys', []))
     # Build off-tree, preserving all other scan axes. Replacing the whole case
     # here used to discard N_THETA as soon as N_ENERGY was collected.
-    prior_cases = [previous[key] for key in old_keys]
-    destination = combine_cases(prior_cases, OMFITtree)
+    prior_cases = [copy_result_tree(previous[key], OMFITtree) for key in old_keys]
 
     task_rows = OMFITtree()
-    if source_case is not None:
-        task_rows.update(copy.deepcopy(source_case['__TASKS__']))
     for point_id in readable:
         metadata = copy.deepcopy(manifest.get('point_table', {}).get(point_id, {}))
         row = OMFITtree()
@@ -153,12 +124,27 @@ def publish_loaded_run(root):
                         source_nr=manifest['nr'], rho=manifest.get('rho', None),
                         ion_case=manifest['mass'], status='partial' if point_id in partial else 'loaded'))
         row['result_path'] = result_path(manifest, point_id)
+        if row.get('coordinate_path', None):
+            row['coordinate_path'][0] = row['result_path'][0]
         row['result_workDir'] = manifest.get('point_workdirs', {}).get(point_id, manifest['workDir'])
         row['run_token'] = manifest['run_token']
         row['resume_pending'] = point_id in partial
         row['continuation_pending'] = manifest.get('continuation_pending', {}).get(point_id, '')
         row['scheduler_state'] = manifest.get('point_states', {}).get(point_id, '')
-        row['final_time'] = output_final_time(resolve_result(root, run_cases(root, manifest)[point_id]))
+        owner = run_cases(root, manifest)[point_id]
+        summary = row.get('result_summary', {})
+        if summary.get('result_id', None) == reference_id(owner) and summary.get('version', 0) == 1:
+            row.update(dict((name, summary[name]) for name in ('final_time', 'solver_status', 'checkpoint_time')))
+        else:
+            # Older collected projects lack summaries. Read only this point's
+            # small metadata files; never parse other scans to repair the cache.
+            result = resolve_result(root, owner)
+            row['final_time'] = output_final_time(result)
+            hint = point_status(result, verify_checkpoint=False)
+            row['solver_status'] = hint['convergence']
+            row['checkpoint_time'] = (hint.get('checkpoint', None) or {}).get('time', None)
+            cache_parameters(row, manifest, result)
+        row['input_sha256'] = manifest.get('input_sha256', {}).get(point_id, {}).get('input.cgyro', row.get('input_sha256', ''))
         task_rows[point_id] = row
     for row in task_rows.values():
         row.update(dict(runid=run_id, case_id=case_key))
@@ -177,8 +163,9 @@ def publish_loaded_run(root):
                      replaced_case_keys=list(dict.fromkeys(replaced)),
                      retry_count=manifest.get('retry_count', 0), attempts=copy.deepcopy(manifest.get('attempts', [])),
                      point_workdirs=copy.deepcopy(manifest.get('point_workdirs', {})),
-                     server=manifest['server'], runtime=copy.deepcopy(manifest.get('runtime', {})),
+                     server=manifest['server'], case_tag=case_tag, runtime=copy.deepcopy(manifest.get('runtime', {})),
                      source_runid=manifest['runid'], collection_status='complete' if complete else 'partial',
+                     submission_complete=complete,
                      planned_points=list(continuation.get('source_points', expected) if continuation else expected),
                      skipped_points=list(manifest.get('skipped_points', [])),
                      continuation_pending={point: row['continuation_pending'] for point, row in task_rows.items()
@@ -186,19 +173,43 @@ def publish_loaded_run(root):
                      status='published'))
     info['case_path'] = grouped_case_path(case_key, info)
     if continuation:
-        prior_info = (source_case['__INFO__'] if source_case is not None else
-                      destination.get('__SCANS__', {}).get(scan_key(manifest), {}).get('info', {}))
-        continuations = copy.deepcopy(prior_info.get('continuations', []))
-        continuations = [item for item in continuations if item.get('run_token', '') != manifest['run_token']]
-        continuations.append(dict(continuation, run_token=manifest['run_token']))
-        info['continuations'] = continuations
-    if source_case is not None:
-        info['point_workdirs'] = {point: row['result_workDir'] for point, row in task_rows.items()
-                                 if row.get('result_workDir', None) is not None}
+        # Provenance is diagnostic metadata only. The result merge does not
+        # load or require any source token's point table.
+        info['continuations'] = [dict(continuation, run_token=manifest['run_token'])]
     # Keep the task table with the results.  Reserved double-underscore keys are
     # hidden by the comparison selectors, while remaining directly inspectable
     # in the OMFIT data tree.
-    store_scan(destination, fresh_output, info, task_rows, OMFITtree)
+    for row in task_rows.values():
+        row['result_info'] = {name: copy.deepcopy(info[name]) for name in RESULT_INFO_FIELDS if name in info}
+    # Backfill detached originals before merging, so retention still detects
+    # any point accidentally omitted by the merge. This copies no file payloads.
+    for case in prior_cases:
+        cache_competing_parameters(case, info, task_rows, lambda node: resolve_result(root, node))
+    destination = combine_cases(prior_cases, OMFITtree)
+    if continuation:
+        cache_merge_status(destination, info, task_rows, lambda node: resolve_result(root, node))
+    store_scan(destination, fresh_output, info, task_rows, OMFITtree, prefer_progress=bool(continuation))
+    share_matching_inputs(destination, info, task_rows, OMFITtree, prefer_progress=bool(continuation))
+    scope = continuation.get('scope', None) if continuation else None
+    if scope is None:
+        scope = scan_scope(dict(info, resume_tasks=manifest.get('point_table', {})))
+        if continuation and set(continuation.get('source_points', [])) - set(expected):
+            scope['unknown'] = sorted(set(continuation['source_points']) - set(expected))
+    prior_scopes = [scan_scope(dict(old_info, tasks=old_tasks)) for case in prior_cases
+                    for key, old_info, old_tasks in case_scans(case) if key == scan_key(info)]
+    scope = merge_scopes(scope, *prior_scopes)
+    scan = destination['__SCANS__'][scan_key(info)]
+    if continuation:
+        winners = {full_point_coordinate(scan['info'], row): reference_id(index_at(destination, row['result_path']))
+                   for row in scan['tasks'].values()}
+        for point, row in task_rows.items():
+            row['archive_pending'] = (continuation_failed(row) and
+                winners[full_point_coordinate(info, row)] != reference_id(run_cases(root, manifest)[point]))
+    scan_complete = scan_completion(scan['info'], scan['tasks'], scope)
+    scan['info'].update(dict(scan_complete=scan_complete, submission_complete=complete,
+                        planned_coordinates=copy.deepcopy(scope),
+                        collection_status='complete' if scan_complete else 'partial'))
+    manifest.update(dict(submission_complete=complete, scan_complete=scan_complete))
     validate_preserved_scans(prior_cases, destination, scan_key(info), task_rows)
     if 'RUN_DB' not in root:
         root['RUN_DB'] = OMFITtree()
@@ -211,13 +222,18 @@ def publish_loaded_run(root):
             del run[key]
     root['RUN_MANIFEST']['case_id'] = case_key
     manifest['runid'] = run_id
-    manifest['collection_status'] = 'complete' if complete else 'partial'
+    manifest['collection_status'] = 'incomplete' if errors else ('complete' if complete else 'partial')
+    for point, row in task_rows.items():
+        manifest['point_table'][point] = copy.deepcopy(dict(row))
+    manifest['unpublished_points'] = [point for point, row in task_rows.items() if row.get('archive_pending', False)]
     if complete:
         manifest['status'] = 'published'
     remember_collection(root)
-    # A successful replacement can retire obsolete failed snapshots. This is a
-    # publication boundary, never a GUI-refresh or scheduler-poll side effect.
-    retire_superseded(root, resolve_result, reference_id, prune=prune_storage)
+    release_published_results(root, destination, verified_cases=prior_cases)
+    # Unlink only the published coordinates here. Proving an owner has no
+    # remaining references is a global maintenance operation, not collection.
+    # One current result per coordinate. Job manifests retain provenance, not
+    # alternate old payload versions; unrelated/unselected points stay intact.
     print('Collected {} complete and {} partial points; {} points skipped. {}'.format(
         len(loaded), len(partial), len(manifest.get('skipped_points', [])),
         'Results merged into RUN_DB / {} / {}.'.format(run_id, ' / '.join(info['case_path']))))

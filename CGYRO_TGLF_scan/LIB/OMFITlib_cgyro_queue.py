@@ -82,7 +82,9 @@ def save_current(root, factory=dict):
     record['manifest'] = deepcopy(manifest)
     if manifest.get('status', '') == 'published':
         saved.pop('point_table', None)
-        record.pop('cases', None)  # Published scan paths now own these points.
+        # Public coordinates are authoritative; a finished job keeps metadata
+        # only. The active collector already installed the result references.
+        record.pop('cases', None)
         record.pop('inputs', None)
     else:
         freeze_run_inputs(root, manifest, factory)

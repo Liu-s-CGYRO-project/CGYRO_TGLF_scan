@@ -57,7 +57,9 @@ class ResourceContinuationTests(unittest.TestCase):
         self.current = dict(executable='cgyro -e . -n 32 -nomp 1', environment='same solver setup', mpi_ranks=32)
         self.plan = dict(source_token='old_run', additional_time=1., runtime=self.previous,
                          rows={'p000001': dict(values={'N_ENERGY': 8., 'KY': 0.1})},
-                         sources={'p000001': dict(mode='checkpoint', directory=str(self.original))})
+                         sources={'p000001': dict(mode='checkpoint', directory=str(self.original),
+                             input_sha256=hashlib.sha256(self.before['input.cgyro']).hexdigest(),
+                             checkpoint_sha256=hashlib.sha256(self.before['bin.cgyro.restart']).hexdigest())})
 
     def prepare(self, **changes):
         runtime = dict(self.current, **changes)
@@ -84,7 +86,8 @@ class ResourceContinuationTests(unittest.TestCase):
             cases={'p000001': test_cgyro_storage.OMFITcgyro(str(self.original))})}})
         self.plan = continuation_plan(root, 'child', ['p000001'], 1.)
         current, metadata, names = self.prepare()
-        self.assertEqual(self.plan['source_points'], ['p000001', 'p000002'])
+        self.assertEqual(self.plan['source_points'], ['p000001'])
+        self.assertEqual(self.plan['scope']['unknown'], ['p000002'])
         self.assertEqual(metadata['continuation']['checkpoint']['time'], .3)
         self.assertEqual(current['MAX_TIME'], 1.)
         for name in self.before:

@@ -72,6 +72,10 @@ def record_options(records):
         scan = scan_key(record, record.get('scan_key', '')).replace('__', ' × ')
         labels[token] = ' | '.join((short_text(runid, 18),
             short_text(case_caption(record.get('case_id', '未知案例')), 26), short_text(scan or '旧扫描', 32)))
+        if record.get('kind', '') == 'scan':
+            labels[token] += ' · 当前结果'
+        elif record.get('kind', '') == 'version':
+            labels[token] += ' · 未归档 ' + str(record.get('job_id', '') or record.get('run_token', '')[:8])
         suffix = ('待核对' if record.get('resume_error', '') else
                   '无新结果' if record.get('collection_status', '') == 'empty' else
                   '旧记录' if record.get('legacy_record', False) else '')

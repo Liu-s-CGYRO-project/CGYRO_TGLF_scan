@@ -247,7 +247,8 @@ execution = (launch_spec(server_setup, setup)
 if continuation:
     # Re-resolve the dialog's frozen identity before reading or changing state.
     continuation = continuation_plan(root, continuation['source_token'],
-        continuation['points'], continuation['additional_time'])
+        continuation['points'], continuation['additional_time'],
+        selections=continuation.get('selections', None), scope=continuation.get('scope', None))
     scan_dimensions = int(continuation['info'].get('scan_dimensions', continuation['info']['dimensions']))
 caseName = continuation['case_tag'] if continuation else physics['case_tag']
 base_workdir = runtime_abs_path(setup_workdir())
@@ -255,16 +256,14 @@ if check_temp_start:
     print('[CGYRO] Checking existing temporary usage once (100 GiB start limit).', flush=True)
     space = check_start_capacity(base_workdir)
     print('[CGYRO] Start check passed; preparing inputs. Later peaks above 100 GiB are allowed.', flush=True)
-print('[CGYRO] Checking saved result/input references before preparing this case.', flush=True)
-compact_storage(root, OMFITtree, run_token=root.get('RUN_MANIFEST', {}).get('run_token', ''))
-previous_cases = result_view(root, run_cases(root))
 restart_mode = 0 if continuation else int(physics['restart_mode'])
+previous_cases = result_view(root, run_cases(root)) if restart_mode else {}
 if restart_mode not in (0, 1):
     raise ValueError('restart_mode must be 0 or 1')
 if restart_mode == 1 and not previous_cases:
     # Completed points are owned by the public scan, not a lingering Cases copy.
     _, _, archived = archived_case(root, root.get('RUN_MANIFEST', {}).get('run_token', ''))
-    previous_cases = {point: point_result(archived, row) for point, row in archived['__TASKS__'].items()}
+    previous_cases = result_view(root, {point: point_result(archived, row) for point, row in archived['__TASKS__'].items()})
 previous_manifest = root.get('RUN_MANIFEST', {})
 if submission_pending(previous_manifest):
     raise ValueError('The previous submission is unconfirmed. Synchronize its saved submission log before submitting again.')
@@ -422,6 +421,7 @@ for point_number, (new_dir, overrides, point_metadata) in enumerate(points, 1):
     inputs.append(prepared['zip'])
     dir_list.append(new_dir)
     input_checksums[new_dir] = checksums
+    point_metadata['input_sha256'] = checksums.get('input.cgyro', '')
     point_table[new_dir] = point_metadata
     # The ZIP and its checksums replace the reproducible expanded checkpoint.
     # Never remove a path still used by the base input reader.
@@ -455,7 +455,7 @@ if continuation:
                          scale_time_with_ky=source_info.get('scale_time_with_ky', False),
                          continuation={key: copy.deepcopy(continuation[key]) for key in
                              ('source_token', 'source_runid', 'source_case_id', 'additional_time', 'points',
-                              'stopped_run', 'source_points')}))
+                              'stopped_run', 'source_points', 'scope')}))
 environment=script_fragment(required_cfg(server_setup, 'environment'))
 executable=script_fragment(required_cfg(server_setup, 'executable')).strip()
 if execution is not None:

@@ -1,5 +1,5 @@
 """Stable case identities and independent parameter scans within each case."""
-from builtins import (AttributeError, OSError, TypeError, ValueError, all, any, bool, dict, enumerate, float, getattr,
+from builtins import (AttributeError, OSError, TypeError, ValueError, all, any, bool, dict, enumerate, float, format, getattr,
                       hasattr, int, isinstance, len, list, max, object, open, range, reversed, set, sorted, str, tuple, type, zip)
 from collections import OrderedDict
 from copy import deepcopy
@@ -45,14 +45,17 @@ def grouped_case_path(value, info=None):
     return path
 
 
-def case_sources(module):
+def case_sources(module, runid=None, caseid=None):
     """Enumerate physical case nodes, keeping old BASE and direct scans apart.
 
     Recovery validates every source independently before moving any branch.
     Views here contain references to existing indexes, never result copies.
     """
     runs = OrderedDict()
-    for rid, source in module.get('RUN_DB', {}).items():
+    db = module.get('RUN_DB', {})
+    sources = db.items() if runid is None else [(runid, db.get(runid, {}))]
+    wanted = case_parts(caseid) if caseid else None
+    for rid, source in sources:
         if str(rid).startswith('__'):
             continue
         entries = runs.setdefault(rid, [])
@@ -62,12 +65,23 @@ def case_sources(module):
         for key, node in source.items():
             if str(key).startswith('__'):
                 continue
+            if wanted:
+                radial_key = 'nr={}_rho={}'.format(wanted[0], wanted[1])
+                if (str(key) != radial_key and canonical_case_key(key) != caseid
+                        and str(key) not in ('nr=' + wanted[0], 'nr={}__ion={}'.format(wanted[0], wanted[2]))):
+                    continue
             node = metadata_value(node)
             radial = re.fullmatch(r'nr=(.+)_rho=([^_/]+)', str(key))
             mapping = (not any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad')
                                for base in type(node).__mro__) and hasattr(node, 'items'))
             if radial is None or not mapping:
+                if wanted and canonical_case_key(key, node.get('__INFO__', {}) if mapping else {}) != caseid:
+                    continue
                 entries.append((key, node, [key]))
+                continue
+            if wanted and wanted[2] != 'BASE':
+                if wanted[2] in node:
+                    entries.append((caseid, node[wanted[2]], [key, wanted[2]]))
                 continue
             records = case_scans(node)
             owned = {scan_branch(node, info, tasks) for _, info, tasks in records}
@@ -77,7 +91,7 @@ def case_sources(module):
                 cid = 'nr={}__rho={}__ion=BASE'.format(*radial.groups())
                 entries.append((cid, direct, [key]))
             for ion, case in node.items():
-                if not str(ion).startswith('__') and ion not in owned:
+                if not str(ion).startswith('__') and ion not in owned and (wanted is None or ion == wanted[2]):
                     cid = 'nr={}__rho={}__ion={}'.format(*radial.groups(), ion)
                     entries.append((cid, case, [key, ion]))
     return runs
@@ -108,14 +122,14 @@ def _case_union(first, second):
     return view
 
 
-def catalog_runs(module):
+def catalog_runs(module, runid=None, caseid=None):
     """Unsaved flat adapter for radius scans, references and isotope cases.
 
     The logical case ID stays stable for job manifests and saved GUI choices.
     Values are existing nodes, not copied result payloads or a saved cache.
     """
     runs = OrderedDict()
-    for rid, sources in case_sources(module).items():
+    for rid, sources in case_sources(module, runid, caseid).items():
         run = OrderedDict()
         for key, node, _ in sources:
             run[key] = _case_union(run[key], node) if key in run else node
@@ -172,6 +186,45 @@ def output_final_time(result):
     except (OSError, TypeError, ValueError):
         pass
     return None
+
+
+def solver_state(result):
+    """Read a bounded solver log tail; scheduler completion is not convergence."""
+    state = 'unknown'
+    try:
+        with open(result_file(result, 'out.cgyro.info'), 'rb') as handle:
+            handle.seek(0, 2)
+            handle.seek(max(0, handle.tell() - 32768))
+            for line in handle.read().decode('utf-8', errors='replace').splitlines():
+                if 'Linear converged' in line:
+                    state = 'converged'
+                elif 'Linear terminated at max time' in line:
+                    state = 'max_time'
+                elif 'Integration error exceeded limit' in line or line.lstrip().startswith('ERROR:'):
+                    state = 'failed'
+    except (OSError, AttributeError, ValueError):
+        pass
+    return state
+
+
+def cache_merge_status(case, info, tasks, resolve):
+    """Backfill old metadata only for coordinates this continuation competes with.
+
+    Ordinary index queries never call this. Missing old caches require at most
+    small log/time tails of the matching points, not solver arrays or binaries.
+    """
+    incoming = {full_point_coordinate(info, row) for row in tasks.values()}
+    for key, saved, rows in case_scans(case):
+        for row in rows.values():
+            if key != scan_key(info) and row.get('input_parameters', None) is None:
+                continue
+            if full_point_coordinate(saved, row) not in incoming:
+                continue
+            if 'solver_status' not in row or row.get('final_time', None) is None:
+                result = resolve(_at(case, row['result_path']))
+                row.setdefault('solver_status', solver_state(result))
+                if row.get('final_time', None) is None:
+                    row['final_time'] = output_final_time(result)
 
 
 def scan_key(info, fallback=''):
@@ -242,19 +295,83 @@ def scan_branch(data, info, tasks):
     raise ValueError('Missing archived scan branch: ' + original)
 
 
+def coordinate_path(row):
+    """Axes/ky path, separate from a disambiguated physical leaf location."""
+    row = metadata_value(row)
+    return list(row.get('coordinate_path', row.get('result_path', [])))
+
+
 def point_coordinate(row):
-    """A point is its complete stored parameter coordinate and signed ky.
+    """Read primary axes and signed ky from the saved coordinate path.
 
     Numeric spelling (16 / 16.00000) and reused Slurm point IDs do not define
     identity. Never identify an entire spectrum by its first parameter alone.
     """
-    path = list(metadata_value(row).get('result_path', []))
+    path = coordinate_path(row)
     if len(path) not in (4, 6, 8) or path[-2] != 'lin':
         raise ValueError('Invalid archived parameter/ky path')
     values = tuple(float(path[index]) for index in list(range(1, len(path) - 2, 2)) + [len(path) - 1])
     if not all(math.isfinite(value) for value in values):
         raise ValueError('Non-finite archived parameter/ky coordinate')
     return tuple(str(path[index]) for index in range(2, len(path) - 2, 2)), values
+
+
+def coordinate_matches(value, label):
+    """Old tree labels round to five decimals; preserve the precise row value."""
+    value, number = float(value), float(label)
+    if not math.isfinite(value) or not math.isfinite(number):
+        return False
+    if math.isclose(value, number, rel_tol=1e-10, abs_tol=1e-12):
+        return True
+    text = str(label)
+    if '.' in text and 'e' not in text.lower():
+        return float(format(value, '.' + str(len(text.split('.')[1])) + 'f')) == number
+    return False
+
+
+def point_values(info, row, include_input=False):
+    """Complete numeric coordinate, including fixed and linked parameters.
+
+    A primary-axis tree path alone cannot distinguish two linked scans with
+    different link values. The existing task table carries those coordinates;
+    no result file, job record, or mutable GUI setting is needed here.
+    """
+    row = metadata_value(row)
+    info = dict(info, **dict(row.get('result_info', {})))
+    secondary, numbers = point_coordinate(row)
+    axes = list(info.get('scan_axes', []))
+    primary = [str(axis['name']) for axis in axes]
+    if not primary:
+        primary = [str(coordinate_path(row)[0]).split('__')[0].split('+')[0]] + list(secondary)
+    if len(primary) != len(numbers) - 1 or tuple(primary[1:]) != secondary:
+        raise ValueError('Result axis metadata disagrees with its coordinate')
+    values = dict(info.get('fixed_parameters', {}))
+    values.update(row.get('values', {}))
+    labels = coordinate_path(row)
+    labels = [labels[index] for index in list(range(1, len(labels) - 2, 2)) + [len(labels) - 1]]
+    for name, value, label in zip(primary + ['KY'], numbers, labels):
+        if name in values and not coordinate_matches(values[name], label):
+            raise ValueError('Result coordinate disagrees with stored ' + name)
+        values.setdefault(name, value)
+    for axis in axes:
+        for link in axis.get('linked', []):
+            if link['name'] not in values:
+                raise ValueError('Missing linked scan coordinate: ' + str(link['name']))
+    values = {str(name): float(value) for name, value in values.items()}
+    if not all(math.isfinite(value) for value in values.values()):
+        raise ValueError('Non-finite result coordinate')
+    if include_input:
+        from OMFITlib_cgyro_input_identity import RUN_CONTROL_PARAMETERS
+        # Generated values include solver defaults and actual ky-scaled DELTA_T.
+        # Their consistency is checked when caching/continuing this point.
+        values.update(row.get('effective_time', {}))
+        values.update(row.get('input_parameters', {}))
+        values = {name: value for name, value in values.items() if name not in RUN_CONTROL_PARAMETERS}
+    return values
+
+
+def full_point_coordinate(info, row):
+    return tuple(sorted(point_values(info, row, include_input=True).items()))
 
 
 def _at(data, path):
@@ -304,13 +421,85 @@ def _install_point(payload, path, result, factory):
     return actual
 
 
+def _prefer_old_result(old_row, new_row):
+    old_time, new_time = _finite_final_time(old_row), _finite_final_time(new_row)
+    old_converged = old_row.get('solver_status', '') == 'converged'
+    new_converged = new_row.get('solver_status', '') == 'converged'
+    # A failed continuation remains task data, not a replacement for a usable
+    # public result. Fresh scans do not call this policy.
+    if continuation_failed(new_row) and old_row.get('solver_status', '') in ('converged', 'max_time'):
+        return True
+    return (old_converged and not new_converged or
+            old_converged == new_converged and old_time is not None and
+            (new_time is None or new_time < old_time))
+
+
+def continuation_failed(row):
+    return (row.get('solver_status', '') == 'failed' or
+            row.get('scheduler_state', '') in ('FAILED', 'OUT_OF_MEMORY', 'NODE_FAIL', 'TIMEOUT', 'CANCELLED', 'PREEMPTED'))
+
+
+def summarize_tasks(info, tasks):
+    """Update small header counts at mutation time, never in a list render."""
+    counts = {}
+    for row in tasks.values():
+        token = str(row.get('run_token', info.get('run_token', '')))
+        counts[token] = counts.get(token, 0) + 1
+    info.update(dict(task_counts=counts, merged_run_tokens=list(counts), points=len(tasks)))
+
+
+def share_matching_inputs(case, info, tasks, factory=dict, prefer_progress=False):
+    """Unify proven equal-input references across existing scan views, off-tree.
+
+    No branch or point index is removed. Only coordinates touched by this
+    publication can change, and each must have expanded input metadata on both
+    sides. The caller validates all other coordinates before committing.
+    """
+    wanted = {full_point_coordinate(info, row) for row in tasks.values()
+              if row.get('input_parameters', None) is not None}
+    groups = {}
+    for key, saved, rows in case_scans(case):
+        for point, row in rows.items():
+            coordinate = full_point_coordinate(saved, row)
+            if row.get('input_parameters', None) is not None and coordinate in wanted:
+                groups.setdefault(coordinate, []).append((key, saved, rows, point, row))
+    for matches in groups.values():
+        current = [item for item in matches if item[0] == scan_key(info)]
+        if not current or len(matches) < 2:
+            continue
+        winner = current[0][4]
+        if prefer_progress:
+            for _, _, _, _, candidate in matches:
+                if _prefer_old_result(candidate, winner):
+                    winner = candidate
+        result = _at(case, winner['result_path'])
+        for _, saved, rows, point, target in matches:
+            row = factory()
+            row.update(deepcopy(dict(winner)))
+            row.update(dict(task_id=point, values=deepcopy(target.get('values', {})), result_path=list(target['result_path'])))
+            row.pop('coordinate_path', None)
+            if target.get('coordinate_path', None):
+                row['coordinate_path'] = list(target['coordinate_path'])
+            row.setdefault('result_info', {})
+            for name in ('scan_axes', 'dimensions', 'scan_dimensions', 'fixed_parameters'):
+                if name in saved:
+                    row['result_info'][name] = deepcopy(saved[name])
+            _at(case, row['result_path'][:-1])[row['result_path'][-1]] = copy_result_tree(result, factory)
+            rows[point] = row
+    for _, saved, rows in case_scans(case):
+        summarize_tasks(saved, rows)
+
+
 def store_scan(destination, data, info, tasks, factory=dict, prefer_progress=False):
     """Upsert points off-tree: replace matching coordinates, retain other ky.
 
     Keep incoming point IDs for its job/continuation records. Reassign only
     colliding retained IDs, recording source_point_id and each row's run_token.
+    Fresh scans always replace matching coordinates. Continuations compare
+    actual solver convergence first, then elapsed simulation time (not DELTA_T).
     File payloads remain references to the sole physical owner in RUN_DB.
     """
+    from OMFITlib_cgyro_result_index import RESULT_INFO_FIELDS
     original = scan_branch(data, info, tasks)
     key = scan_key(info, original)
     if not key or key.startswith('__'):
@@ -323,9 +512,10 @@ def store_scan(destination, data, info, tasks, factory=dict, prefer_progress=Fal
         old_info, old_tasks = existing[key]
         for point, source in old_tasks.items():
             row = deepcopy(dict(metadata_value(source)))
+            row.setdefault('result_info', {name: deepcopy(old_info[name]) for name in RESULT_INFO_FIELDS if name in old_info})
             _finite_final_time(row)
             row.setdefault('run_token', old_info.get('run_token', ''))
-            coordinate = point_coordinate(row)
+            coordinate = full_point_coordinate(old_info, row)
             if coordinate in points:
                 raise ValueError('Duplicate coordinate in existing scan')
             points[coordinate] = (str(point), row, _at(destination, row['result_path']), False)
@@ -335,8 +525,9 @@ def store_scan(destination, data, info, tasks, factory=dict, prefer_progress=Fal
         saved_info['scan_axes'] = axes
     for point, source in metadata_value(tasks).items():
         row = deepcopy(dict(metadata_value(source)))
+        row.setdefault('result_info', {name: deepcopy(info[name]) for name in RESULT_INFO_FIELDS if name in info})
         _finite_final_time(row)
-        coordinate = point_coordinate(row)
+        coordinate = full_point_coordinate(info, row)
         if coordinate in incoming:
             raise ValueError('Duplicate coordinate in incoming scan')
         incoming.add(coordinate)
@@ -346,17 +537,7 @@ def store_scan(destination, data, info, tasks, factory=dict, prefer_progress=Fal
         result = _at(data, path)
         if coordinate in points:
             old_point, old_row, old_result, _ = points[coordinate]
-            old_complete = point_complete(old_row, legacy_default=True)
-            new_complete = point_complete(row, legacy_default=True)
-            old_time, new_time = _finite_final_time(old_row), _finite_final_time(row)
-            if ((old_complete and not new_complete and
-                    (old_time is None or new_time is None or float(new_time) <= float(old_time))) or
-                    (not old_complete and not new_complete and old_time is not None
-                     and (new_time is None or float(new_time) < float(old_time))) or
-                    (prefer_progress and old_time is not None and new_time is not None
-                     and float(new_time) < float(old_time))):
-                # Incomplete recollection must not replace a useful completed
-                # result, or roll a checkpoint back to an earlier saved time.
+            if prefer_progress and _prefer_old_result(old_row, row):
                 row, result = deepcopy(old_row), old_result
                 if str(point) != old_point:
                     row.setdefault('source_point_id', old_point)
@@ -366,6 +547,13 @@ def store_scan(destination, data, info, tasks, factory=dict, prefer_progress=Fal
     used, payload = set(), factory()
     number = max([int(point[1:]) for point, _, _, _ in points.values()
                   if re.fullmatch(r'p[0-9]{6,}', point)] + [0])
+    # Ordinary scans keep their familiar tree. Only genuinely different full
+    # coordinates sharing a primary-axis/ky path need one readable extra level.
+    # Both physical locations stay in the existing task index; no second store.
+    path_values = {}
+    for _, row, _, _ in points.values():
+        coordinate = point_coordinate(row)
+        path_values.setdefault(coordinate, []).append(point_values(info, row, include_input=True))
     for point, source, result, fresh in points.values():
         assigned = point
         while assigned in used or not fresh and assigned in reserved:
@@ -377,12 +565,21 @@ def store_scan(destination, data, info, tasks, factory=dict, prefer_progress=Fal
         if assigned != point:
             row.setdefault('source_point_id', point)
         row['task_id'] = assigned
-        path = [key] + list(row['result_path'])[1:]
+        path = [key] + coordinate_path(row)[1:]
+        row['result_path'] = list(path)
+        row.pop('coordinate_path', None)
+        variants = path_values[point_coordinate(row)]
+        if len(variants) > 1:
+            row['coordinate_path'] = list(path)
+            values = point_values(info, row, include_input=True)
+            varied = {name for item in variants for name in item
+                      if len({item.get(name, None) for item in variants}) > 1}
+            label = ', '.join('{}={:.17g}'.format(name, value) for name, value in sorted(values.items()) if name in varied)
+            path.append(label or 'original parameters')
         row['result_path'] = _install_point(payload, path, result, factory)
         saved_tasks[assigned] = row
     saved_info.update(dict(scan_key=key, parameters=[key]))
-    saved_info['points'] = len(saved_tasks)
-    saved_info['merged_run_tokens'] = list(dict.fromkeys(str(row.get('run_token', '')) for row in saved_tasks.values()))
+    summarize_tasks(saved_info, saved_tasks)
     record = factory()
     record.update(dict(info=saved_info, tasks=saved_tasks))
     destination[key] = payload[key]
@@ -473,7 +670,9 @@ def validate_preserved_scans(cases, destination, replaced_scan, incoming_tasks=N
     retained coordinates and result references before removing old aliases.
     """
     expected, unindexed, retained_points = {}, set(), {}
-    changed = set() if incoming_tasks is None else {point_coordinate(row) for row in incoming_tasks.values()}
+    changed = set() if incoming_tasks is None else {full_point_coordinate({}, row) for row in incoming_tasks.values()}
+    effective_changed = set() if incoming_tasks is None else {
+        full_point_coordinate({}, row) for row in incoming_tasks.values() if row.get('input_parameters', None) is not None}
     for case in cases:
         records = case_scans(case)
         owned = {scan_branch(case, info, tasks) for _, info, tasks in records}
@@ -484,7 +683,7 @@ def validate_preserved_scans(cases, destination, replaced_scan, incoming_tasks=N
                 expected[key] = (case, info, tasks)
             else:
                 for row in tasks.values():
-                    coordinate = point_coordinate(row)
+                    coordinate = full_point_coordinate(info, row)
                     if coordinate not in changed:
                         retained_points[coordinate] = _at(case, row['result_path'])
     actual = {scan_key(info, key): (info, tasks) for key, info, tasks in case_scans(destination)}
@@ -492,7 +691,8 @@ def validate_preserved_scans(cases, destination, replaced_scan, incoming_tasks=N
     if missing:
         raise ValueError('Archive retention check failed; previous scans are preserved: ' + ', '.join(sorted(missing)))
     retained_tasks = actual.get(replaced_scan, ({}, {}))[1]
-    retained = {point_coordinate(row): _at(destination, row['result_path']) for row in retained_tasks.values()}
+    retained = {full_point_coordinate(actual.get(replaced_scan, ({}, {}))[0], row): _at(destination, row['result_path'])
+                for row in retained_tasks.values()}
     for coordinate, result in retained_points.items():
         if coordinate not in retained or not same_result_reference(retained[coordinate], result):
             raise ValueError('Archive retention check failed for prior parameter/ky coordinate: ' + str(coordinate))
@@ -511,14 +711,19 @@ def validate_preserved_scans(cases, destination, replaced_scan, incoming_tasks=N
                 if part not in node:
                     raise ValueError('Archive point missing in retained scan: ' + key + ' / ' + str(point))
                 node = node[part]
-            if not same_result_reference(node, _at(source_case, row['result_path'])):
+            coordinate = full_point_coordinate(info, row)
+            expected_node = (retained[coordinate] if row.get('input_parameters', None) is not None
+                             and coordinate in effective_changed and coordinate in retained else
+                             _at(source_case, row['result_path']))
+            if not same_result_reference(node, expected_node):
                 raise ValueError('Archive result changed in retained scan: ' + key + ' / ' + str(point))
 
 
 def matching_cases(module, runid, identity):
     """Return old case keys oldest-first, with the visible revision last."""
-    run = catalog_runs(module).get(runid, {})
-    _, aliases = latest_cases(module, runid)
+    catalog = catalog_runs(module, runid, identity)
+    run = catalog.get(runid, {})
+    _, aliases = latest_cases(module, runid, catalog=catalog)
     keys = [key for key in run if not str(key).startswith('__') and hasattr(run[key], 'get')
             and canonical_case_key(key, run[key].get('__INFO__', {})) == identity]
     # __INFO__ carries the publication timestamp for old and new records.
@@ -564,14 +769,12 @@ def case_parts(value):
 def latest_cases(module, runid, catalog=None):
     """Return actual readable keys and alias lookup; never delete old results.
 
-    Former publishers inserted RUN_HISTORY and RUN_DB entries in publication
-    order. Use that recorded order, never the random UUID's lexical order.
+    Public timestamps and archive order belong to RUN_DB. Job history cannot
+    determine which physical result a reader sees, nor is a UUID chronological.
     """
     # A caller rendering several selectors can reuse its current metadata view.
     # The optional snapshot must not outlive that render or be saved in RUN_DB.
     run = (catalog_runs(module) if catalog is None else catalog).get(runid, {})
-    history = module.get('RUN_HISTORY', {})
-    order = {str(token): index for index, token in enumerate(history.keys())}
     current = module.get('RUN_MANIFEST', {})
     current_token = str(current.get('run_token', '')) if current.get('status', '') == 'published' else ''
     groups = OrderedDict()
@@ -587,13 +790,11 @@ def latest_cases(module, runid, catalog=None):
         groups.setdefault(identity, []).append((key, info, index))
     visible, aliases = [], {}
     for identity, candidates in groups.items():
-        tokens = [str(info.get('run_token', '')) for _, info, _ in candidates]
-        have_history = not getattr(history, 'sorted', False) and all(token in order for token in tokens)
         def rank(item):
             _, info, index = item
             token = str(info.get('run_token', ''))
             return (bool(current_token and token == current_token),
-                    str(info.get('published_at', '') or ''), order[token] if have_history else index)
+                    str(info.get('published_at', '') or ''), index)
         key, _, _ = max(candidates, key=rank)
         visible.append(key)
         aliases[identity] = key

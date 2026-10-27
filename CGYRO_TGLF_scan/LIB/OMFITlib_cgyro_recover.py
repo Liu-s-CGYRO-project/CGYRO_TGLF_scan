@@ -10,8 +10,8 @@ from builtins import (BaseException, KeyError, TypeError, ValueError, any, dict,
 from copy import deepcopy
 import math
 import re
-from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, case_sources, clean_run_id,
-                                   grouped_case_path, install_case, output_final_time, scan_branch, store_scan)
+from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, case_sources, clean_run_id, coordinate_path,
+                                   grouped_case_path, install_case, output_final_time, point_values, scan_branch, store_scan)
 from OMFITlib_cgyro_db import PENDING, STATE, ensure_layout, metadata_value, rollback_actions, run_records
 
 
@@ -75,27 +75,17 @@ def _indexed_case(case, resolve, module, factory):
         tasks = factory()
         for point, source_row in metadata_value(source_tasks).items():
             row = deepcopy(dict(metadata_value(source_row)))
-            path = list(row.get('result_path', []))
+            path = coordinate_path(row)
             if len(path) != 2 * len(names) + 2 or path[-2] != 'lin':
                 raise ValueError('Invalid point path: ' + str(point))
-            actual_path = [branch] + path[1:]
+            actual_path = [branch] + list(row['result_path'])[1:]
             result = resolve(module, _point(case, actual_path))
             if not (any(base.__name__ == 'OMFITcgyro' for base in type(result).__mro__) or
                     any(base.__name__ == 'OMFITlazyLoad' for base in type(result).__mro__)
                     and vars(result).get('tp', '') == 'OMFITcgyro'):
                 raise ValueError('Point has no verified CGYRO output: ' + str(point))
-            values = dict(metadata_value(row.get('values', {})))
-            for index, name in enumerate(names):
-                if index and str(path[2 * index]) != name:
-                    raise ValueError('Scan axis conflicts with stored point path')
-                number = float(path[2 * index + 1])
-                if not math.isfinite(number) or (name in values and not math.isclose(float(values[name]), number, rel_tol=1e-8, abs_tol=1e-10)):
-                    raise ValueError('Conflicting archived coordinate: ' + name)
-                values[name] = number
-            ky = float(path[-1])
-            if not math.isfinite(ky) or ('KY' in values and not math.isclose(float(values['KY']), ky, rel_tol=1e-8, abs_tol=1e-10)):
-                raise ValueError('Conflicting archived ky')
-            row.update(dict(task_id=str(point), values=dict(values, KY=ky), result_path=actual_path))
+            values = point_values(info, row)
+            row.update(dict(task_id=str(point), values=values, result_path=actual_path))
             row.setdefault('status', 'partial' if info.get('collection_status', '') == 'partial' else 'loaded')
             row.setdefault('resume_pending', row['status'] != 'loaded')
             row['final_time'] = output_final_time(result)
@@ -117,6 +107,19 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
     touching the installed catalog; unknown sources remain inside RUN_DB.
     """
     db = ensure_layout(module, factory)
+    from OMFITlib_cgyro_result_index import normalized_info, result_identity, identity_key
+    public_coordinates = set()
+    # Recovery accepts mixed legacy BASE/direct layouts before catalog_runs can
+    # consolidate them. Read their indexes here without requiring that migration.
+    for rid, sources in case_sources(module).items():
+        for cid, case, _ in sources:
+            for _, info, tasks in case_scans(case):
+                entry = normalized_info(info, rid, cid)
+                for row in tasks.values():
+                    try:
+                        public_coordinates.add(identity_key(result_identity(entry, row)))
+                    except (KeyError, TypeError, ValueError):
+                        pass  # Uncertain legacy sources remain available for diagnosis.
     pending = dict(metadata_value(db.get(PENDING, {})))
     grouped_before = db.get(STATE, {}).get('case_layout', '') == 'radius-scans'
     candidates = []
@@ -147,6 +150,13 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
         for point, row in manifest.get('point_table', {}).items():
             if point not in points or _reference(points[point]) is None:
                 continue
+            if point in record.get('retired_points', {}):
+                continue
+            try:
+                if identity_key(result_identity(manifest, row)) in public_coordinates:
+                    continue  # Maintenance cannot replace RUN_DB with old job copies.
+            except (KeyError, TypeError, ValueError):
+                pass
             path = list(row.get('result_path', []))
             if not path:
                 continue
