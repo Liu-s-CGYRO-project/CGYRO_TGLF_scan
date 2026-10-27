@@ -1,8 +1,16 @@
 # 维护与扩展接口
 
-适用于工程 1.24.23。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.24。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 
+
+## 热更新时布局对象的生命周期（1.24.24）
+
+原生 `GUI.update` 销毁 `parentGUI` 内的控件，但保留该 Frame 及其 Python 属性。`_cgyro_gui_layout` 因此可能仍是上一版类的实例；导入新 LIB 不会给这个实例补上新方法。`TabPages` 在构建过程中立即显示所选标签，先调用 `finish_gui_subtree`，随后外层页面才调用 `finish_gui_layout`。1.24.23 在此直接调用旧实例的 `prune`，导致由 1.24.22 热更新时失败。
+
+`finish_gui_subtree` 先检查布局锚点。锚点已销毁或不存在时交给最后的 `finish_gui_layout` 统一构造新布局，不能遍历旧控件，也不把正常整页重建当作增量扩展。仍挂载的旧布局通过当前模块的 `_prune_layout(layout)` 清理共用列表，不要求旧类新增方法。保留 `NativeLayout.prune` 入口供可能存活的 1.24.23 调用方使用。不要全局改类或捕获 AttributeError 后宣称升级成功；管理器事务与回滚继续保留。
+
+`tests/test_gui_tab_pages.py` 覆盖持久 Frame 中无 prune 的旧布局以及仍挂载旧布局的局部更新。`tools/validate_template_live.py --previous-project <已发布纯代码ZIP> <原生omfit目录> --output <报告JSON>` 从发行包载入真实旧 GUI LIB，使用原生 SortedDict、导入器和 GUI.update，在同一 TopLevel 中运行管理器 apply/undo；新版夹具必须包含按需标签，只有 Label 的旧夹具无法覆盖这条调用顺序。该工具使用文件节点/会话适配器，不等于完整服务器 OMFIT 验收。离线字体与 LIB 路径沿用回归运行器的 environment 配置。
 
 ## 页面构建与续算归档边界（1.24.23）
 

@@ -10,6 +10,7 @@ import weakref
 import test_gui_refresh_native as native
 from OMFITlib_gui_deferred import TabPages
 from OMFITlib_gui_layout import finish_gui_layout
+import OMFITlib_gui_layout as layout_module
 import OMFITlib_gui_fonts as fonts
 import OMFITlib_gui_api as widgets
 
@@ -131,6 +132,49 @@ class NativeTabsTests(unittest.TestCase):
         self.assertFalse(old.winfo_exists())
         self.assertEqual(self.state['page'], 'run')
         self.assertEqual(self.pages.notebook.index('current'), 1)
+
+    def test_full_redraw_does_not_use_layout_left_on_persistent_content(self):
+        self.build()
+        content, anchor = self.header.master.master, self.header
+        # Native GUI.update destroys the children but keeps this frame
+        # and its Python attributes, including an older layout object.
+        # Do not supply prune: pre-1.24.23 objects have no such method.
+        legacy = SimpleNamespace(anchor=anchor, _cancel_scroll=lambda: None)
+        content._cgyro_gui_layout = legacy
+        self.host.owner.update()
+        self.host.root.update()
+        self.assertFalse(anchor.winfo_exists())
+        self.assertIs(self.header.master.master, content)
+        self.assertIsNot(content._cgyro_gui_layout, legacy)
+        self.assertIs(content._cgyro_gui_layout.anchor, self.header)
+        self.assertTrue(self.entry.winfo_exists())
+
+    def test_mounted_legacy_layout_accepts_subtree_without_new_instance_methods(self):
+        self.build()
+        content, anchor = self.header.master.master, self.header
+        child = native.ttk.Frame(content)
+        child.pack()
+        dead = native.ttk.Label(child, text='retired')
+        dead.destroy()
+        calls = []
+        legacy = SimpleNamespace(anchor=anchor,
+            _walk=lambda frame: calls.append(('walk', frame)),
+            reflow=lambda: calls.append(('reflow',)),
+            _queue_scroll=lambda: calls.append(('queue',)))
+        for key in ('labels', 'notebooks', 'panels', 'reset_help_buttons', 'reset_help_spacers'):
+            setattr(legacy, key, [dead, anchor])
+        for key in ('rows', 'inline_rows', 'forms'):
+            setattr(legacy, key, [(dead, []), (anchor, [])])
+        current = content._cgyro_gui_layout
+        content._cgyro_gui_layout = legacy
+        try:
+            layout_module.finish_gui_subtree(child)
+            self.assertEqual(calls, [('walk', child), ('reflow',), ('queue',)])
+            self.assertEqual(legacy.labels, [anchor])
+            self.assertEqual(legacy.rows, [(anchor, [])])
+        finally:
+            content._cgyro_gui_layout = current
+            child.destroy()
 
     def test_failed_replacement_retains_prior_panel_and_retry_has_no_duplicates(self):
         self.build()

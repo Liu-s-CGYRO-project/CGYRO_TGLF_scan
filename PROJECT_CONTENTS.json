@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.24.23",
-  "parent_release": "1.24.22",
+  "version": "1.24.24",
+  "parent_release": "1.24.23",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -236,7 +236,7 @@
     "CGYRO_TGLF_scan/CGYRO_scan/SettingsNamelist.txt": "ea639e8e105899f230ec4b365ed365f29702623b892c1f2e9f45176eb48ce236",
     "CGYRO_TGLF_scan/CGYRO_scan/help.rst": "422f96834b12182ea05db88a29dd9199f2479dc8617bbbaee9d36294de54ba55",
     "CGYRO_TGLF_scan/CGYRO_scan/tmp.py.py": "4412edc915ad3db632ee9bc77135c4ae93dfe83d74467157d1aff3e21232bdc4",
-    "CGYRO_TGLF_scan/DOCS/CANCEL_RESUME.md": "c0addaa39879428bfbbabbcdb833b85c1f68f69391801f90b9d69b1233c08cc7",
+    "CGYRO_TGLF_scan/DOCS/CANCEL_RESUME.md": "8259d5faa50417df74be725dda60325d2c1010aae697c97bb924d48b0d2a5c57",
     "CGYRO_TGLF_scan/DOCS/FIRST_DEPLOY.md": "f55a08cf7a1720eeda4dacb91d8e2ded2efa5094a91b21dff930f36fb970f8c3",
     "CGYRO_TGLF_scan/DOCS/FONT_LICENSE.txt": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
     "CGYRO_TGLF_scan/DOCS/GUI_FONTS.md": "a56411a2455e5204fe71d0daa28c35678757104f9bbb7a9c463e36162a6fcf89",
@@ -320,7 +320,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_deferred.py": "a09a65b239b4a7bffd393bdad98b9e621097f481227741e23cadcb2beeae3c58",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_font_data.py": "012452fc4ba53d52d43f539097cec5c9c558d521e7f328eb31b14268ed1a541e",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_fonts.py": "6f3fbb4dd1d2c03774967da60f32851515e7b9be2552f956ece4ee62c3e69bcf",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "7af1acd8e161ed27b5e58a15f5c686c1b6a65148842e5689fa73069b0cd936cd",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "92a6be74abedce04461a5ac30947f1c9112e98321be287594d62be9251b2df36",
     "CGYRO_TGLF_scan/LIB/OMFITlib_plot_font_assets.py": "034b620178b6bf062f6f1a3e9c3dd71ee127a38e77bdcfeceb02cd618fb65b6f",
     "CGYRO_TGLF_scan/LIB/OMFITlib_plot_font_data.py": "181bec8cbdd1635d1e1f6111acb99e8a03f1055cf029f4574b5fda0e61a0e093",
     "CGYRO_TGLF_scan/LIB/OMFITlib_plot_fonts.py": "b4efc0f4d7db0af96fe369930d7d58d84015eb6afbe4f917077e662c20b5b760",

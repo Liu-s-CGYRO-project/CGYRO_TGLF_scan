@@ -60,12 +60,32 @@ def finish_gui_subtree(content):
     while isinstance(parent, tk.Misc):
         layout = getattr(parent, '_cgyro_gui_layout', None)
         if layout is not None:
-            layout.prune()
+            # GUI.update retains the content frame, but destroys its children.
+            # Until finish_gui_layout installs the replacement, that frame can
+            # still carry a layout from the previous code version. Its dead
+            # anchor means the whole page is being rebuilt, not extended.
+            anchor = getattr(layout, 'anchor', None)
+            if not isinstance(anchor, tk.Misc) or not anchor.winfo_exists():
+                return
+            _prune_layout(layout)
             layout._walk(content)
             layout.reflow()
             layout._queue_scroll()
             return
         parent = parent.master
+
+
+def _prune_layout(layout):
+    """Prune shared widget lists without requiring new methods on old objects.
+
+    A mounted layout may survive a live code update. Keep this operation in
+    the new module, rather than calling a method absent from that instance's
+    original class. Layout constructors and callbacks stay version-consistent.
+    """
+    for key in ('labels', 'notebooks', 'panels', 'reset_help_buttons', 'reset_help_spacers'):
+        setattr(layout, key, [widget for widget in getattr(layout, key) if widget.winfo_exists()])
+    for key in ('rows', 'inline_rows', 'forms'):
+        setattr(layout, key, [entry for entry in getattr(layout, key) if entry[0].winfo_exists()])
 
 
 def _style_console(console):
@@ -512,11 +532,8 @@ class NativeLayout:
         self._queue_scroll()
 
     def prune(self):
-        """Discard destroyed tab controls before adding a replacement subtree."""
-        for key in ('labels', 'notebooks', 'panels', 'reset_help_buttons', 'reset_help_spacers'):
-            setattr(self, key, [widget for widget in getattr(self, key) if widget.winfo_exists()])
-        for key in ('rows', 'inline_rows', 'forms'):
-            setattr(self, key, [entry for entry in getattr(self, key) if entry[0].winfo_exists()])
+        # Existing 1.24.23 tab callbacks can outlive a live code update.
+        _prune_layout(self)
 
     def reflow(self):
         for frame, items in self.rows:
