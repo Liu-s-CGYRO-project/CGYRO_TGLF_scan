@@ -44,7 +44,7 @@ SELECTION_KEYS = (
     'para_flag', 'para_list_flag', 'selected_paras', 'selected_paras_2d',
     'rho_pair_flags', 'rho_pair_cfg', 'para_list_flag_by_nr',
     'selected_paras_by_nr', '_selector_keys', '_pairing_run',
-    'cgyro_multi', 'cgyro_multi_by_nr',
+    'cgyro_multi', 'cgyro_multi_by_nr', 'force_read_all_nr_items',
 )
 
 
@@ -140,6 +140,43 @@ def plot_state(mode, state):
     return state if mode == 'CGYRO_vs_CGYRO' else state.setdefault('plot', {})
 
 
+def selected_cgyro_runs(state):
+    """Reuse the existing per-run selector snapshots, without touching RUN_DB.
+
+    Plot options are shared. Each checked run keeps its own exact radii, axes
+    and values; an unconfigured run must not borrow another run's selection.
+    """
+    if not state.get('compare_multiple_runs', False):
+        return [state]
+    selected = []
+    for runid, enabled in state.get('compare_run_flags', {}).items():
+        if not enabled:
+            continue
+        settings = dict(state, runid=runid)
+        if runid != state.get('runid', ''):
+            for key in SELECTION_KEYS:
+                settings.pop(key, None)
+            settings.update(state.get('_selection_sources', {}).get(str(runid), {}))
+        selected.append(settings)
+    return selected
+
+
+def _cgyro_selection_errors(root, cg, mode):
+    errors = []
+    if cg.get('runid', None) not in root.get('CGYRO_scan', {}).get('RUN_DB', {}):
+        errors.append('请选择已保存的 CGYRO 运行记录。')
+    selections = [cg.get('selected_paras', {})]
+    if mode == 'CGYRO_vs_CGYRO' and cg.get('force_read_all_nr_items', None):
+        selections = [cg.get('selected_paras_by_nr', {}).get(str(nr), {}) for nr in cg.get('nr_CGYRO', [])]
+    if not any(has_values(v) for selected in selections for v in selected.values()):
+        errors.append('请选择 CGYRO 扫描参数及取值。')
+    errors.extend(_cgyro_axis_errors(cg))
+    if mode == 'CGYRO_vs_CGYRO' and not cg.get('nr_CGYRO', None):
+        errors.append('请选择所选 CGYRO 半径下的离子。' if cg.get('cgyro_radius_selected', None)
+                      else '请选择 CGYRO 半径。')
+    return errors
+
+
 def initialize_settings(root):
     physics = root.setdefault('SETTINGS', {}).setdefault('PHYSICS', {})
     if physics.get('compare_mode', None) not in MODES:
@@ -207,17 +244,13 @@ def selection_check(root, mode=None):
     if mode not in MODES:
         errors.append('请选择有效的对比方式。')
     if mode != 'TGLF_vs_TGLF':
-        if cg.get('runid', None) not in root.get('CGYRO_scan', {}).get('RUN_DB', {}):
-            errors.append('请选择已保存的 CGYRO 运行记录。')
-        selections = [cg.get('selected_paras', {})]
-        if mode == 'CGYRO_vs_CGYRO' and cg.get('force_read_all_nr_items', None):
-            selections = [cg.get('selected_paras_by_nr', {}).get(str(nr), {}) for nr in cg.get('nr_CGYRO', [])]
-        if not any(has_values(v) for selected in selections for v in selected.values()):
-            errors.append('请选择 CGYRO 扫描参数及取值。')
-        errors.extend(_cgyro_axis_errors(cg))
-        if mode == 'CGYRO_vs_CGYRO' and not cg.get('nr_CGYRO', None):
-            errors.append('请选择所选 CGYRO 半径下的离子。' if cg.get('cgyro_radius_selected', None)
-                          else '请选择 CGYRO 半径。')
+        multiple = mode == 'CGYRO_vs_CGYRO' and cg.get('compare_multiple_runs', False)
+        choices = selected_cgyro_runs(cg) if multiple else [cg]
+        if not choices:
+            errors.append('请勾选要对比的 CGYRO 运行记录。')
+        for choice in choices:
+            prefix = str(choice.get('runid', '')) + '：' if multiple else ''
+            errors.extend(prefix + error for error in _cgyro_selection_errors(root, choice, mode))
         if not time_traces:
             try:
                 window = float(settings.get('ave_window', STAT_DEFAULTS['ave_window']))

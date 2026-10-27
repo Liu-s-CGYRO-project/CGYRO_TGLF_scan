@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 
 FAKE_NATIVE = {'test_cgyro', 'test_compare', 'test_native_mapping', 'test_project',
-               'test_project_runtime', 'test_tglf_multi', 'test_tglf_parameters'}
+               'test_project_runtime', 'test_tglf_multi', 'test_tglf_parameters', 'test_transfer_schemes'}
 NATIVE_SOURCE = {'test_gui_refresh', 'test_gui_refresh_controls', 'test_gui_refresh_native', 'test_cgyro_callback_imports',
                  'test_cgyro_remote_environment', 'test_cgyro_archive_reference',
                  'test_cgyro_file_dedup', 'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_runtime_persistence',

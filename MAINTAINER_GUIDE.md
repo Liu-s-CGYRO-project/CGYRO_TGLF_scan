@@ -1,6 +1,16 @@
 # 维护与扩展接口
 
-适用于工程 1.24.28。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.30。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+
+## 转换方案与跨记录比较（1.24.30）
+
+`OMFITlib_transfer_schemes` 仅组织已有 Transfer 流程。`generate_schemes` 预检查全部所选方案，每轮使用独立的 INPUTS/OUTPUTS/Transfer_file 工作分支；不复制原结果。finally 恢复原分支和 SETUP，全部成功后一次安装 `OUTPUTS/CGYRO_schemes`。文件容器必须使用传入的原生 OMFITtree factory，才能随工程保存与更新正确跟随文件引用；不要把文件 reader 塞进普通元数据字典。
+
+每组只持有局部输入与 `particle_record` 的 options/main_count/local_inputs，以及源剖面摘要。不得复制完整 plot_profile 或 TGYRO 输出。`scheme_sources` 仅读半径元数据和输入键，复用 `cgyro_plan` 的输入路径及同位素准备；批量键为 scheme:nr，结果名称为基础 runid + `__transfer_` + scheme。原来的单方案仍用 nr 键和原 runid。提交时临时切换输入与 runid，finally 恢复编辑器状态；准确作业身份、恢复、收集和 RUN_DB 归档保持原接口。
+
+跨记录绘图使用现有 `_selection_sources` 保存的选择，不另建结果库。`selected_cgyro_runs` 只组合所选记录的半径、轴、取值与共同样式；未配置记录不能借用其他记录的选择。`force_read_all_nr_items` 也随来源保存。每个上下文只查询对应 runid 的索引，collect 只读选定结果。渲染时加来源图例；3D 页键包含来源，不能跨方案组装数据面。导出复用原接口，每个来源单独输出并注明统计窗口。
+
+方案及运行记录的普通勾选设置 updateGUI=False；切换来源只重建所属选择区域，生成动作刷新其页面。完整性检查和输入复制只在显式生成/准备/提交中执行。`test_transfer_schemes` 用不可访问对象守住未选结果边界，覆盖生成失败/中断回滚、同点编号输入隔离、提交名称恢复、选择记忆、跨记录曲线与导出。转换/提交使用夹具，服务器实际 TGYRO/CGYRO 与原生工程保存重开仍需现场验收。
 
 
 

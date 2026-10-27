@@ -57,10 +57,15 @@ def _adjust_labels(texts, axis):
                 arrowprops=dict(arrowstyle='->', color='red', lw=1.5))
 
 
+def _item_prefix(item, ctx):
+    source = item.get('source_label', '')
+    return (source + ' · ' if source else '') + _legend_nr_prefix(ctx, item['nr'])
+
+
 def _label(item, ctx):
     if item.get('slice_meta', {}):
-        return _legend_nr_prefix(ctx, item['nr']) + coordinate_label(item['slice_meta'], item['value'])
-    return '{}{}={}'.format(_legend_nr_prefix(ctx, item['nr']), item['para'], compact_scan_value(item['value']))
+        return _item_prefix(item, ctx) + coordinate_label(item['slice_meta'], item['value'])
+    return '{}{}={}'.format(_item_prefix(item, ctx), item['para'], compact_scan_value(item['value']))
 
 
 def _spectra(axes, items, ctx):
@@ -119,7 +124,7 @@ def _single_ky(axes, items, ctx):
         for ky in selected:
             column = np.flatnonzero(x == ky)[0]
             # A missing scan value stays NaN, leaving a visible gap in the curve.
-            label = '{}{}, ky={:.4g}'.format(_legend_nr_prefix(ctx, item['nr']), slice_caption(item.get('slice_meta', {}), item['para']), ky)
+            label = '{}{}, ky={:.4g}'.format(_item_prefix(item, ctx), slice_caption(item.get('slice_meta', {}), item['para']), ky)
             for axis, values in zip(axes.ravel(), (omega[:, column], gamma[:, column])):
                 axis.plot(y, values, 'o-', label=label, linewidth=ctx['lw'], markersize=ctx['ms'])
     parameters = list(dict.fromkeys(item.get('axis_name', item['para']) for item in items))
@@ -134,7 +139,7 @@ def _ratio(axes, items, ctx):
     for item in items:
         x, y, reference = item['ratio']
         axis.plot(x, y, 'o-', linewidth=ctx['lw'], markersize=ctx['ms'],
-                  label='{}{}, ref={:g}'.format(_legend_nr_prefix(ctx, item['nr']), slice_caption(item.get('slice_meta', {}), item['para']), reference))
+                  label='{}{}, ref={:g}'.format(_item_prefix(item, ctx), slice_caption(item.get('slice_meta', {}), item['para']), reference))
     parameters = list(dict.fromkeys(item.get('axis_name', item['para']) for item in items))
     axis.set_xlabel(str(parameters[0]) if len(parameters) == 1 else 'parameter value')
     axis.set_ylabel(r'$\gamma/\gamma_{\mathrm{ref}}$')

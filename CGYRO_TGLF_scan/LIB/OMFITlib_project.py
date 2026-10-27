@@ -36,6 +36,7 @@ from OMFITlib_tglf_workbench import (PROFILE_PATH, RADII, initialize as initiali
     fully_failed, generation_overrides, input_rows as tglf_rows, plan as tglf_plan)
 from OMFITlib_tglf_multi_data import profile_digest, profile_info, tgyro_input
 from OMFITlib_transfer_particles import particle_options
+from OMFITlib_transfer_schemes import generate_schemes, scheme_runid
 from OMFITlib_cgyro_parameters import (initialize_parameters,
     numeric_source, parameter_catalog)
 from OMFITlib_cgyro_scan_values import scan_axes as configured_scan_axes
@@ -520,8 +521,8 @@ class ProjectActions:
             if not bool(self.settings['cgyro_radii'].get(row['key'], False)):
                 continue
             source = read(self.root, row['path'])
-            mains = _cgyro_main_indices(self.root, source, row['path'])
-            nr_key = str(row['nr'])
+            mains = _cgyro_main_indices(self.root, source, row['path'], row.get('particle_record', None))
+            nr_key = row.get('batch_key', str(row['nr']))
             radial = self.factory()
             case_records = self.factory()
             source_ion_label = _original_ion_label(source, mains)
@@ -531,7 +532,9 @@ class ProjectActions:
                 radial[ion_case] = value
                 case_records[ion_case] = dict(isotope_preparation=provenance, fixed_parameters=dict(fixed),
                     scan_axes=configured_scan_axes(case_physics, dimensions, value))
-                plan.append(dict(nr=row['nr'], rho=row['rho'], ion_case=ion_case,
+                plan.append(dict(nr=row['nr'], rho=row['rho'], ion_case=ion_case, batch_key=nr_key,
+                                 runid=scheme_runid(module(self.root, 'cgyro')['SETTINGS']['EXPERIMENT']['runid'],
+                                                   row.get('scheme', '')),
                                  ion_label=source_ion_label if ion_case == 'BASE' else ion_case,
                                  case_id=_cgyro_case_id(row, ion_case), source_key=row['key'],
                                  source=list(row['path']),
@@ -550,7 +553,7 @@ class ProjectActions:
             raise ValueError('没有可运行的 CGYRO 组合。')
         node = module(self.root, 'cgyro')
         first = plan[0]
-        active = batch[str(first['nr'])][first['ion_case']]
+        active = batch[first['batch_key']][first['ion_case']]
         marker = self.factory()
         # Resolve metadata against the original sources before installing the
         # first isotope copy (especially when source_mode is 'current').
@@ -899,6 +902,8 @@ class ProjectActions:
             node['RUN_BATCH'] = self.factory()
         previous = dict(irun=setup.get('irun', None), idownsync=setup.get('idownsync', None))
         original_input = node['INPUTS'].get('input.cgyro', None)
+        experiment = node['SETTINGS']['EXPERIMENT']
+        original_runid = experiment['runid']
         case_keys = ('nr', 'rho', 'mass', 'case_id')
         # Missing is different from a saved None in native settings. Restore
         # membership as well as values after a failed/cancelled batch.
@@ -922,7 +927,8 @@ class ProjectActions:
                         physics[key] = case_physics[key]
                     else:
                         physics.pop(key, None)
-                node['INPUTS']['input.cgyro'] = node['BATCH_INPUTS'][str(nr)][ion_case].duplicate()
+                node['INPUTS']['input.cgyro'] = node['BATCH_INPUTS'][item['batch_key']][ion_case].duplicate()
+                experiment['runid'] = item['runid']
                 physics['nr'], physics['rho'], physics['mass'] = nr, item['rho'], ion_case
                 physics['case_id'] = item['case_id']
                 print('[CGYRO] Starting case {}: initializing native task context.'.format(item['case_id']), flush=True)
@@ -985,6 +991,7 @@ class ProjectActions:
                 return completed
             raise
         finally:
+            experiment['runid'] = original_runid
             setup['irun'], setup['idownsync'] = previous['irun'], previous['idownsync']
             for key in case_keys:
                 if key in original_case:
@@ -1060,6 +1067,23 @@ class ProjectActions:
         self.settings['cgyro_source_mode'] = 'generated'
         rows = sync_cgyro_choices(self.root, self.settings, self.factory)
         self.settings['message'] = 'Transfer_tool 已完成：已生成 {} 个 CGYRO 半径输入。'.format(len(rows))
+
+    def generate_transfer_schemes(self):
+        node = module(self.root, 'transfer')
+        issues = runtime_issues(self.root, 'transfer')
+        if pending_inputs(self.root, 'transfer'):
+            issues.append('请先确认 Transfer_tool 的 TGLF 种子输入。')
+        if issues:
+            raise ValueError('；'.join(issues))
+        options = dict(initialize_generation(node, self.factory))
+        def generate(source, settings, label):
+            self.call('生成转换方案：' + label, MODULES['transfer'] + ('SCRIPTS', 'main.py'),
+                      profile_source=source, radial_settings=settings)
+        keys = generate_schemes(node, self.settings.get('transfer_scheme_flags', {}), options,
+                                generate, self.factory)
+        self.settings['cgyro_source_mode'] = 'schemes'
+        sync_cgyro_choices(self.root, self.settings, self.factory)
+        self.settings['message'] = '已生成 {} 个转换方案的独立输入；到 CGYRO 扫描页选择半径并提交。'.format(len(keys))
 
     def check(self):
         problems = []

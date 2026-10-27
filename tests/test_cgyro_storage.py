@@ -1413,9 +1413,11 @@ class StorageCases(unittest.TestCase):
                      retry_limit=lambda node: 0, pending_runs=lambda node: [],
                      uuid=types.SimpleNamespace(uuid4=lambda: types.SimpleNamespace(hex='c' * 32)))
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(path), 'exec'), scope)
-        plan = [dict(nr=1, rho=.33, ion_case=ion, case_id='nr=1__rho=0.33__ion=' + ion) for ion in 'HDT']
+        plan = [dict(nr=1, rho=.33, ion_case=ion, batch_key='1', runid='Jet',
+                     case_id='nr=1__rho=0.33__ion=' + ion) for ion in 'HDT']
         node = dict(SETTINGS=dict(SETUP=dict(icgyro=1, idimrun=1, irun=0, idownsync=1),
                                  PHYSICS=dict(restart_mode=0),
+                                 EXPERIMENT=dict(runid='Jet'),
                                  REMOTE_SETUP=dict(serverPicker='cluster', cluster=dict(scheduler='slurm'))),
                     INPUTS={}, BATCH_INPUTS={'1': {ion: types.SimpleNamespace(duplicate=lambda: {}) for ion in 'HDT'}})
         calls = []

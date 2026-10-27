@@ -14,6 +14,7 @@ from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters,
     initialize_parameters, scan_parameter_names, validated_overrides, validate_zeff)
 from OMFITlib_cgyro_scan_values import ky_values, scan_axes as configured_scan_axes
 from OMFITlib_cgyro_isotopes import isotope_input, remap_physics
+from OMFITlib_transfer_schemes import scheme_sources
 
 CGYRO_PATH = ('CGYRO_scan',)
 ISOTOPE_MASSES = OrderedDict([('H', 0.5), ('D', 1.0), ('T', 1.5)])
@@ -94,6 +95,8 @@ def cgyro_sources(root):
     """Return the complete radial CGYRO input set, in Transfer_tool order."""
     settings = read(root, ('SETTINGS', 'WORKBENCH'), {})
     mode = settings.get('cgyro_source_mode', 'generated')
+    if mode == 'schemes':
+        return scheme_sources(root)
     generated = read(root, ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'), {})
     imported = read(root, ('Transfer_tool', 'Transfer_file'), {})
     branch, prefix = ({}, ())
@@ -165,10 +168,11 @@ def _generated_particle_record(root):
     return particle_options(physics.get('generation', {})), previous
 
 
-def _cgyro_main_indices(root, source, source_path):
+def _cgyro_main_indices(root, source, source_path, particle_record=None):
     count = int(float(source['N_SPECIES']))
-    if source_path[:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
-        report = read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing'), {})
+    if particle_record is not None or source_path[:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
+        report = (particle_record if particle_record is not None else
+                  read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing'), {}))
         local = report.get('local_inputs', {}).get(str(source_path[-1]), {})
         # Some presets merge the original D/T populations before the local card
         # is published. Never treat the next auxiliary ion as another main ion.
@@ -202,9 +206,11 @@ def _cgyro_case_input(root, row, source, ion_case, physics, dimensions):
     provenance = None
     case_physics = physics
     if ion_case in ISOTOPE_MASSES:
-        local = read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'local_inputs', row['key']), {})
+        record = row.get('particle_record', None)
+        local = (record.get('local_inputs', {}).get(row['particle_key'], {}) if record is not None else
+                 read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'local_inputs', row['key']), {}))
         scale = (local.get('rhostar', local.get('equivalent', {}).get('rhostar', None))
-                 if row['path'][:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen') else None)
+                 if record is not None or row['path'][:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen') else None)
         scanned = scan_parameter_names(physics, dimensions)
         overrides = validated_overrides(physics, [source], scanned)
         global_values = [parameter['values'] for axis in configured_scan_axes(physics, dimensions, source)
@@ -212,7 +218,7 @@ def _cgyro_case_input(root, row, source, ion_case, physics, dimensions):
         global_curvature = (any(number > 0 for number in global_values[0]) if global_values else
                             float(overrides.get('GLOBAL_FLAG', source.get('GLOBAL_FLAG', 0))) > 0)
         value, provenance = isotope_input(source, ISOTOPE_MASSES[ion_case],
-            _cgyro_main_indices(root, source, row['path']), scale, global_curvature)
+            _cgyro_main_indices(root, source, row['path'], record), scale, global_curvature)
         case_physics = remap_physics(physics, dimensions, provenance['index_map'])
     else:
         value = source.duplicate() if hasattr(source, 'duplicate') else copy.deepcopy(source)
@@ -252,9 +258,9 @@ def cgyro_plan_issues(root):
     try:
         dimensions = int(read(root, CGYRO_PATH + ('SETTINGS', 'SETUP', 'idimrun'), 1))
         selected = [row for row in rows if settings['cgyro_radii'].get(row['key'], False)]
-        # BATCH_INPUTS is keyed by nr, not filename. Aliases such as _1 and _01
-        # must not silently replace one another while retaining two plan rows.
-        radial_ids = [row['nr'] for row in selected]
+        # Aliases such as _1 and _01 must not overwrite a prepared card. A
+        # frozen conversion scheme adds a namespace to the same nr key.
+        radial_ids = [row.get('batch_key', str(row['nr'])) for row in selected]
         if len(set(radial_ids)) != len(radial_ids):
             raise ValueError('所选输入的 nr 编号重复，请保留一个输入或修改文件的半径编号。')
         # This validator runs while GUI tabs are rebuilt. Native file-backed
@@ -268,8 +274,8 @@ def cgyro_plan_issues(root):
         physics = read(root, CGYRO_PATH + ('SETTINGS', 'PHYSICS'))
         initialize_parameters(physics, sources[0])
         validated_overrides(physics, sources, scan_parameter_names(physics, dimensions))
-        chosen, previous = _generated_particle_record(root)
         if rows[0]['path'][:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
+            chosen, previous = _generated_particle_record(root)
             if previous is None or input_digest(chosen) != input_digest(previous):
                 raise ValueError('粒子方案或半径设置已变化，请重新运行 Transfer_tool。')
         for row, source in zip(selected, sources):

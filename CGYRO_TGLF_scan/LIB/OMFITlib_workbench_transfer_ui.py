@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import ttk
 from OMFITlib_transfer_workflow import loaded_file
 from OMFITlib_gui_deferred import TabPages
+from OMFITlib_transfer_schemes import SCHEMES
 from OMFITlib_project import MODULES, location, module, input_digest, read, transfer_generated_rows, transfer_parameter_value
 
 
@@ -17,13 +18,14 @@ class TransferPage:
     """Page mixin; state belongs to the host, never to a module singleton."""
     def render_transfer(self):
         renderers = dict(run=self.transfer_run,
+            schemes=self.transfer_schemes,
             files=lambda: self.transfer_files(transfer_generated_rows(self.root)),
             plots=lambda: self.compound(('Transfer_tool', 'GUIS', 'plots')),
             convert=lambda: self.compound(('Transfer_tool', 'GUIS', 'convert')),
             advanced=self.transfer_advanced)
         self.transfer_pages = TabPages(self.ui, OrderedDict([
             ('run', 'Transfer_tool 运行'), ('files', '生成文件'), ('plots', '剖面绘图'),
-            ('convert', '局部输入互转'), ('advanced', '高级设置')]),
+            ('schemes', '转换方案批量选择'), ('convert', '局部输入互转'), ('advanced', '高级设置')]),
             self.settings, 'transfer_tab', lambda page: renderers[page]())
 
     def transfer_run(self):
@@ -48,6 +50,22 @@ class TransferPage:
                 postcommand=lambda location=None, kind=kind: self.actions.import_transfer_seed(kind), updateGUI=True)
         self.label('起止半径、坐标和点数以“Transfer_tool 运行”页为准；离子数量、质量和电荷每次运行时从当前剖面同步。')
         self.nav('统一 GACODE 环境配置', 'run')
+
+    def transfer_schemes(self):
+        self.label('沿用“Transfer_tool 运行”页的原始剖面、半径网格、热化参考和碰撞设置。每个方案独立生成输入。')
+        flags = self.settings.setdefault('transfer_scheme_flags', {})
+        for key, (caption, _) in SCHEMES.items():
+            flags.setdefault(key, False)
+            self.ui.CheckBox(self.prefix + "['transfer_scheme_flags'][{!r}]".format(key),
+                             caption, default=False, updateGUI=False)
+        self.ui.Button('生成所选方案输入', self.actions.generate_transfer_schemes, updateGUI=True,
+                       help='依次运行转换流程；全部成功后保存各方案局部输入。不会提交 CGYRO 扫描。')
+        groups = module(self.root, 'transfer').get('OUTPUTS', {}).get('CGYRO_schemes', {})
+        for key, group in groups.items():
+            self.label('{}：{} 个半径输入'.format(group['label'], len(group['inputs'])))
+        if groups:
+            self.nav('设置方案 CGYRO 扫描', 'cgyro', cgyro_source_mode='schemes')
+        self.label('修改转换设置后，重新生成所选方案；已保存的 CGYRO 结果继续保留。')
 
     def transfer_files(self, rows):
         if not rows:

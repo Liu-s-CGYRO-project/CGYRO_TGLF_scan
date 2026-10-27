@@ -22,7 +22,7 @@ def _get_cgyro_lin_node(root, ctx, nr, para, value):
     view = ctx.get('_cgyro_views', {}).get(str(nr), None)
     if view is not None:
         return result_view(root.get('CGYRO_scan', {}), linear_node(view, para, value))
-    node = catalog_runs(root.get('CGYRO_scan', {}))
+    node = catalog_runs(root.get('CGYRO_scan', {}), runid=ctx.get('runid', ''))
     for token in (ctx.get('runid', ''), nr):
         if not hasattr(node, 'keys'):
             return None

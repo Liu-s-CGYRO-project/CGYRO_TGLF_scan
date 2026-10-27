@@ -309,6 +309,17 @@ class CaseSelection(ComparisonWidgets):
         prefix = "root['SETTINGS']['PHYSICS']['CGYRO_vs_CGYRO']"
         path = lambda *keys: self._dict_path(prefix, *keys)
         state['plotcgyro'] = True
+        self.ui.CheckBox(path('compare_multiple_runs'), '跨运行记录 / 转换方案对比',
+                         default=False, updateGUI=True)
+        if state.get('compare_multiple_runs', False):
+            flags = state.setdefault('compare_run_flags', {})
+            # Listing names does not build catalogs for unselected runs.
+            names = stable_keys(self.root.get('CGYRO_scan', {}).get('RUN_DB', {}))
+            self._prune_mapping_keys(flags, names)
+            for name in names:
+                flags.setdefault(name, False)
+                self.ui.CheckBox(path('compare_run_flags', name), str(name), default=False, updateGUI=False)
+            self.ui.Label('勾选参与对比的记录；用下方“运行记录”逐个设置半径和参数，选择会分别记忆。', align='left')
         run, available = self._choose_cgyro(state, path, legacy=True)
         labels = self._choice_labels(available)
         radii = state.get('nr_CGYRO', [])

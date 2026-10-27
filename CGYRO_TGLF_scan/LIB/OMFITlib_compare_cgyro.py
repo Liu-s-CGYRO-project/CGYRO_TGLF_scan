@@ -18,7 +18,7 @@ from OMFITlib_compare_cgyro_eigen import (
     interpolate_field, select_eigen_entries)
 from OMFITlib_compare_cgyro_export import export_selected_linear_spectra
 from OMFITlib_compare_cgyro_render import render_page
-from OMFITlib_compare_state import selection_check
+from OMFITlib_compare_state import selection_check, selected_cgyro_runs
 from OMFITlib_compare_style import cgyro_case_caption
 from OMFITlib_cgyro_scan_view import slice_caption
 
@@ -69,6 +69,8 @@ def group_plot_pages(items, ctx):
     for item in items:
         if ctx['plot_3d']:
             key = (str(item['nr']), str(item['para']))
+            if item.get('source_label', ''):
+                key += (item['source_label'],)
         else:
             key = ('All selected radii',) if _combine_nr_on_single_page(ctx) else (str(item['nr']),)
             if ctx.get('plot_time_traces', False):
@@ -77,7 +79,7 @@ def group_plot_pages(items, ctx):
     labeled = []
     for key, values in pages.items():
         if ctx['plot_3d']:
-            key = (key[0], slice_caption(values[0]['slice_meta'], key[1]))
+            key = (key[0], slice_caption(values[0]['slice_meta'], key[1])) + key[2:]
         if not _combine_nr_on_single_page(ctx):
             key = (cgyro_case_caption(key[0], include_radius=True),) + key[1:]
         labeled.append((' / '.join(key), values))
@@ -88,14 +90,27 @@ def run_plot(root):
     report = selection_check(root, mode='CGYRO_vs_CGYRO')
     if report['errors']:
         raise ValueError('\n'.join(report['errors']))
-    ctx = build_context(root)
+    state = root['SETTINGS']['PHYSICS']['CGYRO_vs_CGYRO']
+    contexts = [build_context(root, selected) for selected in selected_cgyro_runs(state)]
+    ctx = dict(contexts[0])
     if not ctx['plotcgyro']:
         return []
-    if not _has_any_selected_parameters(ctx):
-        raise ValueError('No CGYRO parameter remains selected; check the current radius/parameter checkboxes')
+    for selected in contexts:
+        if not _has_any_selected_parameters(selected):
+            raise ValueError(str(selected['runid']) + ': No CGYRO parameter remains selected; check the current radius/parameter checkboxes')
     if ctx.get('export_linear_now', False):
-        return export_selected_linear_spectra(root, ctx)
-    items = collect_plot_items(root, ctx)
+        exports = [export_selected_linear_spectra(root, selected) for selected in contexts]
+        return exports if state.get('compare_multiple_runs', False) else exports[0]
+    items, diagnostics = [], []
+    for selected in contexts:
+        values = collect_plot_items(root, selected)
+        if state.get('compare_multiple_runs', False):
+            for item in values:
+                item['source_label'] = str(selected['runid'])
+        items.extend(values)
+        diagnostics.extend(selected['_diagnostics'])
+    ctx['_diagnostics'] = diagnostics
+    ctx['nr_CGYRO'] = list(dict.fromkeys(nr for selected in contexts for nr in selected['nr_CGYRO']))
     if not items:
         detail = '\n'.join(ctx['_diagnostics'][:5])
         raise ValueError('No valid selected CGYRO data for this plot.\n' + detail)

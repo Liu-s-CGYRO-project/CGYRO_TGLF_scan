@@ -193,7 +193,7 @@ class CgyroPage:
 
     def render_cgyro_input(self):
         self.ui.ComboBox(self.prefix + "['cgyro_source_mode']", OrderedDict([
-            ('Transfer_tool 半径输入', 'generated'), ('导入 input.cgyro', 'imported'),
+            ('Transfer_tool 半径输入', 'generated'), ('Transfer_tool 批量方案', 'schemes'), ('导入 input.cgyro', 'imported'),
             ('CGYRO 当前输入', 'current')]), '输入来源', state='readonly', updateGUI=True)
         mode = self.settings['cgyro_source_mode']
         if mode == 'imported':
@@ -204,6 +204,8 @@ class CgyroPage:
                 self.label('已载入：' + str(source['path']))
         elif mode == 'generated':
             self.nav('生成 / 更换半径输入', 'transfer')
+        elif mode == 'schemes':
+            self.nav('生成 / 更换转换方案', 'transfer', transfer_tab='schemes')
         rows = sync_cgyro_choices(self.root, self.settings, self.actions.factory)
         self.ui.Separator('半径与主离子')
         if rows:
@@ -219,6 +221,8 @@ class CgyroPage:
                         caption = 'nr={}'.format(row['nr'])
                         if row['rho'] is not None:
                             caption += ' · rho={:g}'.format(row['rho'])
+                        if row.get('scheme', ''):
+                            caption = row['scheme_label'] + ' · ' + caption
                         self.cgyro_checkbox(self.prefix + "['cgyro_radii'][{!r}]".format(row['key']),
                                              self.settings['cgyro_radii'], row['key'], caption)
         else:
@@ -243,6 +247,8 @@ class CgyroPage:
     def render_cgyro_scan_settings(self, node, rows):
         base = MODULES['cgyro'] + ('SETTINGS',)
         physics = node['SETTINGS']['PHYSICS']
+        if self.settings.get('cgyro_source_mode', '') == 'schemes':
+            self.label('结果分别保存为“结果名称__transfer_方案”。所有方案共用下方扫描设置和计算参数。')
         with self.ui.same_row():
             self.scan_field(self.ui.Entry(location(base + ('EXPERIMENT', 'runid')), '结果名称',
                                           width=14, updateGUI=True), 14)
