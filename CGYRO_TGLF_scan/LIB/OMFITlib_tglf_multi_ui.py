@@ -7,6 +7,7 @@ from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_project_runtime import shared_issues
 from OMFITlib_tglf_multi_data import DEFAULTS, case_plan, duplicate_case, initialize, prepared_run_issues, profile_digest
 from OMFITlib_tglf_multi_plot import flux_summary
+from OMFITlib_tglf_parameter_help import parameter_help
 
 STATUS = {'ready': '输入已生成', 'preparing': '正在生成输入', 'prepare_failed': '生成失败',
           'running': '运行中', 'complete': '完成', 'failed': '失败', 'partial': '部分完成', 'cancelled': '已中止'}
@@ -83,10 +84,11 @@ class MultiInputUI:
         ui.Label('计算增长率/频率谱和通量；局部几何、梯度和物种由每个 input.gacode 生成。', align='left')
         with ui.same_row():
             for key in ('SAT_RULE', 'NKY', 'NMODES'):
-                ui.Entry(self.prefix + '[{!r}]'.format(key), key, default=DEFAULTS[key])
+                ui.Entry(self.prefix + '[{!r}]'.format(key), key, default=DEFAULTS[key], help=parameter_help(key))
         with ui.same_row():
             for key in ('USE_BPER', 'USE_BPAR'):
-                checkbox(ui, self.prefix + '[{!r}]'.format(key), self.settings, key, key, default=DEFAULTS[key])
+                checkbox(ui, self.prefix + '[{!r}]'.format(key), self.settings, key, key, default=DEFAULTS[key],
+                         help=parameter_help(key))
         ui.ComboBox(self.prefix + "['include_ions']", {'全部离子': 'all', '仅热离子': 'thermal'},
                     '参与 TGLF 的离子', default='all')
         ui.Entry(self.prefix + "['extra']", '共用附加参数', default='', multiline=True,

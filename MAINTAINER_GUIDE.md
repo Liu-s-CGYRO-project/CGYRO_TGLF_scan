@@ -276,6 +276,14 @@ TGLF 多剖面恢复先调用 `tglf_multi_data.prepared_run_issues(run, plan, di
 
 表中 `LIB` 均指 `CGYRO_TGLF_scan/LIB`。`ProjectActions`、`ProjectUI` 和原 `GUIS/SCRIPTS/PLOTS` 路径保持兼容。页面拆分通过无构造函数的 mixin 实现，旧的 `view.render_cgyro()`、`view.scan_value_fields()` 等调用仍可使用。
 
+## TGLF 参数目录与说明
+
+`OMFITlib_tglf_parameters` 是工作台扫描轴、参数页和类型校验的共用标量目录；`OMFITlib_tglf_parameter_help` 提供本地中文说明。目录只读取当前 input.tglf，不读取 RUN_DB。默认值与 GACODE `tglf/bin/tglf_defaults.py` 核对（2026-10-27，Git blob `56136c7d8756e6ff9e111adf728e3257dcc21049`），物理说明来自官网字母列表和参数表，补充项对照官方接口与 ky 网格源码。不要把“官网未说明”填成猜测的单位，也不要将默认值批量写入用户输入。
+
+添加参数时同步目录及说明，核对原生 int/float/bool 类型；物种参数按当前 NS 展开。NS 和输运运行开关不作为独立轴，UNITS 使用独立控件。场景预设与解析器默认不同是有意设计。计划只为明确选中而输入中省略的轴补一个基准值，供执行脚本校验类型；二维/UQ 同样处理，原输入保持不变。更新包必须在总工程、工程模块及 TGLF_scan 需要的 LIB 中注册目录，避免运行时缺模块。
+
+`test_tglf_parameters` 验证省略字段的一维/二维/UQ 实际执行边界、多半径倍数、int/bool 类型、零基准、输入优先、旧设置重开、帮助来源及不读结果；批处理由夹具返回通量，不提交真实任务。界面及帮助依赖均在模块顶部导入，避免原生 OMFIT 清理 importer 后回调失败。
+
 ## 页面接口
 
 页面使用共享的 `self.root`、`self.settings`、`self.actions`、`self.ui`、`self.prefix`，不自行创建第二套上下文。常用方法：

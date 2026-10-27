@@ -12,8 +12,10 @@ from OMFITlib_gui_controls import checkbox
 from OMFITlib_project import MODULES, location, read, runtime_issues
 from OMFITlib_tglf_preparation import preparation_resources
 from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, SCENARIOS, SCENARIO_FIELDS,
-    fully_failed, generation_overrides, generation_seed, initialize, numeric_parameters, parameter_value,
+    fully_failed, generation_overrides, generation_seed, initialize, parameter_value,
     plan, radial_input_issues, selected_rows)
+from OMFITlib_tglf_parameters import CHOICES, GROUPS, parameter_catalog, parameter_values
+from OMFITlib_tglf_parameter_help import parameter_help
 
 TABS = OrderedDict([('scan', '输入与扫描'), ('parameters', '计算参数'),
                     ('results', '结果与记录'), ('multi', '多个剖面对比')])
@@ -122,14 +124,15 @@ class TGLFWorkbench:
             self.ui.Button('查看 / 编辑输入', lambda: self.view.show_transfer_input(anchor, row['path'], row['label']))
         self.ui.ComboBox(self.prefix + "['mode']", MODES, '计算方式', state='readonly', updateGUI=True)
         mode = self.settings['mode']
-        values = numeric_parameters(self.source)
+        values = parameter_values(self.source)
         values.update((name, item['value']) for name, item in self.settings['parameters'].items()
-                      if item.get('enabled', False))
-        choices = sorted(name for name in values if name != 'NS')
+                      if item.get('enabled', False) and name in values)
+        choices = sorted(values)
         if mode in ('1d', '2d'):
             for index in range(1, 3 if mode == '2d' else 2):
                 self.ui.ComboBox(self.prefix + "['parameter{}']".format(index), choices,
-                                 '扫描参数 {}'.format(index), state='readonly', updateGUI=True)
+                                 '扫描参数 {}'.format(index), state='readonly', updateGUI=True,
+                                 help=parameter_help(self.settings['parameter' + str(index)], self.source))
                 self.ui.ComboBox(self.prefix + "['value_mode{}']".format(index),
                     {'原值倍数': 'factor', '实际值范围': 'range', '指定数值列表': 'list'},
                     '取值方式', state='readonly', updateGUI=True,
@@ -156,7 +159,8 @@ class TGLFWorkbench:
                 item.setdefault('mean', values.get(name, 0.0))
                 item.setdefault('std', max(abs(float(values.get(name, 1.0))) * 0.1, 0.01))
                 prefix = self.prefix + "['uq'][{!r}]".format(str(index))
-                self.ui.ComboBox(prefix + "['name']", continuous, '参数 {}'.format(index + 1), state='readonly', updateGUI=True)
+                self.ui.ComboBox(prefix + "['name']", continuous, '参数 {}'.format(index + 1), state='readonly', updateGUI=True,
+                                 help=parameter_help(name, self.source))
                 with self.ui.same_row():
                     self.ui.Entry(prefix + "['mean']", '均值', width=10, updateGUI=True)
                     self.ui.Entry(prefix + "['std']", '标准差', width=10, updateGUI=True)
@@ -249,7 +253,6 @@ class TGLFWorkbench:
         seed = generation_seed(self.root)
         if seed is None:
             return
-        values = numeric_parameters(seed)
         with section_group(self.ui, 'TGLF 参数'):
             self.ui.ComboBox(self.prefix + "['scenario']", OrderedDict(
                 (item[0], key) for key, item in SCENARIOS.items()), 'TGLF 方案', state='readonly',
@@ -260,24 +263,27 @@ class TGLFWorkbench:
                            (('USE_BPER', 'A∥ 扰动'), ('USE_BPAR', 'B∥ 扰动'))):
                 with self.ui.same_row():
                     for name, label in fields:
-                        self.parameter_field(name, values, label)
+                        self.parameter_field(name, seed, label)
             with self.ui.same_row():
-                self.ui.ComboBox(self.prefix + "['units_override']", {'沿用输入': '', 'GYRO': 'GYRO', 'CGYRO': 'CGYRO'},
-                                 '归一化', width=12, state='readonly', updateGUI=True,
-                                 postcommand=lambda location=None: self.settings.__setitem__('scenario', 'custom'))
+                self.units_field(seed)
                 self.ui.Button('更多 TGLF 参数', lambda: self.select_page('parameters'))
 
-    def parameter_field(self, name, values, label):
-        reference = values.get(name, COMMON[name][0])
+    def units_field(self, source):
+        self.ui.ComboBox(self.prefix + "['units_override']", {'沿用输入': '', 'GYRO': 'GYRO', 'CGYRO': 'CGYRO'},
+                         '归一化', width=12, state='readonly', updateGUI=False, help=parameter_help('UNITS', source),
+                         postcommand=lambda location=None: self.settings.__setitem__('scenario', 'custom'))
+
+    def parameter_field(self, name, source, label):
+        reference = source.get(name, COMMON[name][0])
         item = self.settings['parameters'].setdefault(name, self.actions.factory())
         item.setdefault('enabled', False)
         if not item['enabled']:
             item['value'] = reference
         prefix = self.prefix + "['parameters'][{!r}]['value']".format(name)
         callback = lambda location=None: self.edit_parameter(name, reference)
-        help_text = name + '：' + COMMON[name][1]
-        if name in ('SAT_RULE', 'KYGRID_MODEL'):
-            choices = [0, 1, 2] if name == 'SAT_RULE' else [0, 1, 4, 5]
+        help_text = parameter_help(name, source)
+        if name in CHOICES:
+            choices = list(CHOICES[name])
             if item['value'] not in choices:
                 choices.append(item['value'])
             self.ui.ComboBox(prefix, choices, label, width=8, state='readonly',
@@ -312,31 +318,37 @@ class TGLFWorkbench:
         self.label('修改后回车，扫描取值优先。')
         if self.reference:
             self.label('参考：' + self.reference['label'])
-        values = numeric_parameters(self.source)
-        catalog = OrderedDict(COMMON)
-        catalog.update((name, (value, '输入参数')) for name, value in values.items() if name not in catalog)
-        self.ui.ComboBox(self.prefix + "['parameter_group']", {'常用参数': 'common', '全部参数': 'all'},
+        catalog = parameter_catalog(self.source)
+        self.ui.ComboBox(self.prefix + "['parameter_group']", GROUPS,
                          '显示', state='readonly', updateGUI=True)
         self.ui.Entry(self.prefix + "['search']", '搜索', width=24, updateGUI=True)
+        self.units_field(self.source)
         self.ui.Button('全部沿用输入值', self.reset_parameters, updateGUI=True, refresh_scope='section')
-        for name, (reference, label) in catalog.items():
-            if name in ('NS',) or (self.settings['parameter_group'] == 'common' and name not in COMMON):
+        group = self.settings['parameter_group']
+        for name, (reference, label, category) in catalog.items():
+            if (group == 'common' and name not in COMMON) or (group not in ('common', 'all') and group != category):
                 continue
             if str(self.settings['search']).strip().upper() not in (name + ' ' + label).upper():
                 continue
             item = self.settings['parameters'].setdefault(name, self.actions.factory())
             item.setdefault('enabled', False)
             if not item['enabled']:
-                item['value'] = values.get(name, reference)
+                item['value'] = reference
             prefix = self.prefix + "['parameters'][{!r}]".format(name)
-            hint = '修改后用于生成输入和本次计算。' if name not in values else '输入值：' + str(values[name])
+            hint = parameter_help(name, self.source)
             with self.ui.same_row() as line:
                 frame = getattr(line, 'frm_top', None)
                 if isinstance(frame, tk.Misc):
                     frame._cgyro_inline = True
                 self.label(name + ' · ' + label)
-                callback = lambda location=None, name=name, reference=values.get(name, reference): self.edit_parameter(name, reference)
-                if isinstance(reference, bool):
+                callback = lambda location=None, name=name, reference=reference: self.edit_parameter(name, reference)
+                if name in CHOICES:
+                    choices = list(CHOICES[name])
+                    if item['value'] not in choices:
+                        choices.append(item['value'])
+                    self.ui.ComboBox(prefix + "['value']", choices, '', width=12, updateGUI=False,
+                                     state='readonly', postcommand=callback, help=hint)
+                elif isinstance(reference, bool):
                     self.ui.ComboBox(prefix + "['value']", {'开启': True, '关闭': False}, '', width=12,
                                      updateGUI=False, state='readonly', postcommand=callback, help=hint)
                 else:

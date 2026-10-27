@@ -7,6 +7,7 @@ import math
 # OMFIT removes its library importer when GUI scripts return. Resolve this
 # dependency while loading the module so button callbacks keep the function.
 from OMFITlib_tglf_multi_data import profile_digest
+from OMFITlib_tglf_parameters import COMMON, INTEGERS as INPUT_INTEGERS, numeric_parameters, parameter_values, scalar
 
 PROFILE_PATH = ('TGLF_scan', 'TGYRO', 'PROFILES_GEN', 'OUTPUTS', 'input.gacode')
 SEED_PATH = ('TGLF_scan', 'TGYRO', 'INPUTS', 'input.tglf')
@@ -14,23 +15,6 @@ RADII = [index / 100.0 for index in range(1, 100)]
 
 MODES = OrderedDict([('原始参数', 'single'), ('一维参数扫描', '1d'),
                      ('二维参数扫描', '2d'), ('不确定度扫描（UQ）', 'uq')])
-# References are displayed only. A value is applied only after the user edits it.
-COMMON = OrderedDict([
-    ('SAT_RULE', (2, '饱和规则')), ('KYGRID_MODEL', (4, 'ky 网格模型')),
-    ('KY', (0.3, 'ky')), ('NKY', (19, 'ky 点数')), ('NMODES', (6, '模态数')),
-    ('NBASIS_MIN', (2, '最少基函数')), ('NBASIS_MAX', (6, '最多基函数')),
-    ('NXGRID', (16, '积分网格')), ('WIDTH', (1.65, '最大宽度')),
-    ('WIDTH_MIN', (0.3, '最小宽度')), ('NWIDTH', (21, '宽度搜索点数')),
-    ('FIND_WIDTH', (True, '搜索模态宽度')), ('USE_BPER', (False, '包含 A 平行扰动')),
-    ('USE_BPAR', (False, '包含 B 平行扰动')), ('XNU_MODEL', (3, '碰撞模型')),
-    ('USE_MHD_RULE', (True, 'MHD 规则')), ('ADIABATIC_ELEC', (False, '绝热电子')),
-    ('USE_BISECTION', (True, '二分宽度搜索')), ('IBRANCH', (-1, '模态排序')),
-    ('VPAR_MODEL', (0, '平行流模型')), ('VPAR_SHEAR_MODEL', (1, '平行流剪切模型')),
-    ('ALPHA_E', (1.0, 'ExB 剪切系数')), ('ALPHA_P', (1.0, '平行流剪切系数')),
-    ('ALPHA_QUENCH', (0.0, '剪切抑制系数')), ('ETG_FACTOR', (1.25, 'ETG 系数')),
-    ('ALPHA_ZF', (1.0, '带状流系数')), ('WDIA_TRAPPED', (1.0, '俘获粒子漂移系数')),
-    ('USE_AVE_ION_GRID', (True, '平均离子网格')),
-])
 # These scenarios are the bundled OMFIT TGYRO/TGLFinputGUI definitions.
 SCENARIO_FIELDS = ('ALPHA_QUENCH', 'SAT_RULE', 'ALPHA_ZF', 'NKY', 'KYGRID_MODEL',
                    'NBASIS_MAX', 'NMODES', 'UNITS', 'XNU_MODEL', 'WDIA_TRAPPED', 'USE_AVE_ION_GRID')
@@ -45,9 +29,7 @@ SCENARIOS = OrderedDict([
     ('st', ('ST', (0.0, 1, 1.0, 12, 4, 4, 4, 'GYRO', 2, 0.0, False))),
     ('iter', ('ITER', (0.0, 1, 1.0, 20, 4, 4, 4, 'GYRO', 2, 0.0, False))),
 ])
-INTEGERS = {'NS', 'SAT_RULE', 'KYGRID_MODEL', 'NKY', 'NMODES', 'NBASIS_MIN',
-            'NBASIS_MAX', 'NXGRID', 'NWIDTH', 'IBRANCH', 'XNU_MODEL', 'GEOMETRY_FLAG',
-            'VPAR_MODEL', 'VPAR_SHEAR_MODEL', 'WRITE_WAVEFUNCTION_FLAG', '并发任务数', 'UQ 参数数', '样本数', '扫描点数'}
+INTEGERS = INPUT_INTEGERS | {'并发任务数', 'UQ 参数数', '样本数', '扫描点数'}
 POSITIVE = {'NS', 'NKY', 'NMODES', 'NBASIS_MIN', 'NBASIS_MAX', 'NXGRID', 'NWIDTH', 'WIDTH', 'WIDTH_MIN'}
 
 
@@ -77,10 +59,6 @@ def generation_seed(root):
     return seed
 
 
-def scalar(value):
-    return value.tolist() if hasattr(value, 'tolist') else value
-
-
 def parameter_value(name, value, original):
     value, original = scalar(value), scalar(original)
     if isinstance(original, bool):
@@ -107,27 +85,15 @@ def parameter_value(name, value, original):
     return number
 
 
-def numeric_parameters(source):
-    result = OrderedDict()
-    for name, value in source.items():
-        value = scalar(value)
-        if name in ('rho', 'USE_TRANSPORT_MODEL') or str(name).startswith('__'):
-            continue
-        if isinstance(value, (int, float, bool)):
-            result[str(name)] = value
-    return result
-
-
 def parameter_overrides(settings, source):
-    values = numeric_parameters(source)
+    values = parameter_values(source)
     result = {}
     for name, item in settings['parameters'].items():
         if not item.get('enabled', False):
             continue
-        if name == 'NS' or (name not in values and name not in COMMON):
+        if name not in values:
             raise ValueError('当前输入不支持参数 ' + name)
-        reference = values.get(name, COMMON.get(name, (0.0,))[0])
-        result[name] = parameter_value(name, item['value'], reference)
+        result[name] = parameter_value(name, item['value'], values[name])
     units = str(settings.get('units_override', '') or '')
     if units:
         if units not in ('GYRO', 'CGYRO'):
@@ -337,10 +303,10 @@ def plan(root, settings):
     sources, axes, uq = [], [], []
     for row in rows:
         source = get(root, row['path'])
-        values = numeric_parameters(source)
-        for key in ('NS', 'KY'):
-            if key not in values:
-                raise ValueError(row['label'] + ' 缺少 ' + key)
+        if 'NS' not in source:
+            raise ValueError(row['label'] + ' 缺少 NS')
+        parameter_value('NS', source['NS'], 2)
+        values = parameter_values(source)
         parameters = parameter_overrides(settings, source)
         values.update(parameters)
         names = [settings['parameter1']] if mode == '1d' else ([settings['parameter1'], settings['parameter2']] if mode == '2d' else [])
@@ -351,6 +317,10 @@ def plan(root, settings):
             if name not in values or name == 'NS':
                 raise ValueError(row['label'] + ' 缺少扫描参数 ' + name + '，或该参数不可扫描')
             axes.append(dict(name=name, values=axis_values(settings, index, name, values[name])))
+            # Materialize only a selected, omitted field. The execution script
+            # needs its type/baseline; unselected solver defaults stay omitted.
+            if name not in source:
+                parameters.setdefault(name, values[name])
         if mode == 'uq':
             count = parameter_value('UQ 参数数', settings['uq_count'], 1)
             if not 1 <= count <= 5:
@@ -360,12 +330,14 @@ def plan(root, settings):
                 item = settings['uq'].get(str(index), {})
                 name = str(item.get('name', ''))
                 if name not in values or isinstance(values[name], bool) or name in INTEGERS:
-                    raise ValueError('UQ 请选择当前输入中的连续数值参数：' + name)
+                    raise ValueError('UQ 请选择连续数值参数：' + name)
                 mean = parameter_value(name, item.get('mean', None), float(values[name]))
                 std = parameter_value('标准差', item.get('std', None), 0.0)
                 if std <= 0:
                     raise ValueError(name + ' 标准差必须大于 0')
                 uq.append(dict(name=name, mean=mean, std=std))
+                if name not in source:
+                    parameters.setdefault(name, values[name])
             if len({item['name'] for item in uq}) != len(uq):
                 raise ValueError('UQ 参数不能重复')
         sources.append(dict(row, parameters=parameters, axes=copy.deepcopy(axes)))
