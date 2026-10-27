@@ -1,6 +1,7 @@
 """RUN_DB-backed CGYRO result browser for one-, two- and three-axis scans."""
 from OMFITlib_cgyro_archive import catalog_runs, case_destination, output_final_time
 from OMFITlib_gui_fonts import configure_window_fonts, style_widget
+from OMFITlib_gui_api import plot_view
 from OMFITlib_gui_deferred import deferred_section
 from OMFITlib_cgyro_archive import case_scans, latest_cases
 from OMFITlib_cgyro_continue import point_status, previous_final_time
@@ -237,7 +238,7 @@ class ResultBrowser:
         if not entry.get('tasks', {}):
             self.anchor = self.ui.Label('本次没有可绘制的结果；原始输入已保留，可选择未开始的点继续计算。', align='left')
             if self.continue_callback is not None:
-                self.ui.Button('选择未完成点继续计算…', self._show_points)
+                self.ui.Button('选择未完成点继续计算…', self._show_points, refresh_tree=False)
             return
         if entry.get('collection_status', '') == 'empty':
             self.ui.Label('本次没有新增时间样本；当前结果由 RUN_DB 索引提供。', align='left')
@@ -272,9 +273,9 @@ class ResultBrowser:
             description += '，ky 由上方切片选择'
         self.anchor = self.ui.Label('{}；{} 个已有结果计算点（点击绘图或数值表后读取）。'.format(description, len(tasks)), align='left')
         with self.ui.same_row():
-            self.ui.Button('查看数值表', self._show_table)
-            self.ui.Button('绘制当前结果', lambda: self.root['PLOTS']['CGYRO_results'].plot())
-        self.ui.Button('时间曲线 / 选择点续算…', self._show_points,
+            self.ui.Button('查看数值表', self._show_table, refresh_tree=False)
+            self.ui.Button('绘制当前结果', lambda: plot_view(self.root['PLOTS']['CGYRO_results']), refresh_tree=False)
+        self.ui.Button('时间曲线 / 选择点续算…', self._show_points, refresh_tree=False,
                        help='打开计算点列表，查看 ω、γ 随时间变化。只有点击窗口内的续算按钮才提交计算。')
         self.ui.Label('数值表显示参数、ky、平均 ω/γ 与相对波动，并标出当前范围的最大 γ。',
                       align='left', wraplength=600)
@@ -395,7 +396,7 @@ class ResultBrowser:
                 points = [point for point in selected_points() if point in entry.get('tasks', {})]
                 if not points:
                     raise ValueError('所选点尚无时间样本。')
-                self.root['PLOTS']['CGYRO_results'].plot(
+                plot_view(self.root['PLOTS']['CGYRO_results'],
                     time_traces=True, run_token=token, point_ids=points,
                     stopped_points=entry.get('stopped_run', False),
                     selections={point: bindings[point] for point in points})

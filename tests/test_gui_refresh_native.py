@@ -8,8 +8,10 @@ The optional IDLE syntax highlighter is disabled when that package is absent.
 import ast
 from collections import OrderedDict
 import copy
+import os
 from pathlib import Path
 import sys
+import tempfile
 from types import ModuleType, SimpleNamespace
 import tkinter as tk
 from tkinter import ttk
@@ -253,6 +255,116 @@ class NativeTkRefreshTests(unittest.TestCase):
         self.assertTrue(header.winfo_exists())
         self.assertFalse(section.winfo_exists())
         self.assertFalse(old.winfo_exists())
+
+    def native_plot(self, runner):
+        namespace = dict(os=os, OMFITaux=self.api.OMFITaux, _OMFITpython=object)
+        native_definitions(SOURCE / 'omfit_classes/omfit_python.py', {'OMFITpythonPlot'}, namespace)
+        cls = namespace['OMFITpythonPlot']
+        script = cls.__new__(cls)
+        script.__run__ = runner
+        return script
+
+    def test_native_compare_plot_button_avoids_both_tree_repaints_and_preserves_idle_draw(self):
+        events, calls, draws = [], [], []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        script = self.native_plot(lambda **kwargs: calls.append(kwargs))
+        original = script.plot.__func__
+        namespace = dict(CaseSelection=object, plot_view=widgets.plot_view, comparison_issues=lambda *args: [])
+        native_definitions(REPO / 'CGYRO_TGLF_scan/LIB/OMFITlib_compare_ui.py', {'ComparisonUI'}, namespace)
+        view = namespace['ComparisonUI'].__new__(namespace['ComparisonUI'])
+        view.mode = 'CGYRO_vs_CGYRO'
+        view.root = {'SETTINGS': {'PHYSICS': {}}, 'PLOTS': {'CGYRO_vs_CGYRO': script}}
+        view._assert_selection = lambda: None
+        self.render_scoped(lambda api: self.controls.update(button=api.Button(
+            'Plot', view._plot, refresh_tree=False)))
+        events.clear()  # Opening the native GUI itself legitimately refreshes the tree.
+        self.root.after_idle(lambda: draws.append('canvas drawn'))
+        self.invoke(self.controls['button'].invoke)
+        self.assertEqual(calls, [{'noGUI': True}])
+        self.assertEqual(draws, ['canvas drawn'])
+        self.assertEqual(events, [])
+        self.assertEqual(self.region_updates, [])
+        self.assertIs(script.plot.__func__, original)
+        self.assertIs(original.__globals__['OMFITaux']['rootGUI'], self.root)
+        self.drain(300)
+        self.assertFalse(self.controls['button'].instate(['disabled']))
+
+    def test_view_plot_restores_directory_return_value_and_error_without_changing_native_method(self):
+        events, calls = [], []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as directory:
+            def run(**kwargs):
+                calls.append(kwargs)
+                os.chdir(directory)
+                if kwargs.get('fail'):
+                    raise ValueError('selected result unavailable')
+                return 'figure'
+            script = self.native_plot(run)
+            self.assertEqual(widgets.plot_view(script, point_ids=['p000003']), 'figure')
+            self.assertEqual(os.getcwd(), cwd)
+            with self.assertRaisesRegex(ValueError, 'selected result unavailable'):
+                widgets.plot_view(script, fail=True)
+            self.assertEqual(os.getcwd(), cwd)
+            self.assertEqual(events, [])
+            self.assertEqual(calls[0], {'point_ids': ['p000003'], 'noGUI': True})
+            # A native invocation outside this view still notifies the tree.
+            self.assertEqual(script.plot(), 'figure')
+            self.assertEqual(events, ['tree'])
+            self.assertEqual(os.getcwd(), cwd)
+
+    def test_view_button_error_reenables_and_does_not_suppress_business_notifications(self):
+        events, errors = [], []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        def run(**kwargs):
+            # Deliberate business notifications inside a user script survive.
+            self.api.OMFITaux['rootGUI'].event_generate('<<update_treeGUI>>')
+            raise ValueError('plot failed')
+        script = self.native_plot(run)
+        def manage(command, **kwargs):
+            try:
+                return command()
+            except ValueError as error:
+                errors.append(str(error))
+        self.api.manage_user_errors = manage
+        self.render_scoped(lambda api: self.controls.update(button=api.Button(
+            'Plot', lambda: widgets.plot_view(script), refresh_tree=False)))
+        events.clear()
+        self.invoke(self.controls['button'].invoke)
+        self.assertEqual(errors, ['plot failed'])
+        self.assertEqual(events, ['tree'])
+        self.drain(300)
+        self.assertFalse(self.controls['button'].instate(['disabled']))
+        self.assertIs(self.api.Button.__globals__['OMFITaux']['rootGUI'], self.root)
+
+    def test_view_button_still_refreshes_requested_section_and_disabled_button_stays_disabled(self):
+        calls, events = [], []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        def build(api):
+            self.controls['button'] = api.Button('Check', lambda: calls.append('checked'), updateGUI=True,
+                                                 refresh_scope='section', refresh_tree=False)
+            self.controls['disabled'] = api.Button('Disabled', lambda: calls.append('unexpected'),
+                                                   state='disabled', refresh_tree=False)
+        self.render_scoped(build)
+        events.clear()
+        self.invoke(self.controls['disabled'].invoke)
+        self.assertEqual(calls, [])
+        self.invoke(self.controls['button'].invoke)
+        self.drain(300)
+        self.assertEqual(calls, ['checked'])
+        self.assertEqual(self.region_updates, [('section', False)])
+        self.assertEqual(events, [])
+
+    def test_nested_view_plots_and_non_native_plot_callbacks_keep_arguments_and_returns(self):
+        events, calls = [], []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        inner = self.native_plot(lambda **kwargs: calls.append(kwargs) or 'nested figure')
+        outer = self.native_plot(lambda **kwargs: widgets.plot_view(inner, point_ids=['chosen']))
+        self.assertEqual(widgets.plot_view(outer), 'nested figure')
+        self.assertEqual(calls, [{'point_ids': ['chosen'], 'noGUI': True}])
+        self.assertEqual(events, [])
+        callback = SimpleNamespace(plot=lambda **kwargs: kwargs)
+        self.assertEqual(widgets.plot_view(callback, point_ids=['chosen']), {'point_ids': ['chosen']})
 
     def test_native_field_and_reset_refresh_only_nearest_section(self):
         self.render_scoped(lambda api: self.controls.update(combo=api.ComboBox(

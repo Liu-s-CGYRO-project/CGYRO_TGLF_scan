@@ -1,6 +1,7 @@
 """OMFIT page for importing, configuring and running multiple input.gacode files."""
 from builtins import all, any, bool, dict, len, list, str, sum
 from OMFITlib_gui_layout import finish_gui_layout
+from OMFITlib_gui_api import plot_view
 from OMFITlib_gui_controls import checkbox
 from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_project_runtime import shared_issues
@@ -124,7 +125,8 @@ class MultiInputUI:
                        for case in selected_cases
                        for point in case['runs'].get(case['selected_run'], {}).get('points', {}).values())
         with ui.same_row():
-            ui.Button('对比所选记录的频率与增长率', lambda: self.root['PLOTS']['TGLF_multi'].run(), state='normal' if can_plot else 'disabled')
+            ui.Button('对比所选记录的频率与增长率', lambda: plot_view(self.root['PLOTS']['TGLF_multi']),
+                      state='normal' if can_plot else 'disabled', refresh_tree=False)
             ui.Button('刷新状态', lambda: None, updateGUI=True, refresh_scope='section')
         ui.Label('结果选择独立于当前设置。更改参数后先重新生成输入；计算按案例和半径依次执行。', align='left')
         ui.Label('显示各案例原始 TGLF 归一化数值；不同剖面的物理单位比较需另行转换。', align='left')

@@ -1,5 +1,6 @@
 """Validate, collect comparison pages, then render or export through OMFIT."""
 from OMFITlib_cgyro_archive import catalog_runs
+from OMFITlib_gui_api import plot_view
 
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
@@ -123,7 +124,7 @@ def run_plot(root):
         raise ValueError('\n'.join(report['errors']))
     mode = ctx['compare_mode']
     if mode == 'CGYRO_vs_CGYRO':
-        return root['PLOTS']['CGYRO_vs_CGYRO'].plot()
+        return plot_view(root['PLOTS']['CGYRO_vs_CGYRO'])
     try:
         if mode == 'TGLF_vs_TGLF' and (ctx.get('tglf_vs_tglf_mode', None) == 'Flux'
                 or not ctx['mode_state'].get('comparison_export_now', False)):

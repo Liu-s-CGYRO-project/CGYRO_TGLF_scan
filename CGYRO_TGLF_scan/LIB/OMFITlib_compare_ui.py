@@ -18,7 +18,7 @@ from OMFITlib_compare_cases import (
     CaseSelection,
 )
 from OMFITlib_project import comparison_issues
-from OMFITlib_gui_api import adapt
+from OMFITlib_gui_api import adapt, plot_view
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_compare_state import (
@@ -144,8 +144,8 @@ class ComparisonUI(CaseSelection):
         self.ui.Separator()
         self.status_label = self.ui.Label(self._selection_status(missing), align='left')
         with self.ui.same_row():
-            self.ui.Button('检查选择', self._refresh_check, updateGUI=True, width=16)
-            self.ui.Button('绘制所选数据', self._plot, state='disabled' if missing else 'normal', width=20,
+            self.ui.Button('检查选择', self._refresh_check, updateGUI=True, width=16, refresh_tree=False)
+            self.ui.Button('绘制所选数据', self._plot, state='disabled' if missing else 'normal', width=20, refresh_tree=False,
                            help='按当前案例、参数和绘图设置生成图形。计算结果仅在点击后读取。')
 
     def _selection_status(self, missing):
@@ -308,7 +308,7 @@ class ComparisonUI(CaseSelection):
         self.ui.Separator('保存图片' if time_traces else '导出数据')
         spectra = not time_traces and not (self.mode == 'TGLF_vs_TGLF' and self.plot_settings.get('tglf_vs_tglf_mode', None) == 'Flux')
         if spectra:
-            self.ui.Button('导出频率 / 增长率谱…', self._export, width=24,
+            self.ui.Button('导出频率 / 增长率谱…', self._export, width=24, refresh_tree=False,
                            help='在选择的目录中新建导出文件夹，保存原始谱及设置；不会覆盖已有文件。')
         self.ui.Label('图片请在绘图窗口中保存为 PNG、PDF 或 SVG。', align='left')
         self.ui.Separator('选择检查')
@@ -317,7 +317,7 @@ class ComparisonUI(CaseSelection):
         for message in report['errors'] + report['warnings']:
             self.ui.Label('• '+message, align='left')
         if self.mode == 'CGYRO_vs_CGYRO':
-            self.ui.Button('查看 CGYRO 运行状态图', self._status, width=24)
+            self.ui.Button('查看 CGYRO 运行状态图', self._status, width=24, refresh_tree=False)
 
     def _render_related_tools(self, open_templates):
         guis = self.root.get('GUIS', {})
@@ -348,7 +348,7 @@ class ComparisonUI(CaseSelection):
         self._assert_selection()
         key = 'CGYRO_vs_CGYRO' if self.mode == 'CGYRO_vs_CGYRO' else 'CGYRO_vs_TGLF'
         # OMFIT controls its own script cache; do not reload over unsaved editor changes.
-        self.root['PLOTS'][key].plot()
+        plot_view(self.root['PLOTS'][key])
 
     def _export(self):
         flag = 'linear_export_now' if self.mode == 'CGYRO_vs_CGYRO' else 'comparison_export_now'
@@ -369,6 +369,6 @@ class ComparisonUI(CaseSelection):
         old = self.state.get('check_cgyro_output_now', False)
         self.state['check_cgyro_output_now'] = True
         try:
-            self.root['PLOTS']['CGYRO_vs_TGLF'].plot()
+            plot_view(self.root['PLOTS']['CGYRO_vs_TGLF'])
         finally:
             self.state['check_cgyro_output_now'] = old

@@ -112,7 +112,7 @@ def _constructor_copy(function, helpers):
 
 
 class _ViewRootEvents:
-    """Suppress only native tree repaint for explicitly view-only inputs."""
+    """Suppress only native tree repaint for explicitly view-only actions."""
     def __init__(self, root):
         self.root = root
 
@@ -124,6 +124,29 @@ class _ViewRootEvents:
         return getattr(self.root, name)
 
 
+def _view_globals(aux):
+    root = aux.get('rootGUI', None)
+    return {'OMFITaux': ChainMap({'rootGUI': _ViewRootEvents(root)}, aux)} if root is not None else {}
+
+
+def plot_view(script, **kwargs):
+    """Execute a display-only native plot without its unconditional tree repaint.
+
+    OMFITpythonPlot.plot refreshes the main tree even when updateGUI=False on
+    the button. That can evaluate every expression/library in the project.
+    Keep the native runner, editor cache, noGUI flag, cwd restoration and canvas
+    idle draw. Only this invocation's final tree event is omitted; the method,
+    its shared globals and any business events inside the script stay intact.
+    """
+    method = script.plot
+    function = getattr(method, '__func__', None)
+    if isinstance(function, FunctionType):
+        helpers = _view_globals(function.__globals__.get('OMFITaux', {}))
+        if helpers:
+            return _constructor_copy(function, helpers)(method.__self__, **kwargs)
+    return method(**kwargs)
+
+
 def _view_constructor(api, function):
     """Keep native edits/reset/locks, isolating only their event destination.
 
@@ -131,11 +154,9 @@ def _view_constructor(api, function):
     Each helper receives a private globals overlay; the shared OMFIT namespace
     and unrelated controls keep their normal tree notifications.
     """
-    aux = getattr(api, 'OMFITaux', {})
-    root = aux.get('rootGUI', None)
-    if root is None:
+    helpers = _view_globals(getattr(api, 'OMFITaux', {}))
+    if not helpers:
         return function
-    helpers = {'OMFITaux': ChainMap({'rootGUI': _ViewRootEvents(root)}, aux)}
     if function.__name__ == 'Entry':
         for name in ('_Entry', '_Text'):
             helper = getattr(api, name, None)
@@ -420,6 +441,9 @@ class ProjectWidgets:
         def create(*args, **kwargs):
             parent = getattr(self._api, '_aux', {}).get('parentGUI', None)
             scope = kwargs.pop('refresh_scope', 'page' if name == 'Button' else 'section')
+            # updateGUI controls settings windows, not OMFIT's main tree.
+            # Display buttons opt out explicitly; mutations keep notifications.
+            refresh_tree = kwargs.pop('refresh_tree', True) if name == 'Button' else True
             arguments = dict(kwargs)
             bound = None
             if args:
@@ -432,6 +456,8 @@ class ProjectWidgets:
             except (TypeError, ValueError):
                 pass
             constructor = function
+            if not refresh_tree and isinstance(function, FunctionType):
+                constructor = _view_constructor(self._api, function)
             # Page actions can affect sibling tabs/results. Pure view buttons
             # may opt into section; explicit reloads opt into window.
             refresh = _deferred_gui_refresh(self._api, parent, scope=scope)
