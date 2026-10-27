@@ -123,7 +123,6 @@ SPECIES = OrderedDict([
 ])
 SPECIES_PATTERN = re.compile(r'(' + '|'.join(SPECIES) + r')_([1-9][0-9]*)$')
 MANAGED = {'NS', 'USE_TRANSPORT_MODEL'}
-CHOICES = {'SAT_RULE': [0, 1, 2, 3], 'KYGRID_MODEL': [0, 1, 2, 3, 4, 5]}
 INTEGERS = {name for name, (value, _, _) in FIELDS.items() if isinstance(value, int) and not isinstance(value, bool)}
 COMMON_NAMES = ('SAT_RULE', 'KYGRID_MODEL', 'KY', 'NKY', 'NMODES', 'NBASIS_MIN', 'NBASIS_MAX',
     'NXGRID', 'WIDTH', 'WIDTH_MIN', 'NWIDTH', 'FIND_WIDTH', 'USE_BPER', 'USE_BPAR', 'XNU_MODEL',

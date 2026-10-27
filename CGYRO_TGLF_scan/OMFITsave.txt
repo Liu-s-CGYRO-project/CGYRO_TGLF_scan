@@ -488,6 +488,10 @@
 ['LIB']['OMFITlib_tglf_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_workbench.py <-:-:-> {}
 ['LIB']['OMFITlib_tglf_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_parameters.py <-:-:-> {}
 ['LIB']['OMFITlib_tglf_parameter_help'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_parameter_help.py <-:-:-> {}
+['TGLF_scan']['TGLF']['LIB']['OMFITlib_tglf_parameter_help'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_parameter_help.py <-:-:-> {}
+['TGLF_scan']['TGLF']['LIB']['OMFITlib_tglf_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_parameters.py <-:-:-> {}
+['TGLF_scan']['TGYRO']['LIB']['OMFITlib_tglf_parameter_help'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_parameter_help.py <-:-:-> {}
+['TGLF_scan']['TGYRO']['LIB']['OMFITlib_tglf_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_parameters.py <-:-:-> {}
 ['LIB']['OMFITlib_tglf_preparation'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_preparation.py <-:-:-> {}
 ['TGLF_scan']['LIB']['OMFITlib_tglf_preparation'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_preparation.py <-:-:-> {}
 ['LIB']['OMFITlib_tglf_workbench_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_workbench_ui.py <-:-:-> {}

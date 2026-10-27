@@ -9,6 +9,7 @@ defaultVars parameters
 :param kw1: kw1 can be passed to this script as <path to script>.run(kw1='hello')
 """
 from OMFITlib_gui_api import adapt
+from OMFITlib_tglf_parameter_help import parameter_help
 OMFITx = adapt(OMFITx)
 OMFITx.TitleGUI('TGLF')
 
@@ -51,12 +52,12 @@ tglf_options['ST (ETG resolution for low B, high Beta)'] = [0.0, 1, 1.0, 12, 4, 
 tglf_options['ITER (ETG resolution for ITER)'] = [0.0, 1, 1.0, 20, 4, 4, 4, 'GYRO', 2, 0.0, False]
 
 # some settings will be locked depending on the scenario, revision or SAT_RUL
-state_revision = 'enabled'
-state_quench = 'enabled'
-state_xnu_model = 'enabled'
-state = 'enabled'
+state_revision = 'normal'
+state_quench = 'normal'
+state_xnu_model = 'normal'
+state = 'normal'
 state_quench = 'disabled'
-state_em = 'enabled'
+state_em = 'normal'
 
 if settings_loc['PHYSICS']['Customized_TGLF_input'] == False:
 
@@ -100,17 +101,13 @@ else:
 
     OMFITx.Separator('自定义设置', foreground='black')
 
-OMFITx.ComboBox(
+OMFITx.Entry(
     inp_loc_tgyro_str + "['TGYRO_TGLF_REVISION']",
-    {
-        '0 - Customize settings': 0,
-        '2 - Quench rule (2009)': 2,
-        '3 - Spectral shift ExB shear model': 3,
-        '4 - Momentum transport without EM terms': 4,
-    },
     'TGLF 修订版本',
+    check=is_int,
     default=3,
-    help='''The Waltz quench rule has only been calibrated to GYRO for SAT_RULE=0 and the linear growth rates output to the file out.tglf.eigenvalue spectrum will be the net growth rate after the quench rule is applied, not the actual growth rates. ''',
+    help='''0：自定义；2：Quench rule (2009)；3：谱位移 E×B 剪切模型；4：不含电磁项的动量输运。
+The Waltz quench rule has only been calibrated to GYRO for SAT_RULE=0 and the linear growth rates output to the file out.tglf.eigenvalue spectrum will be the net growth rate after the quench rule is applied, not the actual growth rates.''',
     updateGUI=True,
     state=state_revision,
 )
@@ -147,11 +144,10 @@ if inp_loc_tgyro['TGYRO_TGLF_REVISION'] == 4:
     inp_loc_tree['USE_MHD_RULE'] = False
 
 if settings_loc['PHYSICS']['Customized_TGLF_input'] and inp_loc_tgyro['TGYRO_TGLF_REVISION'] == 0:
-    state_quench = 'enabled'
+    state_quench = 'normal'
 
-OMFITx.ComboBox(
+OMFITx.Entry(
     inp_loc + "['ALPHA_QUENCH']",
-    {'0': 0.0, '1': 1.0},
     default=0.0,
     lbl="ALPHA_QUENCH",
     updateGUI=True,
@@ -159,16 +155,14 @@ OMFITx.ComboBox(
     help='''0 = New spectral shift model; 1= Quench rule (2009) that replaces growth rate by growth relative to ExB shear [Waltz 1997].  QL weights from GYRO [Staebler 2007]''',
 )
 
-OMFITx.ComboBox(
+OMFITx.Entry(
     inp_loc + "['SAT_RULE']",
-    {'0': 0, '1': 1, '2': 2},
     lbl="SAT_RULE",
+    check=is_int,
     updateGUI=True,
     default=1,
     state=state,
-    help='''SAT0 - Spectral shift [Staebler 2013] and quasilinear weights from GYRO [Staebler 2007].
-SAT1 - Spectral shift [Staebler 2013] and quasilinear weights from multiscale GYRO [Staebler 2017] or CGYRO [Staebler 2021].
-SAT2 - Spectral shift [Staebler 2013] new collision model and quasilinear weights from CGYRO [Staebler 2021].''',
+    help=parameter_help('SAT_RULE', inp_loc_tree),
 )
 
 if inp_loc_tree['SAT_RULE'] != 0 and inp_loc_tree['ALPHA_QUENCH'] == 1.0:
@@ -182,15 +176,13 @@ OMFITx.Entry(
     help='Zonal flow, should be switched on (1) for SAT1 and SAT1.',
 )
 
-OMFITx.ComboBox(
+OMFITx.Entry(
     inp_loc + "['KYGRID_MODEL']",
-    {'0': 0, '1': 1, '3': 3, '4': 4},
+    check=is_int,
     default=1,
     lbl="KYGRID_MODEL",
     state=state,
-    help=''' 0 = user defined with NKY modes up to KY equal spaced;
-1 = standard ky spectrum for transport model;
-3 and 4 = new options for ITER and ST scenarios''',
+    help=parameter_help('KYGRID_MODEL', inp_loc_tree),
     updateGUI=True,
 )
 
@@ -310,9 +302,9 @@ elif inp_loc_tree['SAT_RULE'] == 2 and not settings_loc['PHYSICS']['Customized_T
     inp_loc_tree['KYGRID_MODEL'] = 4
     inp_loc_tree['USE_AVE_ION_GRID'] = True
 
-OMFITx.ComboBox(
+OMFITx.Entry(
     inp_loc + "['XNU_MODEL']",
-    {'2': 2, '3': 3},
+    check=is_int,
     default=2,
     lbl="XNU_MODEL",
     state=state,
@@ -321,9 +313,8 @@ OMFITx.ComboBox(
 3 = improved collision model and isotope for SAT2''',
 )
 
-OMFITx.ComboBox(
+OMFITx.Entry(
     inp_loc + "['WDIA_TRAPPED']",
-    {'0.0': 0.0, '1.0': 1.0},
     default=0,
     lbl="WDIA_TRAPPED",
     state='disabled',

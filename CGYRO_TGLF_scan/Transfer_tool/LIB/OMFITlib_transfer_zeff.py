@@ -1,13 +1,11 @@
 """Retain full-composition Zeff before normalizing hydrogenic main ions."""
 from builtins import any, dict, float, int, len, list, max, min, str
-from collections import OrderedDict
 import math
 import numpy as np
 from scipy.interpolate import CubicSpline
 
 ZEFF_RULE = 'source_neutral_composition_zeff_v3'
 ZEFF_DEFAULTS = dict(zeff_collision_model=1)
-ZEFF_COLLISIONS = OrderedDict([('1 Lorentz', 1), ('5 简化 Lorentz', 5)])
 
 
 def zeff_options(options):

@@ -15,7 +15,8 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / 'CGYRO_TGLF_scan/LIB'))
 from OMFITlib_tglf_parameters import parameter_catalog, parameter_values
 from OMFITlib_tglf_parameter_help import parameter_help
-from OMFITlib_tglf_workbench import initialize, parameter_overrides, parameter_value, plan
+from OMFITlib_tglf_workbench import (apply_scenario, generation_overrides, initialize, parameter_overrides,
+                                    parameter_value, plan, save_preset, scan_parameter_names, scenario_choices)
 from OMFITlib_tglf_workbench_ui import TGLFWorkbench
 
 
@@ -129,6 +130,26 @@ class TGLFParametersTest(unittest.TestCase):
         self.assertEqual([source['axes'][0]['values'] for source in prepared['sources']], [[2., 4., 6.], [3., 6., 9.]])
         self.assertTrue(all(not source['parameters'] for source in prepared['sources']))
 
+    def test_scanned_fixed_override_cannot_change_relative_baseline_or_generation(self):
+        self.settings['parameters']['RLTS_1'] = dict(enabled=True, value=20.)
+        self.root['TGLF_scan']['input.tglf'] = {.3: dict(self.source, RLTS_1=4.), .5: dict(self.source, RLTS_1=6.)}
+        self.settings.update(dict(source='radial', radius_mode='all', parameter1='RLTS_1',
+                                  value_mode1='factor', scan_start1=.5, scan_end1=1.5, scan_count1=3))
+        prepared = plan(self.root, self.settings)
+        self.assertEqual([source['axes'][0]['values'] for source in prepared['sources']], [[2., 4., 6.], [3., 6., 9.]])
+        self.root['Transfer_tool'] = dict(TEMPLATES={'input.tglf': self.source})
+        self.assertNotIn('RLTS_1', generation_overrides(self.root, self.settings))
+        self.assertEqual(self.settings['parameters']['RLTS_1'], dict(enabled=True, value=20.))
+        self.settings['mode'] = 'single'
+        self.assertEqual(parameter_overrides(self.settings, self.source), {'RLTS_1': 20.})
+
+    def test_invalid_dormant_fixed_value_does_not_block_sat_rule_scan(self):
+        self.settings.update(parameter1='SAT_RULE', values1=[0, 1, 2, 3])
+        self.settings['parameters']['SAT_RULE'] = dict(enabled=True, value='invalid old edit')
+        inputs = self.execute(plan(self.root, self.settings))
+        self.assertEqual([row['SAT_RULE'] for row in inputs], [0, 1, 2, 3])
+        self.assertTrue(all(type(row['SAT_RULE']) is int for row in inputs))
+
     def test_scan_values_override_manual_value_without_overwriting_input(self):
         self.settings['parameters']['BETAE'] = dict(enabled=True, value=.02)
         inputs = self.execute(plan(self.root, self.settings))
@@ -206,17 +227,190 @@ class TGLFParametersTest(unittest.TestCase):
         self.assertTrue(all('适用条件：' in event[2]['help'] for event in fields))
         self.assertEqual(self.source, before)
 
-    def test_common_enum_choices_and_callback_apply_only_edited_parameter(self):
+    def test_numeric_codes_are_entries_and_callback_applies_only_edited_parameter(self):
         workbench, ui = self.workbench()
         for name in ('SAT_RULE', 'KYGRID_MODEL'):
             workbench.parameter_field(name, self.source, name)
-        sat, grid = [event for event in ui.events if event[0] == 'ComboBox']
-        self.assertEqual(sat[1][1], [0, 1, 2, 3])
-        self.assertEqual(grid[1][1], [0, 1, 2, 3, 4, 5])
+        sat, grid = [event for event in ui.events if event[0] == 'Entry']
+        self.assertFalse(any(event[0] == 'ComboBox' for event in ui.events))
+        self.assertFalse(sat[2]['updateGUI'])
+        self.assertFalse(grid[2]['updateGUI'])
         self.settings['parameters']['SAT_RULE']['value'] = 3
         sat[2]['postcommand']()
         self.assertEqual(parameter_overrides(self.settings, self.source), {'SAT_RULE': 3})
         self.assertNotIn('SAT_RULE', self.source)
+
+    def parameter_controls(self, ui):
+        return {event[1][0].split("['parameters'][", 1)[1].split(']', 1)[0].strip("'\""): event
+                for event in ui.events if event[0] in ('Entry', 'ComboBox') and "['parameters']" in event[1][0]}
+
+    def test_all_numeric_controls_use_entries_boolean_controls_keep_choices(self):
+        self.settings.update(mode='single', parameter_group='all')
+        self.source['USE_BPER'] = np.bool_(True)
+        workbench, ui = self.workbench()
+        workbench.parameters()
+        controls = self.parameter_controls(ui)
+        self.assertEqual(set(controls), set(parameter_values(self.source)))
+        for name, value in parameter_values(self.source).items():
+            with self.subTest(name=name):
+                self.assertEqual(controls[name][0], 'ComboBox' if isinstance(value, bool) else 'Entry')
+                self.assertFalse(controls[name][2]['updateGUI'])
+        ui.events.clear()
+        workbench.parameter_field('USE_BPER', self.source, 'USE_BPER')
+        self.assertEqual(self.parameter_controls(ui)['USE_BPER'][0], 'ComboBox')
+
+    def test_scan_axes_lock_both_parameter_entries_and_restore_after_axis_change(self):
+        self.root['TGLF_scan']['RUN_DB'] = UnreadResults(old=UnreadResults())
+        self.settings.update(mode='2d', parameter1='SAT_RULE', parameter2='USE_BPER', parameter_group='all')
+        self.settings['parameters']['SAT_RULE'] = dict(enabled=True, value=3)
+        workbench, ui = self.workbench()
+        workbench.parameters()
+        controls = self.parameter_controls(ui)
+        self.assertNotIn('SAT_RULE', controls)
+        self.assertNotIn('USE_BPER', controls)
+        self.assertIn('KYGRID_MODEL', controls)
+        self.assertTrue(any('SAT_RULE' in call.args[0] and '由扫描设置控制' in call.args[0]
+                            for call in workbench.view.label.call_args_list))
+        ui.events.clear()
+        workbench.parameter_field('SAT_RULE', self.source, 'SAT_RULE')
+        self.assertFalse(self.parameter_controls(ui))
+        self.settings.update(mode='1d', parameter1='KYGRID_MODEL')
+        workbench.parameters()
+        controls = self.parameter_controls(ui)
+        self.assertIn('SAT_RULE', controls)
+        self.assertIn('USE_BPER', controls)  # The dormant second axis is not active.
+        self.assertNotIn('KYGRID_MODEL', controls)
+        self.assertEqual(self.settings['parameters']['SAT_RULE'], dict(enabled=True, value=3))
+        self.assertEqual(parameter_overrides(self.settings, self.source), {'SAT_RULE': 3})
+
+    def test_uq_locks_only_active_parameters_and_count_is_validated(self):
+        self.settings.update(mode='uq', uq_count=1, parameter_group='all',
+                             uq={'0': {'name': 'XNUE', 'mean': .1, 'std': .02},
+                                 '1': {'name': 'BETAE', 'mean': .01, 'std': .002}})
+        workbench, ui = self.workbench()
+        workbench.scan_settings()
+        count = next(event for event in ui.events if event[0] == 'Entry' and event[1][0].endswith("['uq_count']"))
+        self.assertTrue(count[2]['updateGUI'])
+        ui.events.clear()
+        workbench.parameters()
+        controls = self.parameter_controls(ui)
+        self.assertNotIn('XNUE', controls)
+        self.assertIn('BETAE', controls)
+        self.settings['uq_count'] = 2
+        ui.events.clear()
+        workbench.parameters()
+        self.assertNotIn('BETAE', self.parameter_controls(ui))
+        for invalid in (0, 6, 1.5, True, None, float('nan')):
+            with self.subTest(count=invalid):
+                self.settings['uq_count'] = invalid
+                workbench.view.label.reset_mock()
+                workbench.scan_settings()  # A draft invalid entry must not crash Tk.
+                self.assertTrue(workbench.view.label.called)
+                with self.assertRaises(ValueError):
+                    plan(self.root, self.settings)
+
+    def test_scan_ownership_survives_save_reopen_without_resolving_results(self):
+        self.settings.update(parameter1='SAT_RULE', values1=[1, 3])
+        self.settings['parameters']['SAT_RULE'] = dict(enabled=True, value=2)
+        reopened = treeify(json.loads(json.dumps(self.root)), OMFITMapping)
+        reopened['TGLF_scan']['RUN_DB'] = UnreadResults()
+        settings, _ = initialize(reopened, OMFITMapping)
+        self.assertEqual(scan_parameter_names(settings), {'SAT_RULE'})
+        inputs = self.execute(plan(reopened, settings))
+        self.assertEqual([row['SAT_RULE'] for row in inputs], [1, 3])
+        settings['mode'] = 'single'
+        self.assertEqual(parameter_overrides(settings, self.source), {'SAT_RULE': 2})
+
+    def test_builtin_preset_available_on_parameter_page_preserves_scan_axes(self):
+        self.settings.update(parameter1='SAT_RULE', values1=[0, 1])
+        workbench, ui = self.workbench()
+        workbench.parameters()
+        preset = next(event for event in ui.events if event[0] == 'ComboBox' and event[1][0].endswith("['scenario']"))
+        self.assertTrue({'sat0', 'sat1', 'sat2', 'jet', 'st', 'iter'} <= set(preset[1][1].values()))
+        self.settings['scenario'] = 'jet'
+        preset[2]['postcommand']()
+        inputs = self.execute(plan(self.root, self.settings))
+        self.assertEqual([row['SAT_RULE'] for row in inputs], [0, 1])
+        self.assertTrue(all(row['NKY'] == 17 and row['UNITS'] == 'CGYRO' for row in inputs))
+        self.assertEqual(self.source, dict(NS=2, RLTS_1=4., ZS_1=-1., ZS_2=1.))
+
+    def test_saved_preset_is_small_independent_patch_not_an_input_snapshot(self):
+        self.root['TGLF_scan']['RUN_DB'] = UnreadResults(old=UnreadResults())
+        self.settings.update(parameter1='SAT_RULE', units_override='CGYRO')
+        self.settings['parameters'].update(SAT_RULE=dict(enabled=True, value=3),
+            NKY=dict(enabled=True, value=24), USE_BPER=dict(enabled=True, value=True),
+            RLTS_1=dict(enabled=False, value=99.))
+        save_preset(self.settings, self.source, '  我的方案  ')
+        self.assertEqual(self.settings['presets']['我的方案'], dict(NKY=24, USE_BPER=True, UNITS='CGYRO'))
+        self.settings['parameters']['NKY']['value'] = 12
+        self.source['RLTS_1'] = 8.
+        self.settings['parameters']['BETAE'] = dict(enabled=True, value=.1)
+        apply_scenario(self.settings, self.source)
+        self.assertEqual(parameter_overrides(self.settings, self.source), dict(NKY=24, USE_BPER=True, UNITS='CGYRO'))
+        self.assertEqual(self.source['RLTS_1'], 8.)
+        self.assertEqual(self.settings['presets']['我的方案']['NKY'], 24)
+
+    def test_user_preset_save_reopen_and_builtin_name_do_not_collide(self):
+        self.settings.update(mode='single', scenario='sat2')
+        apply_scenario(self.settings, self.source)
+        self.settings['parameters']['NKY']['value'] = 32
+        save_preset(self.settings, self.source, 'sat2')
+        reopened = treeify(json.loads(json.dumps(self.root)), OMFITMapping)
+        settings, _ = initialize(reopened, OMFITMapping)
+        choices = scenario_choices(settings)
+        self.assertEqual(choices['常规 · SAT2'], 'sat2')
+        self.assertEqual(choices['我的预设 · sat2'], 'user:sat2')
+        settings['scenario'] = 'sat1'
+        apply_scenario(settings, self.source, OMFITMapping)
+        settings['scenario'] = 'user:sat2'
+        apply_scenario(settings, self.source, OMFITMapping)
+        inputs = self.execute(plan(reopened, settings))
+        self.assertEqual(inputs[0]['NKY'], 32)
+        self.assertEqual(inputs[0]['SAT_RULE'], 2)
+        self.assertEqual(inputs[0]['UNITS'], 'CGYRO')
+        settings['scenario'] = 'input'
+        apply_scenario(settings, self.source, OMFITMapping)
+        self.assertFalse(parameter_overrides(settings, self.source))
+        self.assertIn('sat2', settings['presets'])
+
+    def test_invalid_preset_does_not_half_apply_or_replace_saved_values(self):
+        self.settings['parameters']['NKY'] = dict(enabled=True, value=24)
+        save_preset(self.settings, self.source, '有效')
+        saved = copy.deepcopy(self.settings['presets'])
+        self.settings['parameters']['NKY']['value'] = 1.5
+        with self.assertRaises(ValueError):
+            save_preset(self.settings, self.source, '有效')
+        self.assertEqual(self.settings['presets'], saved)
+        self.settings['presets']['其他物种'] = dict(NKY=32, RLTS_3=5.)
+        self.settings['scenario'] = 'user:其他物种'
+        before = copy.deepcopy(self.settings['parameters'])
+        with self.assertRaisesRegex(ValueError, 'RLTS_3'):
+            apply_scenario(self.settings, self.source)
+        self.assertEqual(self.settings['parameters'], before)
+        self.assertEqual(self.settings['units_override'], '')
+
+    def test_save_cancel_replace_and_delete_preserve_current_input_and_other_presets(self):
+        workbench, _ = self.workbench()
+        self.settings['parameters']['NKY'] = dict(enabled=True, value=24)
+        save_preset(self.settings, self.source, '方案 A')
+        save_preset(self.settings, self.source, '方案 B')
+        self.settings['parameters']['NKY']['value'] = 32
+        module = 'OMFITlib_tglf_workbench_ui.'
+        with patch(module + 'simpledialog.askstring', return_value=None):
+            workbench.save_current_preset(self.source, None)
+        with patch(module + 'simpledialog.askstring', return_value='方案 A'), \
+                patch(module + 'messagebox.askyesno', return_value=False):
+            workbench.save_current_preset(self.source, None)
+        self.assertEqual(self.settings['presets']['方案 A']['NKY'], 24)
+        with patch(module + 'simpledialog.askstring', return_value='方案 A'), \
+                patch(module + 'messagebox.askyesno', return_value=True):
+            workbench.save_current_preset(self.source, None)
+        self.assertEqual(self.settings['presets']['方案 A']['NKY'], 32)
+        with patch(module + 'messagebox.askyesno', return_value=True):
+            workbench.delete_preset('方案 A', None)
+        self.assertEqual(self.settings['presets'], {'方案 B': {'NKY': 24}})
+        self.assertEqual(parameter_overrides(self.settings, self.source), {'NKY': 32})
+        self.assertNotIn('NKY', self.source)
 
 
 if __name__ == '__main__':

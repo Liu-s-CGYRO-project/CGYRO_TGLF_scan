@@ -1,4 +1,5 @@
 from OMFITlib_gui_api import adapt
+from OMFITlib_tglf_parameter_help import parameter_help
 OMFITx = adapt(OMFITx)
 # -*-Python-*-
 # Created by smithsp at 02 Sep 2015  21:39
@@ -51,29 +52,28 @@ OMFITx.CheckBox(inp_loc + "['USE_BPER']", lbl='包含横向磁扰动（A∥）',
 OMFITx.CheckBox(inp_loc + "['USE_BPAR']", lbl='包含压缩磁扰动（B∥）', default=True)
 OMFITx.CheckBox(inp_loc + "['USE_MHD_RULE']", lbl='忽略压强梯度对曲率漂移的贡献（Phi）', default=False)
 OMFITx.CheckBox(inp_loc + "['ADIABATIC_ELEC']", lbl='采用绝热电子', default=False)
-OMFITx.ComboBox(
+OMFITx.Entry(
     inp_loc + "['SAT_RULE']",
-    {'0': 0, '1': 1, '2': 2},
     lbl='饱和规则',
-    updateGUI=True,
+    check=is_int,
     default=1,
-    help='''SAT0 - Spectral shift [Staebler 2013] and quasilinear weights from GYRO [Staebler 2007].
-SAT1 - Spectral shift [Staebler 2013] and quasilinear weights from multiscale GYRO [Staebler 2017] or CGYRO [Staebler 2021].
-SAT2 - Spectral shift [Staebler 2013] new collision model and quasilinear weights from CGYRO [Staebler 2021].''',
+    help=parameter_help('SAT_RULE', input_tglf),
 )
 # These are deprecated parameters:
 # OMFITx.Entry(inp_loc+"['XNU_MODEL']",
 #  lbl="Collision model (2=new)",default=2,check=is_int)
 # OMFITx.Entry(inp_loc+"['VPAR_MODEL']",
 #  lbl="VPAR_MODEL (0=low-Mach-number limit)",default=0)
-OMFITx.ComboBox(
+OMFITx.Entry(
     inp_loc + "['ALPHA_QUENCH']",
-    {'采用湍流抑制规则': 1.0, '采用新的谱位移模型': 0.0},
     lbl='湍流抑制规则',
     default=0.0,
+    help=parameter_help('ALPHA_QUENCH', input_tglf),
 )
-OMFITx.ComboBox(inp_loc + "['SIGN_BT']", [1, -1], lbl='Bt 符号（俯视逆时针为正）', default=1)
-OMFITx.ComboBox(inp_loc + "['SIGN_IT']", [1, -1], lbl='It 符号（俯视逆时针为正）', default=1)
+OMFITx.Entry(inp_loc + "['SIGN_BT']", lbl='Bt 符号（俯视逆时针为正）', default=1,
+             check=lambda value: value in (-1, 1), help=parameter_help('SIGN_BT', input_tglf))
+OMFITx.Entry(inp_loc + "['SIGN_IT']", lbl='It 符号（俯视逆时针为正）', default=1,
+             check=lambda value: value in (-1, 1), help=parameter_help('SIGN_IT', input_tglf))
 
 OMFITx.Tab('数值参数')
 OMFITx.CheckBox(inp_loc + "['USE_BISECTION']", lbl='用二分法寻找使增长率最大的模态宽度', default=True)
@@ -98,11 +98,12 @@ def check_nky(s):
 if not input_tglf['USE_TRANSPORT_MODEL']:
     OMFITx.Entry(inp_loc + "['KY']", 'TGLF 单模态计算的 k_y', default=0.3)
 else:
-    OMFITx.ComboBox(
+    OMFITx.Entry(
         inp_loc + "['KYGRID_MODEL']",
-        {'输运模型的标准 ky 谱': 1, '自定义等间距 ky 网格（NKY 个点，最大值 KY）': 0},
         lbl='ky 网格模型',
         default=1,
+        check=is_int,
+        help=parameter_help('KYGRID_MODEL', input_tglf),
         updateGUI=True,
     )
     if input_tglf['KYGRID_MODEL'] == 0:
@@ -118,16 +119,11 @@ else:
         if ibranch in [-1]:
             input_tglf['NMODES'] = 2
 
-    OMFITx.ComboBox(
+    OMFITx.Entry(
         inp_loc + "['IBRANCH']",
-        {
-            "Find two most unstable modes; one for each sign of frequency": 0,
-            # Remove these two options, because TGLF does not seem to do as directed
-            # "Find most unstable positive frequency mode (electron drift direction)":1,
-            # "Find most unstable negative frequency mode (ion drift direction)":2,
-            "Sort the unstable modes by growthrate in rank order": -1,
-        },
         lbl='模态选择',
+        check=is_int,
+        help=parameter_help('IBRANCH', input_tglf),
         default=-1,
         updateGUI=True,
         postcommand=set_nky,

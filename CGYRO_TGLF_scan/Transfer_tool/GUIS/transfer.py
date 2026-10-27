@@ -8,7 +8,6 @@ from OMFITlib_transfer_workflow import generation_issues, initialize_generation,
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_transfer_particles import (PRESETS, DESCRIPTIONS, EQUIVALENT_TEMPERATURES, detect_main_ions,
                                         main_ion_label, species_label, thermal_reference_choices)
-from OMFITlib_transfer_zeff import ZEFF_COLLISIONS
 from OMFITlib_transfer_equivalent import pressure_audit_lines
 
 # compoundGUI is reserved by OMFIT and must not be reset through defaultVars.
@@ -186,9 +185,10 @@ if physics['generation']['particle_mode'] == 'separate_fast':
     OMFITx.Label('热杂质密度梯度由其电荷密度梯度确定；压力及梯度差额见方案帮助。', align='left', wraplength=840)
 if physics['generation']['particle_mode'] == 'main_only':
     OMFITx.Label('先校正完整剖面准中性并计算 Zeff，再保留主离子、归一化密度之和为 1。', align='left', wraplength=840)
-    OMFITx.ComboBox(prefix + "['zeff_collision_model']", ZEFF_COLLISIONS, 'CGYRO 碰撞模型',
-                   state='readonly', updateGUI=True,
-                   help='指定 Zeff 仅在 CGYRO 模型 1 或 5 且 Z_EFF_METHOD=1 时生效；生成输入时一并设置。\n'
+    OMFITx.Entry(prefix + "['zeff_collision_model']", 'CGYRO 碰撞模型', width=8,
+                   updateGUI=False, check=lambda value: value in (1, 5),
+                   help='1：Lorentz；5：简化 Lorentz。\n'
+                        '指定 Zeff 仅在 CGYRO 模型 1 或 5 且 Z_EFF_METHOD=1 时生效；生成输入时一并设置。\n'
                         '默认模型 4 按实际粒子组成重算 Zeff。若需模型 4，请使用等效杂质方案。\n'
                         '此方案只保留杂质的有效碰撞贡献，不包含杂质响应、稀释或输运。')
 if not particle_issue:

@@ -29,6 +29,7 @@ SCENARIOS = OrderedDict([
     ('st', ('ST', (0.0, 1, 1.0, 12, 4, 4, 4, 'GYRO', 2, 0.0, False))),
     ('iter', ('ITER', (0.0, 1, 1.0, 20, 4, 4, 4, 'GYRO', 2, 0.0, False))),
 ])
+USER_SCENARIO_PREFIX = 'user:'
 INTEGERS = INPUT_INTEGERS | {'并发任务数', 'UQ 参数数', '样本数', '扫描点数'}
 POSITIVE = {'NS', 'NKY', 'NMODES', 'NBASIS_MIN', 'NBASIS_MAX', 'NXGRID', 'NWIDTH', 'WIDTH', 'WIDTH_MIN'}
 
@@ -85,11 +86,37 @@ def parameter_value(name, value, original):
     return number
 
 
+def uq_parameter_count(settings):
+    count = parameter_value('UQ 参数数', settings['uq_count'], 1)
+    if not 1 <= count <= 5:
+        raise ValueError('UQ 参数数范围是 1–5')
+    return count
+
+
+def scan_parameter_names(settings):
+    """Active axes only; no input/result access or scan-point construction."""
+    mode = settings.get('mode', 'single')
+    if mode in ('1d', '2d'):
+        return {settings.get('parameter' + str(index), '')
+                for index in range(1, 3 if mode == '2d' else 2)} - {''}
+    if mode == 'uq':
+        try:
+            count = uq_parameter_count(settings)
+        except ValueError:
+            return set()  # Invalid draft count is diagnosed by the scan page/plan.
+        return {settings.get('uq', {}).get(str(index), {}).get('name', '')
+                for index in range(count)} - {''}
+    return set()
+
+
 def parameter_overrides(settings, source):
     values = parameter_values(source)
+    scanned = scan_parameter_names(settings)
     result = {}
     for name, item in settings['parameters'].items():
-        if not item.get('enabled', False):
+        # Keep dormant edits for a later single run, but never use them as a
+        # hidden baseline for a currently scanned input (including generation).
+        if name in scanned or not item.get('enabled', False):
             continue
         if name not in values:
             raise ValueError('当前输入不支持参数 ' + name)
@@ -100,6 +127,51 @@ def parameter_overrides(settings, source):
             raise ValueError('UNITS 请选择 GYRO 或 CGYRO')
         result['UNITS'] = units
     return result
+
+
+def scenario_choices(settings):
+    choices = OrderedDict((item[0], key) for key, item in SCENARIOS.items())
+    choices.update(('我的预设 · ' + name, USER_SCENARIO_PREFIX + name)
+                   for name in settings['presets'])
+    return choices
+
+
+def apply_scenario(settings, source, factory=dict):
+    chosen = settings['scenario']
+    if chosen in ('input', 'custom'):
+        if chosen == 'input':
+            for name in SCENARIO_FIELDS:
+                item = settings['parameters'].get(name, None)
+                if item is not None:
+                    item['enabled'] = False
+            settings['units_override'] = ''
+        return
+    saved = chosen.startswith(USER_SCENARIO_PREFIX)
+    values = (settings['presets'][chosen[len(USER_SCENARIO_PREFIX):]] if saved
+              else dict(zip(SCENARIO_FIELDS, SCENARIOS[chosen][1])))
+    # Validate the whole small patch before changing settings. A preset from
+    # another species set must not be half-applied to this input.
+    draft = dict(parameters={name: dict(enabled=True, value=value) for name, value in values.items()
+                             if name != 'UNITS'}, units_override=values.get('UNITS', ''))
+    checked = parameter_overrides(draft, source)
+    if saved:
+        for item in settings['parameters'].values():
+            item['enabled'] = False
+    settings['units_override'] = checked.pop('UNITS', '')
+    for name, value in checked.items():
+        settings['parameters'].setdefault(name, factory()).update(dict(enabled=True, value=value))
+
+
+def save_preset(settings, source, name, factory=dict):
+    name = str(name).strip()
+    if not name:
+        raise ValueError('请填写预设名称')
+    # Store explicit fixed-value edits only: no profile snapshot, result data,
+    # inherited radius-dependent values, or current scan-axis values.
+    values = factory()
+    values.update(parameter_overrides(settings, source))
+    settings['presets'][name] = values
+    settings['scenario'] = USER_SCENARIO_PREFIX + name
 
 
 def generation_overrides(root, settings):
@@ -175,7 +247,7 @@ def initialize(root, factory=dict):
     defaults['include_ions'] = get(root, ('TGLF_scan', 'TGYRO', 'SETTINGS', 'PHYSICS', 'INCLUDE_IONS'), 'thermal')
     for key, value in defaults.items():
         settings.setdefault(key, value)
-    for key in ('selected', 'parameters', 'uq'):
+    for key in ('selected', 'parameters', 'uq', 'presets'):
         settings.setdefault(key, factory())
     rows = input_rows(root)
     settings.setdefault('source', 'radial')
@@ -322,9 +394,7 @@ def plan(root, settings):
             if name not in source:
                 parameters.setdefault(name, values[name])
         if mode == 'uq':
-            count = parameter_value('UQ 参数数', settings['uq_count'], 1)
-            if not 1 <= count <= 5:
-                raise ValueError('UQ 参数数范围是 1–5')
+            count = uq_parameter_count(settings)
             uq = []
             for index in range(count):
                 item = settings['uq'].get(str(index), {})

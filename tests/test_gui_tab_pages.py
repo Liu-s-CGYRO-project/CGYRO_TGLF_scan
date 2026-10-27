@@ -102,6 +102,71 @@ class NativeTabsTests(unittest.TestCase):
         self.assertIs(self.header, header)
         self.assertEqual(self.host.updates, [])
 
+    def test_tglf_axis_changes_and_presets_refresh_only_the_active_parameter_section(self):
+        from test_tglf_parameters import UnreadResults
+        from OMFITlib_tglf_workbench import initialize
+        from OMFITlib_tglf_workbench_ui import TGLFWorkbench
+        self.host.tree.update(SETTINGS={'WORKBENCH': {}}, TGLF_scan={
+            'TGLF': {'FILES': {'input.tglf': dict(NS=2, SAT_RULE=0, RLTS_1=4.)}},
+            'RUN_DB': UnreadResults(old=UnreadResults())})
+        settings, _ = initialize(self.host.tree)
+        settings.update(source='current', mode='1d', parameter1='SAT_RULE', value_mode1='list', values1=[0, 1])
+        def render(ui):
+            self.ui = ui
+            self.header = ui.Label('Header')
+            self.page_controls = {}
+            for kind in ('Entry', 'ComboBox'):
+                constructor = getattr(ui, kind)
+                def capture(path, *args, constructor=constructor, **kwargs):
+                    widget = constructor(path, *args, **kwargs)
+                    self.controls[path] = widget
+                    return widget
+                setattr(ui, kind, capture)
+            view = SimpleNamespace(root=self.host.tree, actions=SimpleNamespace(factory=dict), ui=ui,
+                prefix="root['SETTINGS']['WORKBENCH']", label=ui.Label, cgyro_checkbox=lambda *args: None)
+            workbench = TGLFWorkbench(view)
+            def page(key):
+                self.counts[key] += 1
+                self.controls = self.page_controls[key] = {}
+                workbench.load_selection()
+                if key == 'compact':
+                    workbench.preset_controls(workbench.source)
+                    workbench.parameter_field('SAT_RULE', workbench.source, 'SAT_RULE')
+                else:
+                    (workbench.scan_settings if key == 'edit' else workbench.parameters)()
+            self.pages = TabPages(ui, dict(edit='Scan', run='Parameters', compact='Input preparation'), self.state, 'page', page)
+        self.host.render(render)
+        header = self.header
+        prefix = "root['SETTINGS']['WORKBENCH']['tglf']"
+        self.select('run')
+        self.assertNotIn(prefix + "['parameters']['SAT_RULE']['value']", self.page_controls['run'])
+        self.select('edit')
+        combo = self.page_controls['edit'][prefix + "['parameter1']"]
+        combo.set('KYGRID_MODEL')
+        combo.event_generate('<<ComboboxSelected>>')
+        self.host.drain()
+        self.select('run')
+        self.assertIn(prefix + "['parameters']['SAT_RULE']['value']", self.page_controls['run'])
+        self.assertNotIn(prefix + "['parameters']['KYGRID_MODEL']['value']", self.page_controls['run'])
+        combo = self.page_controls['run'][prefix + "['scenario']"]
+        combo.set('常规 · SAT2')
+        combo.event_generate('<<ComboboxSelected>>')
+        self.host.drain()
+        entry = self.page_controls['run'][prefix + "['parameters']['SAT_RULE']['value']"]
+        self.assertEqual(entry.get(), '2')
+        self.select('compact')
+        self.select('run')  # Reuse the mounted editor after building the other preset menu.
+        before = self.counts.copy()
+        entry.delete(0, 'end')
+        entry.insert(0, '3')
+        self.host.submit_entry(entry)
+        self.host.drain()
+        self.assertEqual(settings['parameters']['SAT_RULE']['value'], 3)
+        self.assertEqual(self.page_controls['run'][prefix + "['scenario']"].get(), '自定义')
+        self.assertEqual(self.counts, before)
+        self.assertIs(self.header, header)
+        self.assertEqual(self.host.updates, [])
+
     def test_combo_only_rebuilds_edit_section_and_layout_does_not_accumulate(self):
         self.build()
         header, footer, notebook = self.header, self.footer, self.pages.notebook

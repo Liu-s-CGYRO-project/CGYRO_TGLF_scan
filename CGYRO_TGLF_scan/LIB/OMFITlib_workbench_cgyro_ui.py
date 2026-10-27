@@ -427,15 +427,8 @@ class CgyroPage:
             if isinstance(frame, tk.Misc):
                 frame._cgyro_inline = True
             self.label(name + ' · ' + spec['label'])
-            if name == 'DELTA_T_METHOD':
-                self.ui.ComboBox(location(path + ('value',)), OrderedDict([
-                    ('0 固定 RK4', 0), ('1 自适应 Cash-Karp', 1),
-                    ('2 自适应 Bogacki-Shampine', 2), ('3 自适应 Verner', 3)]), '',
-                    width=24, state='readonly', updateGUI=False, help=help_text,
-                    postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
-            else:
-                self.ui.Entry(location(path + ('value',)), '', width=14, updateGUI=False,
-                              state='normal' if spec.get('supported', True) else 'disabled', help=help_text,
-                              postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
+            self.ui.Entry(location(path + ('value',)), '', width=14, updateGUI=False,
+                          state='normal' if spec.get('supported', True) else 'disabled', help=help_text,
+                          postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
             self.ui.Button('沿用输入', lambda: self.actions.reset_cgyro_parameters([name], source_key),
                            updateGUI=True, refresh_scope='section')
