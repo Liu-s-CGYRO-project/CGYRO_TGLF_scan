@@ -514,7 +514,8 @@ def refresh_run_state(root, ui):
         raise RuntimeError('Could not synchronize the previous CGYRO job; its record is unchanged. ' + text_output(errors))
     all_points = list(manifest.get('points', []))
     active = list(manifest.get('active_points', all_points))
-    result = parse_probe(text_output(output), job_id, active, [all_points.index(point) for point in active])
+    indices = {point: index for index, point in enumerate(all_points)}
+    result = parse_probe(text_output(output), job_id, active, [indices[point] for point in active])
     manifest['scheduler_status'] = result['scheduler_status']
     manifest['scheduler_sync'] = dict(result, checked_at=datetime.now(timezone.utc).isoformat(),
                                       errors=text_output(errors))

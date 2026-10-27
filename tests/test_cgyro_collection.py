@@ -188,6 +188,107 @@ class QueueMetadataTests(unittest.TestCase):
         self.assertFalse(frozen['submission_uncertain'])
         self.assertNotIn('submission_parent', frozen)
 
+    def test_sync_never_compacts_freezes_or_migrates_results_and_uses_live_metadata(self):
+        root = self.root()
+        root['Cases'] = {'opaque_legacy_payload': object()}
+        root['RUN_MANIFEST']['active_points'] = ['p000001']
+        before_cases = root['Cases']
+        queried = []
+        def refreshed(view, ui):
+            queried.append(copy.deepcopy(view['RUN_MANIFEST']))
+            self.assertEqual(set(view), {'RUN_MANIFEST', 'SETTINGS'})
+        with patch.object(queue, 'compact_storage', side_effect=AssertionError('result files read')), \
+                patch.object(queue, 'freeze_run_inputs', side_effect=AssertionError('input ZIP copied')), \
+                patch.object(fixtures.db_api, 'ensure_layout', side_effect=AssertionError('legacy tree migrated')), \
+                patch.object(queue, 'refresh_run_state', refreshed):
+            queue.refresh_queue(root, object())
+        self.assertEqual(len(queried), 2)
+        self.assertEqual(queried[-1]['active_points'], ['p000001'])
+        self.assertIs(root['Cases'], before_cases)
+
+    def test_sync_after_cancel_queries_only_once_per_job(self):
+        root = self.root()
+        root['RUN_BATCH']['stop_requested'] = True
+        for manifest in [root['RUN_MANIFEST']] + [entry['manifest'] for entry in root['RUN_HISTORY'].values()]:
+            manifest['scheduler'] = 'slurm'
+        def stopped(view, ui, job, token):
+            view['RUN_MANIFEST']['status'] = 'cancelled'
+            return dict(outcome='cancelled', active=False, terminal=True)
+        with patch.object(queue, 'stop_run', side_effect=stopped) as stop, \
+                patch.object(queue, 'refresh_run_state', side_effect=AssertionError('duplicate query')):
+            queue.refresh_queue(root, object())
+        self.assertEqual(stop.call_count, 2)
+        self.assertEqual(root['RUN_MANIFEST']['status'], 'cancelled')
+
+    def test_focused_sync_does_not_touch_unrelated_current_run(self):
+        root = self.root()
+        root['RUN_BATCH']['focus_token'] = 'first'
+        original = copy.deepcopy(root['RUN_MANIFEST'])
+        with patch.object(queue, 'refresh_run_state') as query, \
+                patch.object(queue, 'save_current', side_effect=AssertionError('unrelated result saved')):
+            queue.refresh_queue(root, object())
+        self.assertEqual(query.call_count, 1)
+        self.assertEqual(query.call_args.args[0]['RUN_MANIFEST']['run_token'], 'first')
+        self.assertEqual(root['RUN_MANIFEST'], original)
+
+    def test_reentrant_job_replacement_is_not_overwritten_by_late_query(self):
+        root = self.root()
+        root['RUN_BATCH']['focus_token'] = 'second'
+        def query(view, ui):
+            root['RUN_MANIFEST']['job_id'] = 'new-job'
+            view['RUN_MANIFEST']['status'] = 'failed'
+        with patch.object(queue, 'refresh_run_state', query), \
+                self.assertRaisesRegex(RuntimeError, 'changed during synchronization'):
+            queue.refresh_queue(root, object())
+        self.assertEqual(root['RUN_MANIFEST']['job_id'], 'new-job')
+        self.assertEqual(root['RUN_HISTORY']['second']['manifest']['status'], 'submitted')
+
+    def test_single_run_script_uses_metadata_view_for_recovery_and_stop(self):
+        root = self.root()
+        root.pop('RUN_BATCH')
+        root['RUN_MANIFEST'].update(submission_uncertain=True, submission_stop_requested=True)
+        def recover(view, ui, factory):
+            self.assertEqual(set(view), {'RUN_MANIFEST', 'SETTINGS'})
+            view['RUN_MANIFEST'].update(submission_uncertain=False, job_id='99')
+        result = dict(outcome='cancelled', active=False, terminal=True)
+        def stop(view, ui, job, token):
+            view['RUN_MANIFEST'].update(status='cancelled', scheduler_sync=result)
+            return result
+        path = fixtures.REPO / 'CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/refresh_run_status.py'
+        with patch.object(retry, 'recover_submission', recover), patch.object(queue, 'stop_run', side_effect=stop) as stopped, \
+                patch.object(queue, 'refresh_run_state', side_effect=AssertionError('duplicate query')), \
+                patch.object(queue, 'save_current', side_effect=AssertionError('payload save')):
+            exec(compile(path.read_text(encoding='utf-8'), str(path), 'exec'), dict(root=root, OMFITx=object(), OMFITtree=dict))
+        self.assertEqual(stopped.call_count, 1)
+        self.assertEqual(root['RUN_MANIFEST']['job_id'], '99')
+        self.assertTrue(root['RUN_MANIFEST']['auto_collect_requested'])
+        self.assertEqual(root['RUN_MANIFEST'], root['RUN_DB']['__RUNS__']['second']['manifest'])
+
+    def test_query_error_keeps_payloads_and_records_failure_without_retry(self):
+        root = self.root()
+        root['RUN_BATCH']['focus_token'] = 'second'
+        with patch.object(queue, 'refresh_run_state', side_effect=RuntimeError('network unavailable')) as query, \
+                self.assertRaisesRegex(RuntimeError, 'network unavailable'):
+            queue.refresh_queue(root, object())
+        self.assertEqual(query.call_count, 1)
+        self.assertEqual(root['RUN_MANIFEST']['status'], 'submitted')
+        self.assertEqual(root['RUN_MANIFEST']['sync_error'], 'network unavailable')
+        self.assertEqual(root['RUN_MANIFEST'], root['RUN_HISTORY']['second']['manifest'])
+
+    def test_abort_after_recovering_receipt_keeps_job_identity_in_all_views(self):
+        root = self.root()
+        root['RUN_BATCH']['focus_token'] = 'second'
+        root['RUN_MANIFEST']['submission_uncertain'] = True
+        def recover(view, ui, factory):
+            view['RUN_MANIFEST'].update(job_id='99', submission_uncertain=False)
+            raise KeyboardInterrupt('Abort after receipt')
+        with self.assertRaisesRegex(KeyboardInterrupt, 'Abort after receipt'):
+            queue.refresh_queue(root, object(), recover=recover)
+        self.assertEqual(root['RUN_MANIFEST']['job_id'], '99')
+        self.assertFalse(root['RUN_MANIFEST']['submission_uncertain'])
+        self.assertEqual(root['RUN_MANIFEST'], root['RUN_HISTORY']['second']['manifest'])
+        self.assertEqual(root['RUN_MANIFEST'], root['RUN_DB']['__RUNS__']['second']['manifest'])
+
     def test_abort_during_metadata_commit_rolls_back_all_views(self):
         root = self.root()
         original = copy.deepcopy(root)

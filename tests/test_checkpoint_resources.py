@@ -11,7 +11,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(path) for path in (REPO / 'CGYRO_TGLF_scan').rglob('LIB')]
 import test_cgyro_storage  # Native-file adapters, confined to temporary fixtures.
 from OMFITlib_cgyro_checkpoint import MAGIC, OFFSET, directory_checkpoint
-from OMFITlib_cgyro_continue import prepare_point
+from OMFITlib_cgyro_continue import continuation_plan, prepare_point
 from OMFITlib_cgyro_launch import validate_checkpoint_runtime
 
 
@@ -49,6 +49,7 @@ class ResourceContinuationTests(unittest.TestCase):
         for name, value in {'out.cgyro.tag': '3\n0.3\n0.1\n',
                             'out.cgyro.time': '0.1 1\n0.2 1\n0.3 1\n',
                             'out.cgyro.freq': '1 2\n1 2\n1 2\n', 'out.cgyro.prec': 'saved precision\n',
+                            'out.cgyro.timing': '1 2 3\n1 2 3\n1 2 3\n',
                             'bin.cgyro.ky_flux': 'flux bytes', 'bin.cgyro.kxky_phi': 'field bytes'}.items():
             (self.original / name).write_text(value)
         self.before = {path.name: path.read_bytes() for path in self.original.iterdir()}
@@ -70,6 +71,27 @@ class ResourceContinuationTests(unittest.TestCase):
         self.assertTrue(report['resume_ready'])
         layout = report['candidates']['bin.cgyro.restart']
         self.assertEqual((layout['format'], layout['mpi_ranks'], layout['nt_loc'], layout['nv_loc']), (3, 16, 1, 4))
+
+    def test_retained_checkpoint_stages_without_ancestor_or_old_temporary_directory(self):
+        row = dict(self.plan['rows']['p000001'], result_path=['N_ENERGY', '8', 'lin', '0.1'])
+        manifest = dict(run_token='child', runid='Jet', case_id='nr=1__rho=0.33__ion=T',
+            nr=1, mass='T', rho=.33, workDir='/gone/remote', local_workDir='/gone/tmp',
+            runtime=self.previous, status='cancelled', collection_status='partial',
+            points=['p000001'], partial_points=['p000001'], loaded_points=[],
+            point_table={'p000001': row}, continuation=dict(source_token='missing-parent',
+                source_points=['p000001', 'p000002']))
+        root = dict(RUN_MANIFEST=manifest, RUN_DB={'__RUNS__': {'child': dict(manifest=manifest,
+            cases={'p000001': test_cgyro_storage.OMFITcgyro(str(self.original))})}})
+        self.plan = continuation_plan(root, 'child', ['p000001'], 1.)
+        current, metadata, names = self.prepare()
+        self.assertEqual(self.plan['source_points'], ['p000001', 'p000002'])
+        self.assertEqual(metadata['continuation']['checkpoint']['time'], .3)
+        self.assertEqual(current['MAX_TIME'], 1.)
+        for name in self.before:
+            if name != 'input.cgyro':
+                self.assertIn(name, names)
+                self.assertEqual((self.base / 'stage' / name).read_bytes(), self.before[name])
+        self.unchanged()
 
     def test_16_to_32_mpi_keeps_checkpoint_time_and_all_original_files(self):
         current, row, names = self.prepare()

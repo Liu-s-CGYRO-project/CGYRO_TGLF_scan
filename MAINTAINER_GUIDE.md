@@ -1,8 +1,18 @@
 # 维护与扩展接口
 
-适用于工程 1.24.24。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.25。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 
+
+## 所选点续算与状态同步边界（1.24.25）
+
+`stopped_context` 仍使用当前任务冻结点号和坐标，首先保留自己的文件来源；祖先记录可补充未选择点，但缺失、退休或循环关联只记录诊断，不再整体拒绝子任务。`missing_points` 只限制没有保留结果的点，`resume_source` 对选中的本地文件继续完整校验。外来 owner 和带符号 ky 的检查仍保留；不能用目录合并后碰巧相同的 p 点号猜测来源。
+
+上下文中的 `planned_points` 与当前可解析的 `rows` 分开：`continuation_plan.source_points` 保留原计划和可用行的并集。否则在缺祖先时只拿现有行生成新计划，会错误宣称整次扫描完成。归档仍按完整参数坐标合并，不改其他扫描；保存较短片段、历史前缀检查、原文件不变等约束继续执行。新增测试使用完整 v3 二进制结构暂存续算，同时验证缺历史时损坏检查点仍被拒绝。
+
+`refresh_queue` 同时承接批量和单作业状态同步，使用脱离数据树的 `RUN_MANIFEST` / `SETTINGS` 小视图。这里不得调用 `save_current`、`compact_storage`、`freeze_run_inputs` 或 `ensure_layout`，否则读取状态会执行结果整理或大文件复制。`_commit_synced_manifest` 只写三个元数据视图并保留原 payload 对象；输入与结果的整理仍属于收集、提交和明确的整理动作。
+
+`_refresh_manifest` 复用 `stop_run` 已完成的状态查询，避免取消后每个任务查询两遍。原生远端执行会泵送 Tk 事件，所以提交查询结果前比对原任务记录，防止重入操作替换记录后被旧响应覆盖；finally 在 Abort 时保留已恢复身份。不得在线程中直接调用带 Tk / cwd / 环境变量副作用的原生 `remote_execute`。本版减少了本地文件工作及重复查询，没有声称消除了网络响应时间，也未实测服务器端按钮耗时。
 
 ## 热更新时布局对象的生命周期（1.24.24）
 

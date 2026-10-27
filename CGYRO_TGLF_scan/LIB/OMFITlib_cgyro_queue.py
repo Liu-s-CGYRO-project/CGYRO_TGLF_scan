@@ -138,8 +138,10 @@ def _commit_synced_manifest(root, token, manifest, factory):
     """
     if str(manifest.get('run_token', '')) != str(token):
         raise ValueError('Synchronized CGYRO manifest belongs to another run.')
-    history = root['RUN_HISTORY'][token]
-    records = run_records(root, factory)
+    # Status synchronization must never migrate/compact payload trees. Legacy
+    # owners stay where they are until an explicit collection/storage action.
+    history = root.setdefault('RUN_HISTORY', factory()).setdefault(token, factory())
+    records = root.setdefault('RUN_DB', factory()).setdefault('__RUNS__', factory())
     missing = object()
     record = records.get(str(token), missing)
     created = record is missing
@@ -174,37 +176,67 @@ def _commit_synced_manifest(root, token, manifest, factory):
         raise
 
 
+def _refresh_manifest(manifest, settings, batch, ui, factory, recover):
+    """Query a detached metadata view, including a previously requested stop."""
+    view = dict(RUN_MANIFEST=manifest, SETTINGS=settings)
+    if submission_pending(manifest) and recover is not None:
+        recover(view, ui, factory)
+    if submission_pending(manifest):
+        raise RuntimeError('Submission has no confirmed job ID; inspect its saved submit log: '
+                           + str(manifest.get('workDir', '')) + '/.cgyro_submit.out\n'
+                           + str(manifest.get('submission_probe_error', '')))
+    if not manifest.get('job_id', '') and manifest.get('status', '') == 'failed':
+        return  # A definite rejection did not create a server job.
+    stop_batch = batch.get('stop_requested', False) and manifest.get('scheduler', '') == 'slurm'
+    if stop_batch or manifest.get('submission_stop_requested', False):
+        if stop_batch and (not manifest.get('batch_id', '') or manifest['batch_id'] != batch.get('batch_id', '')):
+            raise ValueError('The saved job belongs to another batch; it was not cancelled.')
+        # stop_run already queries the scheduler, also when cancellation was
+        # accepted earlier. Repeating it here adds a second round trip per job.
+        result = stop_run(view, ui, manifest.get('job_id', ''), manifest['run_token'])
+        if result is None:
+            raise RuntimeError(manifest.get('cancellation', {}).get('sync_error', '')
+                               or 'Cancellation state could not be synchronized.')
+        if manifest.get('submission_stop_requested', False):
+            manifest['auto_collect_requested'] = True
+    else:
+        refresh_run_state(view, ui)
+
+
 def refresh_queue(root, ui, factory=dict, recover=None):
-    save_current(root, factory)
+    """Synchronize only selected job metadata, never save or hash result files."""
     errors = []
-    for token, entry in queue_records(root):
-        manifest = deepcopy(entry['manifest'])
-        if collection_done(manifest):
+    current = root.get('RUN_MANIFEST', {})
+    entries = queue_records(root)
+    if not entries and current.get('run_token', ''):
+        entries = [(current['run_token'], dict(manifest=current))]
+    if not entries:
+        raise ValueError('No CGYRO run record is available.')
+    for token, entry in entries:
+        # save_current used to freeze inputs and compact every active result
+        # before a read-only status check. Use the live metadata directly when
+        # it belongs to this job; other queued jobs use their frozen snapshot.
+        source = current if str(current.get('run_token', '')) == str(token) else entry['manifest']
+        if collection_done(source) or run_is_retired(root, token):
             continue
+        before = deepcopy(source)
+        manifest = deepcopy(before)
         try:
-            record_root = dict(RUN_MANIFEST=manifest, SETTINGS=root['SETTINGS'])
-            if submission_pending(manifest) and recover is not None:
-                recover(record_root, ui, factory)
-            if submission_pending(manifest):
-                raise RuntimeError('Submission has no confirmed job ID; inspect its saved submit log: '
-                                   + str(manifest.get('workDir', '')) + '/.cgyro_submit.out\n'
-                                   + str(manifest.get('submission_probe_error', '')))
-            if not manifest.get('job_id', '') and manifest.get('status', '') == 'failed':
-                manifest.pop('sync_error', None)
-                continue  # A definite rejection did not create a server job.
-            if root.get('RUN_BATCH', {}).get('stop_requested', False) and manifest.get('scheduler', '') == 'slurm':
-                # A submission-time Kill can precede the current receipt. Once
-                # recovered, honor that same batch stop for all known jobs.
-                if not manifest.get('batch_id', '') or manifest['batch_id'] != root['RUN_BATCH'].get('batch_id', ''):
-                    raise ValueError('The saved job belongs to another batch; it was not cancelled.')
-                stop_run(record_root, ui, manifest.get('job_id', ''), token)
-            refresh_run_state(record_root, ui)
+            _refresh_manifest(manifest, root['SETTINGS'], root.get('RUN_BATCH', {}), ui, factory, recover)
             manifest.pop('sync_error', None)
         except Exception as exc:
             manifest['sync_error'] = str(exc)
             errors.append(str(manifest.get('case_id', token)) + ': ' + str(exc))
         finally:
-            _commit_synced_manifest(root, token, manifest, factory)
+            # Native remote_execute pumps Tk events. Do not overwrite a job
+            # replaced during the query. On Abort, retain any recovered job ID
+            # or accepted cancellation before propagating the interruption.
+            latest = (root.get('RUN_MANIFEST', {}) if source is current else
+                      root.get('RUN_HISTORY', {}).get(token, {}).get('manifest', {}))
+            if run_is_retired(root, token) or latest != before:
+                errors.append(str(token) + ': Job record changed during synchronization; query again.')
+            else:
+                _commit_synced_manifest(root, token, manifest, factory)
     if errors:
         raise RuntimeError('\n'.join(errors))
     return queue_summary(root)

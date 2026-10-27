@@ -368,6 +368,10 @@ class ResultBrowser:
                   anchor='w', wraplength=width - 40).pack(fill=tk.X, padx=10, pady=10)
         ttk.Label(window, text='选择计算点（Ctrl / Shift 多选）。收敛状态取自求解器日志；时间曲线使用原始采样数据。',
                   wraplength=width - 40).pack(fill=tk.X, padx=10, pady=(0, 8))
+        missing = entry.get('resume_context', {}).get('missing_points', [])
+        if missing:
+            ttk.Label(window, text='{} 个旧点的结果文件未保留；其他点可从各自保存的检查点续算。'.format(len(missing)),
+                      wraplength=width - 40).pack(fill=tk.X, padx=10, pady=(0, 8))
         frame = ttk.Frame(window)
         frame.pack(fill=tk.BOTH, expand=True, padx=10)
         columns = ['task'] + names + ['state', 'last_time', 'checkpoint']
@@ -406,7 +410,8 @@ class ResultBrowser:
                 # candidates uses provenance, not ZIP hashing/extraction;
                 # resume_source validates the selected sources in planning.
                 source = entry['resume_context']['sources'].get(point, None)
-                if source is not None and source[0].get('input_sha256', {}).get(point, {}):
+                if (point not in missing and source is not None
+                        and source[0].get('input_sha256', {}).get(point, {})):
                     mode = 'pending'
                     status['restartable'] = True
                     status['reason'] = '原始输入或检查点待校验；续算前检查所选点。'

@@ -258,6 +258,28 @@ class StorageCases(unittest.TestCase):
         for key in ('0.5', '0.6'):
             self.assertNotEqual(after[key], before[key])
 
+    def test_selected_points_archive_without_claiming_missing_ancestor_points_completed(self):
+        root, publish, case_id = self.continuation_after_merged_source()
+        publish(root)  # Retain the stopped child's own result files.
+        db_api.run_records(root).pop('source')
+        manifest = copy.deepcopy(root['RUN_MANIFEST'])
+        manifest.update(run_token='resumed', status='loaded', collection_status='ready',
+                        loaded_points=list(manifest['points']), partial_points=[], failed_points=[])
+        manifest['continuation'] = dict(source_token='child', stopped_run=True,
+            points=list(manifest['points']), source_points=['p000001', 'p000002', 'p000003'])
+        results = {}
+        for point in manifest['points']:
+            result = self.result('resumed' + point)
+            Path(result.filename, 'out.cgyro.time').write_text('0\n60\n')
+            results[point] = result
+        root['RUN_MANIFEST'], root['Cases'] = manifest, {manifest['case_tag']: results}
+        publish(root)
+        self.assertEqual(root['RUN_MANIFEST']['collection_status'], 'partial')
+        self.assertNotEqual(root['RUN_MANIFEST']['status'], 'published')
+        self.assertEqual(set(db_api.run_cases(root)), set(manifest['points']))
+        retained = archive_api.catalog_runs(root)['Jet'][case_id]['N_ENERGY']['48']['lin']
+        self.assertEqual(set(retained), {'0.5', '0.6', '0.7', '0.8'})
+
     def test_failed_continuation_read_is_not_mistaken_for_finished_collection(self):
         import OMFITlib_cgyro_run_state as state
         root, publish, case_id = self.continuation_after_merged_source()
@@ -967,14 +989,19 @@ class StorageCases(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, 'superseded.*retired'):
                         continuation.saved_run(root, 'retired')
 
-    def test_stopped_child_rejects_retired_ancestor_instead_of_guessing_public_ids(self):
+    def test_stopped_child_reports_retired_ancestor_without_guessing_public_ids(self):
         child = dict(run_token='child', collection_status='partial',
-                     continuation=dict(source_token='ancestor'))
+                     nr=1, mass='T', runid='Jet', case_id='nr=1__rho=0.33__ion=T',
+                     continuation=dict(source_token='ancestor', source_points=['p000001']))
         root = dict(RUN_MANIFEST=child, RUN_DB={db_api.RUNS: {
             'child': dict(manifest=child),
             'ancestor': dict(manifest=dict(run_token='ancestor'), payload_retired=True)}})
-        with self.assertRaisesRegex(ValueError, 'superseded.*retired'):
-            continuation.stopped_context(root, 'child')
+        context = continuation.stopped_context(root, 'child')
+        self.assertEqual(context['results'], {})
+        self.assertEqual(context['missing_points'], ['p000001'])
+        self.assertIn('retired', context['history_warning'])
+        with self.assertRaisesRegex(ValueError, 'Unindexed calculation point'):
+            continuation.continuation_plan(root, 'child', ['p000001'], 100)
 
     def test_retired_snapshot_cannot_be_reactivated_recollected_or_refrozen(self):
         retry = importlib.import_module('OMFITlib_cgyro_retry')

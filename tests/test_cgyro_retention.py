@@ -3,6 +3,7 @@ import copy
 import json
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 import test_cgyro_storage as fixtures
 from OMFITlib_cgyro_retention import retention_plan, retire_superseded
@@ -102,8 +103,40 @@ class RetentionTests(unittest.TestCase):
                     row['run_token'] = 'foreign'
                 else:
                     row['result_path'][-1] = '-0.2'
-                with self.assertRaisesRegex(ValueError, 'ancestry was replaced or is incomplete'):
-                    fixtures.continuation.stopped_context(root, root['RUN_MANIFEST']['run_token'])
+                context = fixtures.continuation.stopped_context(root, root['RUN_MANIFEST']['run_token'])
+                self.assertEqual(context['missing_points'], ['p000002'])
+                self.assertEqual(set(context['results']), {'p000001'})
+                # Missing unselected data no longer blocks the child's files,
+                # but cannot be replaced by a foreign result or original input.
+                with self.assertRaisesRegex(ValueError, 'no retained result files'):
+                    fixtures.continuation.resume_source(root, root['RUN_MANIFEST']['run_token'], 'p000002', context)
+
+    def test_child_checkpoint_plan_survives_missing_retired_or_circular_ancestry(self):
+        for damage in ('missing', 'retired', 'circular'):
+            with self.subTest(damage=damage):
+                root, _, _, child_cases = self.subset_continuation(suffix=damage)
+                child = root['RUN_MANIFEST']
+                records = db_api.run_records(root)
+                ancestor = child['continuation']['source_token']
+                if damage == 'missing':
+                    records.pop(ancestor)
+                elif damage == 'retired':
+                    records[ancestor]['payload_retired'] = True
+                else:
+                    child['continuation']['source_token'] = child['run_token']
+                result = storage.resolve_result(root, child_cases['p000001'])
+                with patch.object(fixtures.continuation, 'checkpoint_tag', return_value={'time': 20}) as check:
+                    plan = fixtures.continuation.continuation_plan(root, child['run_token'], ['p000001'], 100)
+                check.assert_called_once_with(result.filename)
+                self.assertEqual(plan['sources']['p000001'], dict(mode='checkpoint', directory=result.filename))
+                self.assertEqual(plan['source_points'], ['p000001', 'p000002'])
+                self.assertEqual(plan['rows']['p000001']['values'], child['point_table']['p000001']['values'])
+
+    def test_missing_history_never_bypasses_selected_checkpoint_validation(self):
+        root, _, _, _ = self.subset_continuation()
+        db_api.run_records(root).pop('first')
+        with self.assertRaisesRegex(ValueError, 'No verified current CGYRO checkpoint'):
+            fixtures.continuation.continuation_plan(root, 'child', ['p000001'], 100)
 
     def test_replaced_failed_snapshot_retires_payload_but_keeps_manifest(self):
         root, old, old_cases, new, new_cases = self.pair()

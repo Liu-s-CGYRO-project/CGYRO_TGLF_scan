@@ -59,18 +59,33 @@ def saved_run(module, token):
 
 
 def stopped_context(module, token):
-    """Join a stopped run's frozen point table with its continuation ancestry."""
+    """Use retained point files; older records only fill missing coordinates.
+
+    A collected checkpoint already contains its restart history. An unavailable
+    ancestor must not veto an unrelated, self-contained point in this run.
+    Keep the original scan scope separately so a partial reconstruction is
+    never published as a complete scan.
+    """
     manifest, _ = saved_run(module, token)
     if manifest.get('collection_status', '') not in ('partial', 'empty'):
         return None
     records, seen, current = [], set(), str(token)
+    history_warning = ''
     while current:
         if current in seen:
-            raise ValueError('Circular continuation history')
+            history_warning = 'Circular continuation history: ' + current
+            break
         seen.add(current)
-        record, cases = saved_run(module, current)
+        try:
+            record, cases = saved_run(module, current)
+        except ValueError as exc:
+            if current == str(token):
+                raise
+            history_warning = str(exc)
+            break
         if not record:
-            raise ValueError('Missing frozen continuation history: ' + current)
+            history_warning = 'Missing frozen continuation history: ' + current
+            break
         records.append((record, cases))
         current = str(record.get('continuation', {}).get('source_token', '') or '')
     rows, sources, results, readable, unfinished = {}, {}, {}, {}, set()
@@ -117,10 +132,7 @@ def stopped_context(module, token):
             mapping.pop(point, None)
         unfinished.discard(point)
     planned = set(manifest.get('continuation', {}).get('source_points', manifest.get('points', [])))
-    if planned - set(rows) or (planned - unfinished) - set(results):
-        # A full rescan can replace a published ancestor while leaving an old
-        # empty/partial child in history. Do not rebuild a smaller "full" scan.
-        raise ValueError('Continuation ancestry was replaced or is incomplete. Select the latest retained scan.')
+    missing = (planned - set(rows)) | ((planned - unfinished) - set(results))
     info = copy.deepcopy(dict(case['__INFO__'] if case is not None else manifest))
     info.update(dict(source_nr=manifest['nr'], ion_case=manifest['mass'],
                      runid=manifest['runid'], points=len(rows)))
@@ -135,7 +147,8 @@ def stopped_context(module, token):
             node = node.setdefault(key, {})
         node[path[-1]] = result
     return dict(manifest=manifest, info=info, case=case, view=view, rows=rows, sources=sources,
-                results=results, unfinished=unfinished)
+                results=results, unfinished=unfinished, planned_points=sorted(planned | set(rows)),
+                missing_points=sorted(missing), history_warning=history_warning)
 
 
 def continuation_case(module, token):
@@ -157,6 +170,9 @@ def resume_source(module, token, point, context=None):
         result = context['results'][point]
         checkpoint_tag(result.filename)  # Existing samples never silently restart from zero.
         return dict(mode='checkpoint', directory=result.filename)
+    if point in context.get('missing_points', []):
+        raise ValueError('This point has no retained result files: ' + point +
+                         '. Recover its job outputs or select its retained result.')
     if point not in context['sources']:
         raise ValueError('No original input provenance for ' + point)
     record, cases = context['sources'][point]
@@ -393,7 +409,8 @@ def continuation_plan(module, token, point_ids, additional_time):
     return dict(source_token=str(token), source_runid=runid, source_case_id=case_id,
                 additional_time=duration, info=info, points=selected,
                 rows=rows,
-                sources=sources, stopped_run=stopped is not None, source_points=list(tasks),
+                sources=sources, stopped_run=stopped is not None,
+                source_points=stopped['planned_points'] if stopped is not None else list(tasks),
                 runtime=copy.deepcopy(dict(info.get('runtime', previous.get('runtime', {})))),
                 server=info.get('server', previous.get('server', '')),
                 case_tag=previous.get('case_tag', 'linear'))
