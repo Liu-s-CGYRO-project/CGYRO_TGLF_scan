@@ -60,6 +60,7 @@ def finish_gui_subtree(content):
     while isinstance(parent, tk.Misc):
         layout = getattr(parent, '_cgyro_gui_layout', None)
         if layout is not None:
+            layout.prune()
             layout._walk(content)
             layout.reflow()
             layout._queue_scroll()
@@ -146,6 +147,7 @@ class NativeLayout:
         self.reset_help_buttons = []
         self.reset_help_spacers = []
         self.forms = []
+        self.configured_styles = {}
         self.scroll_pending = None
         self._walk(content)
         # Match the real help buttons after their font and padding are styled.
@@ -184,7 +186,10 @@ class NativeLayout:
         name = 'CGYRO.' + self.tag + '.' + density + old
         # Retain the named font so a later font download or size change reaches
         # styles already used by mounted and hidden tabs.
-        self.style.configure(name, font=font, **options)
+        signature = (str(font), options)
+        if self.configured_styles.get(name, None) != signature:
+            self.style.configure(name, font=font, **options)
+            self.configured_styles[name] = signature
         widget.configure(style=name)
         widget._cgyro_layout_base_style = old
         widget._cgyro_layout_style = name
@@ -505,6 +510,13 @@ class NativeLayout:
         for index, item in enumerate(items):
             item.grid(row=index // columns, column=index % columns, sticky='ew', padx=5, pady=self.gap // 2)
         self._queue_scroll()
+
+    def prune(self):
+        """Discard destroyed tab controls before adding a replacement subtree."""
+        for key in ('labels', 'notebooks', 'panels', 'reset_help_buttons', 'reset_help_spacers'):
+            setattr(self, key, [widget for widget in getattr(self, key) if widget.winfo_exists()])
+        for key in ('rows', 'inline_rows', 'forms'):
+            setattr(self, key, [entry for entry in getattr(self, key) if entry[0].winfo_exists()])
 
     def reflow(self):
         for frame, items in self.rows:

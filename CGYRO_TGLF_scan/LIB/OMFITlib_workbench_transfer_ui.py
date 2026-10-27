@@ -9,15 +9,24 @@ from collections import OrderedDict
 import tkinter as tk
 from tkinter import ttk
 from OMFITlib_transfer_workflow import loaded_file
+from OMFITlib_gui_deferred import TabPages
 from OMFITlib_project import MODULES, location, module, input_digest, read, transfer_generated_rows, transfer_parameter_value
 
 
 class TransferPage:
     """Page mixin; state belongs to the host, never to a module singleton."""
     def render_transfer(self):
-        self.ui.Tab('Transfer_tool 运行')
-        frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
-        notebook = frame.master if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook) else None
+        renderers = dict(run=self.transfer_run,
+            files=lambda: self.transfer_files(transfer_generated_rows(self.root)),
+            plots=lambda: self.compound(('Transfer_tool', 'GUIS', 'plots')),
+            convert=lambda: self.compound(('Transfer_tool', 'GUIS', 'convert')),
+            advanced=self.transfer_advanced)
+        self.transfer_pages = TabPages(self.ui, OrderedDict([
+            ('run', 'Transfer_tool 运行'), ('files', '生成文件'), ('plots', '剖面绘图'),
+            ('convert', '局部输入互转'), ('advanced', '高级设置')]),
+            self.settings, 'transfer_tab', lambda page: renderers[page]())
+
+    def transfer_run(self):
         self.compound(('Transfer_tool', 'GUIS', 'transfer'), show_run_button=False)
         self.run_controls('transfer')
         files = transfer_generated_rows(self.root)
@@ -25,13 +34,8 @@ class TransferPage:
         if ready is not None:
             self.ui.Button('设置 CGYRO 扫描',
                 lambda: self.settings.update(dict(page='cgyro', cgyro_source_mode=ready['mode'])), updateGUI=True)
-        self.ui.Tab('生成文件')
-        self.transfer_files(files)
-        self.ui.Tab('剖面绘图')
-        self.compound(('Transfer_tool', 'GUIS', 'plots'))
-        self.ui.Tab('局部输入互转')
-        self.compound(('Transfer_tool', 'GUIS', 'convert'))
-        self.ui.Tab('高级设置')
+
+    def transfer_advanced(self):
         self.label('已有种子输入继续使用；缺少时，运行按钮自动使用内置种子。这里只在需要调整模型参数或换用其他种子时操作。')
         node = module(self.root, 'transfer')
         for kind in ('tglf', 'tgyro'):
@@ -45,19 +49,6 @@ class TransferPage:
                 postcommand=lambda location=None, kind=kind: self.actions.import_transfer_seed(kind), updateGUI=True)
         self.label('起止半径、坐标和点数以“Transfer_tool 运行”页为准；离子数量、质量和电荷每次运行时从当前剖面同步。')
         self.nav('统一 GACODE 环境配置', 'run')
-        if notebook is not None:
-            pages = ['run', 'files', 'plots', 'convert', 'advanced']
-            selected = self.settings.setdefault('transfer_tab', 'run')
-            if selected not in pages:
-                selected = self.settings['transfer_tab'] = 'run'
-            notebook.select(pages.index(selected))
-            def remember(event):
-                if event.widget is notebook:
-                    try:
-                        self.settings['transfer_tab'] = pages[notebook.index(notebook.select())]
-                    except tk.TclError:
-                        pass
-            notebook.bind('<<NotebookTabChanged>>', remember, add='+')
 
     def transfer_files(self, rows):
         if not rows:

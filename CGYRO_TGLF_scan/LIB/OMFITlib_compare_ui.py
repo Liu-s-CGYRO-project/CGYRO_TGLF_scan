@@ -14,12 +14,12 @@ from collections import (
     OrderedDict,
 )
 import tkinter as tk
-from tkinter import ttk
 from OMFITlib_compare_cases import (
     CaseSelection,
 )
 from OMFITlib_project import comparison_issues
 from OMFITlib_gui_layout import finish_gui_layout
+from OMFITlib_gui_deferred import TabPages
 from OMFITlib_compare_state import (
     MODES,
     MODE_LABELS,
@@ -43,41 +43,31 @@ CONTROL_TABS = OrderedDict([
 
 class ComparisonUI(CaseSelection):
     def render(self, open_templates=None):
-        with self._catalog_scope():
-            return self._render(open_templates)
+        return self._render(open_templates)
 
     def _render(self, open_templates):
         self.physics = initialize_settings(self.root)
-        selected = self.physics['compare_mode']
         self.ui.TitleGUI('CGYRO / TGLF · 对比绘图')
-        self.mode_notebook = None
-        panes = []
-        for mode in MODES:
-            self.ui.Tab(MODE_TABS[mode])
-            if self.mode_notebook is None:
-                self.mode_notebook = self._current_notebook()
-            pane = ComparisonUI(self.root, self.ui)
-            panes.append(pane)
-            # A native CompoundGUI gives each mode its own inner Notebook.
-            # All modes remain mounted, so tab switches need no GUI redraw.
-            with pane._catalog_scope(self._cgyro_catalog):
+        intro = self.ui.Label('绘图对比', align='left')
+        self.panes = [ComparisonUI(self.root, self.ui) for _ in MODES]
+        def render(mode):
+            if mode == 'style':
+                render_style(self.root, self.ui)
+            else:
+                pane = self.panes[MODES.index(mode)]
+                # Catalogs are render-local. An unopened comparison mode must
+                # neither enumerate results nor build its controls.
                 self.ui.CompoundGUI(self.root['GUIS']['Compare_controls'], title='',
                                     comparison=pane, mode=mode, open_templates=open_templates)
-        self.ui.Tab('全局样式')
-        render_style(self.root, self.ui)
+        selected = 'style' if self.physics.get('compare_view', None) == 'style' else self.physics['compare_mode']
+        captions = OrderedDict(MODE_TABS)
+        captions['style'] = '全局样式'
+        self.mode_pages = TabPages(self.ui, captions, dict(mode=selected), 'mode', render)
+        self.mode_notebook = self.mode_pages.notebook
         self.ui.Tab('')
         if self.mode_notebook is not None:
-            self.mode_notebook.select(len(MODES) if self.physics.get('compare_view', None) == 'style' else MODES.index(selected))
             self.mode_notebook.bind('<<NotebookTabChanged>>', self._mode_changed, add='+')
-        self.panes = panes
-        finish_gui_layout(panes[MODES.index(selected)].status_label, self.ui)
-
-    def _current_notebook(self):
-        # OMFITx.Tab returns None; its active frame owns the actual Notebook.
-        frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
-        if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook):
-            return frame.master
-        return None
+        finish_gui_layout(intro, self.ui)
 
     def _mode_changed(self, event):
         if event.widget is self.mode_notebook:
@@ -120,20 +110,15 @@ class ComparisonUI(CaseSelection):
             'plot': lambda: (self._render_plot(), self._render_view_options()),
             'actions': self._render_actions,
         }
-        self.controls_notebook = None
-        selected = self.state.get('view_tab', 'cases')
-        if selected not in CONTROL_TABS:
-            selected = 'cases'
-        for page, caption in CONTROL_TABS.items():
-            self.ui.Tab(caption)
-            if self.controls_notebook is None:
-                self.controls_notebook = self._current_notebook()
-            renderers[page]()
+        def render(page):
+            with self._catalog_scope():
+                renderers[page]()
             if page == 'actions':
                 self._render_related_tools(open_templates)
-        if self.controls_notebook is not None:
-            self.controls_notebook.select(list(CONTROL_TABS).index(selected))
-            self.controls_notebook.bind('<<NotebookTabChanged>>', self._controls_changed, add='+')
+        # Edits also update the mode's shared selection footer. The nearest
+        # outer mode is the refresh boundary, not all four comparison modes.
+        self.control_pages = TabPages(self.ui, CONTROL_TABS, self.state, 'view_tab', render, local=False)
+        self.controls_notebook = self.control_pages.notebook
         # EFIT/TGLF native GUIs return to the untabbed frame for common actions.
         self.ui.Tab('')
         self.ui.Separator()
@@ -152,12 +137,7 @@ class ComparisonUI(CaseSelection):
                            help='按当前案例、参数和绘图设置生成图形。计算结果仅在点击后读取。')
 
     def _controls_changed(self, event):
-        if event.widget is self.controls_notebook:
-            try:
-                self.state['view_tab'] = list(CONTROL_TABS)[
-                    self.controls_notebook.index(self.controls_notebook.select())]
-            except tk.TclError:
-                return
+        self.control_pages.changed(event)
 
     def _path(self, *keys):
         return self._dict_path(self.prefix, *keys)

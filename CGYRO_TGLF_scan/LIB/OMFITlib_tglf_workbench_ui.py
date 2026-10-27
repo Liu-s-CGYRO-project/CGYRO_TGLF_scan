@@ -7,6 +7,7 @@ import math
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 from OMFITlib_gui_layout import section_group
+from OMFITlib_gui_deferred import TabPages
 from OMFITlib_gui_controls import checkbox
 from OMFITlib_project import MODULES, location, read, runtime_issues
 from OMFITlib_tglf_preparation import preparation_resources
@@ -25,8 +26,12 @@ from OMFITlib_tglf_records import record_summary
 class TGLFWorkbench:
     def __init__(self, view):
         self.view, self.actions, self.root, self.ui = view, view.actions, view.root, view.ui
-        self.settings, self.rows = initialize(self.root, self.actions.factory)
         self.prefix = view.prefix + "['tglf']"
+        self.load_selection()
+
+    def load_selection(self):
+        """Refresh input references when a changed tab is next rendered."""
+        self.settings, self.rows = initialize(self.root, self.actions.factory)
         self.available = [row for row in self.rows if row['group'] == self.settings['source']]
         try:
             self.selected = selected_rows(self.root, self.settings)
@@ -40,15 +45,8 @@ class TGLFWorkbench:
         return self.view.label(text)
 
     def render(self):
-        selected = self.settings['page'] if self.settings['page'] in TABS else 'scan'
-        self.notebook = None
-        for page, caption in TABS.items():
-            self.ui.Tab(caption)
-            if self.notebook is None:
-                # OMFITx.Tab returns None; its context owns the active tab frame.
-                frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
-                if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook):
-                    self.notebook = frame.master
+        def render(page):
+            self.load_selection()
             if page == 'multi':
                 self.view.compound(('GUIS', 'TGLF_multi'))
             elif page == 'parameters':
@@ -57,24 +55,14 @@ class TGLFWorkbench:
                 self.results()
             else:
                 self.scan()
-        self.select_page(selected)
-        if self.notebook is not None:
-            self.notebook.bind('<<NotebookTabChanged>>', self.page_changed, add='+')
+        self.pages = TabPages(self.ui, TABS, self.settings, 'page', render)
+        self.notebook = self.pages.notebook
 
     def select_page(self, page):
-        self.settings['page'] = page
-        if self.notebook is not None:
-            try:
-                self.notebook.select(list(TABS).index(page))
-            except tk.TclError:
-                return
+        self.pages.select(page)
 
     def page_changed(self, event):
-        if event.widget is self.notebook:
-            try:
-                self.settings['page'] = list(TABS)[self.notebook.index(self.notebook.select())]
-            except tk.TclError:
-                return
+        self.pages.changed(event)
 
     def scan(self):
         # CompoundGUI gives the sub-tabs their own native Notebook context.
@@ -82,38 +70,22 @@ class TGLFWorkbench:
         self.view.show_message(first_line=True)
 
     def render_scan_tabs(self):
-        selected = self.settings['scan_page'] if self.settings['scan_page'] in SCAN_TABS else 'input'
-        self.scan_notebook = None
-        for page, caption in SCAN_TABS.items():
-            self.ui.Tab(caption)
-            if self.scan_notebook is None:
-                frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
-                if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook):
-                    self.scan_notebook = frame.master
+        def render(page):
+            self.load_selection()
             if page == 'input':
                 self.input()
             elif page == 'settings':
                 self.scan_settings()
             else:
                 self.run()
-        self.select_scan_page(selected)
-        if self.scan_notebook is not None:
-            self.scan_notebook.bind('<<NotebookTabChanged>>', self.scan_page_changed, add='+')
+        self.scan_pages = TabPages(self.ui, SCAN_TABS, self.settings, 'scan_page', render)
+        self.scan_notebook = self.scan_pages.notebook
 
     def select_scan_page(self, page):
-        self.settings['scan_page'] = page
-        if self.scan_notebook is not None:
-            try:
-                self.scan_notebook.select(list(SCAN_TABS).index(page))
-            except tk.TclError:
-                return
+        self.scan_pages.select(page)
 
     def scan_page_changed(self, event):
-        if event.widget is self.scan_notebook:
-            try:
-                self.settings['scan_page'] = list(SCAN_TABS)[self.scan_notebook.index(self.scan_notebook.select())]
-            except tk.TclError:
-                return
+        self.scan_pages.changed(event)
 
     def input(self):
         groups = OrderedDict()
@@ -366,9 +338,9 @@ class TGLFWorkbench:
                 callback = lambda location=None, name=name, reference=values.get(name, reference): self.edit_parameter(name, reference)
                 if isinstance(reference, bool):
                     self.ui.ComboBox(prefix + "['value']", {'开启': True, '关闭': False}, '', width=12,
-                                     updateGUI=True, state='readonly', postcommand=callback, help=hint)
+                                     updateGUI=False, state='readonly', postcommand=callback, help=hint)
                 else:
-                    self.ui.Entry(prefix + "['value']", '', width=12, updateGUI=True, postcommand=callback, help=hint)
+                    self.ui.Entry(prefix + "['value']", '', width=12, updateGUI=False, postcommand=callback, help=hint)
                 self.ui.Button('沿用输入', lambda name=name: self.reset_parameter(name), updateGUI=True)
 
     def edit_parameter(self, name, reference):

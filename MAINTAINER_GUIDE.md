@@ -1,8 +1,24 @@
 # 维护与扩展接口
 
-适用于工程 1.24.22。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.23。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 
+
+## 页面构建与续算归档边界（1.24.23）
+
+`gui_deferred.TabPages` 统一 CGYRO、TGLF、转换、运行配置与对比页面的标签生命周期。真实 Tk 只构建当前页；切页保留已构建控件及未提交文字。无 Tk 的结构检查仍遍历全部标签。不得再次为每个页面复制 Notebook 事件处理，也不要用窗口重建模拟切页。
+
+页面内编辑通过 `_cgyro_local_refresh` 定位最近的局部区域；原生回调先提交值，再合并一次重绘。普通数值编辑使用 `updateGUI=False`，只让其他已缓存页失效；打开“运行”或“检查配置”、真正提交时仍执行完整校验。结构、预览会随之改变的下拉项保留局部重绘。按钮改变任务/结果或顶层提示时刷新所属窗口；运行配置页使用 `local=False`，保证“应用”状态与表头同步，不因追求局部刷新而显示旧状态。
+
+`gui._cgyro_view_revision` 是窗口内瞬态失效代数，只缓存控件，不缓存科学结果或验证结论。修改参数后其他页在下次选中时重建；当前区域及其祖先标为最新，避免切回父页又整体重绘。`DeferredSection` 保留原生 `_aux`/`pythonFile` 上下文，保存锁期间延后，关闭时撤销回调；构造失败保留旧区域。销毁旧区域后须剔除 `gui.notebooks` 和布局记录中的失效 Tk 对象，否则下一次原生 GUI.update 会访问已不存在的 Tcl 路径。适配器缓存构造函数，不得长期持有旧 Entry 或已关闭页面。
+
+`CGYROScan.publish_loaded_run` 区分“选择一个旧结果发起新续算”和“归档已提交续算”两个阶段。前者的 `archived_case` 仍拒绝过期窗口；后者直接使用冻结的 manifest/point_table，不能再要求来源 token 仍是公开索引头。另一次归档合并可能已替换该头并退休旧快照，但这不使已提交任务的输入身份失效。按完整参数与带符号 ky 合并，保留未选坐标，较短部分结果不覆盖完整结果；下载/解析错误依旧阻止完成归档。
+
+正常续算历史从相同 `scan_key` 的索引读取，当前 run_token 只追加一次。`stopped_run` 恢复原批次时仍尝试继承其已完成点，来源缺失不能据此认证整批完成，但本次可读部分可以归档。调度终态与 collection_status 分开报告：cancelled/failed 不代表已归档，不能清空清单或直接放行下一次提交来掩盖收集失败。
+
+已迁移的 `case_layout=radius-scans` 在普通发布中仅处理当前运行；`recover_archives` 的全库兼容恢复只用于旧布局首次迁移或显式维护。手工导入未迁移的旧分支后应使用整理入口，不能让每次提交/收集都遍历物理结果。布局标志不替代所选点的输入、检查点与结果保留校验。
+
+回归入口：`test_gui_tab_pages` 覆盖真实 Tk 局部刷新、未提交文字、预览失效、原生 CompoundGUI、多窗口上下文、保存锁、失败重试及旧控件释放；`test_cgyro_storage` 覆盖来源头被替换后的部分/完整归档、重复收集、读错误及已迁移无关结果零读取。验证记录和本地基准范围见 [VALIDATION.md](VALIDATION.md)。
 
 ## 已应用配置的持久化身份（1.24.22）
 
@@ -16,7 +32,7 @@ test_runtime_persistence 使用未修改的原生 OMFITlazyLoad、SortedDict 与
 
 ## 历史结果按需读取（1.24.20）
 
-`CgyroPage.render_cgyro` 为结果页捕获 `gui_deferred.DeferredSection`。内层扫描标签和外层结果标签不是同一个 Notebook；回调必须核对所属 Notebook，只记录 `cgyro_main_tab`，不得调用 UpdateGUI（即使局限于本窗口，它仍会销毁控件并广播主树更新）。首次选中结果页只在现有 Frame 内补建控件，重复事件与来回切页复用该页。实际参数/任务操作需要刷新时仍走已有适配器；重建后旧 Frame 失效，新结果页按需重新构建。
+`CgyroPage.render_cgyro` 从 1.24.23 起通过 `gui_deferred.TabPages` 管理全部标签，其局部构造由 `DeferredSection` 完成。内层扫描标签和外层结果标签不是同一个 Notebook；回调必须核对所属 Notebook，保存各自的标签选择，不得用 UpdateGUI 实现切页。首次选中结果页只补建该区域，未失效时复用；参数编辑只刷新所需区域，任务操作和手动刷新仍可重建所属窗口。失效的其他页到下次选中才构建。
 
 延后构造时，必须恢复捕获的 `_aux` 和所属 GUI 的 `pythonFile`，使相对位置、锁和控件回调仍指向原工程；`finally` 恢复此前其他窗口的构造上下文。不能在事件回调中借用进程最后一次渲染的全局状态。只对新子树应用布局和按钮绑定，保留其他控件与尚未提交的文字。保存锁未释放时延后；已经切走则取消这次加载，关闭 Frame 时取消定时器。构造失败销毁未完成子树，下一次选择可重试。运行时 Frame/回调只属于当前窗口，不写入 SETTINGS。
 

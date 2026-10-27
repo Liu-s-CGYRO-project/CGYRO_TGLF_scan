@@ -180,6 +180,7 @@ class StorageCases(unittest.TestCase):
                          compact_storage=storage.compact_storage, prune_storage=storage.prune_storage,
                          retire_superseded=storage.retire_superseded, reference_id=storage.reference_id,
                          store_result=storage.store_result, resolve_result=storage.resolve_result,
+                         storage_state=storage.storage_state,
                          run_cases=db_api.run_cases, recover_archives=storage.recover_archives)
         for name in ('canonical_case_key', 'catalog_runs', 'clean_run_id', 'combine_cases',
                      'grouped_case_path', 'install_case', 'matching_cases', 'output_final_time',
@@ -187,6 +188,100 @@ class StorageCases(unittest.TestCase):
             namespace[name] = getattr(archive_api, name)
         exec(compile(ast.Module(body=definitions, type_ignores=[]), str(path), 'exec'), namespace)
         return namespace['publish_loaded_run']
+
+    def continuation_after_merged_source(self, *, finished=False):
+        """A second scan changes the public header while the first owns rows."""
+        root, publish = {}, self.publisher()
+        case_id = 'nr=1__rho=0.33__ion=T'
+        def attempt(token, kys, final_time):
+            table, cases = {}, {}
+            for index, ky in enumerate(kys, 1):
+                point = 'p{:06d}'.format(index)
+                table[point] = dict(values={'N_ENERGY': 48, 'KY': ky},
+                    result_path=['N_ENERGY', '48', 'lin', str(ky)])
+                result = self.result(token + point, token.encode())
+                Path(result.filename, 'out.cgyro.time').write_text('0\n{}\n'.format(final_time))
+                cases[point] = result
+            manifest = dict(run_token=token, status='loaded', collection_status='ready',
+                dimensions=1, scan_axes=[dict(name='N_ENERGY', values=[48], linked=[])],
+                case_tag='case', case_id=case_id, nr=1, rho=.33, mass='T', runid='Jet',
+                server='fixture', workDir='/runs/' + token, job_id='job-' + token,
+                points=list(table), loaded_points=list(table), point_table=table)
+            root['RUN_MANIFEST'], root['Cases'] = manifest, {'case': cases}
+            return manifest
+        source = copy.deepcopy(attempt('source', [.5, .6, .7], 30))
+        publish(root)
+        attempt('neighbor', [.8], 50)
+        publish(root)
+        # The public scan now has neighbor's header; published source no
+        # longer owns a duplicate cases tree. A stale planning dialog rejects
+        # it, but collecting an already submitted child must remain possible.
+        with self.assertRaisesRegex(ValueError, 'replaced or is unindexed'):
+            continuation.archived_case(root, 'source')
+        current = attempt('child', [.5, .6], 40 if finished else 20)
+        current['continuation'] = dict(source_token='source', source_runid='Jet', source_case_id=case_id,
+            points=list(current['points']), source_points=source['points'], stopped_run=False, additional_time=100)
+        if not finished:
+            current.update(status='cancelled', loaded_points=[], partial_points=list(current['points']),
+                           failed_points=list(current['points']), stop_requested=True)
+        return root, publish, case_id
+
+    def test_cancelled_continuation_archives_after_source_header_was_replaced(self):
+        import OMFITlib_cgyro_run_state as state
+        root, publish, case_id = self.continuation_after_merged_source()
+        prior = copy.deepcopy(archive_api.catalog_runs(root)['Jet'][case_id]['N_ENERGY'])
+        publish(root)
+        self.assertEqual(root['RUN_MANIFEST']['status'], 'cancelled')
+        self.assertEqual(root['RUN_MANIFEST']['collection_status'], 'partial')
+        self.assertFalse(state.uncollected_job(root['RUN_MANIFEST']))
+        self.assertEqual(archive_api.catalog_runs(root)['Jet'][case_id]['N_ENERGY'], prior)
+        # The shorter child stays recoverable independently of the better
+        # public result; repeating collection must not duplicate or lose rows.
+        self.assertEqual(set(db_api.run_cases(root)), {'p000001', 'p000002'})
+        context = continuation.stopped_context(root, 'child')
+        self.assertEqual(set(context['rows']), {'p000001', 'p000002', 'p000003'})
+        self.assertEqual(context['unfinished'], {'p000001', 'p000002'})
+        root['RUN_MANIFEST']['collection_status'] = 'ready'
+        publish(root)
+        self.assertFalse(state.uncollected_job(root['RUN_MANIFEST']))
+        self.assertEqual(len(archive_api.catalog_runs(root)['Jet'][case_id]['__TASKS__']), 4)
+
+    def test_completed_continuation_merges_only_its_coordinates_after_header_replacement(self):
+        root, publish, case_id = self.continuation_after_merged_source(finished=True)
+        before = copy.deepcopy(archive_api.catalog_runs(root)['Jet'][case_id]['N_ENERGY']['48']['lin'])
+        publish(root)
+        after = archive_api.catalog_runs(root)['Jet'][case_id]['N_ENERGY']['48']['lin']
+        self.assertEqual(root['RUN_MANIFEST']['status'], 'published')
+        for ky in ('.7', '.8'):
+            key = str(float(ky))
+            self.assertEqual(after[key], before[key])
+        for key in ('0.5', '0.6'):
+            self.assertNotEqual(after[key], before[key])
+
+    def test_failed_continuation_read_is_not_mistaken_for_finished_collection(self):
+        import OMFITlib_cgyro_run_state as state
+        root, publish, case_id = self.continuation_after_merged_source()
+        before = copy.deepcopy(archive_api.catalog_runs(root)['Jet'][case_id])
+        root['RUN_MANIFEST']['load_errors'] = {'p000001': 'transport interrupted'}
+        with self.assertRaisesRegex(ValueError, 'download/read errors'):
+            publish(root)
+        self.assertTrue(state.uncollected_job(root['RUN_MANIFEST']))
+        self.assertEqual(archive_api.catalog_runs(root)['Jet'][case_id], before)
+
+    def test_collection_does_not_reload_unrelated_migrated_results(self):
+        root, publish, case_id = self.continuation_after_merged_source()
+        self.assertEqual(storage.storage_state(root)['case_layout'], 'radius-scans')
+        storage.compact_storage(root, run_token='child')
+        # Opening old physical results here repeats full legacy migration on
+        # every archive operation. Current output still needs its final time.
+        resolve = publish.__globals__['resolve_result']
+        current_refs = {storage.reference_id(value) for value in db_api.run_cases(root).values()}
+        def selected_only(module, value):
+            self.assertIn(storage.reference_id(value), current_refs)
+            return resolve(module, value)
+        publish.__globals__['resolve_result'] = selected_only
+        publish(root)
+        self.assertEqual(root['RUN_MANIFEST']['collection_status'], 'partial')
 
     def browsable_expressions(self):
         class OMFITexpression:
@@ -1044,7 +1139,8 @@ class StorageCases(unittest.TestCase):
                          compact_storage=storage.compact_storage, prune_storage=storage.prune_storage,
                          store_result=storage.store_result, resolve_result=storage.resolve_result,
                          retire_superseded=storage.retire_superseded, reference_id=storage.reference_id,
-                         run_cases=db_api.run_cases, recover_archives=storage.recover_archives)
+                         run_cases=db_api.run_cases, recover_archives=storage.recover_archives,
+                         storage_state=storage.storage_state)
         for name in ('canonical_case_key', 'catalog_runs', 'clean_run_id', 'combine_cases', 'grouped_case_path', 'install_case', 'matching_cases', 'output_final_time', 'scan_key', 'store_scan', 'validate_preserved_scans'):
             namespace[name] = getattr(archive_api, name)
         exec(compile(ast.Module(body=selected, type_ignores=[]), str(path), 'exec'), namespace)

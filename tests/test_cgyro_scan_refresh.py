@@ -9,7 +9,8 @@ from unittest.mock import Mock, patch
 REPO = Path(__file__).resolve().parents[1]
 SOURCE = REPO.parents[2] / 'OMFIT-source-ASIPP_unstable/omfit'
 sys.path.insert(0, str(REPO / 'CGYRO_TGLF_scan/LIB'))
-from OMFITlib_gui_deferred import deferred_section
+from collections import OrderedDict
+from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_gui_layout import finish_gui_layout
 
 
@@ -44,17 +45,17 @@ class ScanRefreshTests(unittest.TestCase):
         constants = [node for node in tree.body if isinstance(node, ast.Assign)
                      and any(isinstance(target, ast.Name) and target.id == 'CGYRO_MAIN_TABS' for target in node.targets)]
         self.browser, self.queue = Mock(), Mock(return_value=[])
-        namespace = dict(tk=SimpleNamespace(Misc=Frame, TclError=RuntimeError),
+        namespace = dict(tk=SimpleNamespace(Misc=Frame, TclError=RuntimeError), OrderedDict=OrderedDict,
             ttk=SimpleNamespace(Notebook=Notebook), MODULES={'cgyro': ('CGYRO_scan',)},
             read=lambda root, path: root[path[0]], ResultBrowser=self.browser, queue_records=self.queue,
-            deferred_section=lambda ui, render: None)
+            TabPages=TabPages, sync_cgyro_choices=lambda *args: [])
         exec(compile(ast.Module(body=constants + [cls], type_ignores=[]), str(source), 'exec'), namespace)
         self.page = namespace['CgyroPage']()
         self.notebook = Notebook()
         self.page.root, self.page.settings, self.page.cgyro_rows = {'CGYRO_scan': {}}, {}, []
         self.page.ui = SimpleNamespace(Tab=Mock(), UpdateGUI=Mock(),
                                       _aux={'parentGUI': Frame(self.notebook)})
-        self.page.actions = SimpleNamespace(continue_cgyro=Mock())
+        self.page.actions = SimpleNamespace(continue_cgyro=Mock(), factory=dict)
         for name in ('compound', 'show_message', 'render_cgyro_parameters', 'render_cgyro_recovery',
                      'render_cgyro_cleanup', 'nav', 'label'):
             setattr(self.page, name, Mock())
@@ -72,33 +73,34 @@ class ScanRefreshTests(unittest.TestCase):
         self.page.render_cgyro()
         self.queue.assert_called_once_with(self.page.root['CGYRO_scan'])
         self.browser.return_value.render.assert_called_once_with(title=False)
-        self.assertEqual(self.notebook.select(), '2')
+        self.assertEqual(self.page.settings['cgyro_main_tab'], 'results')
 
     def test_user_switch_never_requests_owner_refresh_and_ignores_other_notebook(self):
-        self.page.render_cgyro()
-        section = self.page.cgyro_results_section = SimpleNamespace(show=Mock())
-        self.assertIsNotNone(self.notebook.callback)
-        self.notebook.select(2)
-        event = SimpleNamespace(widget=self.notebook)
-        self.notebook.callback(event)
+        host = self.native_host()
+        notebook = self.page.cgyro_main_notebook
+        section = self.page.cgyro_results_section
+        section.show = Mock(wraps=section.show)
+        notebook.select(2)
+        host.root.update()
         self.assertEqual(self.page.settings['cgyro_main_tab'], 'results')
         section.show.assert_called_once_with()
-        self.notebook.callback(event)  # Rebuild/programmatic duplicate event.
+        event = SimpleNamespace(widget=notebook)
+        self.page.cgyro_main_tab_changed(event)  # Rebuild/programmatic duplicate event.
         self.assertEqual(section.show.call_count, 2)  # The section handles idempotency.
-        self.notebook.callback(SimpleNamespace(widget=Notebook()))
+        self.page.cgyro_main_tab_changed(SimpleNamespace(widget=Notebook()))
         self.assertEqual(section.show.call_count, 2)
-        self.notebook.select(0)
-        self.notebook.callback(event)
-        self.notebook.select(1)
-        self.notebook.callback(event)
-        self.page.ui.UpdateGUI.assert_not_called()
-        self.browser.assert_not_called()
+        notebook.select(0)
+        host.root.update()
+        notebook.select(1)
+        host.root.update()
+        self.assertEqual(host.updates, [])
+        self.browser.return_value.render.assert_called_once_with(title=False)
 
     def test_invalid_saved_tab_falls_back_to_input_without_loading_results(self):
         self.page.settings['cgyro_main_tab'] = 'removed-page'
         self.page.render_cgyro()
         self.assertEqual(self.page.settings['cgyro_main_tab'], 'input')
-        self.assertEqual(self.notebook.select(), '0')
+        self.assertEqual(self.page.settings['cgyro_main_tab'], 'input')
         self.browser.assert_not_called()
 
     def native_host(self, selected='input'):
@@ -126,7 +128,7 @@ class ScanRefreshTests(unittest.TestCase):
         host.api.relativeLocations = lambda file: {'key': file.identity}
         host.api.absLocation = lambda location, context, **kwargs: (
             "OMFIT[" + repr(context['key']) + "]" + location[len('root'):])
-        self.page.render_cgyro.__globals__.update(tk=tk, ttk=ttk, deferred_section=deferred_section)
+        self.page.render_cgyro.__globals__.update(tk=tk, ttk=ttk)
         self.page.settings['cgyro_main_tab'] = selected
         self.page.label.side_effect = lambda text: self.page.ui.Label(text, align='left')
         self.page.compound.side_effect = lambda *args, **kwargs: host.controls.update(
@@ -203,6 +205,7 @@ class ScanRefreshTests(unittest.TestCase):
             original(**kwargs)
             raise ValueError('Cannot enumerate selected result metadata')
         self.browser.return_value.render.side_effect = fail
+        self.page.settings['cgyro_main_tab'] = 'results'
         with self.assertRaisesRegex(ValueError, 'selected result metadata'):
             section.show()
         self.assertFalse(section.built)

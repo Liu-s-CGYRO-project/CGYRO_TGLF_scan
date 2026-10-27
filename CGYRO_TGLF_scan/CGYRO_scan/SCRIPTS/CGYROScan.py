@@ -8,7 +8,7 @@ from OMFITlib_cgyro_archive import (canonical_case_key, catalog_runs, clean_run_
 from OMFITlib_cgyro_retry import collect_current
 from OMFITlib_cgyro_continue import continuation_case, point_result
 from OMFITlib_cgyro_queue import save_current
-from OMFITlib_cgyro_storage import compact_storage, prune_storage, reference_id, resolve_result, store_result
+from OMFITlib_cgyro_storage import compact_storage, prune_storage, reference_id, resolve_result, storage_state, store_result
 from OMFITlib_cgyro_retention import retire_superseded
 from OMFITlib_cgyro_db import run_cases
 from OMFITlib_cgyro_reference import copy_result_tree
@@ -59,9 +59,11 @@ def remember_collection(root):
 
 def publish_loaded_run(root):
     compact_storage(root, OMFITtree, run_token=root.get('RUN_MANIFEST', {}).get('run_token', ''))
-    # The current run is published below; only recover older retained sources.
-    recover_archives(root, resolve_result, OMFITtree,
-                     exclude_token=str(root.get('RUN_MANIFEST', {}).get('run_token', '')))
+    # Legacy layout migration may inspect every saved result. Once migrated,
+    # collection merges only this run; full recovery belongs to maintenance.
+    if storage_state(root).get('case_layout', '') != 'radius-scans':
+        recover_archives(root, resolve_result, OMFITtree,
+                         exclude_token=str(root.get('RUN_MANIFEST', {}).get('run_token', '')))
     manifest = root.get('RUN_MANIFEST', None)
     if not manifest or manifest.get('collection_status', '') != 'ready' and manifest.get('status', '') != 'loaded':
         return
@@ -82,17 +84,23 @@ def publish_loaded_run(root):
     continuation = manifest.get('continuation', None)
     source_case = None
     if continuation:
-        try:
-            source_case = continuation_case(root, continuation['source_token'])
-        except ValueError:
-            if not continuation.get('stopped_run', False):
-                raise
         if set(expected) != set(continuation['points']):
             raise ValueError('Continuation point list changed; the previous case is preserved')
         if continuation.get('stopped_run', False):
+            # An interrupted multi-point run may inherit finished points from
+            # its ancestors. Missing ancestry cannot certify full completion,
+            # but must not prevent archiving this attempt's readable outputs.
+            try:
+                source_case = continuation_case(root, continuation['source_token'])
+            except ValueError:
+                source_case = None
             finished = {point for point, row in (source_case or {}).get('__TASKS__', {}).items()
                         if row.get('status', '') == 'loaded' and not row.get('resume_pending', False)}
             complete = complete and set(continuation['source_points']) <= (finished | set(loaded))
+        # Normal continuation already froze its point identities at submission.
+        # Do not run the stale-dialog lookup again here: another archive merge
+        # can replace the source header while its physical points remain valid.
+        # combine_cases/store_scan below retain all unselected coordinates.
     case_tag = manifest['case_tag']
     fresh_output = OMFITtree()
     if source_case is not None:
@@ -177,10 +185,14 @@ def publish_loaded_run(root):
                                            if row.get('continuation_pending', '')},
                      status='published'))
     info['case_path'] = grouped_case_path(case_key, info)
-    if source_case is not None:
-        continuations = copy.deepcopy(source_case['__INFO__'].get('continuations', []))
+    if continuation:
+        prior_info = (source_case['__INFO__'] if source_case is not None else
+                      destination.get('__SCANS__', {}).get(scan_key(manifest), {}).get('info', {}))
+        continuations = copy.deepcopy(prior_info.get('continuations', []))
+        continuations = [item for item in continuations if item.get('run_token', '') != manifest['run_token']]
         continuations.append(dict(continuation, run_token=manifest['run_token']))
         info['continuations'] = continuations
+    if source_case is not None:
         info['point_workdirs'] = {point: row['result_workDir'] for point, row in task_rows.items()
                                  if row.get('result_workDir', None) is not None}
     # Keep the task table with the results.  Reserved double-underscore keys are

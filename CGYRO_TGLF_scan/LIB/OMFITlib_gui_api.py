@@ -16,9 +16,10 @@ class _DeferredGUIRefresh:
     also rebuilds unrelated windows. A normal timer, unlike after_idle, cannot
     run inside OMFIT's update_idletasks while that callback is still active.
     """
-    def __init__(self, api, gui, registry):
+    def __init__(self, api, gui, registry, target=None, redraw=None):
         self.api, self.gui, self.registry = api, gui, registry
-        self.top = gui.top
+        self.top = target if target is not None else gui.top
+        self.redraw = redraw
         self.pending = None
         self.running = self.dirty = self.closed = False
         self.top.bind('<Destroy>', self._closed, add='+')
@@ -35,7 +36,7 @@ class _DeferredGUIRefresh:
         return False
 
     def request(self):
-        if self.closed or self.registry.get(str(self.top), None) is not self.gui:
+        if self.closed or self.registry.get(str(self.gui.top), None) is not self.gui:
             return
         self.dirty = True
         if self.pending is None and not self.running:
@@ -43,7 +44,7 @@ class _DeferredGUIRefresh:
 
     def flush(self):
         self.pending = None
-        if self.closed or self.registry.get(str(self.top), None) is not self.gui:
+        if self.closed or self.registry.get(str(self.gui.top), None) is not self.gui:
             return
         # Saving owns the session tree. Keep processing Tk events while it
         # finishes instead of nesting another module redraw in its wait loop.
@@ -53,7 +54,10 @@ class _DeferredGUIRefresh:
             return
         self.dirty, self.running = False, True
         try:
-            self.gui.update()
+            if self.redraw is None:
+                self.gui.update()
+            else:
+                self.redraw()
         finally:
             self.running = False
             if self.dirty:
@@ -67,12 +71,16 @@ class _DeferredGUIRefresh:
                 self.pending = None
 
 
-def _deferred_gui_refresh(api, parent):
+def _deferred_gui_refresh(api, parent, local=False):
     """Locate the GUI by ancestry, never by OMFIT's last-rendered GUI global."""
     registry = getattr(api, '_GUIs', None)
     if not isinstance(registry, dict):
         return None
     while isinstance(parent, tk.Misc):
+        if local:
+            refresh = getattr(parent, '_cgyro_local_refresh', None)
+            if refresh is not None:
+                return refresh
         gui = registry.get(str(parent), None)
         if gui is not None:
             refresh = getattr(gui, '_cgyro_deferred_refresh', None)
@@ -291,8 +299,8 @@ class ProjectWidgets:
         self._api = api
         self._project_widget_adapter = True
         self._owner = getattr(api, '_aux', {}).get('parentGUI', None)
-        self._entry_functions = {}
         self._helper_functions = {}
+        self._constructors = {}
 
     def UpdateGUI(self, top=None, all_windows=False):
         """Refresh the captured owner, or an explicit target, after callbacks.
@@ -311,6 +319,8 @@ class ProjectWidgets:
     updateGUI = UpdateGUI
 
     def __getattr__(self, name):
+        if name in self._constructors:
+            return self._constructors[name]
         function = getattr(self._api, name)
         # These native selectors construct controls internally, bypassing the
         # public adapter (ObjectPicker even hardcodes updateGUI=True).
@@ -326,6 +336,11 @@ class ProjectWidgets:
                         'EditASCIIobject', 'ListEditor', 'TreeLocationPicker', 'Slider', 'RadioButtons') or not callable(function):
             return function
 
+        try:
+            signature = inspect.signature(function)
+        except (TypeError, ValueError):
+            signature = None
+
         def create(*args, **kwargs):
             parent = getattr(self._api, '_aux', {}).get('parentGUI', None)
             arguments = dict(kwargs)
@@ -334,22 +349,32 @@ class ProjectWidgets:
                 arguments.setdefault('location', args[0])
             # Respect native positional signatures; never rewrite entry values.
             try:
-                bound = inspect.signature(function).bind_partial(*args, **kwargs)
-                arguments.update(bound.arguments)
+                bound = signature.bind_partial(*args, **kwargs) if signature is not None else None
+                if bound is not None:
+                    arguments.update(bound.arguments)
             except (TypeError, ValueError):
                 pass
             constructor = function
-            refresh = _deferred_gui_refresh(self._api, parent)
+            # Actions can change the workbench page or its header. Ordinary
+            # fields only redraw the nearest independently rendered section.
+            refresh = _deferred_gui_refresh(self._api, parent, local=name != 'Button')
             if refresh is not None:
                 if arguments.get('updateGUI', False) and bound is not None:
                     bound.arguments['updateGUI'] = refresh
                     args, kwargs = bound.args, bound.kwargs
+                elif (bound is not None and name in ('Entry', 'ComboBox', 'CheckBox', 'Slider')
+                      and getattr(refresh, 'invalidate_only', None) is not None):
+                    # Values with no visual dependency still invalidate hidden
+                    # previews. Committing an Entry must not leave Run stale.
+                    bound.arguments['updateGUI'] = refresh.invalidate_only
+                    args, kwargs = bound.args, bound.kwargs
                 text_function = getattr(self._api, '_Text', None)
                 if name == 'Entry' and isinstance(function, FunctionType) and callable(text_function):
-                    key = (function, refresh)
-                    if key not in self._entry_functions:
-                        self._entry_functions[key] = _local_entry(function, text_function, refresh)
-                    constructor = self._entry_functions[key]
+                    # Own the closure on its refresh scope. An adapter lives
+                    # longer than rebuilt tabs and must not retain dead ones.
+                    if getattr(refresh, 'entry_constructor', None) is None:
+                        refresh.entry_constructor = _local_entry(function, text_function, refresh)
+                    constructor = refresh.entry_constructor
             help_text = arguments.get('help', '')
             before = set(parent.winfo_children()) if isinstance(parent, tk.Misc) else set()
             result = constructor(*args, **kwargs)
@@ -385,6 +410,7 @@ class ProjectWidgets:
                         return value
                     button.configure(command=reset)
             return result
+        self._constructors[name] = create
         return create
 
 

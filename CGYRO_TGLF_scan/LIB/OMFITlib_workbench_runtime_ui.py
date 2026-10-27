@@ -8,6 +8,7 @@ from collections import OrderedDict
 import tkinter as tk
 from tkinter import ttk
 from OMFITlib_workbench_catalog import STATUS
+from OMFITlib_gui_deferred import TabPages
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
 from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choices, installation_issues
 from OMFITlib_project import MODULES, collect_issues, location, read, text_value, sync_run_issues
@@ -24,13 +25,18 @@ class RuntimePage:
         config = initialize_runtime(self.root, self.actions.factory)
         prefix = "root['SETTINGS']['GACODE_RUNTIME']"
         self.runtime_apply(config)
-        self.ui.Tab('常用配置')
-        self.environment(config, prefix)
-        self.ui.Tab('安装路径')
-        self.gacode_installations(config)
-        self.ui.Tab('脚本与命令')
-        self.runtime_commands(prefix)
-        self.ui.Tab('运行记录')
+        renderers = dict(environment=lambda: self.environment(config, prefix),
+            installations=lambda: self.gacode_installations(config),
+            commands=lambda: self.runtime_commands(prefix),
+            records=self.runtime_records, history=self.runtime_history)
+        # Apply status is shared above the tabs, so field changes redraw the
+        # visible runtime page and its header, while hidden tabs stay unloaded.
+        self.runtime_pages = TabPages(self.ui, OrderedDict([
+            ('environment', '常用配置'), ('installations', '安装路径'), ('commands', '脚本与命令'),
+            ('records', '运行记录'), ('history', '操作历史')]),
+            self.settings, 'runtime_tab', lambda page: renderers[page](), local=False)
+
+    def runtime_records(self):
         manifest = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST'), {})
         self.ui.Separator('CGYRO 当前运行')
         self.label(run_caption(manifest) if manifest else '尚无运行记录。')
@@ -50,11 +56,13 @@ class RuntimePage:
         self.label('此页显示工程中保存的运行状态。')
         self.ui.Separator('结果管理')
         self.ui.Button('清空全部结果…', self.clear_all_results, updateGUI=True)
-        self.ui.Tab('操作历史')
+
+    def runtime_history(self):
         records = read(self.root, ('PROJECT_STATE', 'activity'), {})
         if not records:
             self.label('尚无通过总控页执行的操作。')
-        for record in list(records.values())[-20:][::-1]:
+        for key in list(records)[-20:][::-1]:
+            record = records[key]
             self.ui.Separator(record['title'])
             self.label('{} · {}{}'.format(record['created'], STATUS.get(record['status'], record['status']),
                 '\n' + record['error'] if record.get('error', None) else ''))

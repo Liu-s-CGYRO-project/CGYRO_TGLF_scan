@@ -3,7 +3,7 @@
 Public methods remain inherited by ProjectUI for saved GUIs and callbacks.
 Keep OMFITlib imports at module scope: native GUI execution clears its import hook.
 """
-from builtins import ValueError, any, dict, float, getattr, int, isinstance, len, list, next, range, sorted, str
+from builtins import ValueError, any, dict, float, getattr, int, isinstance, len, list, next, range, sorted, str, zip
 from collections import OrderedDict
 import math
 import tkinter as tk
@@ -19,7 +19,7 @@ from OMFITlib_project import ION_CASES, MODULES, cgyro_ion_mode, cgyro_plan_issu
 from OMFITlib_cgyro_run_state import submission_pending
 from OMFITlib_cgyro_radius_cleanup import preview_radius, radius_choices
 from OMFITlib_cgyro_task_manager import TaskManager, confirm_scope
-from OMFITlib_gui_deferred import deferred_section
+from OMFITlib_gui_deferred import TabPages
 
 CGYRO_MAIN_TABS = ('input', 'parameters', 'results')
 
@@ -31,42 +31,23 @@ class CgyroPage:
         if node is None:
             self.label('工程缺少 CGYRO_scan 模块。')
             return
-        selected = self.settings.setdefault('cgyro_main_tab', 'input')
-        if selected not in CGYRO_MAIN_TABS:
-            selected = self.settings['cgyro_main_tab'] = 'input'
-        self.ui.Tab('输入与扫描')
-        frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
-        self.cgyro_main_notebook = (frame.master if isinstance(frame, tk.Misc)
-                                    and isinstance(frame.master, ttk.Notebook) else None)
-        self.compound(('GUIS', 'CGYRO_controls'), workbench=self)
-        self.show_message(first_line=True)
-        rows = self.cgyro_rows
-        self.ui.Tab('计算参数')
-        self.render_cgyro_parameters(node, rows)
-        self.ui.Tab('结果与记录')
-        # Ordinary tab selection only changes visibility. Build result controls
-        # once inside their existing tab; UpdateGUI would destroy the whole
-        # workbench and emit a main-tree refresh after every tab click.
-        self.cgyro_results_section = deferred_section(self.ui, lambda: self.render_cgyro_results(node))
-        if selected == 'results' and self.cgyro_results_section is None:
-            self.render_cgyro_results(node)
-        if self.cgyro_main_notebook is not None:
-            try:
-                self.cgyro_main_notebook.select(CGYRO_MAIN_TABS.index(selected))
-                self.cgyro_main_notebook.bind('<<NotebookTabChanged>>', self.cgyro_main_tab_changed, add='+')
-            except tk.TclError:
-                return  # The owning settings window may already be closing.
+        def render(page):
+            if page == 'input':
+                self.compound(('GUIS', 'CGYRO_controls'), workbench=self)
+                self.show_message(first_line=True)
+            elif page == 'parameters':
+                rows = sync_cgyro_choices(self.root, self.settings, self.actions.factory)
+                self.render_cgyro_parameters(node, rows)
+            elif self.settings.get('cgyro_main_tab', 'input') == 'results':
+                self.render_cgyro_results(node)
+        self.cgyro_main_pages = TabPages(self.ui, OrderedDict(zip(
+            CGYRO_MAIN_TABS, ('输入与扫描', '计算参数', '结果与记录'))),
+            self.settings, 'cgyro_main_tab', render)
+        self.cgyro_main_notebook = self.cgyro_main_pages.notebook
+        self.cgyro_results_section = self.cgyro_main_pages.sections['results']
 
     def cgyro_main_tab_changed(self, event):
-        if event.widget is not self.cgyro_main_notebook:
-            return
-        try:
-            page = CGYRO_MAIN_TABS[self.cgyro_main_notebook.index(self.cgyro_main_notebook.select())]
-        except tk.TclError:
-            return
-        self.settings['cgyro_main_tab'] = page
-        if page == 'results' and self.cgyro_results_section is not None:
-            self.cgyro_results_section.show()
+        self.cgyro_main_pages.changed(event)
 
     def render_cgyro_results(self, node):
         """Results and task controls, invoked only for the visible outer tab."""
@@ -169,42 +150,22 @@ class CgyroPage:
         if node is None:
             self.label('工程缺少 CGYRO_scan 模块。')
             return
-        selected = self.settings['cgyro_scan_page']
-        if selected not in CGYRO_SCAN_TABS:
-            selected = 'input'
-        self.cgyro_scan_notebook = None
-        for page, caption in CGYRO_SCAN_TABS.items():
-            self.ui.Tab(caption)
-            if self.cgyro_scan_notebook is None:
-                # Native Tab returns None; read its owned frame and Notebook.
-                frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
-                if isinstance(frame, tk.Misc) and isinstance(frame.master, ttk.Notebook):
-                    self.cgyro_scan_notebook = frame.master
+        def render(page):
             if page == 'input':
                 self.cgyro_rows = self.render_cgyro_input()
             elif page == 'settings':
+                self.cgyro_rows = sync_cgyro_choices(self.root, self.settings, self.actions.factory)
                 self.render_cgyro_scan_settings(node, self.cgyro_rows)
             else:
                 self.render_cgyro_run(node)
-        self.select_cgyro_scan_page(selected)
-        if self.cgyro_scan_notebook is not None:
-            self.cgyro_scan_notebook.bind('<<NotebookTabChanged>>', self.cgyro_scan_page_changed, add='+')
+        self.cgyro_scan_pages = TabPages(self.ui, CGYRO_SCAN_TABS, self.settings, 'cgyro_scan_page', render)
+        self.cgyro_scan_notebook = self.cgyro_scan_pages.notebook
 
     def select_cgyro_scan_page(self, page):
-        self.settings['cgyro_scan_page'] = page
-        if self.cgyro_scan_notebook is not None:
-            try:
-                self.cgyro_scan_notebook.select(list(CGYRO_SCAN_TABS).index(page))
-            except tk.TclError:
-                return
+        self.cgyro_scan_pages.select(page)
 
     def cgyro_scan_page_changed(self, event):
-        if event.widget is self.cgyro_scan_notebook:
-            try:
-                self.settings['cgyro_scan_page'] = list(CGYRO_SCAN_TABS)[
-                    self.cgyro_scan_notebook.index(self.cgyro_scan_notebook.select())]
-            except tk.TclError:
-                return
+        self.cgyro_scan_pages.changed(event)
 
     def render_cgyro_input(self):
         self.ui.ComboBox(self.prefix + "['cgyro_source_mode']", OrderedDict([
@@ -415,9 +376,8 @@ class CgyroPage:
         self.cgyro_checkbox(self.prefix + "['cgyro_advanced']", self.settings, 'cgyro_advanced', '直接编辑源 input.cgyro')
         if self.settings['cgyro_advanced'] and row is not None:
             self.ui.EditASCIIobject(location(row['path']), '编辑参考输入', updateGUI=True)
-        problems = cgyro_plan_issues(self.root)
-        if problems:
-            self.label('需要：' + '；'.join(problems[:2]))
+        # Whole-scan validation belongs to Run/check/submit. Building every
+        # radius/isotope input on each parameter edit makes typing expensive.
 
     def cgyro_parameter_row(self, base, name, spec, item, source_values, scanned, source_key):
         if name in scanned:
@@ -437,10 +397,10 @@ class CgyroPage:
                 self.ui.ComboBox(location(path + ('value',)), OrderedDict([
                     ('0 固定 RK4', 0), ('1 自适应 Cash-Karp', 1),
                     ('2 自适应 Bogacki-Shampine', 2), ('3 自适应 Verner', 3)]), '',
-                    width=24, state='readonly', updateGUI=True, help=help_text,
+                    width=24, state='readonly', updateGUI=False, help=help_text,
                     postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
             else:
-                self.ui.Entry(location(path + ('value',)), '', width=14, updateGUI=True,
+                self.ui.Entry(location(path + ('value',)), '', width=14, updateGUI=False,
                               state='normal' if spec.get('supported', True) else 'disabled', help=help_text,
                               postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
             self.ui.Button('沿用输入', lambda: self.actions.reset_cgyro_parameters([name], source_key), updateGUI=True)

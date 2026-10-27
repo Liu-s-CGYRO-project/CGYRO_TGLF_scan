@@ -154,8 +154,9 @@ def module(root, name):
 
 def runtime_issues(root, name):
     """Check the fields actually used by each current execution route."""
-    if shared_issues(root):
-        return shared_issues(root)
+    shared = shared_issues(root)
+    if shared:
+        return shared
     node = read(root, MODULES[name])
     if node is None:
         return ['缺少模块']
@@ -1122,8 +1123,10 @@ class ProjectActions:
             return
         state = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST', 'status'), '')
         outcome = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST', 'scheduler_sync', 'outcome'), '')
-        self.settings['message'] = ('作业已取消；原记录和输出保留，可开始新运行。' if state == 'cancelled' else
-                                    '作业已失败；原记录和输出保留，可收集日志或开始新运行。' if state == 'failed' else
+        self.settings['message'] = ('作业已{}；原记录和输出保留。{}'.format(
+                                        '取消' if state == 'cancelled' else '失败',
+                                        '收集归档已完成，可继续计算。' if collection_done(node['RUN_MANIFEST']) else
+                                        '请先收集并归档已有输出，再开始下一次计算。') if state in ('cancelled', 'failed') else
                                     '取消请求已送达 Slurm，正在收尾；可稍后再次同步。' if state == 'cancel_requested' else
                                     '未能确认作业终态，原记录继续保留，请查看运行记录。' if outcome == 'unknown' else
                                     '作业仍在排队或运行。' if outcome == 'active' else

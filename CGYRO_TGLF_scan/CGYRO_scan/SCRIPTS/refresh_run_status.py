@@ -1,5 +1,5 @@
 """Recover saved identities; a modern gate may seal an unstarted submission."""
-from OMFITlib_cgyro_run_state import refresh_run_state, submission_pending
+from OMFITlib_cgyro_run_state import collection_finished, refresh_run_state, submission_pending
 from OMFITlib_cgyro_queue import queue_records, refresh_queue
 from OMFITlib_cgyro_retry import recover_submission, stop_submitted
 
@@ -20,6 +20,8 @@ else:
         result = refresh_run_state(root, OMFITx)
         print('CGYRO scheduler state: ' + result['outcome'])
         if result['outcome'] in ('cancelled', 'failed'):
-            print('The terminated run and its files are preserved. A fresh run is allowed; collect partial outputs if needed.')
+            print('The terminated run and its files are preserved. ' +
+                  ('Collection is finished; another run is allowed.' if collection_finished(root['RUN_MANIFEST']) else
+                   'Collect and archive its outputs before starting another run.'))
         elif result['outcome'] == 'unknown':
             print('No terminal state was confirmed. The existing run remains protected.')
