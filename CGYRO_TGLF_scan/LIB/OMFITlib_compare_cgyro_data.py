@@ -37,9 +37,9 @@ def _empty_series_arrays():
     return tuple(np.empty(0, dtype=float) for _ in (0, 1, 2, 3, 4, 5, 6))
 
 
-def frequency_stats(data, window):
+def frequency_stats(data, window, cache=None):
     """Keep the existing script API while sharing cross-model validation."""
-    return cgyro_frequency_stats(data, window)
+    return cgyro_frequency_stats(data, window, cache=cache)
 
 
 def compute_freq_stats(datadir, ave_window):
@@ -112,7 +112,8 @@ def collect_value_series(root, ctx, nr, para, value, selected_ky=()):
     for key in selected_linear_keys(linear, selected_ky, ctx, normalized=True):
         try:
             data = linear[key]
-            stats = frequency_stats(data, ctx.get('ave_window', .02))
+            stats = frequency_stats(data, ctx.get('ave_window', .02),
+                                    cache=ctx.setdefault('_cgyro_frequency_stats', {}))
             ky, omega, gamma = normalize_if_needed(
                 data, float(data['kyrhos']), np.asarray(stats[0][:2]), np.asarray(stats[1][:2]),
                 ctx.get('normalize_main_ion', False))

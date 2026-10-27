@@ -71,6 +71,7 @@ class NativeTkRefreshTests(unittest.TestCase):
         font_module.OMFITfont = lambda *args, **kwargs: ('DejaVu Sans', 11)
         self.start_patch(patch.dict(sys.modules, {'utils_widgets': font_module}))
         self.start_patch(patch.object(widgets, 'style_widget'))
+        self.start_patch(patch.object(widgets, 'style_checkbox'))
 
         tk_namespace = dict(tk=tk, ttk=ttk, _Combobox=ttk.Combobox,
                             Percolator=Percolator, ColorDelegator=ColorDelegator,
@@ -104,7 +105,7 @@ class NativeTkRefreshTests(unittest.TestCase):
             preentry(eval(location, namespace)) if preentry else eval(location, namespace))
         namespace['manage_user_errors'] = lambda command, **kwargs: command()
         native_definitions(SOURCE / 'omfit_classes/OMFITx.py',
-                           {'GUI', '_clearKids', '_clearClosedGUI', '_Entry', '_Text', 'Entry', 'ComboBox', 'Button'},
+                           {'GUI', '_clearKids', '_clearClosedGUI', '_Entry', '_Text', 'Entry', 'ComboBox', 'Button', 'CheckBox'},
                            namespace)
         self.root.bind('<<update_treeGUI>>', lambda event: self.root.update_idletasks())
         self.root.bind('<<update_GUI>>', lambda event: self.global_update())
@@ -158,6 +159,21 @@ class NativeTkRefreshTests(unittest.TestCase):
         finally:
             self.inside_callback = False
 
+    def submit_entry(self, entry):
+        # Reuse the exact native Return binding through a virtual event. Key
+        # events require window-manager focus, which another parallel Tk test
+        # can steal between focus_force() and event_generate('<Return>').
+        # The native callback ignores the event kind; its validation, write,
+        # postcommand and tree/GUI notifications all run unchanged.
+        binding = entry.bind('<Return>')
+        self.assertTrue(binding)
+        event = '<<TestNativeReturn>>'
+        entry.bind(event, binding)
+        try:
+            self.invoke(lambda: entry.event_generate(event))
+        finally:
+            entry.unbind(event)
+
     def drain(self, milliseconds=30):
         finished = tk.BooleanVar(self.root, value=False)
         self.root.after(milliseconds, lambda: finished.set(True))
@@ -179,6 +195,222 @@ class NativeTkRefreshTests(unittest.TestCase):
         self.drain()
         self.assertEqual(self.updates, [('owner', False)])
 
+    def render_scoped(self, builder):
+        """Real native controls inside a page with an independently drawn tab."""
+        self.region_updates, self.region_widgets = [], {}
+        def render(ui):
+            content = self.api._aux['parentGUI']
+            header = ttk.Label(content, text='Persistent header')
+            header.pack()
+            body = ttk.Frame(content)
+            body.pack(fill='both', expand=True)
+            self.region_widgets.update(header=header, body=body, ui=ui)
+            def populate(section):
+                for child in section.winfo_children():
+                    child.destroy()
+                previous = self.api._aux['parentGUI']
+                self.api._aux['parentGUI'] = section
+                try:
+                    self.controls.clear()
+                    builder(ui)
+                finally:
+                    self.api._aux['parentGUI'] = previous
+            def build_page():
+                for child in body.winfo_children():
+                    child.destroy()
+                section = ttk.Frame(body)
+                section.pack(fill='both', expand=True)
+                self.region_widgets['section'] = section
+                def redraw_section():
+                    self.region_updates.append(('section', self.inside_callback))
+                    populate(section)
+                section._cgyro_local_refresh = widgets._DeferredGUIRefresh(
+                    self.api, self.owner, self.api._GUIs, section, redraw_section)
+                populate(section)
+            def redraw_page():
+                self.region_updates.append(('page', self.inside_callback))
+                build_page()
+            refresh = widgets._DeferredGUIRefresh(self.api, self.owner, self.api._GUIs, body, redraw_page)
+            body._cgyro_action_refresh = content._cgyro_action_refresh = refresh
+            build_page()
+        self.render(render)
+
+    def test_native_action_refreshes_page_and_preserves_header_and_business_tree_event(self):
+        tree_events, actions = [], []
+        self.root.bind('<<update_treeGUI>>', lambda event: tree_events.append('tree'), add='+')
+        self.render_scoped(lambda api: self.controls.update(button=api.Button(
+            'Apply', lambda: actions.append('applied'), updateGUI=True)))
+        header, section = self.region_widgets['header'], self.region_widgets['section']
+        old = self.controls['button']
+        tree_events.clear()
+        self.invoke(old.invoke)
+        self.assertEqual(actions, ['applied'])
+        self.assertEqual(tree_events, ['tree'])
+        self.assertEqual(self.region_updates, [])
+        self.drain(300)
+        self.assertEqual(self.region_updates, [('page', False)])
+        self.assertEqual(self.updates, [])
+        self.assertTrue(header.winfo_exists())
+        self.assertFalse(section.winfo_exists())
+        self.assertFalse(old.winfo_exists())
+
+    def test_native_field_and_reset_refresh_only_nearest_section(self):
+        self.render_scoped(lambda api: self.controls.update(combo=api.ComboBox(
+            "root['mode']", {'Spectra': 'spectra', 'Ballooning': 'ballooning'},
+            updateGUI=True, default='spectra')))
+        body, section = self.region_widgets['body'], self.region_widgets['section']
+        combo = self.controls['combo']
+        combo.set('Ballooning')
+        self.invoke(lambda: combo.event_generate('<<ComboboxSelected>>'))
+        self.drain()
+        self.assertEqual(self.tree['mode'], 'ballooning')
+        self.invoke(self.button(section, '重置').invoke)
+        self.drain()
+        self.assertEqual(self.tree['mode'], 'spectra')
+        self.assertEqual(self.region_updates, [('section', False), ('section', False)])
+        self.assertEqual(self.updates, [])
+        self.assertTrue(body.winfo_exists() and section.winfo_exists())
+
+    def test_view_checkbox_and_reset_keep_value_postcommand_and_local_refresh_without_tree_repaint(self):
+        self.tree['visible'] = False
+        tree_events, post = [], []
+        self.root.bind('<<update_treeGUI>>', lambda event: tree_events.append('tree'), add='+')
+        original = self.api.CheckBox
+        self.render_scoped(lambda ui: self.controls.update(check=ui.view_only().CheckBox(
+            "root['visible']", 'Visible', default=False, updateGUI=True,
+            postcommand=lambda location: post.append(location))[0]))
+        tree_events.clear()
+        self.invoke(lambda: self.controls['check'].event_generate('<ButtonRelease-1>'))
+        self.assertTrue(self.tree['visible'])
+        self.assertEqual(post, ["root['visible']"])
+        self.assertEqual(tree_events, [])
+        self.drain()
+        self.assertEqual(self.region_updates, [('section', False)])
+        self.invoke(self.button(self.region_widgets['section'], '重置').invoke)
+        self.drain()
+        self.assertFalse(self.tree['visible'])
+        self.assertEqual(post, ["root['visible']", "root['visible']"])
+        self.assertEqual(tree_events, [])
+        self.assertEqual(self.region_updates, [('section', False), ('section', False)])
+        self.assertIs(self.api.CheckBox, original)
+        self.assertIs(self.api.CheckBox.__globals__['OMFITaux']['rootGUI'], self.root)
+
+    def test_view_entry_combobox_and_multiline_do_not_capture_normal_control_events(self):
+        events, post = [], []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        def build(ui):
+            view = ui.view_only()
+            self.assertIs(view.view_only(), view)
+            self.controls['normal'] = ui.Entry("root['number']", updateGUI=False)
+            self.controls['entry'] = view.Entry("root['number']", updateGUI=True,
+                                                postcommand=lambda location: post.append(location))
+            self.controls['combo'] = view.ComboBox("root['mode']", ['spectra', 'ballooning'], updateGUI=True)
+        self.render_scoped(build)
+        events.clear()
+        entry = self.controls['entry']
+        entry.delete(0, tk.END)
+        entry.insert(0, '18.0')
+        self.submit_entry(entry)
+        self.assertEqual(self.tree['number'], 18.0)
+        self.assertEqual(post, ["root['number']"])
+        self.assertEqual(events, [])
+        self.drain()
+        combo = self.controls['combo']
+        combo.set('ballooning')
+        self.invoke(lambda: combo.event_generate('<<ComboboxSelected>>'))
+        self.drain()
+        self.assertEqual(self.tree['mode'], 'ballooning')
+        self.assertEqual(events, [])
+        normal = self.controls['normal']
+        normal.delete(0, tk.END)
+        normal.insert(0, '24.0')
+        self.submit_entry(normal)
+        self.assertEqual(self.tree['number'], 24.0)
+        self.assertEqual(events, ['tree'])
+        self.render(lambda ui: self.controls.update(entry=ui.view_only().Entry(
+            "root['number']", multiline=True, norm=3.0, updateGUI=True)))
+        events.clear()
+        self.apply_multiline('9.0')
+        self.assertEqual(self.tree['number'], 27.0)
+        self.assertEqual(events, [])
+        self.assert_owner_refresh()
+
+    def test_view_fields_keep_native_locks_and_unrelated_events(self):
+        self.tree['visible'] = False
+        self.api.Lock = lambda *args, **kwargs: True
+        self.render(lambda ui: self.controls.update(
+            check=ui.view_only().CheckBox("root['visible']", 'Locked', default=False)[0],
+            entry=ui.view_only().Entry("root['number']")))
+        self.assertTrue(self.controls['check'].instate(['disabled']))
+        self.assertTrue(self.controls['entry'].instate(['disabled']))
+        self.controls['check'].event_generate('<ButtonRelease-1>')
+        self.assertFalse(self.tree['visible'])
+        other = []
+        self.root.bind('<<view_ready>>', lambda event: other.append('ready'))
+        proxy = widgets._ViewRootEvents(self.root)
+        proxy.event_generate('<<view_ready>>')
+        self.assertEqual(other, ['ready'])
+        self.assertEqual(proxy.winfo_exists(), self.root.winfo_exists())
+
+    def test_normal_physical_checkbox_still_notifies_tree(self):
+        self.tree['visible'] = False
+        events = []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        self.render(lambda ui: self.controls.update(check=ui.CheckBox("root['visible']", 'Physics')[0]))
+        events.clear()
+        self.invoke(lambda: self.controls['check'].event_generate('<ButtonRelease-1>'))
+        self.assertTrue(self.tree['visible'])
+        self.assertEqual(events, ['tree'])
+
+    def test_native_view_button_can_request_section_and_reload_can_request_window(self):
+        def build(api):
+            self.controls['view'] = api.Button('Preview', lambda: None, updateGUI=True, refresh_scope='section')
+            self.controls['reload'] = api.Button('Reload', lambda: None, updateGUI=True, refresh_scope='window')
+        self.render_scoped(build)
+        self.invoke(self.controls['view'].invoke)
+        self.drain(300)
+        self.assertEqual(self.region_updates, [('section', False)])
+        self.assertEqual(self.updates, [])
+        self.invoke(self.controls['reload'].invoke)
+        self.assert_owner_refresh()
+
+    def test_page_refresh_coalesces_waits_for_save_and_stops_after_close(self):
+        self.render_scoped(lambda api: self.controls.update(button=api.Button('Apply', lambda: None, updateGUI=True)))
+        ui = self.region_widgets['ui']
+        self.api.OMFITaux['GUI'].lockSave = True
+        self.invoke(self.controls['button'].invoke)
+        ui.UpdateGUI()
+        ui.UpdateGUI()
+        self.drain(30)
+        self.assertEqual(self.region_updates, [])
+        self.assertEqual(self.updates, [])
+        self.api.OMFITaux['GUI'].lockSave = False
+        self.drain(150)
+        self.assertEqual(self.region_updates, [('page', False)])
+        ui.UpdateGUI()
+        self.owner.top.destroy()
+        self.drain(150)
+        self.assertEqual(self.region_updates, [('page', False)])
+        self.assertEqual(self.updates, [])
+
+    def test_captured_dialog_callback_never_uses_last_constructed_window(self):
+        def build(api):
+            self.controls['changed'] = api.refresh_callback(scope='section')
+        self.render_scoped(build)
+        changed = self.controls['changed']
+        self.api._aux['parentGUI'] = self.other.top
+        self.invoke(changed)
+        self.drain()
+        self.assertEqual(self.region_updates, [('section', False)])
+        self.assertEqual(self.updates, [])
+        self.region_widgets['ui'].UpdateGUI()
+        self.drain()
+        self.assertEqual(self.region_updates, [('section', False), ('page', False)])
+        self.assertEqual(self.updates, [])
+        self.invoke(changed)  # An old dialog cannot redraw the replacement section.
+        self.drain()
+        self.assertEqual(self.region_updates, [('section', False), ('page', False)])
+
     def test_native_combo_selection_and_reset_defer_only_owner(self):
         self.render(lambda api: self.controls.update(combo=api.ComboBox(
             "root['mode']", {'Spectra': 'spectra', 'Ballooning': 'ballooning'},
@@ -197,7 +429,7 @@ class NativeTkRefreshTests(unittest.TestCase):
         # Compile the actual page class without importing solver/UI modules.
         # Its native control call must work with OMFITx, not just a permissive
         # headless recorder that accepts arbitrary positional/keyword values.
-        namespace = dict(radius_choices=lambda node: {'Jet | nr=11 | rho=0.99': {}})
+        namespace = dict(tk=tk, radius_choices=lambda node: {'Jet | nr=11 | rho=0.99': {}})
         native_definitions(REPO / 'CGYRO_TGLF_scan/LIB/OMFITlib_workbench_cgyro_ui.py',
                            {'CgyroPage'}, namespace)
         self.tree.update(cgyro_cleanup_open=True, cgyro_cleanup_radius='')

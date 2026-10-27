@@ -10,72 +10,21 @@ from builtins import (BaseException, KeyError, TypeError, ValueError, all, any, 
 from collections import OrderedDict
 from copy import deepcopy
 import json
-import math
 import re
 
-from OMFITlib_cgyro_archive import (canonical_case_key, case_destination, case_parts, case_scans,
-                                   catalog_runs, clean_run_id, coordinate_path, grouped_case_path, point_values, scan_key)
+from OMFITlib_cgyro_archive import (RESULT_INFO_FIELDS, canonical_case_key, case_destination,
+                                   case_parts, case_scans, catalog_runs, clean_run_id,
+                                   grouped_case_path, identity_key, normalized_info, result_identity, scan_key)
 from OMFITlib_cgyro_db import metadata_value, run_records, rollback_actions
 from OMFITlib_cgyro_reference import make_reference, is_native_file
 from OMFITlib_cgyro_storage import is_result, reference_id, resolve_result
-from OMFITlib_cgyro_run_state import collection_recorded, run_settled
-
-RESULT_INFO_FIELDS = ('runid', 'case_id', 'source_nr', 'rho', 'ion_case', 'scan_axes', 'dimensions',
-                      'scan_dimensions', 'fixed_parameters', 'numeric_parameters', 'scale_time_with_ky',
-                      'runtime', 'server', 'case_tag', 'run_token')
+from OMFITlib_cgyro_run_state import collection_recorded, point_complete, run_settled
 
 
 def at(node, path):
     for key in path:
         node = metadata_value(node)[key]
     return node
-
-
-def normalized_info(info, runid='', caseid=''):
-    saved = dict(metadata_value(info))
-    saved.setdefault('runid', runid)
-    saved.setdefault('case_id', caseid)
-    saved.setdefault('source_nr', saved.get('nr', ''))
-    saved.setdefault('ion_case', saved.get('mass', ''))
-    saved.setdefault('dimensions', max(1, len(saved.get('scan_axes', []))))
-    return saved
-
-
-def result_identity(info, row):
-    """Coordinate identity includes the case, every axis/link and signed ky.
-
-    Existing path coordinates provide legacy numeric spelling normalization.
-    Stored values must agree; an inconsistent old index is a point-level error,
-    never permission to search for a nearby coordinate or another owner.
-    """
-    row = metadata_value(row)
-    info = normalized_info(dict(info, **dict(row.get('result_info', {}))))
-    # A merged scan header may describe a later submission. Point metadata,
-    # when present, always identifies this row's own radius and ion case.
-    for name in ('runid', 'case_id', 'rho', 'ion_case', 'source_nr'):
-        if name in row:
-            info[name] = row[name]
-    path = coordinate_path(row)
-    numeric = point_values(info, row, include_input=True)
-    case = canonical_case_key(info.get('case_id', ''), info)
-    parts = case_parts(case)
-    if parts is None or not info.get('runid', ''):
-        raise ValueError('Missing result radius/ion or run identity')
-    nr, rho, ion = parts
-    if not math.isfinite(float(rho)):
-        raise ValueError('Missing finite result radius')
-    if info.get('rho', None) is not None and not math.isclose(float(rho), float(info['rho']), rel_tol=1e-7, abs_tol=1e-10):
-        raise ValueError('Result radius disagrees with its case identity')
-    if info.get('ion_case', '') and str(info['ion_case']) != ion:
-        raise ValueError('Result ion configuration disagrees with its case identity')
-    if info.get('source_nr', '') != '' and str(info['source_nr']) != nr:
-        raise ValueError('Result radial index disagrees with its case identity')
-    return dict(runid=clean_run_id(info['runid']), case_id=case,
-                scan=scan_key(info, path[0]), values=numeric)
-
-
-def identity_key(identity):
-    return json.dumps(identity, sort_keys=True, separators=(',', ':'), allow_nan=False)
 
 
 def _headers(case):
@@ -432,7 +381,6 @@ def release_published_results(module, case, verified_cases=()):
 
 def scan_completion(info, tasks, scope):
     """Bad legacy metadata makes coverage unknown, not a valid archive fail."""
-    from OMFITlib_cgyro_run_state import point_complete
     coverage, issues = [], list(scope.get('issues', []))
     for point, row in tasks.items():
         try:

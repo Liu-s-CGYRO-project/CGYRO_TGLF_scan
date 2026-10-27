@@ -191,20 +191,19 @@ class RuntimePage:
             status = '配置已同步'
         label = self.label(status)
         label._cgyro_role = 'pending' if pending else 'muted'
+        refreshed = self.ui.refresh_callback(scope='page')
         button = self.ui.Button('应用到整个工程' if pending else '配置已同步',
-                                lambda: self.apply_runtime_button(label, button), updateGUI=False,
+                                lambda: self.apply_runtime_button(label, button, refreshed), updateGUI=False,
                                 state='disabled' if issues or not pending else 'normal', help='；'.join(issues))
         button._cgyro_role = 'pending' if pending else 'primary'
         if issues and draft is None:
             self.label('待填写：' + '；'.join(issues))
 
-    def apply_runtime_button(self, label, button):
-        """Paint progress before waiting; redraw only the owning GUI afterward."""
+    def apply_runtime_button(self, label, button, refreshed):
+        """Keep the shared apply status and active runtime tab in one redraw."""
         if not isinstance(button, tk.Misc):
             return self.actions.apply_runtime()
         top = button.winfo_toplevel()
-        registry = self.ui._GUIs
-        gui = registry.get(str(top), None)
         def progress(message):
             if label.winfo_exists():
                 label.configure(text=message)
@@ -217,10 +216,8 @@ class RuntimePage:
             self.actions.report_error('应用配置', exc)
             raise
         finally:
-            if top.winfo_exists() and gui is not None:
-                # The project adapter coalesces this with other owner requests.
-                # after_idle can run inside the native button's tree refresh.
-                self.ui.UpdateGUI(top=top)
+            if top.winfo_exists():
+                refreshed()
 
     def shared_gacode_install(self, config):
         installs = config['gacode_installs']

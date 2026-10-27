@@ -5,19 +5,11 @@ its raw bytes would mistake formatting, a new duration or an MPI layout for a
 different physical point. Keep the normalized parameters in the existing point
 row; ordinary catalog queries never open these files.
 """
-from builtins import (FileNotFoundError, KeyError, TypeError, ValueError, all, any, dict, float, frozenset, len, open, str)
+from builtins import (FileNotFoundError, KeyError, TypeError, ValueError, all, any, dict, float, len, open, str)
 import hashlib
 import math
 import re
-
-# These change execution/output, not the equations, grid or numerical accuracy.
-# DELTA_T, ERROR_TOL, FREQ_TOL and precision-mode flags deliberately stay in.
-RUN_CONTROL_PARAMETERS = frozenset(('MAX_TIME', 'PRINT_STEP', 'RESTART_STEP',
-    'RESTART_PRESERVATION_MODE', 'SILENT_FLAG', 'MPI_RANK_ORDER', 'TOROIDALS_PER_PROC',
-    'MPIIO_STRIPE_FACTOR', 'MPIIO_SMALL_STRIPE_FACTOR', 'THETA_PLOT',
-    'H_PRINT_FLAG', 'MOMENT_PRINT_FLAG', 'GFLUX_PRINT_FLAG', 'FIELD_PRINT_FLAG',
-    'TRIAD_PRINT_FLAG', 'FULL_T_PRINT_FLAG', 'FULL_T_ASYM_PRINT_FLAG',
-    'FULL_T_REAL_ONLY', 'FULL_T_DEBUG_PRINT_FLAG', 'FULL_T_KX0'))
+from OMFITlib_cgyro_archive import RUN_CONTROL_PARAMETERS, _at, case_scans, point_values, result_file
 
 
 def read_parameters(path, generated=False):
@@ -52,7 +44,6 @@ def effective_parameters(result):
     Missing defaults are not guessed. A malformed present generated file is an
     error, not permission to silently replace it with the less complete input.
     """
-    from OMFITlib_cgyro_archive import result_file
     try:
         values, digest = read_parameters(result_file(result, 'input.cgyro.gen'), generated=True)
         source = 'input.cgyro.gen'
@@ -69,7 +60,6 @@ def effective_parameters(result):
 
 def cache_parameters(row, info, result):
     """Attach verified effective parameters to this existing point row only."""
-    from OMFITlib_cgyro_archive import point_values
     values, source, digest = effective_parameters(result)
     if source != 'input.cgyro.gen':
         return values  # Legacy metadata is usable; absent solver defaults are not invented.
@@ -90,7 +80,6 @@ def cache_competing_parameters(case, info, tasks, resolve):
     Backfill small generated inputs off-tree during publication. Full arrays,
     checkpoint hashes and unrelated ky/parameter points are never inspected.
     """
-    from OMFITlib_cgyro_archive import _at, case_scans, point_values
     candidates = [point_values(info, row, include_input=True) for row in tasks.values()
                   if row.get('input_parameters', None) is not None]
     for _, saved, rows in case_scans(case):

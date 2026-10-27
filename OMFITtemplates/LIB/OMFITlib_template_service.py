@@ -221,14 +221,15 @@ def _empty_directories(output, rows, filenames, prefix=''):
         output.writestr(prefix + directory + '/', b'')
 
 
-def list_library(library):
+def list_library(library, cancel=None):
     releases, errors = [], []
     directory = Path(library).expanduser()
     if not directory.exists():
         return releases, errors
     if not directory.is_dir():
         raise TemplateError('模板库路径需要是目录')
-    for path in sorted(directory.rglob('*' + EXTENSION)):
+    for path in directory.rglob('*' + EXTENSION):
+        check_cancel(cancel)
         try:
             with Template(path) as template:
                 releases.append(dict(template.manifest, path=str(path.resolve()), archive_bytes=path.stat().st_size))

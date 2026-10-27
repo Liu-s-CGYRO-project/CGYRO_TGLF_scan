@@ -15,6 +15,7 @@ import os
 import posixpath
 import re
 import zipfile
+from OMFITlib_cgyro_archive import full_point_coordinate
 
 SIDECAR = '.cgyro_recovery.json'
 SCHEMA = 1
@@ -125,7 +126,6 @@ def _point_index(manifest):
             raise ValueError('Missing numeric coordinates for ' + point) from exc
         if not all(math.isfinite(value) for value in numeric + indexed) or not matches or numeric[-1] == 0:
             raise ValueError('Frozen coordinates disagree with result path for ' + point)
-        from OMFITlib_cgyro_archive import full_point_coordinate
         identity = full_point_coordinate(manifest, row)
         if identity in coordinates:
             raise ValueError('Duplicate frozen result coordinates: ' + point)

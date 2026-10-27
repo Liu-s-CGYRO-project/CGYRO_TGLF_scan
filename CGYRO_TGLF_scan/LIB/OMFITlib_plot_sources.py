@@ -83,6 +83,7 @@ class ResultView(Mapping):
     def __init__(self, point):
         self.point = point
         self.result = point.get('result', {})
+        self._spectrum = None
 
     def __iter__(self):
         return iter(dict.fromkeys(list(self.result.keys()) + ['input.tglf']))
@@ -93,6 +94,8 @@ class ResultView(Mapping):
     def __getitem__(self, key):
         if key == 'input.tglf':
             return self.point['input'] if 'input' in self.point else self.result.get('input.tglf', {})
+        if key == 'eigenvalue_spectrum' and self._spectrum is not None:
+            return self._spectrum
         value = self.result[key]
         if key != 'eigenvalue_spectrum':
             return value
@@ -101,6 +104,9 @@ class ResultView(Mapping):
         for index in range(len(gamma)):
             spec['freq({})'.format(index + 1)] = omega[index]
             spec['gamma({})'.format(index + 1)] = gamma[index]
+        # ResultView is a disposable per-operation view. Mode 1/2 and paired
+        # comparison pages share this decode, without a saved array cache.
+        self._spectrum = spec
         return spec
 
 

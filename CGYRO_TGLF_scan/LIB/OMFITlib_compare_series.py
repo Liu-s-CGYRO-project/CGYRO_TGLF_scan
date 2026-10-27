@@ -72,7 +72,8 @@ def collect_cgyro_series(root, ctx, runid, nr, para, value):
     for key in stable_keys(linear):
         try:
             data = linear[key]
-            stats = cgyro_frequency_stats(data, ctx.get('ave_window', .02))
+            stats = cgyro_frequency_stats(data, ctx.get('ave_window', .02),
+                                          cache=ctx.setdefault('_cgyro_frequency_stats', {}))
             ky, om, ga = normalize_if_needed(data, float(data['kyrhos']), stats[0][0], stats[1][0], ctx.get('normalize_main_ion', False))
             ky = float(_maybe_abs_ky(ky, ctx))
             if not np.all(np.isfinite([ky, om, ga])):

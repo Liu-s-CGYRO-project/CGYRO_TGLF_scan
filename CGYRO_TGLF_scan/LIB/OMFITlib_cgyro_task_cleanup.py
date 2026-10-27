@@ -9,7 +9,7 @@ from builtins import (ValueError, any, bool, dict, enumerate, float, isinstance,
                       set, sorted, str, sum, tuple)
 from copy import deepcopy
 import hashlib
-from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, clean_run_id,
+from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, clean_run_id, full_point_coordinate,
                                    point_coordinate, scan_branch, summarize_tasks)
 from OMFITlib_cgyro_cleanup_state import DELETE, commit_cleanup, deletion_markers
 from OMFITlib_cgyro_db import DELETED_TASKS, ensure_layout, run_records, storage_state
@@ -108,7 +108,6 @@ def _rewrite_case(case, selected, manifests):
         if deleting:
             paths = [list(row['result_path']) for row in deleting.values()]
             # Validate coordinates before path removal, including signed ky.
-            from OMFITlib_cgyro_archive import full_point_coordinate
             coordinates = [full_point_coordinate(info, row) for row in tasks.values()]
             if len(set(coordinates)) != len(coordinates):
                 raise ValueError('归档包含重复坐标，原归档保留：' + str(name))

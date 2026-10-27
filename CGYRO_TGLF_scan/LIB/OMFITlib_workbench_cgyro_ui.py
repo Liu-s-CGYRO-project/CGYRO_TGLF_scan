@@ -77,11 +77,14 @@ class CgyroPage:
 
     def render_cgyro_cleanup(self, node):
         """Do not enumerate archives on every ordinary control refresh."""
-        self.ui.Button('任务管理 / 删除任务…', self.open_cgyro_task_manager, updateGUI=False)
+        changed = self.cgyro_tasks_refresh()
+        self.ui.Button('任务管理 / 删除任务…',
+                       lambda: self.open_cgyro_task_manager(changed), updateGUI=False)
         self.settings.setdefault('cgyro_cleanup_open', False)
         self.settings.setdefault('cgyro_cleanup_radius', '')
         self.ui.Button('删除指定半径…', lambda: self.settings.__setitem__(
-            'cgyro_cleanup_open', not self.settings['cgyro_cleanup_open']), updateGUI=True)
+            'cgyro_cleanup_open', not self.settings['cgyro_cleanup_open']),
+                       updateGUI=True, refresh_scope='section')
         if not self.settings['cgyro_cleanup_open']:
             return
         options = radius_choices(node)
@@ -111,7 +114,24 @@ class CgyroPage:
             self.settings['cgyro_cleanup_radius'] = ''
             self.settings['cgyro_cleanup_open'] = False
 
-    def open_cgyro_task_manager(self):
+    def cgyro_tasks_refresh(self):
+        """Task deletion affects the current page even after its dialog outlives a tab.
+
+        Capture the owning window, not its replaceable result tab. An explicit
+        native reload also replaces parentGUI, so resolve its current body only
+        when the persistent task dialog commits a change.
+        """
+        parent, registry = getattr(self.ui, '_owner', None), getattr(self.ui, '_GUIs', None)
+        if not isinstance(parent, tk.Misc) or not isinstance(registry, dict):
+            return self.ui.refresh_callback(scope='page')
+        key = str(parent.winfo_toplevel())
+        def changed():
+            gui = registry.get(key, None)
+            if gui is not None:
+                self.ui.UpdateGUI(top=gui.parentGUI, refresh_scope='page')
+        return changed
+
+    def open_cgyro_task_manager(self, on_changed=None):
         # _aux is process-global and may belong to a different settings GUI
         # by the time this button is clicked. The adapter captured our owner.
         parent = getattr(self.ui, '_owner', None)
@@ -122,10 +142,14 @@ class CgyroPage:
         top = parent.winfo_toplevel()
         existing = getattr(top, '_cgyro_task_manager', None)
         if existing is not None and existing.window.winfo_exists():
+            # The dialog survives tab rebuilding; reopening adopts this view.
+            if on_changed is not None:
+                existing.on_changed = on_changed
             existing.window.lift()
             return
         top._cgyro_task_manager = TaskManager(top, read(self.root, MODULES['cgyro']),
-            self.actions.remove_cgyro_tasks, self.actions.factory, on_changed=self.ui.UpdateGUI)
+            self.actions.remove_cgyro_tasks, self.actions.factory,
+            on_changed=on_changed if on_changed is not None else self.ui.UpdateGUI)
 
     def render_cgyro_recovery(self, node):
         """Available even in an empty reopened project after a desktop timeout."""
@@ -185,8 +209,10 @@ class CgyroPage:
         if rows:
             if len(rows) > 1:
                 with self.ui.same_row():
-                    self.ui.Button('全部半径', self.actions.select_cgyro_radii, updateGUI=True)
-                    self.ui.Button('清空选择', lambda: self.actions.select_cgyro_radii(False), updateGUI=True)
+                    self.ui.Button('全部半径', self.actions.select_cgyro_radii,
+                                   updateGUI=True, refresh_scope='section')
+                    self.ui.Button('清空选择', lambda: self.actions.select_cgyro_radii(False),
+                                   updateGUI=True, refresh_scope='section')
             for offset in range(0, len(rows), 2):
                 with self.ui.same_row():
                     for row in rows[offset:offset + 2]:
@@ -354,8 +380,10 @@ class CgyroPage:
                  and (not query or query in name or query in spec['label'].upper())]
         with self.ui.same_row():
             self.ui.Button('本组沿用输入值',
-                           lambda: self.actions.reset_cgyro_parameters(names, source_key), updateGUI=True)
-            self.ui.Button('全部沿用输入值', self.actions.inherit_cgyro_parameters, updateGUI=True)
+                           lambda: self.actions.reset_cgyro_parameters(names, source_key),
+                           updateGUI=True, refresh_scope='section')
+            self.ui.Button('全部沿用输入值', self.actions.inherit_cgyro_parameters,
+                           updateGUI=True, refresh_scope='section')
         if not names:
             self.label('没有匹配的参数。')
         previous_group = None
@@ -403,4 +431,5 @@ class CgyroPage:
                 self.ui.Entry(location(path + ('value',)), '', width=14, updateGUI=False,
                               state='normal' if spec.get('supported', True) else 'disabled', help=help_text,
                               postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
-            self.ui.Button('沿用输入', lambda: self.actions.reset_cgyro_parameters([name], source_key), updateGUI=True)
+            self.ui.Button('沿用输入', lambda: self.actions.reset_cgyro_parameters([name], source_key),
+                           updateGUI=True, refresh_scope='section')

@@ -5,11 +5,19 @@ from OMFITlib_plot_style import DEFAULTS, settings
 from OMFITlib_gui_layout import section_group, finish_gui_layout
 from OMFITlib_gui_controls import checkbox
 from OMFITlib_gui_api import adapt
+from OMFITlib_gui_deferred import deferred_section
 from OMFITlib_font_ui import open_font_manager
 
 
 def render_style(root, ui):
     ui = adapt(ui)
+    section = deferred_section(ui, lambda: _render_style(root, ui), local=True, container=True, action=True)
+    if section is None:
+        return _render_style(root, ui)
+    section.show()
+
+
+def _render_style(root, ui):
     state = settings(root)
     path = "root['SETTINGS']['PLOT_STYLE']"
     anchor = ui.Label('工程主界面的绘图入口共用此样式；修改后重新绘图生效。', align='left')

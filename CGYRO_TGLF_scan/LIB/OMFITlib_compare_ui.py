@@ -18,8 +18,9 @@ from OMFITlib_compare_cases import (
     CaseSelection,
 )
 from OMFITlib_project import comparison_issues
+from OMFITlib_gui_api import adapt
 from OMFITlib_gui_layout import finish_gui_layout
-from OMFITlib_gui_deferred import TabPages
+from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_compare_state import (
     MODES,
     MODE_LABELS,
@@ -42,6 +43,11 @@ CONTROL_TABS = OrderedDict([
 
 
 class ComparisonUI(CaseSelection):
+    def __init__(self, root, ui):
+        # Selection and style fields only change this view's SETTINGS. Keep
+        # native value/reset semantics without repainting the OMFIT data tree.
+        super().__init__(root, adapt(ui).view_only())
+
     def render(self, open_templates=None):
         return self._render(open_templates)
 
@@ -62,7 +68,9 @@ class ComparisonUI(CaseSelection):
         selected = 'style' if self.physics.get('compare_view', None) == 'style' else self.physics['compare_mode']
         captions = OrderedDict(MODE_TABS)
         captions['style'] = '全局样式'
-        self.mode_pages = TabPages(self.ui, captions, dict(mode=selected), 'mode', render)
+        # A selection/check action changes this mode's shared footer, not
+        # the other modes or the enclosing workbench.
+        self.mode_pages = TabPages(self.ui, captions, dict(mode=selected), 'mode', render, action=True)
         self.mode_notebook = self.mode_pages.notebook
         self.ui.Tab('')
         if self.mode_notebook is not None:
@@ -83,7 +91,7 @@ class ComparisonUI(CaseSelection):
         if mode == 'TGLF_vs_TGLF':
             return self._render_controls(mode, open_templates)
         # CompoundGUI may rebuild this child without rerunning the outer GUI.
-        # In that case obtain a fresh catalog, rather than retaining a prior one.
+        # Start a fresh lazy catalog; plot/style tabs need no archive metadata.
         with self._catalog_scope():
             return self._render_controls(mode, open_templates)
 
@@ -93,6 +101,8 @@ class ComparisonUI(CaseSelection):
         self.state = physics[self.mode]
         self.plot_settings = plot_state(self.mode, self.state)
         self.prefix = "root['SETTINGS']['PHYSICS'][{!r}]".format(self.mode)
+        self.status_label = None
+        missing = comparison_issues(self.root, self.mode)
         self.ui.Label(MODE_LABELS[self.mode].split(' · ', 1)[-1], align='left')
         if self.mode == 'TGLF_vs_TGLF':
             self.ui.ComboBox(self._plot_path('tglf_vs_tglf_mode'),
@@ -107,10 +117,20 @@ class ComparisonUI(CaseSelection):
         }[self.mode]
         renderers = {
             'cases': lambda: cases(self.state),
-            'plot': lambda: (self._render_plot(), self._render_view_options()),
             'actions': self._render_actions,
         }
+        def plot_options():
+            self._render_plot()
+            self._render_view_options()
+            # Plot options change validation text, but not archive availability.
+            # Data-changing actions/checks rebuild the mode; plotting checks
+            # availability again immediately before reading selected results.
+            if self.status_label is not None:
+                self.status_label.configure(text=self._selection_status(missing))
         def render(page):
+            if page == 'plot':
+                section = deferred_section(self.ui, plot_options, local=True, container=True)
+                return plot_options() if section is None else section.show()
             with self._catalog_scope():
                 renderers[page]()
             if page == 'actions':
@@ -122,19 +142,21 @@ class ComparisonUI(CaseSelection):
         # EFIT/TGLF native GUIs return to the untabbed frame for common actions.
         self.ui.Tab('')
         self.ui.Separator()
+        self.status_label = self.ui.Label(self._selection_status(missing), align='left')
+        with self.ui.same_row():
+            self.ui.Button('检查选择', self._refresh_check, updateGUI=True, width=16)
+            self.ui.Button('绘制所选数据', self._plot, state='disabled' if missing else 'normal', width=20,
+                           help='按当前案例、参数和绘图设置生成图形。计算结果仅在点击后读取。')
+
+    def _selection_status(self, missing):
         report = selection_check(self.root, self.mode)
-        missing = comparison_issues(self.root, self.mode)
         if missing:
             status = '暂无可绘图的数据：' + '；'.join(missing)
         elif report['errors']:
             status = '选择尚未完成 · {} 项待检查，请查看“导出与检查”。'.format(len(report['errors']))
         else:
             status = '当前选择已就绪 · 点击绘图读取所选结果。'
-        self.status_label = self.ui.Label(status, align='left')
-        with self.ui.same_row():
-            self.ui.Button('检查选择', self._refresh_check, updateGUI=True, width=16)
-            self.ui.Button('绘制所选数据', self._plot, state='disabled' if missing else 'normal', width=20,
-                           help='按当前案例、参数和绘图设置生成图形。计算结果仅在点击后读取。')
+        return status
 
     def _controls_changed(self, event):
         self.control_pages.changed(event)

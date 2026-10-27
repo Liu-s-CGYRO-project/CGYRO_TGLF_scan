@@ -100,6 +100,22 @@ def _has_payload(value):
     return False
 
 
+def _history_has_payload(entry, audit):
+    entry = _mapping(entry)
+    if 'cases' in entry:
+        return True
+    if audit:
+        return _has_payload(entry)
+    # A current-schema history entry is metadata. Check direct legacy owners
+    # without walking every old manifest's point_table on each scoped update.
+    for value in [entry] + list(entry.values()):
+        value = metadata_value(value)
+        if is_native_file(value) or (hasattr(value, 'items') and
+                ('__RESULT_REF__' in value or '__FILE_REF__' in value)):
+            return True
+    return False
+
+
 def _retain(mapping, key, value):
     """Never overwrite an uncertain legacy source during consolidation."""
     key = str(key).replace('/', '%2F')
@@ -140,20 +156,24 @@ def _set_migrated_cases(record, cases, token):
     record['cases'] = cases
 
 
-def ensure_layout(module, factory=dict):
+def ensure_layout(module, factory=dict, *, audit_history=False):
     """Move old owners under RUN_DB, with a journal for Abort/error rollback.
 
     No result is classified or discarded here. In particular, old unclassified
     cases and unsupported outputs remain inside RUN_DB until independently
     validated. Moving native owners avoids copying their physical directories.
+    Current metadata needs only shallow checks; explicit full maintenance audits
+    nested history fields before reclaiming any unreferenced owners.
     """
     prior_db = module.get('RUN_DB', _MISSING)
     db = factory() if prior_db is _MISSING else _mapping(prior_db)
     old_history = module.get('RUN_HISTORY', _MISSING)
     history = {} if old_history is _MISSING else _mapping(old_history)
-    has_cases = any('cases' in _mapping(entry) or _has_payload(entry) for entry in history.values())
     current_state = metadata_value(db.get(STATE, {}))
-    if not any(key in module for key in OLD_BRANCHES) and not has_cases and current_state.get('version', 0) >= STORAGE_SCHEMA_VERSION:
+    old_layout = (any(key in module for key in OLD_BRANCHES) or
+                  current_state.get('version', 0) < STORAGE_SCHEMA_VERSION)
+    has_cases = any(_history_has_payload(entry, audit_history or old_layout) for entry in history.values())
+    if not old_layout and not has_cases:
         if prior_db is _MISSING:
             module['RUN_DB'] = db
         return db

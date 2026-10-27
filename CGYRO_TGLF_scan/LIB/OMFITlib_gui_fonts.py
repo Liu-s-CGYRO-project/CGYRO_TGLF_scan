@@ -141,7 +141,7 @@ def _update_retained_fonts(owner, family=None):
         font.configure(**options)
 
 
-def font_family(widget, retry=False):
+def font_family(widget, retry=False, verified_path=None):
     """Retry old failures after an update or font import; never cache them forever."""
     owner = widget._root()
     if getattr(owner, '_project_cjk_loading', False):
@@ -149,6 +149,14 @@ def font_family(widget, retry=False):
     state = getattr(owner, '_project_cjk_family', None)
     if not retry and state is not None and state[0] == FONT_PROFILE and state[1]:
         return state[1]
+    if not retry:
+        parent = widget
+        while isinstance(parent, tk.Misc):
+            if getattr(parent, '_project_cjk_defer_load', False):
+                # Startup may verify the local cache in a worker. Until then,
+                # use Tk's font; opening a window must not launch a download.
+                return None
+            parent = parent.master
     failed = getattr(owner, '_project_cjk_failed', None)
     if not retry and failed is not None and failed[0] == FONT_PROFILE:
         if failed[1] or cached_fonts('gui') is None:
@@ -160,7 +168,9 @@ def font_family(widget, retry=False):
         owner._project_cjk_loading = True
         if sys.platform.startswith('linux') and _backend(widget) == 'x11':
             raise RuntimeError('This Tk uses X11 bitmap fonts; GUI fonts need Tk with Xft support.')
-        _register(font_path(parent=widget), retry=retry)
+        # The startup worker supplies an already verified path. If it vanishes
+        # before registration, report that failure without opening a downloader.
+        _register(verified_path if verified_path is not None else font_path(parent=widget), retry=retry)
         probe = tkfont.Font(root=widget, family=FONT_FAMILY, size=12)
         actual = {key: str(widget.tk.call('font', 'actual', str(probe), '-displayof', str(widget), '-family', char))
                   for key, char in (('CJK', '\u6392'), ('Latin', 'A'), ('digits', '0'))}
@@ -174,7 +184,7 @@ def font_family(widget, retry=False):
     finally:
         owner._project_cjk_loading = False
     owner._project_cjk_family = (FONT_PROFILE, family)
-    owner._project_cjk_failed = None if family else (FONT_PROFILE, cached_fonts('gui') is not None)
+    owner._project_cjk_failed = None if family else (FONT_PROFILE, verified_path is not None or cached_fonts('gui') is not None)
     owner._project_cjk_diagnostic = {'active': bool(family), 'actual': actual, 'error': error,
                                    'registration': _registration_source, 'requested': FONT_FAMILY}
     return family

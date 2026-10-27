@@ -13,6 +13,7 @@ import json
 import os
 import re
 from omfit_classes.omfit_gacode import OMFITcgyro
+from OMFITlib_cgyro_archive import solver_state
 from OMFITlib_cgyro_checkpoint import select_checkpoint
 from OMFITlib_cgyro_db import (POOL, STATE, STORAGE_SCHEMA_VERSION, ensure_layout, metadata_value,
                               result_pool, rollback_actions, run_cases, run_records, storage_state)
@@ -209,7 +210,6 @@ def _collection_summary(module, key, result, files):
     stat directories or hash files to regenerate this persisted row summary.
     Time-averaged values are deliberately absent: their window is user-selected.
     """
-    from OMFITlib_cgyro_archive import solver_state
     state = storage_state(module)
     checkpoint = json.loads(state.get('checkpoints', {}).get(key, '{}'))
     tag = checkpoint.get('tag', {}) or {}
@@ -294,7 +294,7 @@ def compact_storage(module, factory=dict, browse=False, *, run_token=None):
     Normal submission/queue callers pass the current token. Only explicit
     maintenance may migrate/hash unrelated legacy results across the project.
     """
-    db = ensure_layout(module, factory)
+    db = ensure_layout(module, factory, audit_history=run_token is None)
     pool = result_pool(module)
     previous_state = storage_state(module)
     sizes = dict(previous_state.get('bytes', {}))
@@ -464,7 +464,7 @@ def prune_storage(module, *, result_ids=None):
     shallow rollback journal: a native result object must not be deep-copied
     merely to protect a metadata transaction from Abort or an assignment error.
     """
-    db = ensure_layout(module)
+    db = ensure_layout(module, audit_history=result_ids is None)
     pool = result_pool(module)
     used, used_files = set(), set()
     bounded = result_ids is not None
@@ -563,7 +563,7 @@ def prune_storage(module, *, result_ids=None):
 
 def consolidate_storage(module, factory=dict):
     """The explicit migration/compaction command; no scheduler operation."""
-    ensure_layout(module, factory)
+    ensure_layout(module, factory, audit_history=True)
     # Free verified expansions before allocating new physical owners. Otherwise
     # an old project near its /tmp quota could not start compaction at all.
     staged = clean_staging(module, factory)

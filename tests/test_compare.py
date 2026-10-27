@@ -70,6 +70,7 @@ class FakeUI:
         self.root, self.events = root, []
         self.tab = 'Header'
         self._aux = {}
+        self.OMFITaux = {}
         self.children = {}
         # A real module carries its registered child script even without data.
         root.setdefault('GUIS', {}).setdefault('Compare_controls', 'Compare_controls')

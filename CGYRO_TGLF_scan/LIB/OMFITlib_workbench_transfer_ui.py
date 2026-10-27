@@ -32,8 +32,7 @@ class TransferPage:
         files = transfer_generated_rows(self.root)
         ready = next((row for row in files if 'cgyro' in row['paths']), None)
         if ready is not None:
-            self.ui.Button('设置 CGYRO 扫描',
-                lambda: self.settings.update(dict(page='cgyro', cgyro_source_mode=ready['mode'])), updateGUI=True)
+            self.nav('设置 CGYRO 扫描', 'cgyro', cgyro_source_mode=ready['mode'])
 
     def transfer_advanced(self):
         self.label('已有种子输入继续使用；缺少时，运行按钮自动使用内置种子。这里只在需要调整模型参数或换用其他种子时操作。')

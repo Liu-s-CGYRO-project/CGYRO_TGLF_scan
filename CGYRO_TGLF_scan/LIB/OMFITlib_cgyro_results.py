@@ -1,6 +1,7 @@
 """RUN_DB-backed CGYRO result browser for one-, two- and three-axis scans."""
 from OMFITlib_cgyro_archive import catalog_runs, case_destination, output_final_time
 from OMFITlib_gui_fonts import configure_window_fonts, style_widget
+from OMFITlib_gui_deferred import deferred_section
 from OMFITlib_cgyro_archive import case_scans, latest_cases
 from OMFITlib_cgyro_continue import point_status, previous_final_time
 from OMFITlib_cgyro_result_index import (result_records, find_record, select_result, selected_result, scan_scope)
@@ -212,6 +213,14 @@ class ResultBrowser:
     def render(self, title=True):
         if title:
             self.ui.TitleGUI('CGYRO · 扫描结果浏览')
+        # Record/slice selection only changes this browser. In the workbench
+        # it must not reconstruct recovery, scheduler or deletion controls.
+        self.content = deferred_section(self.ui, self._render, local=True, container=True, action=True)
+        if self.content is None:
+            return self._render()
+        self.content.show()
+
+    def _render(self):
         try:
             view, token, entry, options = selected_record(self.root, resolve_stopped=False)
         except ValueError as exc:

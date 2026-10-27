@@ -5,6 +5,7 @@ Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 from OMFITlib_plot_style import validated as global_plot_style
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
+    AttributeError,
     Exception,
     TypeError,
     ValueError,
@@ -17,11 +18,13 @@ from builtins import (
     getattr,
     hasattr,
     int,
+    id,
     isinstance,
     len,
     list,
     max,
     min,
+    object,
     range,
     set,
     sorted,
@@ -192,7 +195,7 @@ def _tail_frequency_stats(omega_samples, gamma_samples):
     return result
 
 
-def cgyro_frequency_stats(data, window):
+def cgyro_frequency_stats(data, window, cache=None):
     """One saved-sample contract for self-comparison, cross-model and eigenmodes.
 
     Read mode zero, validate the recorded time count, and take the requested
@@ -200,7 +203,19 @@ def cgyro_frequency_stats(data, window):
     std, relative fluctuation) for omega and gamma, before any display scaling.
     Invalid samples must be reported by the caller, never silently truncated.
     """
-    raw_count, window = float(data['n_time']), float(window)
+    window = float(window)
+    if cache is not None:
+        # Packed views can be recreated for different comparison pages. Their
+        # immutable owner key is stable; point numbers and job ids are not.
+        try:
+            owner = (id(object.__getattribute__(data, '_payload_module')),
+                     object.__getattribute__(data, '_payload_key'))
+        except AttributeError:
+            owner = id(data)
+        key = owner, window
+        if key in cache:
+            return cache[key][1]
+    raw_count = float(data['n_time'])
     if (not np.isfinite(raw_count) or not raw_count.is_integer()
             or raw_count <= 0 or not 0 < window <= 1):
         raise ValueError('Invalid sample count or averaging fraction')
@@ -213,6 +228,10 @@ def cgyro_frequency_stats(data, window):
     stats = _tail_frequency_stats(omega[-count:], gamma[-count:])
     if stats is None:
         raise ValueError('Empty or non-finite frequency statistics in the averaging window')
+    if cache is not None:
+        # This cache belongs only to the current plot context. Keep the reader
+        # alive to prevent an object-id collision; never write it to RUN_DB.
+        cache[key] = data, stats
     return stats
 
 

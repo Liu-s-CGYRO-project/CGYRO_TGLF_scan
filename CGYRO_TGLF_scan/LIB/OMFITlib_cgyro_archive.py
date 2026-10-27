@@ -1,14 +1,32 @@
 """Stable case identities and independent parameter scans within each case."""
-from builtins import (AttributeError, OSError, TypeError, ValueError, all, any, bool, dict, enumerate, float, format, getattr,
+from builtins import (AttributeError, OSError, TypeError, ValueError, all, any, bool, dict, enumerate, float, format, frozenset, getattr,
                       hasattr, int, isinstance, len, list, max, object, open, range, reversed, set, sorted, str, tuple, type, zip)
 from collections import OrderedDict
 from copy import deepcopy
+import json
 import math
 import os
 import re
 from OMFITlib_cgyro_db import legacy_branch, metadata_value
 from OMFITlib_cgyro_reference import copy_result_tree, same_result_reference
 from OMFITlib_cgyro_run_state import point_complete
+
+
+# Shared coordinate metadata stays below readers/recovery in the import graph.
+# OMFIT removes its project importer after rendering a GUI; callbacks
+# must use these already-bound definitions, never re-import a LIB.
+# Runtime/output controls are excluded; DELTA_T and tolerances remain.
+RUN_CONTROL_PARAMETERS = frozenset(('MAX_TIME', 'PRINT_STEP', 'RESTART_STEP',
+    'RESTART_PRESERVATION_MODE', 'SILENT_FLAG', 'MPI_RANK_ORDER', 'TOROIDALS_PER_PROC',
+    'MPIIO_STRIPE_FACTOR', 'MPIIO_SMALL_STRIPE_FACTOR', 'THETA_PLOT',
+    'H_PRINT_FLAG', 'MOMENT_PRINT_FLAG', 'GFLUX_PRINT_FLAG', 'FIELD_PRINT_FLAG',
+    'TRIAD_PRINT_FLAG', 'FULL_T_PRINT_FLAG', 'FULL_T_ASYM_PRINT_FLAG',
+    'FULL_T_REAL_ONLY', 'FULL_T_DEBUG_PRINT_FLAG', 'FULL_T_KX0'))
+
+
+RESULT_INFO_FIELDS = ('runid', 'case_id', 'source_nr', 'rho', 'ion_case', 'scan_axes', 'dimensions',
+                      'scan_dimensions', 'fixed_parameters', 'numeric_parameters', 'scale_time_with_ky',
+                      'runtime', 'server', 'case_tag', 'run_token')
 
 
 def clean_run_id(value):
@@ -361,7 +379,6 @@ def point_values(info, row, include_input=False):
     if not all(math.isfinite(value) for value in values.values()):
         raise ValueError('Non-finite result coordinate')
     if include_input:
-        from OMFITlib_cgyro_input_identity import RUN_CONTROL_PARAMETERS
         # Generated values include solver defaults and actual ky-scaled DELTA_T.
         # Their consistency is checked when caching/continuing this point.
         values.update(row.get('effective_time', {}))
@@ -499,7 +516,6 @@ def store_scan(destination, data, info, tasks, factory=dict, prefer_progress=Fal
     actual solver convergence first, then elapsed simulation time (not DELTA_T).
     File payloads remain references to the sole physical owner in RUN_DB.
     """
-    from OMFITlib_cgyro_result_index import RESULT_INFO_FIELDS
     original = scan_branch(data, info, tasks)
     key = scan_key(info, original)
     if not key or key.startswith('__'):
@@ -861,3 +877,50 @@ def remap_pair_flags(state, aliases):
         for rho, enabled in flags.items():
             merged[rho] = bool(merged.get(rho, False) or enabled)
     state['rho_pair_flags'] = remapped
+
+
+def normalized_info(info, runid='', caseid=''):
+    saved = dict(metadata_value(info))
+    saved.setdefault('runid', runid)
+    saved.setdefault('case_id', caseid)
+    saved.setdefault('source_nr', saved.get('nr', ''))
+    saved.setdefault('ion_case', saved.get('mass', ''))
+    saved.setdefault('dimensions', max(1, len(saved.get('scan_axes', []))))
+    return saved
+
+
+def result_identity(info, row):
+    """Coordinate identity includes the case, every axis/link and signed ky.
+
+    Existing path coordinates provide legacy numeric spelling normalization.
+    Stored values must agree; an inconsistent old index is a point-level error,
+    never permission to search for a nearby coordinate or another owner.
+    """
+    row = metadata_value(row)
+    info = normalized_info(dict(info, **dict(row.get('result_info', {}))))
+    # A merged scan header may describe a later submission. Point metadata,
+    # when present, always identifies this row's own radius and ion case.
+    for name in ('runid', 'case_id', 'rho', 'ion_case', 'source_nr'):
+        if name in row:
+            info[name] = row[name]
+    path = coordinate_path(row)
+    numeric = point_values(info, row, include_input=True)
+    case = canonical_case_key(info.get('case_id', ''), info)
+    parts = case_parts(case)
+    if parts is None or not info.get('runid', ''):
+        raise ValueError('Missing result radius/ion or run identity')
+    nr, rho, ion = parts
+    if not math.isfinite(float(rho)):
+        raise ValueError('Missing finite result radius')
+    if info.get('rho', None) is not None and not math.isclose(float(rho), float(info['rho']), rel_tol=1e-7, abs_tol=1e-10):
+        raise ValueError('Result radius disagrees with its case identity')
+    if info.get('ion_case', '') and str(info['ion_case']) != ion:
+        raise ValueError('Result ion configuration disagrees with its case identity')
+    if info.get('source_nr', '') != '' and str(info['source_nr']) != nr:
+        raise ValueError('Result radial index disagrees with its case identity')
+    return dict(runid=clean_run_id(info['runid']), case_id=case,
+                scan=scan_key(info, path[0]), values=numeric)
+
+
+def identity_key(identity):
+    return json.dumps(identity, sort_keys=True, separators=(',', ':'), allow_nan=False)

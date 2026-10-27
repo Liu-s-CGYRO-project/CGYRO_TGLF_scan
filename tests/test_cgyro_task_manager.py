@@ -145,6 +145,84 @@ class TaskManagerTests(unittest.TestCase):
         self.assertIs(constructor.call_args.args[0], self.owner)
         self.assertFalse(hasattr(other, '_cgyro_task_manager'))
 
+    def test_task_dialog_deletion_keeps_page_refresh_captured_at_button_creation(self):
+        import OMFITlib_workbench_cgyro_ui as page
+        buttons, changed = {}, Mock()
+        view = page.CgyroPage()
+        view.root, view.settings = {'CGYRO_scan': self.module}, {}
+        view.ui = SimpleNamespace(_owner=self.owner, _aux={'parentGUI': self.owner},
+            refresh_callback=Mock(return_value=changed), UpdateGUI=Mock(),
+            Button=lambda title, command, **kw: buttons.setdefault(title, (command, kw)))
+        view.actions = SimpleNamespace(remove_cgyro_tasks=self.delete, factory=dict)
+        view.render_cgyro_cleanup(self.module)
+        view.ui.refresh_callback.assert_called_once_with(scope='page')
+        self.assertEqual(buttons['删除指定半径…'][1]['refresh_scope'], 'section')
+        view.ui._aux['parentGUI'] = tk.Toplevel(self.root)
+        with patch.object(page, 'TaskManager') as constructor:
+            buttons['任务管理 / 删除任务…'][0]()
+        self.assertIs(constructor.call_args.kwargs['on_changed'], changed)
+        constructor.call_args.kwargs['on_changed']()
+        changed.assert_called_once()
+        replacement = Mock()
+        view.open_cgyro_task_manager(replacement)
+        self.assertIs(self.owner._cgyro_task_manager.on_changed, replacement)
+        view.ui.UpdateGUI.assert_not_called()
+
+    def test_runtime_apply_uses_captured_page_refresh_on_success_and_failure(self):
+        from OMFITlib_workbench_runtime_ui import RuntimePage
+        view, refreshed = RuntimePage(), Mock()
+        label, button = ttk.Label(self.owner), ttk.Button(self.owner)
+        view.ui = SimpleNamespace(UpdateGUI=Mock())
+        view.actions = SimpleNamespace(apply_runtime=Mock(return_value='applied'), report_error=Mock())
+        self.assertEqual(view.apply_runtime_button(label, button, refreshed), 'applied')
+        refreshed.assert_called_once()
+        refreshed.reset_mock()
+        view.actions.apply_runtime.side_effect = ValueError('installation changed')
+        with self.assertRaisesRegex(ValueError, 'installation changed'):
+            view.apply_runtime_button(label, button, refreshed)
+        refreshed.assert_called_once()
+        view.actions.report_error.assert_called_once()
+        view.ui.UpdateGUI.assert_not_called()
+
+    def test_legend_save_refreshes_originating_comparison_section(self):
+        import OMFITlib_compare_widgets as comparison
+        buttons, refreshed = {}, Mock()
+        ui = SimpleNamespace(refresh_callback=Mock(return_value=refreshed), UpdateGUI=Mock(),
+            ComboBox=Mock(), Entry=Mock(), Label=Mock(),
+            Button=lambda title, command, **kw: buttons.setdefault(title, command))
+        view = comparison.ComparisonWidgets({}, ui)
+        state = dict(legend_order_mode='Manual order', legend_order_text='T,D')
+        view._render_legend_order_controls(lambda key: key, state)
+        ui.refresh_callback.assert_called_once_with(scope='section')
+        ui.refresh_callback.side_effect = AssertionError('Dialog must not discover a new scope')
+
+        def save_dialog():
+            dialog = next(w for w in self.root.winfo_children()
+                          if isinstance(w, tk.Toplevel) and w.title() == '图例顺序')
+            box = next(w for w in dialog.winfo_children() if isinstance(w, tk.Listbox))
+            box.delete(0, tk.END)
+            box.insert(tk.END, 'D', 'T')
+            footer = dialog.winfo_children()[-1]
+            next(w for w in footer.winfo_children() if w.cget('text') == '保存').invoke()
+
+        self.root.after(30, save_dialog)
+        with patch.object(comparison, 'configure_window_fonts'):
+            buttons['编辑图例顺序…']()
+        self.assertEqual(state['legend_order_text'], 'D,T')
+        refreshed.assert_called_once()
+        ui.UpdateGUI.assert_not_called()
+
+    def test_transfer_to_scan_uses_page_navigation_instead_of_redrawing_transfer_tab(self):
+        import OMFITlib_workbench_transfer_ui as transfer
+        view = transfer.TransferPage()
+        view.root, view.settings = {}, {'page': 'transfer'}
+        view.compound, view.run_controls, view.nav = Mock(), Mock(), Mock()
+        rows = [dict(mode='generated', paths={'cgyro': ('generated', 'input.cgyro')})]
+        with patch.object(transfer, 'transfer_generated_rows', return_value=rows):
+            view.transfer_run()
+        view.nav.assert_called_once_with('设置 CGYRO 扫描', 'cgyro', cgyro_source_mode='generated')
+        self.assertEqual(view.settings['page'], 'transfer')
+
     def test_task_window_survives_owner_child_refresh_and_closes_with_its_owner(self):
         ttk.Label(self.owner, text='old control').pack()
         for child in self.owner.winfo_children():

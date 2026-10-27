@@ -237,8 +237,8 @@ class TGLFWorkbench:
                               help='例如 [0.3, 0.5, 0.7]。半径需在已生成的输入中。')
         elif self.settings['source'] == 'transfer' and self.available:
             with self.ui.same_row():
-                self.ui.Button('全选', lambda: self.select(True), updateGUI=True)
-                self.ui.Button('清空', lambda: self.select(False), updateGUI=True)
+                self.ui.Button('全选', lambda: self.select(True), updateGUI=True, refresh_scope='section')
+                self.ui.Button('清空', lambda: self.select(False), updateGUI=True, refresh_scope='section')
             for start in range(0, len(self.available), 2):
                 with self.ui.same_row():
                     for row in self.available[start:start + 2]:
@@ -318,7 +318,7 @@ class TGLFWorkbench:
         self.ui.ComboBox(self.prefix + "['parameter_group']", {'常用参数': 'common', '全部参数': 'all'},
                          '显示', state='readonly', updateGUI=True)
         self.ui.Entry(self.prefix + "['search']", '搜索', width=24, updateGUI=True)
-        self.ui.Button('全部沿用输入值', self.reset_parameters, updateGUI=True)
+        self.ui.Button('全部沿用输入值', self.reset_parameters, updateGUI=True, refresh_scope='section')
         for name, (reference, label) in catalog.items():
             if name in ('NS',) or (self.settings['parameter_group'] == 'common' and name not in COMMON):
                 continue
@@ -341,7 +341,8 @@ class TGLFWorkbench:
                                      updateGUI=False, state='readonly', postcommand=callback, help=hint)
                 else:
                     self.ui.Entry(prefix + "['value']", '', width=12, updateGUI=False, postcommand=callback, help=hint)
-                self.ui.Button('沿用输入', lambda name=name: self.reset_parameter(name), updateGUI=True)
+                self.ui.Button('沿用输入', lambda name=name: self.reset_parameter(name), updateGUI=True,
+                               refresh_scope='section')
 
     def edit_parameter(self, name, reference):
         item = self.settings['parameters'][name]

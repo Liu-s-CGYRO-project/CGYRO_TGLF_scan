@@ -211,10 +211,12 @@ class ComparisonWidgets:
             self.ui.Entry(path_builder('legend_order_text'),
                           '排序关键词', default=default_legend_order, width=24,
                           kwlabel={'width': 16, 'anchor': 'w'}, help='按显示顺序填写图例名称或关键词，用逗号分隔；支持 re:正则表达式。')
-            self.ui.Button('编辑图例顺序…', lambda: self._edit_legend_order(state, default_legend_order, editor_title), width=18)
+            refreshed = self.ui.refresh_callback(scope='section')
+            self.ui.Button('编辑图例顺序…',
+                           lambda: self._edit_legend_order(state, default_legend_order, editor_title, refreshed), width=18)
         self.ui.Label('在图中点击图例，可显示或隐藏对应曲线。', align='left')
 
-    def _edit_legend_order(self, state, default_text, title):
+    def _edit_legend_order(self, state, default_text, title, refreshed):
         """Use the existing Tk application; Cancel never opens another toolkit/dialog."""
         import tkinter as tk
         from tkinter import ttk
@@ -265,7 +267,7 @@ class ComparisonWidgets:
         def save():
             state['legend_order_text'] = ','.join(dict.fromkeys(box.get(0, tk.END)))
             win.destroy()
-            self.ui.UpdateGUI()
+            refreshed()
 
         footer = ttk.Frame(win)
         footer.pack(pady=8)

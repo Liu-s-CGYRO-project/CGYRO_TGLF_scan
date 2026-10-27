@@ -7,8 +7,13 @@ from OMFITlib_gui_layout import finish_gui_subtree
 from OMFITlib_gui_api import _DeferredGUIRefresh
 
 
-def deferred_section(ui, render, local=False):
-    """Capture native construction context while the GUI script is running."""
+def deferred_section(ui, render, local=False, container=False, action=False):
+    """Capture native context; optionally own a body and its action boundary.
+
+    local scopes field edits. With local=True, action also scopes buttons
+    whose effects span child tabs; nested fields keep the nearer local scope.
+    container keeps persistent headers outside the replaceable page body.
+    """
     aux, registry = getattr(ui, '_aux', None), getattr(ui, '_GUIs', None)
     if not isinstance(aux, dict) or not isinstance(registry, dict):
         return None  # Non-Tk hosts render the selected page directly.
@@ -16,7 +21,10 @@ def deferred_section(ui, render, local=False):
     gui = owner(parent, registry)
     if gui is None:
         return None
-    return DeferredSection(ui, parent, gui, render, local)
+    if container:
+        parent = ttk.Frame(parent)
+        parent.pack(side=tk.TOP, fill=tk.X)
+    return DeferredSection(ui, parent, gui, render, local, action)
 
 
 class _Changed:
@@ -37,7 +45,7 @@ class DeferredSection:
     the original context so relative Entry locations and locks still belong
     to this project, and restore the other GUI even if rendering fails.
     """
-    def __init__(self, ui, parent, gui, render, local=False):
+    def __init__(self, ui, parent, gui, render, local=False, action=False):
         self.ui, self.parent, self.gui, self.render = ui, parent, gui, render
         self.context = dict(ui._aux)
         self.python_file = gui.pythonFile
@@ -49,6 +57,8 @@ class DeferredSection:
             self.refresh = _DeferredGUIRefresh(ui, gui, ui._GUIs, parent, self.redraw)
             self.refresh.invalidate_only = _Changed(self)
             parent._cgyro_local_refresh = self.refresh
+            if action:
+                parent._cgyro_action_refresh = self.refresh
         parent._cgyro_section = self
         parent.bind('<Destroy>', self._closed, add='+')
 
@@ -138,7 +148,7 @@ class TabPages:
     Saved state stores tab keys, not Tk objects. Native CompoundGUI still owns
     nested Notebook contexts. Call select() for programmatic navigation.
     """
-    def __init__(self, ui, captions, state, key, render, local=True):
+    def __init__(self, ui, captions, state, key, render, local=True, action=False):
         self.state, self.key, self.keys = state, key, list(captions)
         self.sections, self.notebook = {}, None
         selected = state.get(key, self.keys[0])
@@ -147,7 +157,7 @@ class TabPages:
         state[key] = selected
         for page, caption in captions.items():
             ui.Tab(caption)
-            section = deferred_section(ui, lambda page=page: render(page), local=local)
+            section = deferred_section(ui, lambda page=page: render(page), local=local, action=action)
             self.sections[page] = section
             if section is None:
                 # Non-Tk renderers (export/inspection) retain their native

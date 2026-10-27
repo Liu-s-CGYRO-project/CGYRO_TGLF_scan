@@ -11,6 +11,7 @@ import json
 from OMFITlib_cgyro_archive import canonical_case_key, case_scans, case_sources, clean_run_id, scan_key
 from OMFITlib_cgyro_db import PENDING, run_is_deleted, run_records
 from OMFITlib_cgyro_reference import REF, is_native_file, metadata_value
+from OMFITlib_cgyro_result_index import _public_headers, at
 
 BUSY_STATES = ('preparing', 'uploading', 'submitting', 'running', 'cancel_requested')
 
@@ -39,7 +40,6 @@ def manifest_sources(module, tokens=None):
 def indexed_sources(module, tokens=None):
     """Yield actual storage paths, never writable synthetic case views."""
     if tokens is not None:
-        from OMFITlib_cgyro_result_index import _public_headers, at
         seen = set()
         for info in _public_headers(module).values():
             linked = set(info.get('merged_run_tokens', [])) | {info.get('run_token', '')}
@@ -97,7 +97,6 @@ def task_catalog(module, include_results=True, tokens=None):
             row['retained_points'] = len(mapping(record.get('cases', {})))
             row['has_inputs'] = bool(record.get('inputs', {}))
     if include_results and tokens is None:
-        from OMFITlib_cgyro_result_index import _public_headers
         for info in _public_headers(module).values():
             header = str(info.get('run_token', '') or '')
             counts = info.get('task_counts', {})

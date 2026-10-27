@@ -37,10 +37,13 @@ def _key(mapping, wanted):
     return numeric[0] if numeric else None
 
 
-def multiaxis_scans(case):
+def multiaxis_scans(case, selected=None):
     """Inspect metadata only; linked parameters are not independent axes."""
     scans = OrderedDict()
+    wanted = None if selected is None else {str(name) for name in selected}
     for key, info, tasks in case_scans(case):
+        if wanted is not None and key not in wanted:
+            continue
         axes = [dict(axis) for axis in info.get('scan_axes', []) if not axis.get('fixed', False)]
         if any(row.get('coordinate_path', None) for row in tasks.values()):
             # Different linked/fixed values at one primary/ky location are
@@ -120,7 +123,7 @@ def comparison_case_view(case, selected, config=None):
     and absent physical results are diagnostics rather than fabricated data.
     """
     config = {} if config is None else config
-    scans = multiaxis_scans(case)
+    scans = multiaxis_scans(case, selected=selected)
     view = {key: case[key] for key in case.keys() if not str(key).startswith('__')}
     selections, metadata, diagnostics = OrderedDict(), {}, []
     for parameter, chosen in selected.items():

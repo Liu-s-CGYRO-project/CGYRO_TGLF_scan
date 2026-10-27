@@ -6,8 +6,9 @@ New pages enter through workbench_catalog; see MAINTAINER_GUIDE.md.
 from OMFITlib_result_cleanup import active_jobs, clear_results
 from builtins import dict, isinstance, list, str
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from OMFITlib_gui_layout import finish_gui_layout
+from OMFITlib_gui_deferred import deferred_section
 from OMFITlib_gui_controls import checkbox
 from OMFITlib_gui_api import show_help
 from OMFITlib_tglf_workbench_ui import TGLFWorkbench
@@ -31,6 +32,7 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
         self.panel_only = False
         self.compact = False
         self.prefix = "root['SETTINGS']['WORKBENCH']"
+        self.page_content = self.page_picker = None
 
     def label(self, value):
         return self.ui.Label(value, align='left', wraplength=600 if self.compact else 840)
@@ -64,15 +66,74 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
         timer[0] = top.after(5000 if error else 3000, dismiss)
         label.bind('<Destroy>', cancel, add='+')
 
-    def nav(self, label, page):
-        callback = (lambda: self.settings.__setitem__('cgyro_panel_page', page)) if self.panel_only else (
-            lambda: self.actions.open_page(page))
-        self.ui.Button(label, callback, updateGUI=True)
+    def nav(self, label, page, **changes):
+        aux = getattr(self.ui, '_aux', {})
+        parent = aux.get('parentGUI', None)
+        if not isinstance(parent, tk.Misc):
+            return self.ui.Button(label, lambda: self.select_page(page, **changes), updateGUI=False)
+        row = ttk.Frame(parent)
+        packing = aux.get('packing', tk.TOP)
+        row.pack(side=packing, expand=packing != tk.TOP, fill=tk.X, padx=5, pady=1)
+        button = ttk.Button(row, text=label, command=lambda: self.select_page(page, **changes))
+        button.pack(side=tk.LEFT, expand=True, fill=tk.X)
+        return button
 
-    def guarded(self, label, callback, issues, help=''):
+    def select_page(self, page, **changes):
+        """Navigation changes view state, not the project data tree."""
+        self.settings.update(changes)
+        if self.panel_only:
+            self.settings['cgyro_panel_page'] = page
+            self.ui.UpdateGUI()
+            return
+        if page == self.settings['page'] and not changes:
+            return
+        self.actions.open_page(page)
+        if self.page_content is None:
+            self.ui.UpdateGUI()
+            return
+        selected = self.settings['page']
+        for caption, key in PAGES.items():
+            if key == selected:
+                self.page_picker.set(caption)
+                break
+        self.page_content.refresh.request()
+
+    def check_configuration(self):
+        self.actions.check()
+        if self.page_content is not None:
+            self.page_content.refresh.request()
+        else:
+            self.ui.UpdateGUI()
+
+    def render_page_picker(self):
+        parent = getattr(self.ui, '_aux', {}).get('parentGUI', None)
+        if not isinstance(parent, tk.Misc):
+            self.ui.ComboBox(self.prefix + "['page']", PAGES, '工作页面', default='overview', updateGUI=True)
+            return
+        # Native ComboBox always emits update_treeGUI and updateGUI reruns
+        # main.py (including all LIB imports). A saved view selector needs
+        # neither; real input/parameter controls retain native semantics.
+        row = ttk.Frame(parent)
+        row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=1)
+        ttk.Label(row, text='工作页面 = ').pack(side=tk.LEFT)
+        picker = self.page_picker = ttk.Combobox(row, state='readonly', values=list(PAGES))
+        picker.pack(side=tk.LEFT, expand=True, fill=tk.X)
+        picker.current(list(PAGES.values()).index(self.settings['page']))
+        picker.bind('<<ComboboxSelected>>', lambda event: self.select_page(PAGES[picker.get()]))
+        ttk.Button(row, text='重置', command=lambda: self.select_page('overview')).pack(side=tk.LEFT)
+
+    def render_selected_page(self):
+        if isinstance(self.page_intro, tk.Misc):
+            self.page_intro.configure(text='服务器 → 程序版本 → 计算资源' if self.settings['page'] == 'run'
+                                      else '选择输入 → 设置参数 → 运行 → 查看结果')
+        if self.settings['page'] not in ('cgyro', 'tglf'):
+            self.show_message()
+        render_page(self, self.settings['page'])
+
+    def guarded(self, label, callback, issues, help='', refresh=True):
         """Shared action button; disabled reasons are shown before usage notes."""
         explanation = '\n'.join(part for part in ('；'.join(issues), help) if part)
-        return self.ui.Button(label, callback, updateGUI=True, state='disabled' if issues else 'normal',
+        return self.ui.Button(label, callback, updateGUI=refresh, state='disabled' if issues else 'normal',
                               help=explanation)
 
     def note(self, caption, details=''):
@@ -90,7 +151,9 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
             if problems:
                 raise ValueError('；'.join(problems))
             return self.actions.call(label, path, **kwargs)
-        self.guarded(label, invoke, problems)
+        # Opening a browser/plot dialog does not change the launching page.
+        # Data-changing scripts still refresh their action boundary.
+        self.guarded(label, invoke, problems, refresh='GUIS' not in path)
 
     def compound(self, path, **kwargs):
         task = read(self.root, path)
@@ -117,14 +180,24 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
         intro = self.label('服务器 → 程序版本 → 计算资源' if self.settings['page'] == 'run' else
                            ('选择输入 → 设置参数 → 运行 → 查看结果' if self.compact else
                             '输入准备  →  传递与验证  →  运行与收集  →  绘图对比'))
-        self.ui.ComboBox(self.prefix + "['page']", PAGES, '工作页面', default='overview', updateGUI=True)
+        self.page_intro = intro
+        self.render_page_picker()
         with self.ui.same_row():
-            self.ui.Button('检查配置', self.actions.check, updateGUI=True,
+            self.ui.Button('检查配置', self.check_configuration, updateGUI=False,
                            help='检查运行配置和 CGYRO 输入；不连接服务器、不提交计算。')
-            self.ui.Button('刷新', lambda: None, updateGUI=True)
-        if self.settings['page'] not in ('cgyro', 'tglf'):
-            self.show_message()
-        render_page(self, self.settings['page'])
+            self.ui.Button('刷新', lambda: None, updateGUI=True, refresh_scope='window')
+        # Keep the header and the loaded action/library objects while replacing
+        # only the selected body. Explicit Refresh still reruns the native GUI.
+        self.page_content = deferred_section(self.ui, self.render_selected_page,
+                                             local=True, container=True, action=True)
+        if self.page_content is None:
+            self.render_selected_page()
+        else:
+            # The adapter was captured before the body existed. Async action
+            # completions must find the current body through this persistent
+            # content frame, including after an explicit native refresh.
+            self.page_content.parent.master._cgyro_action_refresh = self.page_content.refresh
+            self.page_content.show()
         finish_gui_layout(intro, self.ui, compact=self.compact, fit_tabs=True)
 
     def render_overview(self):
@@ -203,8 +276,7 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
     def render_plots(self):
         self.label('选择运行记录、半径和扫描值，即可对比绘图。')
         with self.ui.same_row():
-            self.ui.Button('Transfer_tool 剖面绘图',
-                           lambda: self.settings.update(dict(page='transfer', transfer_tab='plots')), updateGUI=True)
+            self.nav('Transfer_tool 剖面绘图', 'transfer', transfer_tab='plots')
             self.task('CGYRO 扫描结果浏览', ('GUIS', 'CGYRO_results'),
                       issues=[] if read(self.root, ('CGYRO_scan', 'RUN_DB'), {}) else ['尚无已收集的 CGYRO 扫描结果'])
         with self.ui.same_row():
@@ -216,5 +288,5 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
         self.label('通过 GitHub 分发代码与设置。更新时可保留计算结果，或使用模板提供的示例。')
         self.label('模板库：https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan')
         self.guarded('打开 OMFIT 模板管理器', self.open_templates or (lambda: None),
-                     [] if self.open_templates else ['当前工程未载入 OMFITtemplates'])
+                     [] if self.open_templates else ['当前工程未载入 OMFITtemplates'], refresh=False)
         self.label('个人服务器和路径可在更新时保留；计算记录和输入历史不进入代码模板。')

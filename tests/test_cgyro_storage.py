@@ -1600,6 +1600,78 @@ class StorageCases(unittest.TestCase):
                 self.assertIs(record['cases'], original)
                 self.assertIs(root[source], old_source)
 
+    def test_current_layout_and_scoped_compaction_do_not_walk_historical_points(self):
+        class PointMetadata(dict):
+            visits = 0
+
+            def values(self):
+                PointMetadata.visits += 1
+                raise AssertionError('unrelated historical point traversed')
+
+        history = {str(i): {'manifest': {
+            'run_token': str(i), 'point_table': {
+                str(j): PointMetadata(values={'N_ENERGY': 48}, ky=.5)
+                for j in range(10)}}} for i in range(200)}
+        state = dict(version=db_api.STORAGE_SCHEMA_VERSION,
+                     checkpoint_policy=storage.CHECKPOINT_POLICY_VERSION)
+        root = dict(RUN_DB={db_api.STATE: state, db_api.POOL: {},
+                            db_api.RUNS: {'current': dict(cases={})}}, RUN_HISTORY=history)
+        with patch.object(db_api, '_has_payload', side_effect=AssertionError('deep history audit')):
+            self.assertIs(db_api.ensure_layout(root), root['RUN_DB'])
+            report = storage.compact_storage(root, run_token='current')
+        self.assertEqual(report['converted_copies'], 0)
+        self.assertEqual(PointMetadata.visits, 0)
+        self.assertIs(root['RUN_HISTORY'], history)
+
+    def test_full_maintenance_migrates_nested_history_payload_before_reclaiming(self):
+        for operation in ('audit', 'compact', 'prune', 'old_schema'):
+            with self.subTest(operation=operation):
+                key = 'a' * 64
+                result = self.result('history_payload_' + operation)
+                reference = {reference_api.REF: key}
+                history = {'old': dict(manifest={'run_token': 'old'},
+                                       extra={'nested': [reference]})}
+                state = dict(version=(0 if operation == 'old_schema' else db_api.STORAGE_SCHEMA_VERSION),
+                             checkpoint_policy=storage.CHECKPOINT_POLICY_VERSION)
+                root = dict(RUN_DB={db_api.STATE: state, db_api.POOL: {key: result}}, RUN_HISTORY=history)
+                if operation != 'old_schema':
+                    db_api.ensure_layout(root)
+                    self.assertIs(root['RUN_HISTORY'], history)
+                    self.assertNotIn(db_api.RUNS, root['RUN_DB'])
+                if operation == 'audit':
+                    db_api.ensure_layout(root, audit_history=True)
+                elif operation == 'compact':
+                    storage.compact_storage(root)
+                elif operation == 'prune':
+                    self.assertEqual(storage.prune_storage(root), 0)
+                else:
+                    db_api.ensure_layout(root)
+                retained = db_api.run_records(root)['old']['legacy_fields']['extra']['nested'][0]
+                self.assertEqual(storage.reference_id(retained), key)
+                self.assertIs(storage.resolve_result(root, retained), result)
+                self.assertNotIn('extra', root['RUN_HISTORY']['old'])
+                self.assertTrue(Path(result.filename).is_dir())
+
+    def test_current_layout_still_migrates_direct_history_file(self):
+        result = self.result('direct_history_payload')
+        root = dict(RUN_DB={db_api.STATE: dict(version=db_api.STORAGE_SCHEMA_VERSION)},
+                    RUN_HISTORY={'old': dict(manifest={'run_token': 'old'}, extra=result)})
+        db_api.ensure_layout(root)
+        self.assertIs(db_api.run_records(root)['old']['legacy_fields']['extra'], result)
+        self.assertNotIn('extra', root['RUN_HISTORY']['old'])
+
+    def test_full_prune_rejects_dangling_nested_history_reference(self):
+        key = 'a' * 64
+        result = self.result('nested_history_prune')
+        root = dict(RUN_DB={db_api.STATE: dict(version=db_api.STORAGE_SCHEMA_VERSION),
+                            db_api.POOL: {key: result}},
+                    RUN_HISTORY={'old': dict(manifest={'run_token': 'old'},
+                                             extra={'nested': {reference_api.REF: 'b' * 64}})})
+        with self.assertRaisesRegex(ValueError, 'Missing physical CGYRO result'):
+            storage.prune_storage(root)
+        self.assertIs(storage.result_pool(root)[key], result)
+        self.assertTrue(Path(result.filename).is_dir())
+
     def test_migration_accepts_equivalent_reference_snapshots_without_loading(self):
         original = {'p000001': {reference_api.REF: 'a' * 64}}
         incoming = copy.deepcopy(original)

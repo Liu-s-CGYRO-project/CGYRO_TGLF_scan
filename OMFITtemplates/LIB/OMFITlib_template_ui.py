@@ -9,7 +9,8 @@ import traceback
 import webbrowser
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
-from OMFITlib_gui_fonts import configure_window_fonts, font_size, gui_font, style_checkbox, style_widget
+from OMFITlib_gui_fonts import FONT_FILENAME, configure_window_fonts, font_family, font_size, gui_font, style_checkbox, style_widget
+from OMFITlib_font_cache import cached_fonts
 from OMFITlib_font_ui import open_font_manager, set_proxy
 
 from OMFITlib_template_archive import TemplateError, human_size, json_bytes, parse_json
@@ -114,6 +115,7 @@ class _Notice(ttk.Frame):
 class TemplateManager(ManagerUpdateUI):
     def __init__(self, window, current_project='', library=None, preferences=None, session=None):
         self.window = window
+        window._project_cjk_defer_load = True
         self.session = session
         self.last_output = None
         self.publish_plan = None
@@ -162,6 +164,7 @@ class TemplateManager(ManagerUpdateUI):
         self.manager_update_result = None
         self._manager_check_generation = 0
         self._manager_auto_cancel = threading.Event()
+        self._startup_started = False
         self.manager_version_info = tk.StringVar(master=window, value='管理器 ' + MANAGER_VERSION)
         self.connection_info = tk.StringVar(master=window, value='打开后自动连接上次的 GitHub 仓库。公开模板可直接浏览；发布与私有仓库需要登录。')
         self.upload_info = tk.StringVar(master=window, value='先准备模板包，核对仓库、账号和上传文件后发布。')
@@ -201,6 +204,8 @@ class TemplateManager(ManagerUpdateUI):
         self.author_filter.trace_add('write', self._author_changed)
         self.release_sort.trace_add('write', lambda *args: self._filter())
         self.repository.trace_add('write', lambda *args: self._repository_changed())
+        for variable in (self.library, self.shared):
+            variable.trace_add('write', lambda *args: self.tasks.invalidate('startup-library'))
         for variable in (self.proxy_mode, self.proxy_host, self.proxy_port, self.proxy_username, self.proxy_password):
             variable.trace_add('write', lambda *args: self._proxy_changed())
         self._proxy_hint()
@@ -212,12 +217,27 @@ class TemplateManager(ManagerUpdateUI):
 
     def _startup(self):
         self._refresh_after = None
-        if not self.alive or self.close_requested:
+        if not self.alive or self.close_requested or self._startup_started:
             return
+        self._startup_started = True
+        # Cache verification is disk work; registration and Tk font changes
+        # happen only in the accepted main-thread callback. Missing fonts stay
+        # optional and can be downloaded/imported from the font settings.
+        self.tasks.start('startup-fonts', lambda: cached_fonts('gui'), self._startup_fonts,
+                         lambda error: self._log('字体缓存检查未完成：' + str(error)))
         # Version checks have their own worker and cancellation; offline/local
         # use stays available while GitHub responds or times out.
         self._check_manager_update(automatic=True)
         self.refresh(automatic=True)
+
+    def _startup_fonts(self, fonts):
+        if fonts is None:
+            self._log('当前使用系统字体；可在“字体资源”中下载或导入界面字体。')
+            return
+        self.window._project_cjk_defer_load = False
+        font_family(self.window, retry=True, verified_path=fonts[FONT_FILENAME])
+        configure_window_fonts(self.window, refresh=True)
+        self._refresh_font_metrics()
 
     def _configure(self):
         w = self.window
@@ -736,6 +756,9 @@ class TemplateManager(ManagerUpdateUI):
     def _run(self, title, work, success, failure=None, cancel=None, receipt='', dispose=None):
         if self.busy or not self.alive or self.close_requested:
             return
+        # Explicit actions own the UI. A late startup response must never
+        # replace their selection or change the source back to GitHub.
+        self.tasks.invalidate('startup-library')
         self.cancel = cancel if cancel is not None else threading.Event()
         self._show_progress(title)
         self._set_busy(True)
@@ -777,7 +800,7 @@ class TemplateManager(ManagerUpdateUI):
             # outcomes wait for foreground work, without blocking its outcome.
             for unused in range(100):
                 try:
-                    event = self.tasks.next_event(blocked=('login-check',) if self.busy else ())
+                    event = self.tasks.next_event(blocked=('login-check', 'startup-fonts') if self.busy else ())
                 except queue.Empty:
                     break
                 accepted, cancelled = self.tasks.accept(event)
@@ -843,6 +866,7 @@ class TemplateManager(ManagerUpdateUI):
     def refresh(self, automatic=False):
         if self.busy:
             return
+        self.tasks.invalidate('startup-library')
         if self.view_source.get() == 'GitHub':
             self._connect(automatic=automatic)
             return
@@ -851,7 +875,13 @@ class TemplateManager(ManagerUpdateUI):
         except TemplateError as exc:
             self.status.set(str(exc))
             return
-        self._run('正在读取模板库…', lambda: list_library(directory), self._loaded)
+        cancel = threading.Event()
+        if automatic:
+            self.status.set('正在后台读取模板库，可继续使用其他页面。')
+            self.tasks.start('startup-library', lambda: list_library(directory, cancel=cancel), self._loaded,
+                             lambda error: self._log('自动读取模板库未完成：' + str(error)), cancel)
+        else:
+            self._run('正在读取模板库…', lambda: list_library(directory, cancel=cancel), self._loaded, cancel=cancel)
 
     def _selected_proxy(self):
         mode = PROXY_MODES.get(self.proxy_mode.get(), '')
@@ -873,6 +903,7 @@ class TemplateManager(ManagerUpdateUI):
             self.proxy_info.set(str(exc))
 
     def _proxy_changed(self):
+        self.tasks.invalidate('startup-library')
         self._proxy_hint()
         self.connection_info.set('网络设置已更改，请重新连接仓库。')
         self._invalidate_publish()
@@ -937,6 +968,7 @@ class TemplateManager(ManagerUpdateUI):
         self._fit_size(dialog, 720, 400)
 
     def _repository_changed(self):
+        self.tasks.invalidate('startup-library')
         self.connection_info.set('仓库已更改，请重新连接。')
         self._invalidate_publish()
         if self.view_source.get() == 'GitHub':
@@ -955,9 +987,12 @@ class TemplateManager(ManagerUpdateUI):
             else:
                 self.status.set(str(exc))
             return
-        self._save_preferences()
+        if not automatic:
+            self._save_preferences()
+        cancel = threading.Event()
         def work():
-            client = GitHub(repo, cancel=self.cancel, progress=self._progress, proxy=proxy)
+            client = GitHub(repo, cancel=cancel, progress=self._progress, proxy=proxy,
+                            discovery_timeout=20 if automatic else None)
             return client.connect(), client.list_releases()
         def connected(result):
             info, releases = result
@@ -975,8 +1010,11 @@ class TemplateManager(ManagerUpdateUI):
                 self.status.set('仓库已连接，尚无模板 Release。可在“发布模板”页准备首个版本。')
             if info.get('empty'):
                 self.status.set('仓库为空。登录后可在“设置与记录”页初始化，再发布首个模板版本。')
-        self._run('正在连接 GitHub 并读取版本…', work, connected,
-                  failure=self._automatic_connection_failed if automatic else None)
+        if automatic:
+            self.connection_info.set('正在后台连接仓库；本地模板、设置和其他页面可以继续使用。')
+            self.tasks.start('startup-library', work, connected, self._automatic_connection_failed, cancel)
+        else:
+            self._run('正在连接 GitHub 并读取版本…', work, connected, cancel=cancel)
 
     def _automatic_connection_failed(self, exc):
         message = '自动连接仓库未完成：{}。可点击“连接仓库”重试，或使用本地模板库。'.format(exc)

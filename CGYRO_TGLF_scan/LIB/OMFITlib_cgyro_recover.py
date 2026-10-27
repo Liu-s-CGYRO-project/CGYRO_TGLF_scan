@@ -11,6 +11,7 @@ from copy import deepcopy
 import math
 import re
 from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, case_sources, clean_run_id, coordinate_path,
+                                   normalized_info, result_identity, identity_key,
                                    grouped_case_path, install_case, output_final_time, point_values, scan_branch, store_scan)
 from OMFITlib_cgyro_db import PENDING, STATE, ensure_layout, metadata_value, rollback_actions, run_records
 
@@ -107,7 +108,6 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
     touching the installed catalog; unknown sources remain inside RUN_DB.
     """
     db = ensure_layout(module, factory)
-    from OMFITlib_cgyro_result_index import normalized_info, result_identity, identity_key
     public_coordinates = set()
     # Recovery accepts mixed legacy BASE/direct layouts before catalog_runs can
     # consolidate them. Read their indexes here without requiring that migration.

@@ -82,6 +82,8 @@ class CaseSelectionTest(unittest.TestCase):
         self.assertFalse(hasattr(app, '_cgyro_catalog'))
         root['CGYRO_scan']['RUN_DB'] = {'New run': {}}
         with app._catalog_scope() as catalog:
+            self.assertEqual(catalog, {})
+            app._choose_cgyro({'runid': 'New run'}, lambda *keys: '', select_radii=False)
             self.assertEqual(list(catalog), ['New run'])
 
     def test_standalone_selector_does_not_rebuild_catalog_for_aliases(self):
@@ -90,6 +92,35 @@ class CaseSelectionTest(unittest.TestCase):
         with patch.object(archive, 'catalog_runs', side_effect=AssertionError('duplicate traversal')):
             app._choose_cgyro({'runid': 'Jet'}, lambda *k: '', select_radii=False)
         self.assertFalse(hasattr(app, '_cgyro_catalog'))
+
+    def test_run_selector_lists_names_without_visiting_unselected_runs(self):
+        class Unselected(dict):
+            def items(self):
+                raise AssertionError('Unselected run metadata traversed')
+        root = {'CGYRO_scan': {'RUN_DB': {'Jet': {'nr=1': {'A': {}}},
+                                        'Unselected': Unselected({'nr=2': {}})}}}
+        ui = FakeUI(root)
+        app = cases_module.CaseSelection(root, ui)
+        with app._catalog_scope():
+            run, radii = app._choose_cgyro({'runid': 'Jet'}, lambda *keys: '', select_radii=False)
+        self.assertEqual(radii, ['nr=1'])
+        choices = next(args[1] for _, kind, args, _ in ui.events if kind == 'ComboBox')
+        self.assertEqual(choices, ['Jet', 'Unselected'])
+        self.assertIs(run['nr=1'], root['CGYRO_scan']['RUN_DB']['Jet']['nr=1'])
+
+    def test_one_multi_axis_selector_never_visits_other_scan_points(self):
+        from OMFITlib_cgyro_scan_view import multiaxis_scans
+        class UnselectedTasks(dict):
+            def values(self):
+                raise AssertionError('Unselected scan point table traversed')
+        info = {'scan_axes': [{'name': 'A', 'values': [1]}, {'name': 'B', 'values': [2]}]}
+        tasks = {'p1': dict(result_path=['A', 1, 'B', 2, 'lin', -.5], values={'A': 1, 'B': 2, 'KY': -.5})}
+        case = {'A': {}, 'C': {}, '__SCANS__': {
+            'A__B': dict(info=info, tasks=tasks),
+            'C__D': dict(info={'scan_axes': [{'name': 'C'}, {'name': 'D'}]}, tasks=UnselectedTasks())}}
+        result = multiaxis_scans(case, selected=['A__B'])
+        self.assertEqual(list(result), ['A__B'])
+        self.assertIs(result['A__B']['tasks'], tasks)
 
     def test_single_isotope_radii_need_no_second_selection(self):
         cases = ['nr={}__rho={}__ion=BASE'.format(i, rho)

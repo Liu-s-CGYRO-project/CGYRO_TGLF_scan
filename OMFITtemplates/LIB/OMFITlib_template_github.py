@@ -230,8 +230,11 @@ def summary_from_body(body):
 
 
 class GitHub:
-    def __init__(self, repo, token=None, cancel=None, progress=None, proxy=None):
+    def __init__(self, repo, token=None, cancel=None, progress=None, proxy=None, discovery_timeout=None):
         self.repo = repository(repo)
+        # Optional startup discovery has a total request budget and no retries.
+        # Explicit transfers and publishing retain their existing timeouts.
+        self._discovery_deadline = monotonic() + discovery_timeout if discovery_timeout is not None else None
         self._token, self.auth_source = credentials() if token is None else (token, '会话凭据')
         if any(character.isspace() for character in self._token):
             raise TemplateError('GitHub 凭据格式无效，请重新登录')
@@ -270,6 +273,11 @@ class GitHub:
 
     def _open(self, path, method='GET', data=None, accept='application/vnd.github+json', upload=False, size=None):
         check_cancel(self.cancel)
+        timeout = 30
+        if self._discovery_deadline is not None:
+            timeout = min(timeout, self._discovery_deadline - monotonic())
+            if timeout <= 0:
+                raise TemplateError('自动发现已超时；可点击“连接仓库”或“检查管理器更新”重试。')
         origin = 'https://uploads.github.com' if upload else API
         headers = {'Accept': accept, 'X-GitHub-Api-Version': API_VERSION,
                    'User-Agent': 'OMFIT-template-manager/1.3'}
@@ -281,7 +289,7 @@ class GitHub:
             headers['Content-Length'] = str(size)
         req = request.Request(origin + path, data=data, headers=headers, method=method)
         try:
-            return self.opener.open(req, timeout=30)
+            return self.opener.open(req, timeout=timeout)
         except error.HTTPError as exc:
             status = exc.code
             remaining = exc.headers.get('X-RateLimit-Remaining', '')
@@ -314,7 +322,7 @@ class GitHub:
         # Restart the complete GET, including response.read(), on a fresh
         # connection.  An uncertain POST/PUT/PATCH must never be sent twice.
         read_only = method.upper() == 'GET' and data is None and not kwargs.get('upload', False)
-        attempts = READ_ATTEMPTS if read_only else 1
+        attempts = READ_ATTEMPTS if read_only and self._discovery_deadline is None else 1
         for attempt in range(1, attempts + 1):
             check_cancel(self.cancel)
             try:

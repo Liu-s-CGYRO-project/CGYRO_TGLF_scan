@@ -41,7 +41,10 @@ class ManagerUpdateUI:
             self.tasks.invalidate('manager-check')
         try:
             proxy = self._selected_proxy()
-            sources = self.session.manager_sources() if self.session is not None else {}
+            # Automatic discovery needs release metadata only. Reading live
+            # OMFIT source nodes can inflate every lazy file on the UI thread;
+            # reserve that snapshot and file comparison for explicit updates.
+            sources = self.session.manager_sources() if not automatic and self.session is not None else {}
         except Exception as exc:
             if automatic:
                 self._automatic_manager_checked(generation, None, exc)
@@ -55,9 +58,10 @@ class ManagerUpdateUI:
             self._manager_auto_cancel = cancel
         module_dir = Path(__file__).resolve().parents[1]
         def check():
-            client = GitHub(DEFAULT_REPOSITORY, proxy=proxy, cancel=cancel)
+            client = GitHub(DEFAULT_REPOSITORY, proxy=proxy, cancel=cancel,
+                            discovery_timeout=20 if automatic else None)
             result = check_manager_update(client)
-            if result['available'] and result.get('incremental'):
+            if not automatic and result['available'] and result.get('incremental'):
                 try:
                     result['plan'] = plan_incremental(client, result, module_dir, sources)
                 except Cancelled:

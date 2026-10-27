@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.26。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.27。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 
 
@@ -12,6 +12,8 @@
 
 `store_result(..., summary_row=row)` 在新点验证完成后写入 `result_summary`：结果 ID、求解器状态、末模拟时间、样本数、检查点可用性/时间/原因、总字节和逐文件大小。检查点摘要复用既有 `__STORAGE__/checkpoints`；不可变 owner/文件复用原校验信息。摘要不缓存时间平均值，数值表每次按所选比例计算并列出实际时间窗口和样本数；图题标注末段比例。
 
+`ensure_layout` 对当前 schema 的常规调用只查历史顶层标记，不能递归检查每个旧 manifest 的 point_table。旧 schema、遗留分支和显式 `audit_history=True` 保留完整迁移检查；全库 compact/prune 与整理入口开启深检，有界提交和有界回收不扩大范围。历史记录的写入方必须保持其仅含元数据的契约，不能在已迁移记录的深层塞入结果文件或引用。
+
 选择器只读扫描头，选定结果直接取一个扫描的点表。任务列表使用头部 `task_counts`；旧索引缺少计数时显示未计数，不为了填数字解析全部点。同步只查询当前任务元数据。下载重试复用同点目录、匹配 owner 的已验证摘要；一个点下载失败不覆盖它的旧结果，其他验证完成的点仍可归档。全库哈希、统计与清理只在明确维护入口执行。
 
 归档在树外准备和验证后安装：新扫描替换相同完整坐标；续算优先收敛，再比较最后模拟时间，失败续算不能覆盖原有正常结果。未选坐标保留。不同扫描视图指向相同完整输入时复用同一当前物理结果，不保存整批历史快照。`submission_complete` 与 `scan_complete` 分开；未知旧计划不宣称完整。尚未发布的独有输出留在 RUN_DB 的任务记录，处理完成才释放冗余引用。
@@ -20,8 +22,61 @@
 
 任务删除默认只删记录。显式勾选结果删除才解除对应公开点引用；两次点击确认仍绑定范围和版本。无历史链保护。物理文件清理由显式维护检查所有当前结果及待处理任务引用后执行；任务删除不触发全库剪枝、哈希或统计。
 
-旧工程用 1.24.26 仅更新代码并保留输入/结果/设置，关闭旧结果窗口后重新打开；无需先整理整库或恢复历史快照。已有索引直接使用，缺少轻量摘要显示待校验；实际使用或收集对应点时补齐必要信息。不能确定坐标或文件的旧点单独报告并保留，不凭 p 点号或目录猜匹配。
+旧工程用 1.24.27 仅更新代码并保留输入/结果/设置，关闭旧结果窗口后重新打开；无需先整理整库或恢复历史快照。已有索引直接使用，缺少轻量摘要显示待校验；实际使用或收集对应点时补齐必要信息。不能确定坐标或文件的旧点单独报告并保留，不凭 p 点号或目录猜匹配。
 
+
+## 当前 GUI 刷新边界
+
+`OMFITlib_gui_api.adapt` 按控件所属区域路由刷新，不能把 `updateGUI=True` 一律解释成整窗刷新，也不能一律改成 `False`。局部区域由 `gui_deferred.DeferredSection` / `TabPages` 声明；`local=True` 提供字段边界，`action=True` 提供业务动作边界。同一刷新区域的多次请求合并执行，其他窗口不随之重建。
+
+| 操作 | 刷新边界 | 实现与理由 |
+| --- | --- | --- |
+| 下拉框、勾选框、影响结构或预览的参数 | 最近的 `section` | 字段默认找 `_cgyro_local_refresh`；保留原生提交、校验与重置语义。 |
+| 不改变可见布局的普通数值 | 不立即重绘 | `updateGUI=False` 提交后仅使相关缓存页面失效，下一次进入预览或运行页时重新构建。 |
+| 全选、清空选择、单项/分组“沿用输入” | 当前 `section` | 这类按钮显式传 `refresh_scope='section'`；不重建父工作页。 |
+| 提交、收集、恢复、实际删除、应用配置 | 最近的 `page` | 按钮默认找 `_cgyro_action_refresh`，更新当前工作页正文或当前比较模式，使相关提示和任务/结果入口保持一致。 |
+| 运行配置字段 | 环境配置页正文 | 内部标签使用 `local=False`，与上方共用的“应用”状态一起更新；隐藏标签仍不构建。 |
+| 工作页面导航、内层标签切换 | 目标工作页正文或选中标签 | 使用 `ProjectUI.select_page` / `nav` 或 `TabPages`；只构建需要显示的区域，已经构建且未失效的标签可复用。 |
+| 顶部显式“刷新” | 当前原生 `window` | `refresh_scope='window'` 重新执行该窗口脚本和库导入；用于明确要求重载的操作。 |
+| 没有局部区域的旧独立 GUI | 该 GUI 所属表单 | 找不到 `section` / `page` 时只回退到实际 owner，不扩大为所有用户设置窗口。 |
+
+“page”在这里表示声明的动作区域，不等同于整个原生 TopLevel。主工作页正文、独立结果浏览器、独立样式工具、TGLF 多输入工具以及比较模式分别声明动作区域。业务动作可能需要让同页的其他标签失效；这不要求立即创建隐藏标签。`gui._cgyro_view_revision` 只管理界面失效，不缓存科学结果或绕过提交检查。
+
+异步完成和弹窗保存不能在触发时读取进程全局 `_aux['parentGUI']`。应在创建按钮或弹窗之前调用 `ui.refresh_callback(scope='section' 或 'page', widget=可选锚点)`，把返回的回调传入操作。指定的锚点必须属于发起操作的区域；省略时捕获当前构建区域。图例保存使用当前比较区域的回调，运行配置应用使用当前工作页回调。普通视图回调的区域已关闭后直接结束，不重建旧页，也不自动转向其他页。不要把这些运行时回调写入工程树。
+
+任务管理的数据变更是明确例外：独立 `TaskManager` 弹窗可跨工作页面导航和显式原生刷新存活。`CgyroPage.cgyro_tasks_refresh` 先固定所属顶层窗口，在删除完成时从该窗口注册项取得当前 `parentGUI`，然后只请求其当前 `page` 正文。这样删除后的记录、结果选项和提示会更新，而不依赖已经销毁的结果标签、不重开旧页、不广播所有窗口，也不解析全部结果。所属窗口关闭后不再刷新；复用任务管理弹窗时可重新绑定当前所属窗口的回调。
+
+```python
+# 局部视图按钮：只重建选择列表所在标签。
+ui.Button('全选', select_all, updateGUI=True, refresh_scope='section')
+
+# 弹窗可能在其他页面构建之后才结束，提前固定其发起区域。
+changed = ui.refresh_callback(scope='section')
+ui.Button('编辑…', lambda: open_editor(on_changed=changed), updateGUI=False)
+```
+
+主窗口的工作页面选择器和导航按钮是纯视图控件，不发送原生 `<<update_treeGUI>>`，避免一次导航先刷新主树、再重建整个 GUI。真实输入修改仍保留原生树通知、值校验及 `postcommand`；不能全局屏蔽主树事件来提速。按需结果代理必须在主树分类和折叠展示时返回轻量属性，不能借一次正常树通知解析结果数组。
+
+比较绘图的显示字段显式使用 `adapt(ui).view_only()`，仅过滤其原生树重绘事件；它仍保存显示设置、执行重置和本地回调，不适用于物理输入。频率统计缓存只属于当前绘图 context，键包含物理 owner/模块和平均窗口，不能使用 p 编号或作业号替代。TGLF 的谱转换缓存只属于当次 `ResultView`；下次绘图创建新视图。两者都不能写进 RUN_DB 或变成跨操作缓存，以免平均窗口或结果变化后复用旧值。原生 CGYRO reader 首次读取所选点仍可能同时解码该点场文件，本轮没有替换其科学格式解析器。
+
+保留的整窗例外需要明确说明原因：顶部“刷新”由用户主动重载；模板 apply/undo 替换脚本对象后只重建受影响的已打开窗口；原生模块载入仍由宿主管理。`ShotTimeDevice` 写入共享 `MainSettings`，不在通用字段局部化范围。`UpdateGUI(all_windows=True)` 仅是兼容接口，普通工程业务不应调用它。同步、收集和任务结束不因“状态可能变化”而请求所有窗口更新。
+
+当前有以下 23 个旧 GUI 脚本仍使用原生条件表单、`Tab` 或 `CompoundGUI`。它们都经过适配器；嵌入已有局部区域时服从外层边界，直接独立打开且没有局部区域时仍重建自身表单。不能宣称这些旧界面已经做到每个字段独立重绘。
+
+| 目录（相对于 `CGYRO_TGLF_scan`） | 仍使用表单边界的脚本 |
+| --- | --- |
+| `TGLF_scan/GUIS` | `DV_scans_subgui.py`、`main_DV_gui.py`、`particleDandVgui.py`、`selection_GUI.py`、`tglf_radial_gui.py`、`tglf_scan_gui.py` |
+| `TGLF_scan/TGLF/GUIS` | `constraints_GUI.py`、`scanGUI.py`、`TGLFfromTGYROgui.py`、`TGLF_GUI.py`、`uqGUI.py` |
+| `TGLF_scan/TGYRO/GUIS` | `D_and_v_gui.py`、`Plotgui.py`、`Rungui.py`、`TGLFinputGUI.py`、`TGYROgui.py` |
+| `TGLF_scan/TGYRO/PROFILES_GEN/GUIS` | `blendEPEDgui.py`、`modifyIonsGUI.py`、`standaloneGUI.py`、`vgenGUI.py` |
+| `TGLF_scan/TGYRO/PROFILES_GEN/TRXPL/GUIS` | `TRXPLgui.py` |
+| `Transfer_tool/GUIS` | `convert.py`、`transfer.py` |
+
+继续缩小这些表单时，先识别物种数、扫描轴、输入源等字段对同表单其他控件的依赖，再迁移对应标签/分组到 `TabPages`。不要机械关闭刷新，留下与新值不符的旧控件；也不要另建第二套标签生命周期。
+
+刷新范围与数据读取范围是两项独立约束。切页、修改参数、同步状态和删除任务只查询所需元数据或索引摘要，不遍历并解析全部结果，不触发全库整理、哈希、空间统计或输入 ZIP 复制。结果列表先读取扫描头，选中扫描后读取其点摘要；绘图、数值表和续算才读取所选结果及相应文件。所选点缺少摘要时显示待校验，不为了填满列表而扫描整库。文件验证仍在收集当前点、准备选中点续算或显式维护时执行。
+
+回归至少核对 `test_gui_refresh_native` 的 section/page/window 路由、跨窗口回调、保存锁和关闭行为，`test_gui_tab_pages` / `test_cgyro_scan_refresh` / `test_workbench_navigation` 的导航及标签生命周期，以及 `test_cgyro_task_manager` 的删除、图例保存和运行配置回调。`test_refresh_boundaries` 验证独立工具边界、隐藏 TGLF 多输入结果零读取，以及任务弹窗跨导航/显式原生刷新后更新当前正文。用 `test_cgyro_read_boundaries` 检查非数据操作零结果解析；只观察重绘次数不能证明文件读取已按需。
 
 ## 热更新时布局对象的生命周期（1.24.24）
 
@@ -35,7 +90,7 @@
 
 `gui_deferred.TabPages` 统一 CGYRO、TGLF、转换、运行配置与对比页面的标签生命周期。真实 Tk 只构建当前页；切页保留已构建控件及未提交文字。无 Tk 的结构检查仍遍历全部标签。不得再次为每个页面复制 Notebook 事件处理，也不要用窗口重建模拟切页。
 
-页面内编辑通过 `_cgyro_local_refresh` 定位最近的局部区域；原生回调先提交值，再合并一次重绘。普通数值编辑使用 `updateGUI=False`，只让其他已缓存页失效；打开“运行”或“检查配置”、真正提交时仍执行完整校验。结构、预览会随之改变的下拉项保留局部重绘。按钮改变任务/结果或顶层提示时刷新所属窗口；运行配置页使用 `local=False`，保证“应用”状态与表头同步，不因追求局部刷新而显示旧状态。
+页面内编辑通过 `_cgyro_local_refresh` 定位最近的局部区域；原生回调先提交值，再合并一次重绘。普通数值编辑使用 `updateGUI=False`，只让其他已缓存页失效；打开“运行”或“检查配置”、真正提交时仍执行完整校验。结构、预览会随之改变的下拉项保留局部重绘。按钮改变任务/结果或顶层提示时，当前实现按上表刷新动作区域；运行配置页使用 `local=False`，保证“应用”状态与表头同步，不因追求局部刷新而显示旧状态。
 
 `gui._cgyro_view_revision` 是窗口内瞬态失效代数，只缓存控件，不缓存科学结果或验证结论。修改参数后其他页在下次选中时重建；当前区域及其祖先标为最新，避免切回父页又整体重绘。`DeferredSection` 保留原生 `_aux`/`pythonFile` 上下文，保存锁期间延后，关闭时撤销回调；构造失败保留旧区域。销毁旧区域后须剔除 `gui.notebooks` 和布局记录中的失效 Tk 对象，否则下一次原生 GUI.update 会访问已不存在的 Tcl 路径。适配器缓存构造函数，不得长期持有旧 Entry 或已关闭页面。
 
@@ -55,7 +110,7 @@ test_runtime_persistence 使用未修改的原生 OMFITlazyLoad、SortedDict 与
 
 ## 历史结果按需读取（1.24.20）
 
-`CgyroPage.render_cgyro` 从 1.24.23 起通过 `gui_deferred.TabPages` 管理全部标签，其局部构造由 `DeferredSection` 完成。内层扫描标签和外层结果标签不是同一个 Notebook；回调必须核对所属 Notebook，保存各自的标签选择，不得用 UpdateGUI 实现切页。首次选中结果页只补建该区域，未失效时复用；参数编辑只刷新所需区域，任务操作和手动刷新仍可重建所属窗口。失效的其他页到下次选中才构建。
+`CgyroPage.render_cgyro` 从 1.24.23 起通过 `gui_deferred.TabPages` 管理全部标签，其局部构造由 `DeferredSection` 完成。内层扫描标签和外层结果标签不是同一个 Notebook；回调必须核对所属 Notebook，保存各自的标签选择，不得用 UpdateGUI 实现切页。首次选中结果页只补建该区域，未失效时复用；参数编辑刷新所需区域，任务操作刷新动作区域，顶部手动“刷新”才重建所属原生窗口。失效的其他页到下次选中才构建。
 
 延后构造时，必须恢复捕获的 `_aux` 和所属 GUI 的 `pythonFile`，使相对位置、锁和控件回调仍指向原工程；`finally` 恢复此前其他窗口的构造上下文。不能在事件回调中借用进程最后一次渲染的全局状态。只对新子树应用布局和按钮绑定，保留其他控件与尚未提交的文字。保存锁未释放时延后；已经切走则取消这次加载，关闭 Frame 时取消定时器。构造失败销毁未完成子树，下一次选择可重试。运行时 Frame/回调只属于当前窗口，不写入 SETTINGS。
 
@@ -104,7 +159,7 @@ test_runtime_persistence 使用未修改的原生 OMFITlazyLoad、SortedDict 与
 - 不按 `info.run_token` 删除整个混合扫描；使用每行的 `run_token`，在旧单来源格式中才允许索引头回退。多来源且缺失逐点身份时中止。重建 `__SCANS__` 和兼容头时必须选择保留的来源，不能引用已删除任务。
 - `cgyro_cleanup_state.commit_cleanup` 在每次原生写入前记录旧引用；仅在事务内部转换新原生容器，保留兼容头别名。不复制物理结果。回滚先恢复所有者再恢复索引，覆盖原生写入后才抛错与 prune 返回后 Abort。
 - `cgyro_db.run_is_deleted` 使用 `__STORAGE__.deleted_tasks[token]=True` 防止旧 GUI/收集 finally 重建任务；仅保存 token 布尔值。`save_current/require_retained_run/saved_run` 必须遵守此边界。只有已经验证原始身份和输入的显式恢复事务可移除此标记，并在 Abort 时恢复。
-- 任务窗口使用独立 Tk Toplevel，筛选只处理当前内存行，清除隐形选择；两次确认间处理事件后，必须再次检查选择和后台数据。第一次确认可滚动且按钮固定，1.24.16 起第二次使用按钮确认，默认取消；GUI 在确认后传递预览绑定的内部凭据，不让用户输入。工作台刷新只请求所属 GUI，不能广播 UpdateGUI。
+- 任务窗口使用独立 Tk Toplevel，筛选只处理当前内存行，清除隐形选择；两次确认间处理事件后，必须再次检查选择和后台数据。第一次确认可滚动且按钮固定，1.24.16 起第二次使用按钮确认，默认取消；GUI 在确认后传递预览绑定的内部凭据，不让用户输入。删除完成通过已捕获的所属窗口查找当前正文再请求局部更新，即使原结果标签或旧正文已被替换也不能丢失通知；不能广播 UpdateGUI。
 - 全工程清空通过 `manifest_sources` 检查所有保留记录，不能用当前 RUN_BATCH/focus 代替全局活动任务检查。删除按钮不具备 SSH、scancel、重新提交或文件系统清理权限。
 - 扩展删除对象时先补充新的身份/依赖规则与故障测试，再增加清单写入；不可在 GUI 回调中直接 pop 任意结果分支。详见 `test_cgyro_task_cleanup/test_cgyro_task_manager/test_gui_refresh_native/test_cgyro_job_recovery`。
 
@@ -344,7 +399,9 @@ check_start_capacity 只检查启动时已有占用；check_temp_start 通过三
 
 控件 updateGUI 会重新执行原生 GUI 和库导入。预检查只使用深拷贝的普通参数值；不得调用文件对象 duplicate，后者会创建临时文件。实际提交仍使用原生副本。半径标签优先读 Particle_processing.local_inputs 的 rho 元数据。
 
-CaseSelection._catalog_scope 仅在一次同步渲染中共享 catalog_runs 视图，finally 释放；独立子页刷新必须建立新目录。latest_cases 可接收该目录。不要以运行名、点数或对象 id 作为跨刷新有效性依据，不把目录或结果缓存写入 SETTINGS。
+CaseSelection._catalog_scope 在一次同步渲染中按需共享 catalog_runs 视图，finally 释放；只有案例选择器请求当前 run 的目录，绘图设置、全局样式不建立目录。独立子页刷新建立新的惰性视图；latest_cases 可接收它。多轴选择及绘图只枚举所选 scan 的点表，不扫描未选择的其他 scan。不要以运行名、点数或对象 id 作为跨刷新有效性依据，不把目录或结果缓存写入 SETTINGS。ComparisonUI 的纯视图字段使用 ProjectWidgets.view_only()，保留原生写值、重置和局部刷新，但不发送 OMFIT 数据树重绘事件；科学输入及业务按钮仍使用正常通知。
+
+绘图设置有自己的 section；选项变更只重建该设置区，selection_check 同步更新共享状态文字。数据是否可用在模式构建、检查选择、数据操作后的模式刷新时核验；点击绘图前再次核验，不把结果可用性永久缓存。TGLF 绘图选项不再为了刷新底部说明遍历全部作业的点状态。test_refresh_boundaries 用真实原生 CheckBox 验证三个 CGYRO run 共 3000 点在绘图选项打开/勾选时目录、点表、数据树事件、整窗刷新均为零；TGLF 选项不增加点访问，而显式检查仍能发现数据已不可用。
 
 ResultBrowser.render 以 resolve_stopped=False 读取选择项；有公开索引的停止任务只读索引，数据动作仍用 selected_record 的默认完整解析。没有公开索引的当前 partial/续算任务保留完整回退，以维持未归档结果的切片与操作入口。
 
@@ -352,15 +409,15 @@ configure_window_fonts 在同一字体配置下只注册一次；显式导入字
 
 ## 控件刷新范围（1.24.9）
 
-通过 OMFITlib_gui_api.adapt 构造本工程控件。普通 updateGUI=True 被替换为 _DeferredGUIRefresh 策略对象：原生代码在提交后测试其布尔值时，请求所属窗口并返回 False，阻止全局 <<update_GUI>>。不要提前 bool()、序列化或复制该对象到工程树。绑定按控件祖先查找 _GUIs，不能依赖全局最后绘制的 topGUI。每次 GUI 脚本渲染构造新的适配器，不跨渲染缓存构造函数快照。
+通过 OMFITlib_gui_api.adapt 构造本工程控件。普通 updateGUI=True 被替换为 _DeferredGUIRefresh 策略对象：原生代码在提交后测试其布尔值时，请求所属刷新区域并返回 False，阻止全局 <<update_GUI>>。1.24.9 初版只支持 owner 窗口，当前优先按本文“当前 GUI 刷新边界”选择 section/page。不要提前 bool()、序列化或复制该对象到工程树。绑定按控件祖先查找边界及 _GUIs，不能依赖全局最后绘制的 topGUI。每次 GUI 脚本渲染构造新的适配器，不跨渲染缓存构造函数快照。
 
-定时器用 after 而非 after_idle，避免原生 update_idletasks 在当前回调内删除控件；合并同一窗口的请求，save lock 期间重排定时器，Destroy 取消。更新仍在 Tk 主线程执行，范围是整个所属原生 GUI，不是局部控件重绘。
+定时器用 after 而非 after_idle，避免原生 update_idletasks 在当前回调内删除控件；合并同一刷新区域的请求，save lock 期间重排定时器，Destroy 取消。更新仍在 Tk 主线程执行；没有声明局部区域的旧 GUI 才回退到所属原生表单。
 
 原生 Button 的非全局分支仍会安排 250 ms 后重新启用。仅跟踪该按钮实例的 after 回调，Destroy 时取消；按钮已因任务内部刷新被删除时不再安排回调。不能扫描或清理全局定时器，否则会影响其他窗口。测试必须捕获 Tcl bgerror，单看 Python report_callback_exception 会漏报此类失效命令。
 
 保持原生参数校验、postcommand 和 reset 语义。不要用统一 postcommand 包装器代替原生刷新判断：norm 会覆盖它，delete_if_default 可能在构造时调用它，Entry 的重置只暂填文字而不提交。Entry 原生 showText 硬编码 True，必须通过仅替换 _Text 的本次构造函数副本转发请求；副本沿用原生代码与默认值，不重写输入编辑逻辑。ObjectPicker/ModulePicker 同样将内部控件导向适配器。
 
-适配器 UpdateGUI() 默认刷新捕获的所有者；top 指定一个目标，all_windows=True 显式请求原生全局行为。确有跨窗口依赖时应单独描述：ShotTimeDevice 每次写 MainSettings、模板 apply/undo 的事务校验、实际任务结束以及模块载入保留原生刷新。不得为缩小范围而改变计算、归档或事务验证行为。
+适配器 UpdateGUI() 默认从捕获的所有者寻找 page 边界；top 可指定目标，refresh_scope 可明确 section/page/window，all_windows=True 显式请求原生全局行为。延后执行应在构建时使用 refresh_callback 捕获边界。跨窗口例外及模板热更新范围见上表后的说明；不得为缩小范围而改变计算、归档或事务验证行为。
 
 ## 重跑隔离回归
 

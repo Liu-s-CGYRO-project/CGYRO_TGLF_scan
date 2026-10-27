@@ -17,11 +17,13 @@ from unittest.mock import patch
 
 FAKE_NATIVE = {'test_cgyro', 'test_compare', 'test_native_mapping', 'test_project',
                'test_project_runtime', 'test_tglf_multi'}
-NATIVE_SOURCE = {'test_gui_refresh', 'test_gui_refresh_controls', 'test_gui_refresh_native',
+NATIVE_SOURCE = {'test_gui_refresh', 'test_gui_refresh_controls', 'test_gui_refresh_native', 'test_cgyro_callback_imports',
                  'test_cgyro_remote_environment', 'test_cgyro_archive_reference',
-                 'test_cgyro_file_dedup', 'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_runtime_persistence'}
-TK_SUITES = {'test_gui_refresh_native', 'test_gui_font_performance', 'test_plot_window', 'test_cgyro_task_manager',
-             'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_cgyro_read_boundaries'}
+                 'test_cgyro_file_dedup', 'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_runtime_persistence',
+                 'test_workbench_navigation', 'test_refresh_boundaries'}
+TK_SUITES = {'test_gui_refresh_native', 'test_gui_font_performance', 'test_plot_window', 'test_cgyro_task_manager', 'test_manager_startup',
+             'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_cgyro_read_boundaries',
+             'test_workbench_navigation', 'test_refresh_boundaries'}
 
 
 def check_environment(path, omfit_source):
@@ -73,8 +75,9 @@ def main():
             scope.enter_context(patch.object(module.TemplateManager, '_startup', local_startup))
             print('ADAPTER: local fixture startup; automatic network discovery/check omitted; explicit actions unchanged', flush=True)
         if path.stem in NATIVE_SOURCE:
-            if path.stem in ('test_gui_refresh_native', 'test_cgyro_remote_environment', 'test_cgyro_archive_reference',
-                             'test_cgyro_file_dedup', 'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_runtime_persistence'):
+            if path.stem in ('test_gui_refresh_native', 'test_cgyro_callback_imports', 'test_cgyro_remote_environment', 'test_cgyro_archive_reference',
+                             'test_cgyro_file_dedup', 'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_runtime_persistence',
+                             'test_workbench_navigation', 'test_refresh_boundaries'):
                 importlib.import_module(path.stem).SOURCE = source
             else:
                 importlib.import_module('test_gui_refresh').CORE = source / 'omfit_classes/OMFITx.py'

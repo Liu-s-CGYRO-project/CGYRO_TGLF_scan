@@ -2,6 +2,7 @@
 from builtins import all, any, bool, dict, len, list, str, sum
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_gui_controls import checkbox
+from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_project_runtime import shared_issues
 from OMFITlib_tglf_multi_data import DEFAULTS, case_plan, duplicate_case, initialize, prepared_run_issues, profile_digest
 from OMFITlib_tglf_multi_plot import flux_summary
@@ -32,6 +33,15 @@ class MultiInputUI:
         self.settings['status'] = '\n'.join(messages) or '请先导入并勾选案例。'
 
     def render(self):
+        # Standalone and CompoundGUI entry points share the same action scope.
+        # Import/run actions rebuild this tool; ordinary edits stay in their tab.
+        self.content = deferred_section(self.ui, self._render, local=True, container=True, action=True)
+        if self.content is None:
+            return self._render()
+        self.content.show()
+
+    def _render(self):
+        self.settings, self.cases = initialize(self.root, self.factory)
         ui = self.ui
         ui.TitleGUI('TGLF 多 input.gacode 计算')
         intro = ui.Label('导入剖面 → 设置半径和 TGLF 参数 → 生成输入 → 计算与对比', align='left')
@@ -39,7 +49,13 @@ class MultiInputUI:
             ui.Button('导入多个 input.gacode', self.command('import_tglf_multi'), updateGUI=True)
             ui.Button('从目录批量导入', self.command('import_tglf_multi', directory=True), updateGUI=True)
             ui.Button('检查所选案例', self.check, updateGUI=True)
-        ui.Tab('1. 文件与案例')
+        renderers = {'cases': self.render_cases, 'settings': self.render_settings, 'results': self.render_results}
+        self.pages = TabPages(ui, {'cases': '1. 文件与案例', 'settings': '2. 计算设置', 'results': '3. 运行与结果'},
+                              self.settings, 'view_tab', lambda page: renderers[page]())
+        finish_gui_layout(intro, self.ui)
+
+    def render_cases(self):
+        ui = self.ui
         with ui.same_row():
             ui.ComboBox(self.prefix + "['coordinate']", {'rho（input.gacode 的 rho）': 'rho', 'r/a（归一化小半径）': 'r/a'},
                         '半径坐标', default='rho', updateGUI=True)
@@ -59,7 +75,9 @@ class MultiInputUI:
                 ui.Entry(path + "['extra']", '此案例参数', default='', help='例如 SAT_RULE=2; NKY=24; USE_BPER=true；覆盖共用参数。')
             ui.Label('{}\n{} 个径向点；{} 个离子；输入 SHA-256: {}'.format(
                 case['source'], case['info']['points'], case['info']['ions'], case['sha256'][:16]), align='left')
-        ui.Tab('2. 计算设置')
+
+    def render_settings(self):
+        ui = self.ui
         ui.Separator('共用 TGLF 设置')
         ui.Label('计算增长率/频率谱和通量；局部几何、梯度和物种由每个 input.gacode 生成。', align='left')
         with ui.same_row():
@@ -80,7 +98,9 @@ class MultiInputUI:
         ui.Button('打开统一环境配置', open_environment)
         checkbox(ui, self.prefix + "['continue_on_error']", self.settings, 'continue_on_error',
                  '单项失败后继续其他计算', default=True)
-        ui.Tab('3. 运行与结果')
+
+    def render_results(self):
+        ui = self.ui
         selected = sum(bool(case['enabled']) for case in self.cases.values())
         ui.Label('已选择 {} / {} 个案例。每次“生成输入”均新建记录；完成的结果会保留。'.format(selected, len(self.cases)), align='left')
         selected_cases = [case for case in self.cases.values() if case['enabled']]
@@ -105,7 +125,7 @@ class MultiInputUI:
                        for point in case['runs'].get(case['selected_run'], {}).get('points', {}).values())
         with ui.same_row():
             ui.Button('对比所选记录的频率与增长率', lambda: self.root['PLOTS']['TGLF_multi'].run(), state='normal' if can_plot else 'disabled')
-            ui.Button('刷新状态', lambda: None, updateGUI=True)
+            ui.Button('刷新状态', lambda: None, updateGUI=True, refresh_scope='section')
         ui.Label('结果选择独立于当前设置。更改参数后先重新生成输入；计算按案例和半径依次执行。', align='left')
         ui.Label('显示各案例原始 TGLF 归一化数值；不同剖面的物理单位比较需另行转换。', align='left')
         for key, case in self.cases.items():
@@ -130,4 +150,3 @@ class MultiInputUI:
                     ui.Label(flux_summary(attempt['result']), align='left')
         ui.Separator('检查与运行消息')
         ui.Label(self.settings['status'] or '就绪。计算结果随当前 OMFIT 工程保存，不进入 GitHub 模板。', align='left')
-        finish_gui_layout(intro, self.ui)
