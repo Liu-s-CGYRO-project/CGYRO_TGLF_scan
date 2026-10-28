@@ -6,7 +6,7 @@ import os
 from pathlib import Path, PurePosixPath
 import uuid
 
-from OMFITlib_tglf_multi_data import case_plan, initialize, prepared_run_issues, profile_digest, tgyro_input, tglf_text
+from OMFITlib_tglf_multi_data import case_plan, flux_summary, initialize, prepared_run_issues, profile_digest, tgyro_input, tglf_text
 from OMFITlib_project_runtime import shared_issues
 
 
@@ -109,6 +109,7 @@ class OMFITRunner:
                                  [(attempt['input.tglf'], 'input.tglf')], settings['tglf_command'], attempt)
             result = self.tglf(str(local))
             validate_result(result)
+            attempt['flux_summary'] = flux_summary(result)
             attempt['result'] = result
             attempt['status'] = 'complete'
         except BaseException as exc:

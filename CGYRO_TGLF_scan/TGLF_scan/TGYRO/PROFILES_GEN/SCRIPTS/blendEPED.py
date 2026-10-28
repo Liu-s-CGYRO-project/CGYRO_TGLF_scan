@@ -1,13 +1,14 @@
 # -*-Python-*-
 # Created by meneghini at 2015/02/11 22:06
 
+from OMFITlib_gui_api import task_action
 defaultVars(deadstart=False, verbose=False, test=True)
 
 if test:
     verbose = True
 
 if deadstart and not test:
-    root['SCRIPTS']['run_profiles_gen'].run(gEQDSK=EPED['OUTPUTS']['gEQDSK'], profpowbal=None)
+    task_action(root['SCRIPTS']['run_profiles_gen'], gEQDSK=EPED['OUTPUTS']['gEQDSK'], profpowbal=None)
 
 if verbose:
     figure()
@@ -146,4 +147,4 @@ for kk, (what, norm, name) in enumerate(merge_profiles):
         # legend(loc=2).draggable(True)
 
 # enforce quasineutrality, total pressure, zeff
-root['SCRIPTS']['enforce_quasineutrality'].run()
+task_action(root['SCRIPTS']['enforce_quasineutrality'])

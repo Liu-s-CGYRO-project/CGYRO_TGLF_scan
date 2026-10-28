@@ -36,6 +36,7 @@ if TRANSP is None:
         updateGUI=True,
         default=None,
         state='normal',
+        refresh_tree=False,
     )
     server = root['SETTINGS']['EXPERIMENT']['server']
     if server != 'CDF':
@@ -46,6 +47,7 @@ if TRANSP is None:
             updateGUI=True,
             default=None,
             state='normal',
+            refresh_tree=False,
         )
         OMFITx.Separator()
     else:
@@ -54,7 +56,7 @@ if TRANSP is None:
     OMFITx.ShotTimeDevice()
     if not is_device(device, 'CMOD'):
         _help = "TRANSP runID as either 'Z01' or '2601'"
-        OMFITx.Entry("root['SETTINGS']['EXPERIMENT']['runid']", 'TRANSP 运行名称', default='Z01', updateGUI=True, help=_help)
+        OMFITx.Entry("root['SETTINGS']['EXPERIMENT']['runid']", 'TRANSP 运行名称', default='Z01', updateGUI=True, help=_help, refresh_tree=False)
         if not root['SETTINGS']['EXPERIMENT']['runid']:
             OMFITx.End()
     else:
@@ -74,6 +76,7 @@ if TRANSP is None:
             '环向磁场方向',
             default=-1,
             updateGUI=False,
+            refresh_tree=False,
         )
         OMFITx.ComboBox(
             "root['SETTINGS']['PHYSICS']['directionIp']",
@@ -81,14 +84,15 @@ if TRANSP is None:
             '等离子体电流方向',
             default=1,
             updateGUI=False,
+            refresh_tree=False,
         )
 else:
     OMFITx.Label('RunID: ' + TRANSP['SETTINGS']['PHYSICS']['TRANSPID'] + ' set by TRANSP dependency')
     OMFITx.ShotTimeDevice(showDevice=False, showShot=False, showTime=True)
-OMFITx.Entry("root['SETTINGS']['EXPERIMENT']['avgtim']", '[+/-] avg [ms]', default=20, updateGUI=True)
+OMFITx.Entry("root['SETTINGS']['EXPERIMENT']['avgtim']", '[+/-] avg [ms]', default=20, updateGUI=False, refresh_tree=False)
 
 with OMFITx.same_row():
-    OMFITx.CheckBox("root['SETTINGS']['EXPERIMENT']['multiwindow']", '提取多个时间窗剖面', default=False, updateGUI=True)
+    OMFITx.CheckBox("root['SETTINGS']['EXPERIMENT']['multiwindow']", '提取多个时间窗剖面', default=False, updateGUI=True, refresh_tree=False)
     server = root['SETTINGS']['EXPERIMENT']['server']
     if server != 'CDF':
         OMFITx.CheckBox(
@@ -97,6 +101,7 @@ with OMFITx.same_row():
             default=False,
             updateGUI=False,
             help='Substract time derivative of pressure (dp/dt) from heating profile.\n Time evolution of pressure must be smooth',
+            refresh_tree=False,
         )
 
 
@@ -104,7 +109,8 @@ if root['SETTINGS']['EXPERIMENT']['multiwindow']:
 
     OMFITx.ShotTimeDevice(showShot=False, showDevice=False, multiTimes=True)
 OMFITx.ComboBox(
-    "root['SETTINGS']['EXPERIMENT']['nzones']", {'from TRANSP run': None}, '径向区域数', default=None, state='normal'
+    "root['SETTINGS']['EXPERIMENT']['nzones']", {'from TRANSP run': None}, '径向区域数', default=None, state='normal',
+    refresh_tree=False,
 )
 
 OMFITx.Separator()

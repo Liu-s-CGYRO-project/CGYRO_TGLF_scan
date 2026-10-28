@@ -136,7 +136,7 @@ def _dialog(parent, kind, import_path=None):
 
 
 def ensure_fonts(kind, parent=None):
-    result = cached_fonts(kind)
+    result = cached_fonts(kind, verify=False)
     if result is not None:
         return result
     parent = _parent(parent)

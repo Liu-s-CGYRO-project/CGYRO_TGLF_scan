@@ -379,6 +379,12 @@ def release_published_results(module, case, verified_cases=()):
     return candidates
 
 
+def matches_planned_coordinate(actual, planned):
+    """Allow collected generated defaults to extend a planned coordinate."""
+    return (all(actual.get(key, None) == value for key, value in planned.items() if key != 'values')
+            and all(actual['values'].get(name, None) == value for name, value in planned['values'].items()))
+
+
 def scan_completion(info, tasks, scope):
     """Bad legacy metadata makes coverage unknown, not a valid archive fail."""
     coverage, issues = [], list(scope.get('issues', []))
@@ -392,6 +398,5 @@ def scan_completion(info, tasks, scope):
     # Every known coordinate must match; extra solver defaults only strengthen
     # the collected identity. No absent planned point is manufactured here.
     return (not scope.get('unknown', []) and not issues and
-            all(any(all(actual.get(key, None) == value for key, value in coordinate.items() if key != 'values')
-                    and all(actual['values'].get(name, None) == value for name, value in coordinate['values'].items())
-                    for actual in coverage) for coordinate in scope['coordinates']))
+            all(any(matches_planned_coordinate(actual, coordinate) for actual in coverage)
+                for coordinate in scope['coordinates']))

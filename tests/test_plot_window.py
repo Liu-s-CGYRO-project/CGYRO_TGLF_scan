@@ -26,6 +26,9 @@ class LegacyNotebook:
     """Native widgets with the canvas-before-toolbar order in OMFIT 0.12.13."""
     def __init__(self, root):
         self.master = tk.Toplevel(root)
+        # This fixture owns geometry; host WM placement is outside the native
+        # canvas/toolbar test. Keep the exact position assertions below.
+        self.master.overrideredirect(True)
         self.master.geometry('710x710+40+40')
         self.notebook = ttk.Notebook(self.master)
         self.master.bind('<Configure>', self._update_size)

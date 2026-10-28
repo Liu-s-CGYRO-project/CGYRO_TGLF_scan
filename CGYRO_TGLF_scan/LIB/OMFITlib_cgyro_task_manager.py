@@ -186,21 +186,28 @@ class TaskManager:
         self.sort_reverse = {}
 
     def refresh(self):
+        # Explicit refresh rebuilds lightweight metadata once. Search reuses
+        # those rows instead of formatting and recreating every Tcl item.
+        for token in self.rows:
+            self.table.delete(token)
         self.rows = {row['token']: row for row in task_catalog(self.module)}
-        self.filter_rows()
-
-    def filter_rows(self):
-        # Filtering clears selection rather than retaining invisible deletions.
-        self.table.delete(*self.table.get_children())
-        query = self.query.get().strip().casefold()
+        self.search_text = {}
         for token, row in self.rows.items():
             values = (', '.join(row['jobs']) or '未提交/未知', ', '.join(row['servers']) or '未知',
                 ', '.join(row['runids']), ', '.join(task_case_caption(c) for c in row['cases']),
                 ', '.join(row['scans']), ('本地操作中' if row['busy'] else
                 ('已归档' if row['archived_points'] is None or row['archived_points'] else '未归档')) + ' / ' + ', '.join(row['statuses']),
                 row['archived_points'] if row['archived_points'] is not None else '旧索引未计数', row['retained_points'], token)
-            if not query or query in ' '.join(str(v) for v in values).casefold():
-                self.table.insert('', 'end', iid=token, values=values)
+            self.search_text[token] = ' '.join(str(v) for v in values).casefold()
+            self.table.insert('', 'end', iid=token, values=values)
+        self.filter_rows()
+
+    def filter_rows(self):
+        # Detached items keep their full task ID, but never a hidden selection.
+        self.table.selection_remove(self.table.selection())
+        query = self.query.get().strip().casefold()
+        self.table.set_children('', *(token for token, text in self.search_text.items()
+                                      if not query or query in text))
         self.selection_changed()
 
     def sort_rows(self, column):

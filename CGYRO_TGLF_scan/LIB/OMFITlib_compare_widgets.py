@@ -213,7 +213,8 @@ class ComparisonWidgets:
                           kwlabel={'width': 16, 'anchor': 'w'}, help='按显示顺序填写图例名称或关键词，用逗号分隔；支持 re:正则表达式。')
             refreshed = self.ui.refresh_callback(scope='section')
             self.ui.Button('编辑图例顺序…',
-                           lambda: self._edit_legend_order(state, default_legend_order, editor_title, refreshed), width=18)
+                           lambda: self._edit_legend_order(state, default_legend_order, editor_title, refreshed),
+                           width=18, refresh_tree=False)
         self.ui.Label('在图中点击图例，可显示或隐藏对应曲线。', align='left')
 
     def _edit_legend_order(self, state, default_text, title, refreshed):
@@ -287,8 +288,10 @@ class ComparisonWidgets:
                                        initialdir=initial_dir if os.path.isdir(initial_dir) else os.getcwd()) or None
 
     def _render_tolerance_toggle(self, path, state, key, label, **unused):
+        changed = getattr(self, '_update_selection_status', None)
         with self.ui.same_row():
-            self.ui.CheckBox(path(key), label, default=False, updateGUI=True, width=24)
+            self.ui.CheckBox(path(key), label, default=False, width=24, postcommand=changed)
             self.ui.Entry(path('error_tolerance'), '相对波动上限', default=STAT_DEFAULTS['error_tolerance'], width=10,
+                          postcommand=changed,
                           kwlabel={'width': 10, 'anchor': 'w'},
                           help='相对时间波动阈值，0.01 表示 1%。勾选过滤后，ω 或 γ 的相对波动超过此值的点被排除；未勾选时不执行过滤。')

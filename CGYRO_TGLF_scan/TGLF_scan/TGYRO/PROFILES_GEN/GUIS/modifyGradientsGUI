@@ -1,5 +1,7 @@
 # -*-Python-*-
 # Created by avdeevag at 19 Apr 2022  16:44
+from OMFITlib_gui_api import adapt, task_action
+OMFITx = adapt(OMFITx)
 
 """
 
@@ -15,28 +17,30 @@ OMFITx.TitleGUI('Modify Gradients')
 OMFITx.ObjectPicker("root['OUTPUTS']['input.gacode.mod']", objectType=OMFITinputgacode)
 
 
-OMFITx.Entry("scratch['quants_modGrad']", 'Profiles should be scaled for', default=['Te', 'Ti_1', 'Ti_2'])
-OMFITx.Entry("scratch['bc_modGrad']", 'Boundary point', default=0.8)
-OMFITx.Entry("scratch['scale_modGrad']", 'Scale', default=0.5)
-OMFITx.Entry("scratch['ext_modGrad']", 'extention for a new input.gacode file name', default='mod')
+OMFITx.Entry("scratch['quants_modGrad']", 'Profiles should be scaled for', default=['Te', 'Ti_1', 'Ti_2'], refresh_tree=False)
+OMFITx.Entry("scratch['bc_modGrad']", 'Boundary point', default=0.8, refresh_tree=False)
+OMFITx.Entry("scratch['scale_modGrad']", 'Scale', default=0.5, refresh_tree=False)
+OMFITx.Entry("scratch['ext_modGrad']", 'extention for a new input.gacode file name', default='mod', refresh_tree=False)
 
 
 with OMFITx.same_row():
     OMFITx.CheckBox(
         "scratch['write_modGrad']",
         lbl='Write new input.gacode file',
-        updateGUI=True,
+        updateGUI=False,
         default=True,
+        refresh_tree=False,
     )
     OMFITx.CheckBox(
         "scratch['plot_modGrad']",
         lbl='Plot profiles',
-        updateGUI=True,
+        updateGUI=False,
         default=True,
+        refresh_tree=False,
     )
 if 'input.gacode.mod' in root['OUTPUTS']:
 
     OMFITx.Button(
         'Write modified  input.gacode file and/or plot profiles',
-        lambda: root['SCRIPTS']['modify_gradients'].run(inp=root['OUTPUTS']['input.gacode.mod']),
+        lambda: task_action(root['SCRIPTS']['modify_gradients'], inp=root['OUTPUTS']['input.gacode.mod']),
     )

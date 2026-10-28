@@ -81,6 +81,30 @@ class TaskManagerTests(unittest.TestCase):
         self.changed.assert_called_once()
         self.assertEqual(self.window.selected_tokens(), [])
 
+    def test_filter_reuses_display_rows_and_never_reloads_task_catalog(self):
+        table = self.window.table
+        with patch.object(manager, 'task_catalog', side_effect=AssertionError('catalog reread')), patch.object(
+                manager, 'task_case_caption', side_effect=AssertionError('caption rebuilt')), patch.object(
+                table, 'insert', side_effect=AssertionError('row recreated')), patch.object(
+                table, 'delete', side_effect=AssertionError('row deleted')):
+            self.choose('first')
+            self.window.query.set('login117')
+            self.assertEqual(table.get_children(), ('other',))
+            self.assertTrue(table.exists('first'))  # Detached, not recreated.
+            self.assertEqual(self.window.selected_tokens(), [])
+            self.window.query.set('tyadmin09')
+            self.window.select_visible()
+            self.assertEqual(self.window.selected_tokens(), ['draft', 'first'])
+            self.window.query.set('')
+            self.assertEqual(set(table.get_children()), {'draft', 'first', 'other'})
+            self.assertEqual(self.window.selected_tokens(), [])
+        # Explicit refresh must also remove hidden stale rows, not leave tokens
+        # that collide when the same task is later inserted again.
+        self.window.query.set('login117')
+        self.window.refresh()
+        self.window.query.set('')
+        self.assertEqual(set(table.get_children()), {'draft', 'first', 'other'})
+
     def test_first_cancel_and_second_cancel_or_close_do_not_delete(self):
         self.choose('draft')
         with patch.object(manager, 'review_scope', return_value=False), patch.object(

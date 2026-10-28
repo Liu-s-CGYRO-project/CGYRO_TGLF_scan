@@ -5,6 +5,7 @@
 This script generates an ODS from the OUTPUT input.gacode and the D_and_v analysis of the latest TGYRO run
 """
 
+from OMFITlib_gui_api import task_action
 from omas.omas_physics import search_in_array_structure
 
 defaultVars(ods=ODS(), ip=None, time_index=0, update=['core_profiles', 'core_sources'])
@@ -109,4 +110,4 @@ if 'D_and_v' in root['OUTPUTS']:
 
 # save the run since we have updated the OUTPUTS folder
 if tgyro_save:
-    root['SCRIPTS']['saveTGYRO'].run()
+    task_action(root['SCRIPTS']['saveTGYRO'])

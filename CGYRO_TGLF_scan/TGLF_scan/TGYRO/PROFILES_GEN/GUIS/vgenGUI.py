@@ -1,3 +1,4 @@
+from OMFITlib_gui_api import plot_view
 from OMFITlib_gui_api import adapt
 OMFITx = adapt(OMFITx)
 # -*-Python-*-
@@ -29,11 +30,12 @@ OMFITx.ComboBox(
     updateGUI=True,
     state='normal',
     postcommand=root['SCRIPTS']['reorder_ions'].runNoGUI,
+    refresh_tree=False,
 )
 
 if EPED is not None and allowEPED and 'PROFILES' in EPED and len(EPED['PROFILES']) > 1:
     OMFITx.Tab('EPED')
-    OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['blendEPED']", '与 EPED 剖面混合', updateGUI=True)
+    OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['blendEPED']", '与 EPED 剖面混合', updateGUI=True, refresh_tree=False)
     if root['SETTINGS']['PHYSICS']['blendEPED']:
         OMFITx.CompoundGUI(root['GUIS']['blendEPEDgui'], '')
 
@@ -54,6 +56,7 @@ OMFITx.CheckBox(
     state,
     updateGUI=True,
     help='Calculates Er, vtor, vpol, angrot, Jbt when choose to run NEO',
+    refresh_tree=False,
 )
 
 if root['SETTINGS']['PHYSICS']['start_from'] == 'statefile' and 'prad' in profpowbal and np.any(profpowbal['prad']['data'] > 0):
@@ -63,11 +66,12 @@ if root['SETTINGS']['PHYSICS']['start_from'] == 'statefile' and 'prad' in profpo
         default=False,
         updateGUI=False,
         help='Subtract radiated power in excess of calculated D and C radiation from the electron heating power',
+        refresh_tree=False,
     )
 
 if root['SETTINGS']['PHYSICS']['calcEr']:
     model_options = {'Sauter': 0, 'Full NEO calculation': 2, 'Redl et al. (2021) analytic model': 5}
-    OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['sim_model']", model_options, '计算模型')
+    OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['sim_model']", model_options, '计算模型', refresh_tree=False)
     options = SortedDict()
     options[''] = None
     options['Low res'] = [15, 4, [17, 39]]
@@ -83,15 +87,15 @@ if root['SETTINGS']['PHYSICS']['calcEr']:
             ) = scratch['presets']
             scratch['presets'] = None
 
-    OMFITx.ComboBox("scratch['presets']", options, '预设分辨率', postcommand=setPresets, default=None, updateGUI=True)
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['vgen_N_XI']", '俯仰角分辨率 XI')
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['vgen_N_ENERGY']", '能量分辨率')
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['vgen_N_THETA']", '极向角分辨率 THETA（最小 / 最大）')
+    OMFITx.ComboBox("scratch['presets']", options, '预设分辨率', postcommand=setPresets, default=None, updateGUI=True, refresh_tree=False)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['vgen_N_XI']", '俯仰角分辨率 XI', refresh_tree=False)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['vgen_N_ENERGY']", '能量分辨率', refresh_tree=False)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['vgen_N_THETA']", '极向角分辨率 THETA（最小 / 最大）', refresh_tree=False)
 
     # -----------------------
     # neglect last # of ions
     # -----------------------
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['neglect_last_ions']", '排除末尾指定数量的离子', default=0)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['neglect_last_ions']", '排除末尾指定数量的离子', default=0, refresh_tree=False)
     rot_model_opts = SortedDict()
     rot_model_opts['Default'] = None
     rot_model_opts['Strong'] = 2
@@ -100,7 +104,7 @@ if root['SETTINGS']['PHYSICS']['calcEr']:
 Default: Strong rotation ordering (-vel 2) if CERFile is provided, weak (-vel 1) if not
 Strong: Force strong rotation ordering (-vel 2)
 Weak: Force weak rotation ordering (-vel 1)'''
-    OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['rotation_ordering']", rot_model_opts, '旋转排序', default=None, help=help_txt)
+    OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['rotation_ordering']", rot_model_opts, '旋转排序', default=None, help=help_txt, refresh_tree=False)
 OMFITx.Tab('')
 
 if not compoundGUI or showRunButton:
@@ -127,31 +131,35 @@ if 'input.gacode' in root['OUTPUTS']:
     what += ['Vpol']
 if len(what):
     OMFITx.ComboBox(
-        "scratch['plotUsePSI']", {'rho': 0, 'psi': 1}, 'Plot ' + ' and '.join(what) + ' as function of', default=0, updateGUI=True
+        "scratch['plotUsePSI']", {'rho': 0, 'psi': 1}, 'Plot ' + ' and '.join(what) + ' as function of', default=0, updateGUI=False,
+        refresh_tree=False,
     )
     with OMFITx.same_row():
         OMFITx.Label('绘图')
         if 'jboot' in root['OUTPUTS']:
             OMFITx.Button(
                 '自举电流模型',
-                lambda: root['PLOTS']['plot_quantities'].plotFigure(quantity='Jboot', rho_name=['rho', 'psi'][scratch['plotUsePSI']]),
+                lambda: plot_view(root['PLOTS']['plot_quantities'], quantity='Jboot', rho_name=['rho', 'psi'][scratch['plotUsePSI']], fig=figure()),
+                refresh_tree=False,
             )
 
         if 'Er' in root['OUTPUTS']:
             OMFITx.Button(
                 '径向电场',
-                lambda: root['PLOTS']['plot_quantities'].plotFigure(quantity='Er', rho_name=['rho', 'psi'][scratch['plotUsePSI']]),
+                lambda: plot_view(root['PLOTS']['plot_quantities'], quantity='Er', rho_name=['rho', 'psi'][scratch['plotUsePSI']], fig=figure()),
+                refresh_tree=False,
             )
 
         if 'input.gacode' in root['OUTPUTS']:
             OMFITx.Button(
                 '极向速度',
-                lambda: root['PLOTS']['plot_quantities'].plotFigure(quantity='Vpol', rho_name=['rho', 'psi'][scratch['plotUsePSI']]),
+                lambda: plot_view(root['PLOTS']['plot_quantities'], quantity='Vpol', rho_name=['rho', 'psi'][scratch['plotUsePSI']], fig=figure()),
+                refresh_tree=False,
             )
 
 with OMFITx.same_row():
     if 'input.gacode' in root['OUTPUTS']:
         OMFITx.Label('绘制 GACODE 结果')
-        OMFITx.Button('input.gacode', "root['OUTPUTS']['input.gacode'].plotFigure")
+        OMFITx.Button('input.gacode', "root['OUTPUTS']['input.gacode'].plotFigure", refresh_tree=False)
         if gEQDSK is not None:
-            OMFITx.Button('将几何形状叠加到 gEQDSK', "root['PLOTS']['gEQDSKoverlay'].plotFigure")
+            OMFITx.Button('将几何形状叠加到 gEQDSK', lambda: plot_view(root['PLOTS']['gEQDSKoverlay'], fig=figure()), refresh_tree=False)

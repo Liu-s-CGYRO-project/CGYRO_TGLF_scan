@@ -1,6 +1,7 @@
 # -*-Python-*-
 # Created by meneghini at 2013/03/08 18:01
 """Compute one scan axis and retain completed points if the batch fails."""
+from OMFITlib_gui_api import task_action
 from builtins import enumerate, float, isinstance, len, list, range, repr, sorted, str
 import copy
 
@@ -77,7 +78,7 @@ if len(scratch['input.tglf.scan']) == 0:
 tmp = OMFITtree()
 batch_error = None
 try:
-    root['SCRIPTS']['runTGLFbatch'].run(
+    task_action(root['SCRIPTS']['runTGLFbatch'],
         inputTGLF=scratch['input.tglf.scan'], results=tmp,
         enforce_constraints=True, continue_on_error=True)
 except BaseException as exc:

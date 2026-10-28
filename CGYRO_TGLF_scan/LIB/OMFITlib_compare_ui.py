@@ -18,7 +18,7 @@ from OMFITlib_compare_cases import (
     CaseSelection,
 )
 from OMFITlib_project import comparison_issues
-from OMFITlib_gui_api import adapt, plot_view
+from OMFITlib_gui_api import adapt, plot_view, gui_view
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_compare_state import (
@@ -102,7 +102,7 @@ class ComparisonUI(CaseSelection):
         self.plot_settings = plot_state(self.mode, self.state)
         self.prefix = "root['SETTINGS']['PHYSICS'][{!r}]".format(self.mode)
         self.status_label = None
-        missing = comparison_issues(self.root, self.mode)
+        self.missing = comparison_issues(self.root, self.mode)
         self.ui.Label(MODE_LABELS[self.mode].split(' · ', 1)[-1], align='left')
         if self.mode == 'TGLF_vs_TGLF':
             self.ui.ComboBox(self._plot_path('tglf_vs_tglf_mode'),
@@ -125,8 +125,7 @@ class ComparisonUI(CaseSelection):
             # Plot options change validation text, but not archive availability.
             # Data-changing actions/checks rebuild the mode; plotting checks
             # availability again immediately before reading selected results.
-            if self.status_label is not None:
-                self.status_label.configure(text=self._selection_status(missing))
+            self._update_selection_status()
         def render(page):
             if page == 'plot':
                 section = deferred_section(self.ui, plot_options, local=True, container=True)
@@ -135,17 +134,18 @@ class ComparisonUI(CaseSelection):
                 renderers[page]()
             if page == 'actions':
                 self._render_related_tools(open_templates)
-        # Edits also update the mode's shared selection footer. The nearest
-        # outer mode is the refresh boundary, not all four comparison modes.
-        self.control_pages = TabPages(self.ui, CONTROL_TABS, self.state, 'view_tab', render, local=False)
+            self._update_selection_status()
+        # Dependent controls rebuild only their tab; the shared footer is a
+        # label update, not a reason to recreate the notebook or its siblings.
+        self.control_pages = TabPages(self.ui, CONTROL_TABS, self.state, 'view_tab', render)
         self.controls_notebook = self.control_pages.notebook
         # EFIT/TGLF native GUIs return to the untabbed frame for common actions.
         self.ui.Tab('')
         self.ui.Separator()
-        self.status_label = self.ui.Label(self._selection_status(missing), align='left')
+        self.status_label = self.ui.Label(self._selection_status(self.missing), align='left')
         with self.ui.same_row():
-            self.ui.Button('检查选择', self._refresh_check, updateGUI=True, width=16, refresh_tree=False)
-            self.ui.Button('绘制所选数据', self._plot, state='disabled' if missing else 'normal', width=20, refresh_tree=False,
+            self.ui.Button('检查选择', self._refresh_check, width=16, refresh_tree=False)
+            self.plot_button = self.ui.Button('绘制所选数据', self._plot, state='disabled' if self.missing else 'normal', width=20, refresh_tree=False,
                            help='按当前案例、参数和绘图设置生成图形。计算结果仅在点击后读取。')
 
     def _selection_status(self, missing):
@@ -167,15 +167,22 @@ class ComparisonUI(CaseSelection):
     def _plot_path(self, key):
         return self._path(key) if self.mode == 'CGYRO_vs_CGYRO' else self._path('plot', key)
 
+    def _update_selection_status(self, location=None):
+        if self.status_label is not None:
+            self.status_label.configure(text=self._selection_status(self.missing))
+
     def _entry(self, key, label, default, help='', width=18):
         self.ui.Entry(self._plot_path(key), label, default=default, help=help, width=width,
+                      postcommand=self._update_selection_status,
                       kwlabel={'width': 16, 'anchor': 'w'})
 
     def _check(self, key, label, default=False, help=''):
-        self.ui.CheckBox(self._plot_path(key), label, default=default, updateGUI=True, help=help)
+        self.ui.CheckBox(self._plot_path(key), label, default=default, help=help,
+                         postcommand=self._update_selection_status)
 
-    def _combo(self, key, options, label, default, help=''):
-        self.ui.ComboBox(self._plot_path(key), options, label, default=default, updateGUI=True,
+    def _combo(self, key, options, label, default, help='', refresh=False):
+        self.ui.ComboBox(self._plot_path(key), options, label, default=default, updateGUI=refresh,
+                         postcommand=self._update_selection_status,
                          help=help, width=24, kwlabel={'width': 16, 'anchor': 'w'})
 
     def _render_scaling(self):
@@ -184,11 +191,12 @@ class ComparisonUI(CaseSelection):
             OrderedDict([('原始 ω、γ', [False, False]),
                          ('ω / ky、γ / ky', [True, False]),
                          ('ω / ky²、γ / ky²', [False, True])]),
-            '谱显示量', default=[True, False], updateGUI=True, width=24,
+            '谱显示量', default=[True, False], width=24,
+            postcommand=self._update_selection_status,
             kwlabel={'width': 16, 'anchor': 'w'})
 
     def _render_ratio(self, cross_model=False):
-        self._combo('gamma_ref_mode', OrderedDict([('全部 ky', 'all ky'), ('指定 ky', 'single ky')]), '参考统计范围', 'all ky')
+        self._combo('gamma_ref_mode', OrderedDict([('全部 ky', 'all ky'), ('指定 ky', 'single ky')]), '参考统计范围', 'all ky', refresh=True)
         self._entry('gamma_ref_value', '参考扫描值', '', help='留空时采用所选数据中的第一个有效扫描值。')
         if self.plot_settings.get('gamma_ref_mode', 'all ky') == 'single ky':
             self._entry('gamma_ref_ky_values', '参考 ky', '', help='多个 ky 用逗号分隔。')
@@ -218,7 +226,7 @@ class ComparisonUI(CaseSelection):
                 self._combo('tglf2d_x_axis', ['para1', 'para2'],
                             '变化的扫描参数', 'para1', help='另一个扫描参数在各条曲线中保持固定。')
             if flux:
-                self._combo('tglf_flux_species', OrderedDict([('电子与离子', 'Both'), ('仅电子', 'Electron only'), ('仅离子', 'Ion only')]), '通量物种', 'Both')
+                self._combo('tglf_flux_species', OrderedDict([('电子与离子', 'Both'), ('仅电子', 'Electron only'), ('仅离子', 'Ion only')]), '通量物种', 'Both', refresh=True)
                 if settings.get('tglf_flux_species', 'Both') != 'Electron only':
                     self._check('tglf_flux_merge_ions', '合并所有离子通道', True)
             else:
@@ -233,7 +241,7 @@ class ComparisonUI(CaseSelection):
                           ('三维扫描图', 'Plot 3D'), ('Ballooning 本征函数', 'Plot eigen ball')])
         else:
             modes['增长率比值 γ / γ_ref'] = 'Plot γ/γ_ref'
-        self._combo('plot_mode', modes, '绘图类型', 'Plot 2D')
+        self._combo('plot_mode', modes, '绘图类型', 'Plot 2D', refresh=True)
         mode = settings.get('plot_mode', 'Plot 2D')
         time_traces = self_mode and mode == 'Plot time traces'
         ratio, eigen = mode == 'Plot γ/γ_ref', mode == 'Plot eigen ball'
@@ -257,7 +265,7 @@ class ComparisonUI(CaseSelection):
         if ratio:
             self._render_ratio(cross_model=not self_mode)
         elif eigen:
-            self._combo('eigen_ky_mode', OrderedDict([('最大增长率', 'max gamma'), ('指定 ky', 'single ky')]), 'ky 选择方式', 'max gamma')
+            self._combo('eigen_ky_mode', OrderedDict([('最大增长率', 'max gamma'), ('指定 ky', 'single ky')]), 'ky 选择方式', 'max gamma', refresh=True)
             if settings.get('eigen_ky_mode', 'max gamma') == 'single ky':
                 self._entry('eigen_ky_values', 'ky 列表', '', help='多个 ky 用逗号分隔。')
             else:
@@ -275,7 +283,7 @@ class ComparisonUI(CaseSelection):
                 self._combo('error_flag', OrderedDict([
                     ('仅频率 / 增长率谱', 'No_error'),
                     ('CGYRO 相对时间波动', 'CGYRO'),
-                    ('模型差值 / |CGYRO|', 'CGYRO-TGLF')]), '子图内容', 'CGYRO')
+                    ('模型差值 / |CGYRO|', 'CGYRO-TGLF')]), '子图内容', 'CGYRO', refresh=True)
                 if settings.get('error_flag', None) == 'No_error':
                     self._combo('comparison_layout', OrderedDict([('叠加显示', 'Overlay'), ('按模型分图', 'Separate models')]), '子图布局', 'Overlay')
                 if settings.get('error_flag', None) == 'CGYRO-TGLF':
@@ -291,11 +299,9 @@ class ComparisonUI(CaseSelection):
         self.ui.Separator('坐标轴与图例顺序')
         with self.ui.same_row():
             self._check('plot_log_x', 'X 对数轴')
-            self._check('plot_log_y', 'Y 对数轴')
+            self._check('plot_log_y', 'Y 对数轴', help='对数坐标会隐藏零值和负值。')
             if self.mode == 'CGYRO_vs_CGYRO' and self.plot_settings.get('plot_mode', None) == 'Plot 3D':
                 self._check('plot_log_z', 'Z 对数轴')
-        if self.plot_settings.get('plot_log_y', None):
-            self.ui.Label('Y 对数轴会隐藏零值和负值。', align='left')
         cg = self.state if self.mode == 'CGYRO_vs_CGYRO' else self.state.get('CGYRO', {})
         tg = self.state.get('TGLF', {})
         names = self._selected_param_keys(cg.get('selected_paras', {}))
@@ -326,13 +332,21 @@ class ComparisonUI(CaseSelection):
         self.ui.Separator('其他工具')
         with self.ui.same_row():
             if 'main' in guis:
-                self.ui.Button('工程总控', lambda: self.root['GUIS']['main'].run(), width=14)
+                self.ui.Button('工程总控', lambda: gui_view(self.root['GUIS']['main']), width=14, refresh_tree=False)
             if 'TGLF_multi' in guis:
-                self.ui.Button('TGLF 多输入', lambda: self.root['GUIS']['TGLF_multi'].run(), width=14)
+                self.ui.Button('TGLF 多输入', lambda: gui_view(self.root['GUIS']['TGLF_multi']), width=14, refresh_tree=False)
             if open_templates is not None:
-                self.ui.Button('模板 / GitHub', open_templates, width=14)
+                self.ui.Button('模板 / GitHub', open_templates, width=14, refresh_tree=False)
 
     def _refresh_check(self):
+        self.missing = comparison_issues(self.root, self.mode)
+        self._update_selection_status()
+        if self.plot_button is not None:
+            self.plot_button.configure(state='disabled' if self.missing else 'normal')
+        # Only the diagnostics tab contains a detailed copy of this report.
+        section = self.control_pages.sections.get('actions', None)
+        if section is not None:
+            section.redraw()
         return selection_check(self.root, self.mode)
 
     def _assert_selection(self):

@@ -11,6 +11,7 @@ from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_workbench_catalog import PAGES
 import OMFITlib_gui_fonts as fonts
+from OMFITlib_gui_api import gui_view
 
 REPO = Path(__file__).resolve().parents[1]
 SOURCE = native.SOURCE
@@ -33,6 +34,7 @@ class WorkbenchNavigationTests(unittest.TestCase):
             {'Tab', 'Label', '_Label', 'same_row'}, self.host.api.__dict__)
         self.host.api.TitleGUI = lambda title: self.host.owner.top.title(title)
         namespace = dict(tk=native.tk, ttk=native.ttk, PAGES=PAGES,
+                         gui_view=gui_view,
                          deferred_section=deferred_section, finish_gui_layout=finish_gui_layout,
                          render_page=self.render_page, ERROR_NOTICE_SUFFIX='error')
         for name in ('CgyroPage', 'RuntimePage', 'TransferPage', 'ScanControls'):
@@ -120,6 +122,27 @@ class WorkbenchNavigationTests(unittest.TestCase):
             self.assertIs(self.view.page_content.frame, body)
             self.assertEqual(self.script_runs, 1)
             self.assertEqual(self.host.updates, [])
+            self.assertEqual(self.tree_events, [])
+
+    def test_help_and_result_browser_open_without_main_tree_repaint(self):
+        opened = []
+        self.host.tree['GUIS'] = {'CGYRO_results': SimpleNamespace(run=lambda: opened.append(('GUIS', 'CGYRO_results')))}
+        self.ProjectUI.task.__globals__['read'] = lambda root, path: root['GUIS']['CGYRO_results']
+        self.ProjectUI.note.__globals__['show_help'] = lambda parent, text: opened.append(text)
+        def page(view):
+            view.actions.call = lambda *args, **kwargs: self.fail('Opening a view must not execute a data action')
+            view.note('Details', 'Help text')
+            view.task('Open results', ('GUIS', 'CGYRO_results'))
+        with patch.object(self.ProjectUI, 'render_selected_page', page):
+            self.build()
+            body = self.view.page_content.frame
+            for label in ('查看说明', 'Open results'):
+                self.host.button(body, label).invoke()
+                self.host.drain()
+            self.assertEqual(opened, ['Help text', ('GUIS', 'CGYRO_results')])
+            self.assertIs(self.view.page_content.frame, body)
+            self.assertEqual(self.tree_events, [])
+            self.assertEqual(self.script_runs, 1)
 
     def test_native_keyboard_selection_and_rapid_changes_build_only_latest_page(self):
         self.build()
@@ -137,20 +160,30 @@ class WorkbenchNavigationTests(unittest.TestCase):
         self.assertEqual(self.host.updates, [])
         self.assertEqual(self.tree_events, [])
 
-    def test_explicit_refresh_reloads_owner_and_saved_page_is_restored(self):
+    def test_explicit_refresh_rebuilds_current_page_without_imports_or_tree(self):
         self.build()
         self.choose('run')
-        saved = copy.deepcopy(self.state)
+        picker, content = self.view.page_picker, self.view.page_content
         self.host.tree['number'] = 91
-        self.choose('templates')
-        self.assertEqual(str(self.body_label.cget('text')), '91')
-        self.state = saved  # Saved/reopened settings supply the selected page.
         self.host.button(self.host.owner.top, '刷新').invoke()
         self.host.drain()
-        self.assertEqual(self.host.updates, [('owner', False)])
+        self.assertEqual(self.host.updates, [])
+        self.assertEqual(self.tree_events, [])
+        self.assertEqual(self.script_runs, 1)
+        self.assertIs(self.view.page_picker, picker)
+        self.assertIs(self.view.page_content, content)
         self.assertEqual(self.state['page'], 'run')
         self.assertEqual(self.view.page_picker.current(), list(PAGES.values()).index('run'))
         self.assertEqual(str(self.body_label.cget('text')), '91')
+
+    def test_reopened_gui_restores_saved_page(self):
+        self.build()
+        self.choose('run')
+        self.state = copy.deepcopy(self.state)
+        self.host.owner.update()
+        self.host.drain()
+        self.assertEqual(self.view.page_picker.current(), list(PAGES.values()).index('run'))
+        self.assertEqual(self.state['page'], 'run')
 
     def test_save_blocks_local_build_and_close_cancels_queued_navigation(self):
         self.build()

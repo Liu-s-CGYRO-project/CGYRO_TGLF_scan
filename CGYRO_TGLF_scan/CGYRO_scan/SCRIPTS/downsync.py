@@ -106,7 +106,7 @@ def output_probe_commands(manifest, point_ids):
     retries, so a fixed point count alone is not a safe command-size bound.
     """
     header = r'''cgyro_probe_point() {
-  local point="$1" point_id="$2" missing="" name code solver_errors fatal error size
+  local point="$1" point_id="$2" linear="$3" missing="" name code solver_errors fatal error size
   if [ -d "$point" ]; then
     size=$(du -sb -- "$point") || return 1
     size=${size%%[[:space:]]*}
@@ -122,6 +122,9 @@ def output_probe_commands(manifest, point_ids):
   if [ -s "$point/cgyro.exit" ]; then
     code=$(cat -- "$point/cgyro.exit"); [ "$code" = 0 ] || missing="$missing exit=$code"
   else missing="$missing no_exit_record"; fi
+  if [ "$linear" = 1 ] && ! grep -q -E 'Linear (converged|terminated at max time)' "$point/out.cgyro.info" 2>/dev/null; then
+    missing="$missing no_normal_termination"
+  fi
   if [ -s "$point/out.cgyro.info" ]; then
     solver_errors=$(grep -E "^[[:space:]]*ERROR:" "$point/out.cgyro.info" || true)
     if [ -n "$solver_errors" ]; then
@@ -149,7 +152,7 @@ def output_probe_commands(manifest, point_ids):
         if any(char in str(point) for char in ('|', '\n', '\r', '\x00')):
             raise ValueError('Invalid CGYRO point ID in output probe.')
         call = ('cgyro_probe_point ' + shell_quote(point_result_dir(manifest, point)) + ' '
-                + shell_quote(point) + ' || exit $?\n')
+                + shell_quote(point) + (' 1' if manifest.get('case_tag', '') == 'linear' else ' 0') + ' || exit $?\n')
         candidate = header + ''.join(calls) + call
         if len(('/bin/bash -c ' + shell_quote(candidate)).encode('utf-8')) > OUTPUT_PROBE_MAX_BYTES:
             if points:
@@ -353,6 +356,7 @@ for point_id in pending_reads:
         # Validate this point before changing its index. A failed read leaves
         # the old immutable owner reachable; no other point is opened here.
         row = deepcopy(dict(manifest.get('point_table', {}).get(point_id, {})))
+        row['input_sha256'] = manifest.get('input_sha256', {}).get(point_id, {}).get('input.cgyro', row.get('input_sha256', ''))
         if icgyro == 1:
             if row.get('result_path', None):
                 cache_parameters(row, manifest, candidate)

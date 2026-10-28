@@ -21,10 +21,12 @@ FAKE_NATIVE = {'test_cgyro', 'test_compare', 'test_native_mapping', 'test_projec
 NATIVE_SOURCE = {'test_gui_refresh', 'test_gui_refresh_controls', 'test_gui_refresh_native', 'test_cgyro_callback_imports',
                  'test_cgyro_remote_environment', 'test_cgyro_archive_reference',
                  'test_cgyro_file_dedup', 'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_runtime_persistence',
-                 'test_workbench_navigation', 'test_refresh_boundaries'}
+                 'test_workbench_navigation', 'test_refresh_boundaries', 'test_runtime_boundaries',
+                 'test_transfer_refresh_native'}
 TK_SUITES = {'test_gui_refresh_native', 'test_gui_font_performance', 'test_plot_window', 'test_cgyro_task_manager', 'test_manager_startup',
              'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_cgyro_read_boundaries',
-             'test_workbench_navigation', 'test_refresh_boundaries'}
+             'test_workbench_navigation', 'test_refresh_boundaries', 'test_runtime_boundaries',
+             'test_transfer_refresh_native', 'test_font_ui_boundaries'}
 
 
 def check_environment(path, omfit_source):
@@ -78,7 +80,8 @@ def main():
         if path.stem in NATIVE_SOURCE:
             if path.stem in ('test_gui_refresh_native', 'test_cgyro_callback_imports', 'test_cgyro_remote_environment', 'test_cgyro_archive_reference',
                              'test_cgyro_file_dedup', 'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_runtime_persistence',
-                             'test_workbench_navigation', 'test_refresh_boundaries'):
+                             'test_workbench_navigation', 'test_refresh_boundaries', 'test_runtime_boundaries',
+                             'test_transfer_refresh_native'):
                 importlib.import_module(path.stem).SOURCE = source
             else:
                 importlib.import_module('test_gui_refresh').CORE = source / 'omfit_classes/OMFITx.py'

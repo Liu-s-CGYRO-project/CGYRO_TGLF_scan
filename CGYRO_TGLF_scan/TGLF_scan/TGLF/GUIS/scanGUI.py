@@ -1,3 +1,4 @@
+from OMFITlib_gui_api import plot_view
 from OMFITlib_gui_api import adapt
 OMFITx = adapt(OMFITx)
 # -*-Python-*-
@@ -165,26 +166,29 @@ if 'input.tglf' in root['FILES']:
         updateGUI=True,
         default='RLTS_1',
         width='50',
+        refresh_tree=False,
     )
     param = root['SETTINGS']['PHYSICS']['scanParameter' + paramN]
     value = root['FILES']['input.tglf'][root['SETTINGS']['PHYSICS']['scanParameter' + paramN]]
     if (param.startswith('RLTS_') or param.startswith('TAUS_')) and not param.endswith('_1'):
-        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['single_Ti']", '全部热离子采用相同温度')
+        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['single_Ti']", '全部热离子采用相同温度', refresh_tree=False)
 
     OMFITx.Label("Experimental Value=%g" % value)
     OMFITx.Entry(
         "root['SETTINGS']['PHYSICS']['scanParameter%sMin']" % paramN,
-        'Minimum factor (%g)' % (value * root['SETTINGS']['PHYSICS']['scanParameter%sMin' % paramN]),
-        updateGUI=True,
+        '最小倍数',
+        updateGUI=False,
+        refresh_tree=False,
     )
     OMFITx.Entry(
         "root['SETTINGS']['PHYSICS']['scanParameter%sMax']" % paramN,
-        'Maximum factor (%g)' % (value * root['SETTINGS']['PHYSICS']['scanParameter%sMax' % paramN]),
-        updateGUI=True,
+        '最大倍数',
+        updateGUI=False,
+        refresh_tree=False,
     )
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['scanParameter%sSteps']" % paramN, '扫描步数')
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['scanParameter%sSteps']" % paramN, '扫描步数', refresh_tree=False)
     if paramN != '2D':  # second parameter of 2D scan is not calculated in paraell
-        OMFITx.Entry("root['SETTINGS']['PHYSICS']['parallelScan']", '并行运行数')
+        OMFITx.Entry("root['SETTINGS']['PHYSICS']['parallelScan']", '并行运行数', refresh_tree=False)
     if show_constraints:
         OMFITx.Tab("Constraints")
         OMFITx.CompoundGUI(root['GUIS']['constraints_GUI'], input_tglf=root['FILES']['input.tglf'], title='')
@@ -192,14 +196,15 @@ if 'input.tglf' in root['FILES']:
     if showButtons:
         OMFITx.Button('运行 TGLF 扫描', "root['SCRIPTS']['runTGLFscan']")
         if 'scanResults' in root and len(root['scanResults']) and param in root['scanResults']:
-            OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['combine_ions']", '绘图时合并离子', default=True)
-            OMFITx.Button('绘制 TGLF 扫描通量', "root['PLOTS']['plotScan'].plotFigure")
-            OMFITx.Button('绘制 TGLF 扫描增长率', "root['PLOTS']['plotScanSpec']")
-            key0 = list(root['scanResults_spectra'][param].keys())[0]
-            ky = list(map(lambda x: x.values, root['scanResults_spectra'][param][key0]['eigenvalue_spectrum']['ky']))
-            OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['plot_ky']", ky, '绘图 ky 值', default=ky[0], updateGUI=True)
+            OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['combine_ions']", '绘图时合并离子', default=True, refresh_tree=False)
+            OMFITx.Button('绘制 TGLF 扫描通量', lambda: plot_view(root['PLOTS']['plotScan'], fig=figure()), refresh_tree=False)
+            OMFITx.Button('绘制 TGLF 扫描增长率', lambda: plot_view(root['PLOTS']['plotScanSpec']), refresh_tree=False)
+            OMFITx.Entry("root['SETTINGS']['PHYSICS']['plot_ky']", '绘图 ky 值', default=None,
+                         updateGUI=False, help='None 取所选扫描的中间 ky；数值取最接近的 ky。仅绘图时读取谱。', refresh_tree=False)
             OMFITx.Button(
-                'Plot TGLF scan growth rate at ky=%s' % root['SETTINGS']['PHYSICS']['plot_ky'], root['PLOTS']['plot_growthrate_scan']
+                '绘制指定 ky 的增长率',
+                lambda: plot_view(root['PLOTS']['plot_growthrate_scan'], param=root['SETTINGS']['PHYSICS']['scanParameter']),
+                refresh_tree=False,
             )
 else:
     OMFITx.Label('请先在 FILES 中准备 input.tglf')

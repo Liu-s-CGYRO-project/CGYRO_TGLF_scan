@@ -36,6 +36,7 @@ OMFITx.ComboBox(
     'TGLF 计算模式',
     updateGUI=True,
     default=[True, -1.0],
+    refresh_tree=False,
 )
 
 if eval(inp_loc + "['USE_TRANSPORT_MODEL']") and eval(inp_loc + "['NN_MAX_ERROR']") > 0:

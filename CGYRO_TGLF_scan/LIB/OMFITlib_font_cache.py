@@ -170,7 +170,7 @@ def _font_path(name):
     return cache_directory() / (asset['sha256'] + Path(name).suffix)
 
 
-def _valid_font(name):
+def _valid_font(name, verify=True):
     path = _font_path(name)
     asset = FONT_FILES[name]
     try:
@@ -181,6 +181,8 @@ def _valid_font(name):
         with _lock:
             if _checked.get(name, None) == key:
                 return True
+        if not verify:
+            return False
         if _hash_file(path) != asset['sha256']:
             return False
         with _lock:
@@ -190,12 +192,24 @@ def _valid_font(name):
         return False
 
 
-def cached_fonts(kind):
-    """Reuse matching files created by older releases; never access network."""
+def cached_fonts(kind, verify=True):
+    """Reuse matching files; verify=False never hashes on the GUI thread."""
     if kind not in FONT_BUNDLES:
         raise FontError('Unknown font pack: ' + str(kind))
     names = FONT_BUNDLES[kind]['fonts']
-    return {name: str(_font_path(name)) for name in names} if all(_valid_font(name) for name in names) else None
+    return {name: str(_font_path(name)) for name in names} if all(_valid_font(name, verify) for name in names) else None
+
+
+def font_cache_status(kind):
+    """A cheap display hint; actual font use still requires SHA verification."""
+    if cached_fonts(kind, verify=False) is not None:
+        return 'verified'
+    try:
+        if all(_font_path(name).stat().st_size == FONT_FILES[name]['bytes'] for name in FONT_BUNDLES[kind]['fonts']):
+            return 'on disk; checked when used'
+    except OSError:
+        pass
+    return 'not downloaded'
 
 
 def _download(kind, path, progress, cancel):

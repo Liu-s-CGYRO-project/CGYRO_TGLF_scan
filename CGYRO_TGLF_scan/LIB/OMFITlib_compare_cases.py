@@ -153,8 +153,8 @@ class CaseSelection(ComparisonWidgets):
             # The GUI refresh applies the radius selection to exact case keys.
         if keys:
             with self.ui.same_row():
-                self.ui.Button('全选半径', lambda: select_radii(True), updateGUI=True)
-                self.ui.Button('清空半径', lambda: select_radii(False), updateGUI=True)
+                self.ui.Button('全选半径', lambda: select_radii(True), updateGUI=True, refresh_tree=False, refresh_scope='section')
+                self.ui.Button('清空半径', lambda: select_radii(False), updateGUI=True, refresh_tree=False, refresh_scope='section')
         self._render_index_checkbox_grid(path('cgyro_radius_flag') + '[{idx}]', keys, labels=labels)
         state['cgyro_radius_selected'] = selected_items(radius_flags, keys)
         choices = [groups[key] for key in state['cgyro_radius_selected']
@@ -168,8 +168,8 @@ class CaseSelection(ComparisonWidgets):
                     for case in group['cases']:
                         flags[case['index']] = enabled
             with self.ui.same_row():
-                self.ui.Button('全选离子', lambda: select_ions(True), updateGUI=True)
-                self.ui.Button('清空离子', lambda: select_ions(False), updateGUI=True)
+                self.ui.Button('全选离子', lambda: select_ions(True), updateGUI=True, refresh_tree=False, refresh_scope='section')
+                self.ui.Button('清空离子', lambda: select_ions(False), updateGUI=True, refresh_tree=False, refresh_scope='section')
         for index, key in enumerate(keys):
             group = groups[key]
             if not radius_flags.get(index, False):

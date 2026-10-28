@@ -10,7 +10,7 @@ from tkinter import messagebox, ttk
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_gui_deferred import deferred_section
 from OMFITlib_gui_controls import checkbox
-from OMFITlib_gui_api import show_help
+from OMFITlib_gui_api import show_help, gui_view
 from OMFITlib_tglf_workbench_ui import TGLFWorkbench
 from OMFITlib_workbench_catalog import STATUS, render_page
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation
@@ -70,7 +70,7 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
         aux = getattr(self.ui, '_aux', {})
         parent = aux.get('parentGUI', None)
         if not isinstance(parent, tk.Misc):
-            return self.ui.Button(label, lambda: self.select_page(page, **changes), updateGUI=False)
+            return self.ui.Button(label, lambda: self.select_page(page, **changes), updateGUI=False, refresh_tree=False)
         row = ttk.Frame(parent)
         packing = aux.get('packing', tk.TOP)
         row.pack(side=packing, expand=packing != tk.TOP, fill=tk.X, padx=5, pady=1)
@@ -100,6 +100,10 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
 
     def check_configuration(self):
         self.actions.check()
+        self.refresh_page()
+
+    def refresh_page(self):
+        """Refresh the current work page without rerunning main.py or imports."""
         if self.page_content is not None:
             self.page_content.refresh.request()
         else:
@@ -130,11 +134,11 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
             self.show_message()
         render_page(self, self.settings['page'])
 
-    def guarded(self, label, callback, issues, help='', refresh=True):
+    def guarded(self, label, callback, issues, help='', refresh=True, refresh_tree=True):
         """Shared action button; disabled reasons are shown before usage notes."""
         explanation = '\n'.join(part for part in ('；'.join(issues), help) if part)
         return self.ui.Button(label, callback, updateGUI=refresh, state='disabled' if issues else 'normal',
-                              help=explanation)
+                              help=explanation, refresh_tree=refresh_tree)
 
     def note(self, caption, details=''):
         """Short inline guidance; lengthy paths/errors belong in scrollable help."""
@@ -142,7 +146,7 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
         if isinstance(label, tk.Misc):
             label._cgyro_role = 'note'
         if details:
-            self.ui.Button('查看说明', lambda: show_help(label, details))
+            self.ui.Button('查看说明', lambda: show_help(label, details), refresh_tree=False)
         return label
 
     def task(self, label, path, issues=(), **kwargs):
@@ -150,10 +154,12 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
         def invoke():
             if problems:
                 raise ValueError('；'.join(problems))
+            if 'GUIS' in path:
+                return gui_view(read(self.root, path), **kwargs)
             return self.actions.call(label, path, **kwargs)
         # Opening a browser/plot dialog does not change the launching page.
         # Data-changing scripts still refresh their action boundary.
-        self.guarded(label, invoke, problems, refresh='GUIS' not in path)
+        self.guarded(label, invoke, problems, refresh='GUIS' not in path, refresh_tree='GUIS' not in path)
 
     def compound(self, path, **kwargs):
         task = read(self.root, path)
@@ -183,11 +189,12 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
         self.page_intro = intro
         self.render_page_picker()
         with self.ui.same_row():
-            self.ui.Button('检查配置', self.check_configuration, updateGUI=False,
+            self.ui.Button('检查配置', self.check_configuration, updateGUI=False, refresh_tree=False,
                            help='检查运行配置和 CGYRO 输入；不连接服务器、不提交计算。')
-            self.ui.Button('刷新', lambda: None, updateGUI=True, refresh_scope='window')
+            self.ui.Button('刷新', self.refresh_page, refresh_tree=False,
+                           help='更新当前工作页面，保留窗口、工作页面选择和其他页面。')
         # Keep the header and the loaded action/library objects while replacing
-        # only the selected body. Explicit Refresh still reruns the native GUI.
+        # only the selected body, including explicit Refresh.
         self.page_content = deferred_section(self.ui, self.render_selected_page,
                                              local=True, container=True, action=True)
         if self.page_content is None:
@@ -223,7 +230,7 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
             self.nav('绘图与模型对比', 'plots')
             self.nav('模板 / GitHub', 'templates')
         self.ui.Separator('结果管理')
-        self.ui.Button('全局图形样式', lambda: self.root['GUIS']['Plot_style'].run())
+        self.ui.Button('全局图形样式', lambda: gui_view(self.root['GUIS']['Plot_style']), refresh_tree=False)
         self.ui.Button('优化 CGYRO 归档（去重）', self.actions.optimize_cgyro_storage, updateGUI=True,
                        help='相同结果只保存一份；检查点检测后优先保留当前文件，损坏时保留有效 .old，无法确认则保留两份并告警。原 ZIP 和服务器文件不变，完成后另存工程。')
         self.ui.Button('清空全部结果…', self.clear_all_results, updateGUI=True,
@@ -288,5 +295,5 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
         self.label('通过 GitHub 分发代码与设置。更新时可保留计算结果，或使用模板提供的示例。')
         self.label('模板库：https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan')
         self.guarded('打开 OMFIT 模板管理器', self.open_templates or (lambda: None),
-                     [] if self.open_templates else ['当前工程未载入 OMFITtemplates'], refresh=False)
+                     [] if self.open_templates else ['当前工程未载入 OMFITtemplates'], refresh=False, refresh_tree=False)
         self.label('个人服务器和路径可在更新时保留；计算记录和输入历史不进入代码模板。')

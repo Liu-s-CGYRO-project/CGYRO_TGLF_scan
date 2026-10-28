@@ -1,3 +1,4 @@
+from OMFITlib_gui_api import plot_view
 from OMFITlib_gui_api import adapt
 OMFITx = adapt(OMFITx)
 # -*-Python-*-
@@ -87,6 +88,7 @@ OMFITx.ComboBox(
     updateGUI=True,
     default='statefile',
     postcommand=lambda location: root['SCRIPTS']['reset'].runNoGUI(),
+    refresh_tree=True,
 )
 
 ok = False
@@ -94,7 +96,7 @@ if root['SETTINGS']['PHYSICS']['start_from'] == 'ODS':
 
     OMFITx.ObjectPicker("root['INPUTS']['ods']", 'ODS', None, postcommand=load_ods, unset_postcommand=del_input_gacode)
     if profpowbal is None or not isinstance(profpowbal, ODS):
-        OMFITx.CheckBox("scratch['input_ok_as_output']", '载入 ODS 并作为剖面生成结果', default=True)
+        OMFITx.CheckBox("scratch['input_ok_as_output']", '载入 ODS 并作为剖面生成结果', default=True, refresh_tree=False)
     if 'ods' in root['INPUTS']:
         ok = True
 
@@ -102,7 +104,7 @@ elif root['SETTINGS']['PHYSICS']['start_from'] in ['statefile', 'pfile']:
     ok = True
 
     if root['SETTINGS']['PHYSICS']['start_from'] == 'statefile':
-        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['use_trxpl']", '使用 TRXPL', default=False, updateGUI=True)
+        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['use_trxpl']", '使用 TRXPL', default=False, updateGUI=True, refresh_tree=False)
         if root['SETTINGS']['PHYSICS']['use_trxpl'] == True:
             OMFITx.CompoundGUI(root['TRXPL']['GUIS']['TRXPLgui'], '')
             root['SETTINGS']['DEPENDENCIES']['profpowbal'] = "root['TRXPL']['OUTPUTS']['statefile']"
@@ -150,7 +152,7 @@ elif root['SETTINGS']['PHYSICS']['start_from'] == 'input.gacode':
 
     if 'input.gacode' not in root['INPUTS'] and (profpowbal is None or not isinstance(profpowbal, OMFITgacode)):
         OMFITx.FilePicker("scratch['input.gacode_fn']", 'input.gacode 输入文件', updateGUI=True, postcommand=load_input_gacode, default='')
-        OMFITx.CheckBox("scratch['input_ok_as_output']", '载入 input.gacode 并作为剖面生成结果', default=True)
+        OMFITx.CheckBox("scratch['input_ok_as_output']", '载入 input.gacode 并作为剖面生成结果', default=True, refresh_tree=False)
         ok = False
     elif (profpowbal is not None and isinstance(profpowbal, OMFITgacode)) and "root['INPUTS']" not in root['SETTINGS']['DEPENDENCIES'][
         'profpowbal'
@@ -162,4 +164,4 @@ elif root['SETTINGS']['PHYSICS']['start_from'] == 'input.gacode':
 if ok:
     OMFITx.CompoundGUI(root['GUIS']['vgenGUI'], showRunButton=True)
 
-OMFITx.Button('绘制所选输入', "root['PLOTS']['plot_input'].runNoGUI")
+OMFITx.Button('绘制所选输入', lambda: plot_view(root['PLOTS']['plot_input']), refresh_tree=False)

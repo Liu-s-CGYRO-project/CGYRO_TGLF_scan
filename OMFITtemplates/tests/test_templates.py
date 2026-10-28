@@ -71,7 +71,10 @@ def rewrite(path, mutator):
     mutator(entries)
     with zipfile.ZipFile(path, 'w') as archive:
         for name, content in entries.items():
-            archive.writestr(name, content)
+            info = zipfile.ZipInfo(name)
+            # Model an archive produced on Linux even when tests run on Windows.
+            info.filename = info.orig_filename = name
+            archive.writestr(info, content)
 
 
 def add_module(path, name='Added'):
@@ -440,7 +443,8 @@ class TemplatesTest(unittest.TestCase):
             self.assertEqual(result.read('Demo/data/case.npy'), b'lower')
 
     def test_posix_names_have_no_dos_restrictions(self):
-        names = ['Demo/AUX', 'Demo/CON', 'Demo/trailing.', 'Demo/trailing ', 'Demo/shot:time', 'Demo/literal\\name']
+        names = ['Demo/AUX', 'Demo/CON', 'Demo/trailing.', 'Demo/trailing ', 'Demo/shot:time',
+                 'Demo/literal\\name', 'Demo/literal/name']
         rewrite(self.old, lambda entries: entries.update({name: name.encode() for name in names}))
         with self.result(self.plan()) as result:
             for name in names:

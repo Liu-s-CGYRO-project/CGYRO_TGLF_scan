@@ -1,3 +1,4 @@
+from OMFITlib_gui_api import task_action
 from builtins import any
 # Optional legacy QLGYRO route needs companion OMFIT modules. Check before any mutation.
 for _module, _scripts in [('TGLF_GACODE', ('runTGLF',)),
@@ -328,7 +329,7 @@ try:
             root['TGLF_GACODE']['FILES']['input.tglf']['NS'] = nspecies
             for item in root['INPUTS']['input.tglf']:
                 root['TGLF_GACODE']['FILES']['input.tglf'][item] = root['INPUTS']['input.tglf'][item]
-            root['TGLF_GACODE']['SCRIPTS']['runTGLF'].run()
+            task_action(root['TGLF_GACODE']['SCRIPTS']['runTGLF'])
 
             if debug:
                 cgyro_fluxes[:, ir + 1] = sum(
@@ -346,7 +347,7 @@ try:
                 set_kys(kys)
                 root['GYRO_scan']['GYRO_GACODE']['INPUTS']['input.cgyro']['RMIN'] = rmin_ig[irhos[ir]] / a
                 root['GYRO_scan']['INPUTS']['input.scan']['1D']['lab'] = f'RMIN_{ir+1}_KY'
-                root['GYRO_scan']['SCRIPTS']['runGYROscan'].run(
+                task_action(root['GYRO_scan']['SCRIPTS']['runGYROscan'],
                     test=False,
                     parallel=True,
                     wait=False,
@@ -359,7 +360,7 @@ try:
 
             for ir in range(1, nrad):
                 root['GYRO_scan']['INPUTS']['input.scan']['1D']['lab'] = f'RMIN_{ir}_KY'
-                root['GYRO_scan']['SCRIPTS']['downsyncGYROscan'].run(
+                task_action(root['GYRO_scan']['SCRIPTS']['downsyncGYROscan'],
                     downsync_running=True,
                     downsync_converged=True,
                 )
@@ -374,7 +375,7 @@ try:
 
         # Run TGYRO one step to update neoclassical and power balance
         root['INPUTS']['input.tgyro']['LOC_RESTART_FLAG'] = 0
-        root['SCRIPTS']['runTGYRObase'].run()
+        task_action(root['SCRIPTS']['runTGYRObase'])
         root['INPUTS']['input.tgyro']['LOC_RESTART_FLAG'] = restart
 
         tgyro_output = root['OUTPUTS']['output']

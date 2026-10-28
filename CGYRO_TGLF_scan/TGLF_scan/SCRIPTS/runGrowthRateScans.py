@@ -12,6 +12,7 @@ The NMODES argument sets the number of dominant/subdominant TGLF modes to be sto
 for later plotting.
 """
 
+from OMFITlib_gui_api import task_action
 defaultVars(variables_to_scan=root['TGLF_inputs_to_scan'], NMODES=2, SAT_RULE=1)
 
 import OMFITlib_tglf
@@ -30,7 +31,7 @@ for variable in variables_to_scan.keys():
 
 # Generate radial candidates without replacing the current single-file run.
 if not root.get('input.tglf', None):
-    root['SCRIPTS']['setup_tglf'].run()
+    task_action(root['SCRIPTS']['setup_tglf'])
 rho = root['SETTINGS']['PHYSICS']['Var_r']
 radial_input = copy.deepcopy(root['input.tglf'][rho])
 previous_files = root.get('TGLF', {}).get('FILES', None)
@@ -57,7 +58,7 @@ try:
         # modify variable and run TGLF
         for var in var_group_dict[var_name]:
             root['TGLF']['FILES']['input.tglf'][var] = root['TGLF']['FILES']['input.tglf'][var] * (1 + percent_var[var_name])
-        root['TGLF']['SCRIPTS']['runTGLF'].run()
+        task_action(root['TGLF']['SCRIPTS']['runTGLF'])
 
         # store result and reset TGLF FILES
         scans_root['TGLF_' + var_name + '_Up_FILES'] = copy.deepcopy(root['TGLF']['FILES'])
@@ -70,7 +71,7 @@ try:
         # modify variable and run TGLF
         for var in var_group_dict[var_name]:
             root['TGLF']['FILES']['input.tglf'][var] = root['TGLF']['FILES']['input.tglf'][var] * (1 - percent_var[var_name])
-        root['TGLF']['SCRIPTS']['runTGLF'].run()
+        task_action(root['TGLF']['SCRIPTS']['runTGLF'])
 
         # store result and reset TGLF FILES
         scans_root['TGLF_' + var_name + '_Down_FILES'] = copy.deepcopy(root['TGLF']['FILES'])
@@ -81,7 +82,7 @@ try:
 
 
     # Finally, run baseline
-    root['TGLF']['SCRIPTS']['runTGLF'].run()
+    task_action(root['TGLF']['SCRIPTS']['runTGLF'])
     scans_root['TGLF_baseline_FILES'] = copy.deepcopy(root['TGLF']['FILES'])
 finally:
     if previous_files is None:

@@ -1,3 +1,4 @@
+from OMFITlib_gui_api import task_action
 from OMFITlib_gui_api import adapt
 OMFITx = adapt(OMFITx)
 # -*-Python-*-
@@ -10,7 +11,7 @@ from OMFITlib_general import fit_ne_EPED1
 defaultVars(showRunLoadButtons=True)
 
 if not showRunLoadButtons:
-    OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['reload']", '读取已有结果', updateGUI=True)
+    OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['reload']", '读取已有结果', updateGUI=True, refresh_tree=False)
 
 root.setdefault('RUN_DB', OMFITtree())
 
@@ -32,7 +33,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
         if input_gacode is None:
             OMFITx.Lock("root['SETTINGS']['PHYSICS']['runPROFILES_GEN']", True)
             txt = "Generate input profiles"
-        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['runPROFILES_GEN']", txt, updateGUI=True)
+        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['runPROFILES_GEN']", txt, updateGUI=True, refresh_tree=False)
         if root['SETTINGS']['PHYSICS']['runPROFILES_GEN']:
             OMFITx.CompoundGUI(PROFILES_GEN['GUIS']['vgenGUI'], allowEPED=True, showRunButton=True)
 
@@ -49,7 +50,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
         OMFITx.Lock("root['INPUTS']['input.tgyro']['TGYRO_USE_RHO']", 1)
 
     r_str = ['r/a', 'rho'][root['INPUTS']['input.tgyro']['TGYRO_USE_RHO']]
-    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['TGYRO_USE_RHO']", '使用 rho 坐标', updateGUI=True, useInt=True)
+    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['TGYRO_USE_RHO']", '使用 rho 坐标', updateGUI=True, useInt=True, refresh_tree=False)
     with OMFITx.same_row():
         OMFITx.ComboBox(
             "root['SETTINGS']['PHYSICS']['radial_distribution']",
@@ -58,11 +59,12 @@ if not root['SETTINGS']['PHYSICS']['reload']:
             postcommand=lambda location: setup_radii(),
             default='uniform_r',
             updateGUI=True,
+            refresh_tree=False,
         )
         OMFITx.Button('绘制径向分布', lambda: radii(doPlot=True))
 
     if root['SETTINGS']['PHYSICS']['radial_distribution'] == 'user':
-        OMFITx.Entry("root['SETTINGS']['PHYSICS']['radii']", 'Radii', postcommand=lambda location: setup_radii(), updateGUI=True)
+        OMFITx.Entry("root['SETTINGS']['PHYSICS']['radii']", 'Radii', postcommand=lambda location: setup_radii(), updateGUI=True, refresh_tree=False)
     else:
         OMFITx.Entry(
             "root['SETTINGS']['PHYSICS']['n_rad']",
@@ -71,6 +73,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
             default=8,
             updateGUI=True,
             check=is_int,
+            refresh_tree=False,
         )
         rho_min = {}
         if input_gacode is not None:
@@ -85,13 +88,16 @@ if not root['SETTINGS']['PHYSICS']['reload']:
                 updateGUI=True,
                 state='nonrmal',
                 postcommand=lambda location: setup_radii(),
+                refresh_tree=False,
             )
         else:
             OMFITx.Entry(
-                "root['INPUTS']['input.tgyro']['TGYRO_RMIN']", 'From %s' % r_str, updateGUI=True, postcommand=lambda location: setup_radii()
+                "root['INPUTS']['input.tgyro']['TGYRO_RMIN']", 'From %s' % r_str, updateGUI=True, postcommand=lambda location: setup_radii(),
+                refresh_tree=False,
             )
         OMFITx.Entry(
-            "root['INPUTS']['input.tgyro']['TGYRO_RMAX']", 'To %s' % r_str, updateGUI=True, postcommand=lambda location: setup_radii()
+            "root['INPUTS']['input.tgyro']['TGYRO_RMAX']", 'To %s' % r_str, updateGUI=True, postcommand=lambda location: setup_radii(),
+            refresh_tree=False,
         )
 
     # equilibrium
@@ -108,10 +114,10 @@ if not root['SETTINGS']['PHYSICS']['reload']:
 
     # Evolution
     OMFITx.Tab('演化设置')
-    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_EVOLVE_GRAD_ONLY_FLAG']", '仅修改梯度', useInt=True, default=0)
+    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_EVOLVE_GRAD_ONLY_FLAG']", '仅修改梯度', useInt=True, default=0, refresh_tree=False)
     OMFITx.Separator('Temperatures')
-    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_TE_FEEDBACK_FLAG']", '演化电子温度 Te', useInt=True)
-    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_TI_FEEDBACK_FLAG']", '演化离子温度 Ti', useInt=True)
+    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_TE_FEEDBACK_FLAG']", '演化电子温度 Te', useInt=True, refresh_tree=False)
+    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_TI_FEEDBACK_FLAG']", '演化离子温度 Ti', useInt=True, refresh_tree=False)
     # Density evolution
 
     for i in range(max_nions):
@@ -167,6 +173,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
         updateGUI=True,
         default=True,
         help='The default is recommended; select d to use.',
+        refresh_tree=False,
     )
 
     if root['SETTINGS']['PHYSICS']['evolve_density']:
@@ -180,12 +187,13 @@ if not root['SETTINGS']['PHYSICS']['reload']:
 
         if 'DT' in ion_names or ('D' in ion_names and 'T' in ion_names):
             den_options[' 2: Species evolved with alpha particles from DT reaction as source'] = 2
-        OMFITx.ComboBox("root['INPUTS']['input.tgyro']['TGYRO_DEN_METHOD0']", den_options, lbl='Electrons', updateGUI=True)
+        OMFITx.ComboBox("root['INPUTS']['input.tgyro']['TGYRO_DEN_METHOD0']", den_options, lbl='Electrons', updateGUI=True, refresh_tree=False)
         numd_ion_names = input_gacode.ion_names()
         if any([True for k in tolist(numd_ion_names, [None]) if k]):
             for k in range(max_nions):
                 OMFITx.ComboBox(
-                    "root['INPUTS']['input.tgyro']['TGYRO_DEN_METHOD{}']".format(k + 1), den_options, lbl=numd_ion_names[k], updateGUI=True
+                    "root['INPUTS']['input.tgyro']['TGYRO_DEN_METHOD{}']".format(k + 1), den_options, lbl=numd_ion_names[k], updateGUI=True,
+                    refresh_tree=False,
                 )
         else:
             OMFITx.Label('其他离子物种的密度演化请在 PROFILES_GEN 中设置。', align='left', foreground='red')
@@ -196,12 +204,12 @@ if not root['SETTINGS']['PHYSICS']['reload']:
             root['INPUTS']['input.tgyro'][den_str] = 0
 
     OMFITx.Separator('电场与旋转')
-    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_ER_FEEDBACK_FLAG']", '演化径向电场 Er', useInt=True, updateGUI=True, default=0)
+    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_ER_FEEDBACK_FLAG']", '演化径向电场 Er', useInt=True, updateGUI=True, default=0, refresh_tree=False)
     er_bc_choices = SortedDict()
     for k, v in [('Input omega0\'', 1), ('omega0\'=0', 2), ('omega0\'\'=0', 3)]:
         er_bc_choices[k] = v
     if eval("root['INPUTS']['input.tgyro']['LOC_ER_FEEDBACK_FLAG']") == 1:
-        OMFITx.ComboBox("root['INPUTS']['input.tgyro']['TGYRO_ER_BC']", er_bc_choices, lbl='r=0 处电场边界条件')
+        OMFITx.ComboBox("root['INPUTS']['input.tgyro']['TGYRO_ER_BC']", er_bc_choices, lbl='r=0 处电场边界条件', refresh_tree=False)
 
     # pedestal
     if (
@@ -231,6 +239,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
             "Also to work the input.gacode file must have the IP_EXP and RVBV fields. \n"
             "If text red, EPED_NN is not compatible with device, uncheck ped evolution or run full EPED."
         ),
+        refresh_tree=False,
     )
     if eval("root['INPUTS']['input.tgyro']['TGYRO_PED_MODEL']") == 2:
 
@@ -263,6 +272,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
             '  the pedestal density based on the input profiles\n\n'
             '* positive values indicate actual density in 1E19 [m^-3]',
             postcommand=fit_ped,
+            refresh_tree=False,
         )
         OMFITx.ComboBox(
             "root['INPUTS']['input.tgyro']['TGYRO_ZEFFPED']",
@@ -274,14 +284,15 @@ if not root['SETTINGS']['PHYSICS']['reload']:
             '  the pedestal density based on the input profiles\n\n'
             '* positive values indicate actual Z_eff',
             postcommand=fit_ped,
+            refresh_tree=False,
         )
 
     # Solver controls
     OMFITx.Tab('求解器设置')
     if 'output' in root['OUTPUTS']:
-        OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_RESTART_FLAG']", '重新启动计算', useInt=True, updateGUI=True)
+        OMFITx.CheckBox("root['INPUTS']['input.tgyro']['LOC_RESTART_FLAG']", '重新启动计算', useInt=True, updateGUI=True, refresh_tree=False)
         OMFITx.Separator()
-    OMFITx.Entry("root['INPUTS']['input.tgyro']['TGYRO_RELAX_ITERATIONS']", '迭代次数', updateGUI=True)
+    OMFITx.Entry("root['INPUTS']['input.tgyro']['TGYRO_RELAX_ITERATIONS']", '迭代次数', updateGUI=True, refresh_tree=False)
 
     # Required because Serial Block only works with >0 iterations
     if root['INPUTS']['input.tgyro']['TGYRO_RELAX_ITERATIONS'] == 0:
@@ -303,9 +314,10 @@ if not root['SETTINGS']['PHYSICS']['reload']:
         lbl='迭代方法',
         postcommand=set_residual,
         updateGUI=True,
+        refresh_tree=False,
     )
     residual_method_options = {'|f-g|': 2, '(f-g)^2': 3, '(f-g)^2/MAX(1,(f^2+g^2))': 4}
-    OMFITx.ComboBox("root['INPUTS']['input.tgyro']['LOC_RESIDUAL_METHOD']", residual_method_options, lbl='残差方法')
+    OMFITx.ComboBox("root['INPUTS']['input.tgyro']['LOC_RESIDUAL_METHOD']", residual_method_options, lbl='残差方法', refresh_tree=False)
     OMFITx.Entry(
         "root['INPUTS']['input.tgyro']['TGYRO_RESIDUAL_TOL']",
         '残差容限',
@@ -313,11 +325,12 @@ if not root['SETTINGS']['PHYSICS']['reload']:
         delete_if_default=True,
         help='Use the residual tolerance to set a residual threshold after which TGYRO can stop iterating and exit.\n'
         'The default value is 0 such that TGYRO performs the specied number of iterations.',
+        refresh_tree=False,
     )
-    OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_DX']", '雅可比步长')
-    OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_DX_MAX']", '最大步长')
-    OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_RELAX']", '松弛参数')
-    OMFITx.Entry("root['SETTINGS']['SETUP']['n_cpu_rad']", '每个输运模型实例的进程数', check=is_int)
+    OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_DX']", '雅可比步长', refresh_tree=False)
+    OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_DX_MAX']", '最大步长', refresh_tree=False)
+    OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_RELAX']", '松弛参数', refresh_tree=False)
+    OMFITx.Entry("root['SETTINGS']['SETUP']['n_cpu_rad']", '每个输运模型实例的进程数', check=is_int, refresh_tree=False)
 
     # Profiles
     if not eval("root['INPUTS']['input.tgyro']['LOC_RESTART_FLAG']"):
@@ -330,19 +343,21 @@ if not root['SETTINGS']['PHYSICS']['reload']:
             ('PAUX', 'Auxiliary Power'),
             ('FUSION', 'Fusion Power'),
         ]:
-            OMFITx.Entry("root['INPUTS']['input.tgyro']['TGYRO_INPUT_%s_SCALE']" % name, 'Scale %s' % desc, default=1.0)
-        OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_BETAE_SCALE']", '缩放电子 β', default=1.0)
-        OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_ME_MULTIPLIER']", '缩放电子质量', default=1.0)
-        OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_NU_SCALE']", '缩放碰撞频率', default=1.0)
+            OMFITx.Entry("root['INPUTS']['input.tgyro']['TGYRO_INPUT_%s_SCALE']" % name, 'Scale %s' % desc, default=1.0, refresh_tree=False)
+        OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_BETAE_SCALE']", '缩放电子 β', default=1.0, refresh_tree=False)
+        OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_ME_MULTIPLIER']", '缩放电子质量', default=1.0, refresh_tree=False)
+        OMFITx.Entry("root['INPUTS']['input.tgyro']['LOC_NU_SCALE']", '缩放碰撞频率', default=1.0, refresh_tree=False)
         if eval("root['INPUTS']['input.tgyro']['TGYRO_PED_MODEL']") == 2:
             OMFITx.Separator()
-            OMFITx.Entry("root['INPUTS']['input.tgyro']['TGYRO_PED_SCALE']", '缩放台基压强', default=1.0)
+            OMFITx.Entry("root['INPUTS']['input.tgyro']['TGYRO_PED_SCALE']", '缩放台基压强', default=1.0, refresh_tree=False)
         OMFITx.Separator()
         OMFITx.CheckBox(
-            "root['INPUTS']['input.tgyro']['LOC_LOCK_PROFILE_FLAG']", '第 0 次迭代使用原始剖面', useInt=True, default=1
+            "root['INPUTS']['input.tgyro']['LOC_LOCK_PROFILE_FLAG']", '第 0 次迭代使用原始剖面', useInt=True, default=1,
+            refresh_tree=False,
         )
         OMFITx.CheckBox(
-            "root['INPUTS']['input.tgyro']['TGYRO_CONSISTENT_FLAG']", '积分梯度尺度长度以匹配剖面', useInt=True, default=1
+            "root['INPUTS']['input.tgyro']['TGYRO_CONSISTENT_FLAG']", '积分梯度尺度长度以匹配剖面', useInt=True, default=1,
+            refresh_tree=False,
         )
 
     # Models
@@ -355,6 +370,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
         default='TGLF',
         postcommand=lambda location: setup_radii(),
         updateGUI=True,
+        refresh_tree=False,
     )
 
     # NEO
@@ -363,12 +379,13 @@ if not root['SETTINGS']['PHYSICS']['reload']:
         {'None': 0, 'Hinton-Hazeltine': 1, 'NEO': 2},
         lbl='新经典模型',
         default=2,
+        refresh_tree=False,
     )
 
     pflux_choices = SortedDict()
     for k, v in [('No particle sources', 1), ('Only beam particle sources', 2), ('Beam + Wall sources', 3)]:
         pflux_choices[k] = v
-    OMFITx.ComboBox("root['INPUTS']['input.tgyro']['LOC_PFLUX_METHOD']", pflux_choices, lbl='粒子源', default=1)
+    OMFITx.ComboBox("root['INPUTS']['input.tgyro']['LOC_PFLUX_METHOD']", pflux_choices, lbl='粒子源', default=1, refresh_tree=False)
 
     scenario_choices = SortedDict()
     for k, v in [
@@ -378,10 +395,10 @@ if not root['SETTINGS']['PHYSICS']['reload']:
     ]:
         scenario_choices[k] = v
 
-    OMFITx.ComboBox("root['INPUTS']['input.tgyro']['LOC_SCENARIO']", scenario_choices, lbl='功率平衡方案')
+    OMFITx.ComboBox("root['INPUTS']['input.tgyro']['LOC_SCENARIO']", scenario_choices, lbl='功率平衡方案', refresh_tree=False)
     if root['INPUTS']['input.tgyro']['LOC_ER_FEEDBACK_FLAG']:
         OMFITx.Lock("root['INPUTS']['input.tgyro']['TGYRO_ROTATION_FLAG']", 1)
-    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['TGYRO_ROTATION_FLAG']", '启用全部旋转物理项', default=1, mapFalseTrue=[0, 1])
+    OMFITx.CheckBox("root['INPUTS']['input.tgyro']['TGYRO_ROTATION_FLAG']", '启用全部旋转物理项', default=1, mapFalseTrue=[0, 1], refresh_tree=False)
 
     if input_gacode is not None:
         OMFITx.ComboBox(
@@ -391,7 +408,8 @@ if not root['SETTINGS']['PHYSICS']['reload']:
             'IONS in simulation: ' + ', '.join(input_gacode.ion_names()),
             default='thermal',
             help='These ions are used in the flux calculation in NEO and TGLF',
-            postcommand=root['SCRIPTS']['update_ion_data'].run,
+            postcommand=lambda location=None: task_action(root['SCRIPTS']['update_ion_data'], location=location),
+            refresh_tree=False,
         )
         for i in range(max_nions):
             ion_name = input_gacode['IONS'][i + 1][0]
@@ -403,12 +421,14 @@ if not root['SETTINGS']['PHYSICS']['reload']:
                         'Calculate fluxes of (Ion {}[{}])'.format(ion_name, ion_type),
                         mapFalseTrue=(0, 1),
                         default=[0, 1]['fast' not in ion_type],
+                        refresh_tree=False,
                     )
                     OMFITx.CheckBox(
                         "root['INPUTS']['input.tgyro']['TGYRO_THERM_FLAG{}']".format(i + 1),
                         'Treat as thermal (Ion {}[{}])'.format(ion_name, ion_type),
                         mapFalseTrue=(0, 1),
                         default=[0, 1]['fast' not in ion_type],
+                        refresh_tree=False,
                     )
     else:
         root['SETTINGS']['PHYSICS']['INCLUDE_IONS'] = 'thermal'
@@ -442,6 +462,7 @@ if not root['SETTINGS']['PHYSICS']['reload']:
                 updateGUI=True,
                 useInt=True,
                 help='Use the TGLF-NN model.\nNOTE: this model has been calibrated only on DIII-D ion-stiffness experiments!\nTo get full advantage of NN speed, you will likely want to set Chang-Hinton as neoclassical model.',
+                refresh_tree=False,
             )
             root['INPUTS']['input.tgyro'].setdefault('TGYRO_TGLF_NN_MAX_ERROR', -1)
             toggle_nn()
@@ -452,14 +473,14 @@ if not root['SETTINGS']['PHYSICS']['reload']:
             OMFITx.CompoundGUI(root['GUIS']['TGLFinputGUI'])
     elif root['SETTINGS']['PHYSICS']['Turb_Model'] == 'MMM':
         OMFITx.Tab('MMM')
-        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][0]", '启用 Weiland 分量（ITG/TEM）', default=1.0)
-        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][1]", '启用 DRIBM 分量', default=0.0)
-        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][2]", '启用 H-J ETG 分量', default=1.0)
-        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][3]", '启用 MTM 分量', default=1.0)
-        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][3]", '启用 mETG 分量（测试）', default=0.0)
+        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][0]", '启用 Weiland 分量（ITG/TEM）', default=1.0, refresh_tree=False)
+        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][1]", '启用 DRIBM 分量', default=0.0, refresh_tree=False)
+        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][2]", '启用 H-J ETG 分量', default=1.0, refresh_tree=False)
+        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][3]", '启用 MTM 分量', default=1.0, refresh_tree=False)
+        OMFITx.Entry("root['INPUTS']['input.mmm']['mmm_input']['cmodel'][3]", '启用 mETG 分量（测试）', default=0.0, refresh_tree=False)
 
 OMFITx.Tab("")
 if showRunLoadButtons:
     if not root['SETTINGS']['PHYSICS']['reload']:
-        OMFITx.Button('提交 TGYRO 作业', lambda: root['SCRIPTS']['runTGYRO'].run(reload=False))
-    OMFITx.Button('读取 TGYRO 作业', lambda: root['SCRIPTS']['runTGYRO'].run(reload=True))
+        OMFITx.Button('提交 TGYRO 作业', lambda: task_action(root['SCRIPTS']['runTGYRO'], reload=False))
+    OMFITx.Button('读取 TGYRO 作业', lambda: task_action(root['SCRIPTS']['runTGYRO'], reload=True))

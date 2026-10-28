@@ -8,11 +8,14 @@ The optional IDLE syntax highlighter is disabled when that package is absent.
 import ast
 from collections import OrderedDict
 import copy
+import datetime
+import io
 import os
 from pathlib import Path
 import sys
 import tempfile
-from types import ModuleType, SimpleNamespace
+import time
+from types import MethodType, ModuleType, SimpleNamespace
 import tkinter as tk
 from tkinter import ttk
 import unittest
@@ -263,6 +266,137 @@ class NativeTkRefreshTests(unittest.TestCase):
         script = cls.__new__(cls)
         script.__run__ = runner
         return script
+
+    def native_task(self, runner):
+        aux = self.api.OMFITaux
+        aux.setdefault('pythonRunWindows', [])
+        aux.setdefault('haltWindow', None)
+        self.halt_kills = getattr(self, 'halt_kills', [])
+        self.task_log = getattr(self, 'task_log', io.StringIO())
+        namespace = dict(os=SimpleNamespace(getpid=os.getpid, kill=lambda *args: self.halt_kills.append(args)),
+                         time=time, datetime=datetime, tk=tk, ttk=ttk, OMFITaux=aux,
+                         _OMFITpython=object, OMFIT_is_in_debug_mode=False,
+                         OMFIT={'MainSettings': {'SETUP': {'show_halt_window': False}}},
+                         _streams={'HIST': self.task_log}, _update_alarm=[],
+                         treeLocation=lambda script: ['test task'], tk_center=lambda *args: None,
+                         printd=lambda *args, **kwargs: None)
+        native_definitions(SOURCE / 'omfit_classes/omfit_python.py', {'OMFITpythonTask'}, namespace)
+        cls = namespace['OMFITpythonTask']
+        script = cls.__new__(cls)
+        script.__run__ = MethodType(runner, script)
+        return script
+
+    def test_task_action_preserves_native_progress_cleanup_and_only_refreshes_owner_section(self):
+        calls, frames, events = [], [], []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        def execute(receiver, **kwargs):
+            self.assertIs(receiver, script)
+            calls.append(kwargs)
+            frames.extend(self.api.OMFITaux['pythonRunWindows'])
+            self.assertTrue(all(frame.winfo_exists() for frame in frames))
+            self.api.OMFITaux['haltWindow'] = 123456  # fake PID: kill is recorded, never executed
+            return 'collected'
+        script = self.native_task(execute)
+        original = script._endGUI.__func__
+        results = []
+        self.render_scoped(lambda api: self.controls.update(button=api.Button(
+            'Sync', lambda: results.append(widgets.task_action(script, selected=['job'])),
+            updateGUI=True, refresh_scope='section', refresh_tree=False)))
+        events.clear()
+        self.invoke(self.controls['button'].invoke)
+        self.drain(300)
+        self.assertEqual(results, ['collected'])
+        self.assertEqual(calls, [{'selected': ['job']}])
+        self.assertEqual(self.region_updates, [('section', False)])
+        self.assertEqual(self.updates, [])
+        self.assertEqual(events, [])
+        self.assertEqual(self.api.OMFITaux['pythonRunWindows'], [])
+        self.assertIsNone(self.api.OMFITaux['haltWindow'])
+        self.assertEqual(self.halt_kills, [(123456, 9)])
+        self.assertTrue(all(not frame.winfo_exists() for frame in frames))
+        self.assertIn('Done @ ', self.task_log.getvalue())
+        self.assertIs(script._endGUI.__func__, original)
+        self.assertIs(original.__globals__['OMFITaux'], self.api.OMFITaux)
+
+    def test_task_action_nested_and_abort_restore_stack_without_global_notifications(self):
+        events, depths = [], []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        def execute(receiver, **kwargs):
+            depths.append(len(self.api.OMFITaux['pythonRunWindows']))
+            if kwargs.get('abort'):
+                raise KeyboardInterrupt('native Abort')
+            return 'done'
+        inner = self.native_task(execute)
+        outer = self.native_task(lambda receiver, **kwargs: widgets.task_action(inner, **kwargs))
+        self.assertEqual(widgets.task_action(outer), 'done')
+        with self.assertRaisesRegex(KeyboardInterrupt, 'native Abort'):
+            widgets.task_action(outer, abort=True)
+        self.assertEqual(depths, [3, 3])
+        self.assertEqual(self.api.OMFITaux['pythonRunWindows'], [])
+        self.assertEqual(events, [])
+        self.assertEqual(self.updates, [])
+        self.assertEqual(self.task_log.getvalue().count('Done @ '), 1)
+
+    def test_task_action_keeps_explicit_business_events_and_unrelated_native_runs(self):
+        events = []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        script = self.native_task(lambda receiver, **kwargs:
+                                 self.api.OMFITaux['rootGUI'].event_generate('<<update_treeGUI>>'))
+        widgets.task_action(script)
+        self.assertEqual(events, ['tree'])
+        self.assertEqual(self.updates, [])
+        script.run()  # A caller outside our scoped GUI keeps native notifications.
+        self.assertEqual(events, ['tree', 'tree', 'tree', 'tree', 'tree'])
+        self.assertEqual({name for name, _ in self.updates}, {'owner', 'other'})
+        callback = SimpleNamespace(run=lambda **kwargs: kwargs)
+        self.assertEqual(widgets.task_action(callback, selected=['point']), {'selected': ['point']})
+
+    def test_task_action_preserves_custom_runner_receiver_and_super(self):
+        task = self.native_task(lambda receiver, **kwargs: kwargs)
+        class CustomTask(type(task)):
+            def run(self, **kwargs):
+                return super().run(**kwargs)
+        custom = CustomTask.__new__(CustomTask)
+        custom.__run__ = MethodType(lambda receiver, **kwargs: (receiver, kwargs), custom)
+        self.assertEqual(widgets.task_action(custom, value=3), (custom, {'value': 3}))
+        self.assertEqual(self.api.OMFITaux['pythonRunWindows'], [])
+
+    def test_view_gui_preserves_native_single_instance_context_and_business_events(self):
+        calls, events, cleared = [], [], []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as directory:
+            def launch(script, locations, **kwargs):
+                calls.append((locations, kwargs))
+                os.chdir(directory)
+                if kwargs.get('changed'):
+                    self.api.OMFITaux['rootGUI'].event_generate('<<update_treeGUI>>')
+                if kwargs.get('fail'):
+                    raise ValueError('construction failed')
+            api = SimpleNamespace(_GUIs={}, GUI=launch, _clearClosedGUI=cleared.append)
+            namespace = dict(os=os, OMFITaux=self.api.OMFITaux, OMFITx=api,
+                             _OMFITpython=object, relativeLocations=lambda script: {'root': 'selected'})
+            native_definitions(SOURCE / 'omfit_classes/omfit_python.py', {'OMFITpythonGUI'}, namespace)
+            cls = namespace['OMFITpythonGUI']
+            script = cls.__new__(cls)
+            original = script.run.__func__
+            api._GUIs['existing'] = SimpleNamespace(pythonFile=script, top='existing')
+            widgets.gui_view(script, page='plot')
+            self.assertEqual(cleared, ['existing'])
+            self.assertEqual(calls[-1], ({'root': 'selected'}, {'page': 'plot'}))
+            self.assertEqual(events, [])
+            self.assertEqual(os.getcwd(), cwd)
+            with self.assertRaisesRegex(ValueError, 'construction failed'):
+                widgets.gui_view(script, singleGUIinstance=False, _relLoc={'root': 'explicit'}, fail=True)
+            self.assertEqual(cleared, ['existing'])
+            self.assertEqual(calls[-1][0], {'root': 'explicit'})
+            self.assertEqual(os.getcwd(), cwd)
+            widgets.gui_view(script, changed=True)
+            self.assertEqual(events, ['tree'])
+            script.run()
+            self.assertEqual(events, ['tree', 'tree'])
+            self.assertIs(script.run.__func__, original)
+            self.assertIs(original.__globals__['OMFITaux']['rootGUI'], self.root)
 
     def test_native_compare_plot_button_avoids_both_tree_repaints_and_preserves_idle_draw(self):
         events, calls, draws = [], [], []
@@ -579,7 +713,9 @@ class NativeTkRefreshTests(unittest.TestCase):
         # Compile the actual page class without importing solver/UI modules.
         # Its native control call must work with OMFITx, not just a permissive
         # headless recorder that accepts arbitrary positional/keyword values.
-        namespace = dict(tk=tk, radius_choices=lambda node: {'Jet | nr=11 | rho=0.99': {}})
+        from OMFITlib_gui_deferred import deferred_section
+        namespace = dict(tk=tk, deferred_section=deferred_section,
+                         radius_choices=lambda node: {'Jet | nr=11 | rho=0.99': {}})
         native_definitions(REPO / 'CGYRO_TGLF_scan/LIB/OMFITlib_workbench_cgyro_ui.py',
                            {'CgyroPage'}, namespace)
         self.tree.update(cgyro_cleanup_open=True, cgyro_cleanup_radius='')

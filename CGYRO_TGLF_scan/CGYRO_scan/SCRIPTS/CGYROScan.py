@@ -1,4 +1,5 @@
 # Run and collect a 1D, 2D, or 3D CGYRO parameter scan.
+from OMFITlib_gui_api import task_action
 import copy
 from builtins import ValueError, all, any, bool, dict, int, len, list, set, sorted, str
 from datetime import datetime, timezone
@@ -27,7 +28,7 @@ if dimensions not in (0, 1, 2, 3):
     raise ValueError('CGYRO parameter-axis count must be 0, 1, 2, or 3')
 
 if setup['irun'] == 1:
-    root['SCRIPTS']['subscan_lin.py'].run(scan_dimensions=dimensions,
+    task_action(root['SCRIPTS']['subscan_lin.py'], scan_dimensions=dimensions,
         wait_for_completion=wait_for_completion, batch_id=batch_id, continuation=continuation,
         check_temp_start=check_temp_start)
 if (wait_for_completion and (setup['idownsync'] == 1 or root.get('RUN_MANIFEST', {}).get('auto_collect_requested', False))
@@ -131,6 +132,7 @@ def publish_loaded_run(root):
         row['resume_pending'] = point_id in partial
         row['continuation_pending'] = manifest.get('continuation_pending', {}).get(point_id, '')
         row['scheduler_state'] = manifest.get('point_states', {}).get(point_id, '')
+        row['input_sha256'] = manifest.get('input_sha256', {}).get(point_id, {}).get('input.cgyro', row.get('input_sha256', ''))
         owner = run_cases(root, manifest)[point_id]
         summary = row.get('result_summary', {})
         if summary.get('result_id', None) == reference_id(owner) and summary.get('version', 0) == 1:
@@ -144,7 +146,6 @@ def publish_loaded_run(root):
             row['solver_status'] = hint['convergence']
             row['checkpoint_time'] = (hint.get('checkpoint', None) or {}).get('time', None)
             cache_parameters(row, manifest, result)
-        row['input_sha256'] = manifest.get('input_sha256', {}).get(point_id, {}).get('input.cgyro', row.get('input_sha256', ''))
         task_rows[point_id] = row
     for row in task_rows.values():
         row.update(dict(runid=run_id, case_id=case_key))

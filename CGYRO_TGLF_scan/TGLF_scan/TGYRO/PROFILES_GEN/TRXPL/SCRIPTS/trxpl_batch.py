@@ -5,6 +5,7 @@
 This script is used to extract multiple state/g-files
 """
 
+from OMFITlib_gui_api import task_action
 defaultVars(
     shot=root['SETTINGS']['EXPERIMENT']['shot'],
     runid=root['SETTINGS']['EXPERIMENT']['runid'],
@@ -61,7 +62,7 @@ if calculate_mean:
     # last case with mean of all sub-windows
     root['SETTINGS']['EXPERIMENT']['time'] = (max(trange) + min(trange)) / 2
     root['SETTINGS']['EXPERIMENT']['avgtim'] = (max(trange) - min(trange)) / 2
-    root['SCRIPTS']['trxpl'].run(runid='%s%s' % (shot, runid))
+    task_action(root['SCRIPTS']['trxpl'], runid='%s%s' % (shot, runid))
     simID = str(shot) + str(runid) + 'mean'
     root['MULTI'][simID] = copy.deepcopy(root['OUTPUTS'])
 

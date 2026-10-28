@@ -1,3 +1,4 @@
+from OMFITlib_gui_api import plot_view
 from OMFITlib_gui_api import adapt
 OMFITx = adapt(OMFITx)
 # -*-Python-*-
@@ -31,6 +32,7 @@ if not new_trace:
         '选择需要计算 D / V 剖面的物种',
         state='normal',
         default=1,
+        refresh_tree=False,
     )
 else:
     # the trace impurity density will be subtracted from the first ion
@@ -42,18 +44,19 @@ OMFITx.CheckBox(
     default=False,
     updateGUI=True,
     help='Add trace impurity which is not included in input.gacode',
+    refresh_tree=False,
 )
 
 if new_trace:
     OMFITx.Separator('示踪杂质')
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['trace_imp_name']", 'Name', default='C')
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['trace_imp_Z']", 'Charge', default=6)
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['trace_imp_M']", 'Mass', default=12)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['trace_imp_name']", 'Name', default='C', refresh_tree=False)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['trace_imp_Z']", 'Charge', default=6, refresh_tree=False)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['trace_imp_M']", 'Mass', default=12, refresh_tree=False)
 else:
     if 'trace_imp_name' in root['SETTINGS']['PHYSICS']:
         root['SETTINGS']['PHYSICS'].pop('trace_imp_name')
 
-OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['extendedProfiles']", '以更高分辨率计算 D 和 V', default=False)
+OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['extendedProfiles']", '以更高分辨率计算 D 和 V', default=False, refresh_tree=False)
 OMFITx.CheckBox(
     "root['SETTINGS']['PHYSICS']['robustDVprofiles']",
     '稳健计算（较慢）',
@@ -62,6 +65,7 @@ OMFITx.CheckBox(
 the gradient-flux relation is not a straight line, remove the worst point
 and check again. If there are no 3 points
 creating a straight line, ignore this radial location.""",
+    refresh_tree=False,
 )
 
 
@@ -79,9 +83,10 @@ if 'D_and_v' in root['OUTPUTS']:
         default=False,
         help='STRAHL uses a different definition o a radial coordinate and\n'
         + 'density gradients are calculated with respect to a flux surface averadged density',
+        refresh_tree=False,
     )
 
-    OMFITx.Button('Plot D and v profiles', "root['PLOTS']['plotDandV'].run")
+    OMFITx.Button('Plot D and v profiles', lambda: plot_view(root['PLOTS']['plotDandV']), refresh_tree=False)
 
 if 'output' in root['OUTPUTS']:
-    OMFITx.Button('绘制热扩散系数', "root['PLOTS']['plotChi'].run")
+    OMFITx.Button('绘制热扩散系数', lambda: plot_view(root['PLOTS']['plotChi']), refresh_tree=False)

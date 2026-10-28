@@ -23,6 +23,7 @@
 #   In the compainion script particleDandVprofile.py we do the next step
 # Fit the slope and y-intercept of the flux for D and V
 
+from OMFITlib_gui_api import task_action
 root.setdefault('D_and_v', OMFITtree())
 
 ####
@@ -97,7 +98,7 @@ root['TGYRO']['INPUTS']['input.tgyro']['LOC_N_ION'] = nIonsTGLF
 root['TGYRO']['SETTINGS']['PHYSICS']['LOC_N_ION_USER'] = nIonsTGLF
 
 # Setup the inputs for TGLF
-root['SCRIPTS']['setup_tglf'].run()
+task_action(root['SCRIPTS']['setup_tglf'])
 
 # Reset the input.gacode file without the trace impurity
 root['TGYRO']['PROFILES_GEN']['OUTPUTS']['input.gacode'] = copy.deepcopy(root['D_and_v']['input.gacode_orig'])
@@ -116,4 +117,4 @@ for rho in rhoList:
     root['TGLF']['SETTINGS']['PHYSICS']['scanParameterMin'] = 0.9
     root['TGLF']['SETTINGS']['PHYSICS']['scanParameterMax'] = 1.1
     root['TGLF']['SETTINGS']['PHYSICS']['scanParameterSteps'] = 3
-    root['SCRIPTS']['runScanAtRho'].run()
+    task_action(root['SCRIPTS']['runScanAtRho'])

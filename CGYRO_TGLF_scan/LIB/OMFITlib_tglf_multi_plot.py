@@ -5,16 +5,7 @@ from builtins import enumerate, float, len, list, range, str
 import numpy as np
 
 
-def flux_summary(result):
-    rows = result['gbflux']['data']
-    labels = result.get('input.tglf', {})
-    lines = ['物种 | Gamma/Gamma_GB | Q/Q_GB']
-    for index, row in enumerate(rows, 1):
-        species = str(row[0])
-        if 'ZS_' + str(index) in labels:
-            species += ' (Z={}, M={})'.format(labels['ZS_' + str(index)], labels.get('MASS_' + str(index), '?'))
-        lines.append('{} | {:.6g} | {:.6g}'.format(species, float(row[1]), float(row[2])))
-    return '\n'.join(lines)
+from OMFITlib_tglf_multi_data import flux_summary  # Public compatibility alias.
 
 
 def plot_cases(root, notebook):

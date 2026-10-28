@@ -1,6 +1,7 @@
 # -*-Python-*-
 # Created by meneghini at 06 May 2016  15:18
 
+from OMFITlib_gui_api import task_action
 defaultVars(harvest_index=None)
 
 if harvest_index is None:
@@ -10,7 +11,7 @@ harvest = root['HARVEST'][harvest_index]
 
 if 'gen' not in root['TEMPLATES']:
     root['FILES']['input.tglf'] = OMFITgacode('input.tglf', fromString='')
-    root['SCRIPTS']['runTGLF'].run()
+    task_action(root['SCRIPTS']['runTGLF'])
     root['TEMPLATES']['gen'] = root['FILES']['input.tglf']
 
 tmp1 = root['TEMPLATES']['gen']

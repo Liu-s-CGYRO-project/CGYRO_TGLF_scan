@@ -175,6 +175,33 @@ class ScanRefreshTests(unittest.TestCase):
         self.assertEqual(self.page.cgyro_main_notebook.index('current'), 2)
         self.assertEqual(host.updates, [])
 
+    def test_result_action_refreshes_result_tab_and_invalidates_other_tabs_lazily(self):
+        host = self.native_host()
+        notebook = self.page.cgyro_main_notebook
+        self.page.cgyro_main_pages.select('parameters')
+        host.root.update()
+        self.browser.return_value.render.side_effect = lambda **kwargs: host.controls.update(
+            sync=self.page.ui.Button('Synthetic status synchronization', lambda: None, updateGUI=True))
+        self.page.cgyro_main_pages.select('results')
+        host.root.update()
+        self.assertEqual(self.page.compound.call_count, 1)
+        self.assertEqual(self.page.render_cgyro_parameters.call_count, 1)
+        old = host.controls['sync']
+        host.invoke(old.invoke)
+        host.drain()
+        self.assertFalse(old.winfo_exists())
+        self.assertIs(self.page.cgyro_main_notebook, notebook)
+        self.browser.return_value.render.assert_called_with(title=False)
+        self.assertEqual(self.browser.return_value.render.call_count, 2)
+        self.assertEqual(self.page.compound.call_count, 1)
+        self.assertEqual(self.page.render_cgyro_parameters.call_count, 1)
+        self.assertEqual(host.updates, [])
+        # A data-changing action marks hidden previews stale without parsing
+        # them immediately; the next visit rebuilds them once.
+        self.page.cgyro_main_pages.select('parameters')
+        host.root.update()
+        self.assertEqual(self.page.render_cgyro_parameters.call_count, 2)
+
     def test_deferred_controls_use_captured_module_and_restore_other_gui(self):
         host = self.native_host()
         previous = dict(host.api._aux)

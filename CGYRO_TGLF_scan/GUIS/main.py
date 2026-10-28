@@ -1,5 +1,5 @@
 """Default workbench for Linux OMFIT desktops."""
-from OMFITlib_gui_api import adapt
+from OMFITlib_gui_api import adapt, gui_view
 OMFITx = adapt(OMFITx)
 from OMFITlib_project import ProjectActions
 from OMFITlib_project_ui import ProjectUI
@@ -24,8 +24,8 @@ actions = ProjectActions(root, OMFITtree, readers={'cgyro': OMFITgacode, 'tglf':
                          remote_execute=OMFITx.remote_execute, root_name=rootName)
 if workbench_page is not None:
     actions.open_page(workbench_page)
-configure = lambda node: OMFIT['scratch']['__moduleSetupGUI__'].run(base_override=relativeLocations(node))
-open_templates = (lambda: OMFIT['OMFITtemplates']['GUIS']['main'].run()) if 'OMFITtemplates' in OMFIT else None
+configure = lambda node: gui_view(OMFIT['scratch']['__moduleSetupGUI__'], base_override=relativeLocations(node))
+open_templates = (lambda: gui_view(OMFIT['OMFITtemplates']['GUIS']['main'])) if 'OMFITtemplates' in OMFIT else None
 ProjectUI(actions, OMFITx, configure=configure, open_templates=open_templates,
           servers=SERVER.listServers,
-          open_servers=lambda: OMFIT['scratch']['__preferencesGUI__'].run()).render(panel_only=panel_only)
+          open_servers=lambda: gui_view(OMFIT['scratch']['__preferencesGUI__'])).render(panel_only=panel_only)

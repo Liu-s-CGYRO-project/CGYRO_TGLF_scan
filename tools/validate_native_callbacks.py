@@ -13,11 +13,22 @@ import json
 from pathlib import Path
 import sys
 import tempfile
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 import unittest
 from unittest.mock import patch
+from matplotlib import get_data_path
 
 from validate_native_execution import NativeHost, REPO, np, plt, treeify
+
+
+class Widget(SimpleNamespace):
+    """Small stateful widget adapter for in-place status/button updates."""
+    def __init__(self, **values):
+        super().__init__(**values)
+        self.options = {}
+
+    def configure(self, **values):
+        self.options.update(values)
 
 
 def fixtures():
@@ -27,7 +38,7 @@ def fixtures():
     nodes = [node for node in ast.parse(path.read_text(encoding='utf-8')).body
              if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in definitions]
     assert len(nodes) == len(definitions)
-    namespace = dict(np=np, plt=plt, ast=ast, copy=copy, nullcontext=nullcontext,
+    namespace = dict(np=np, plt=plt, ast=ast, copy=copy, nullcontext=nullcontext, SimpleNamespace=Widget,
                      state=SimpleNamespace(initialize_settings=lambda root: None))
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), 'exec'), namespace)
     return namespace
@@ -48,6 +59,9 @@ class CallbackTests(unittest.TestCase):
 
     def page(self, mode='CGYRO_vs_CGYRO'):
         root = treeify(self.fixture['fixture'](mode), self.host.factory)
+        # This importer/callback check uses Matplotlib's installed local font;
+        # acquiring the independent default font pack is outside its scope.
+        root['SETTINGS']['PLOT_STYLE'] = dict(font_file=str(Path(get_data_path()) / 'fonts/ttf/DejaVuSans.ttf'))
         root['LIB'] = self.host.modules[('CGYRO_TGLF_scan',)]['LIB']
         ui = self.fixture['FakeUI'](root)
         plots = []
@@ -64,7 +78,8 @@ class CallbackTests(unittest.TestCase):
         before = list(sys.meta_path)
         self.host.execute(entry.read_text(encoding='utf-8'), root, OMFITx=ui, OMFIT={})
         self.assert_cleaned(before)
-        buttons = {args[0]: args[1] for _, kind, args, _ in ui.events if kind == 'Button'}
+        controls = ui.children[mode]
+        buttons = {args[0]: args[1] for _, kind, args, _ in controls.events if kind == 'Button'}
         return root, buttons, plots, before
 
     def test_four_modes_plot_and_check_after_gui_returns(self):
@@ -132,6 +147,7 @@ class CallbackTests(unittest.TestCase):
                 'plan': {'coordinate': 'rho', 'radii': [.5], 'parameters': {}},
                 'points': {'point': {'radius': .5, 'status': 'complete', 'selected_attempt': 'attempt',
                     'attempts': {'attempt': {'status': 'complete', 'workdir': '/fixture',
+                        'flux_summary': '物种 | Gamma/Gamma_GB | Q/Q_GB\nion | 1 | 2',
                         'result': {'gbflux': {'data': [('ion', 1., 2.)]}}}}}}}}}}}, self.host.factory)
         root['LIB'] = self.host.modules[('CGYRO_TGLF_scan',)]['LIB']
         ui = self.fixture['FakeUI'](root)
@@ -150,13 +166,23 @@ def validate(source):
     host = NativeHost(source)
     CallbackTests.host = host
     stream = io.StringIO()
-    with patch.dict(sys.modules, {'omfit_classes.utils_base': host.registry}):
+    # Only the import/type boundary is needed: none of these callbacks opens an
+    # OMFITpath or executes a physical solver reader.
+    package = ModuleType('omfit_classes')
+    package.__path__ = []
+    path_module = ModuleType('omfit_classes.omfit_path')
+    path_module.OMFITpath = type('OMFITpath', (), {})
+    with patch.dict(sys.modules, {'omfit_classes': package,
+                                  'omfit_classes.omfit_path': path_module,
+                                  'omfit_classes.utils_base': host.registry}):
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(CallbackTests)
         result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
     report = dict(tests=result.testsRun, failures=len(result.failures), errors=len(result.errors),
                   python=sys.version.split()[0], native_functions=host.evidence,
                   native_mapping=host.mapping_evidence, import_cleanup_checked=True,
                   project_lib_on_sys_path=False, real_matplotlib=True,
+                  local_font_file=str(Path(get_data_path()) / 'fonts/ttf/DejaVuSans.ttf'),
+                  omfit_path_import_adapter=True,
                   complete_omfit_session_tested=False, solver_executed=False)
     return report, stream.getvalue(), result.wasSuccessful()
 

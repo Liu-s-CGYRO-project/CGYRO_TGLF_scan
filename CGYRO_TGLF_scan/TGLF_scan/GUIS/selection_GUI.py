@@ -29,12 +29,14 @@ def add_quantity(location):
 
 OMFITx.ComboBox(
     "scratch['%s_add_quantity']" % dictionary_to_write,
-    [''] + [k for k, v in sorted(dictionary_to_read.items()) if not k.startswith('__') and not is_int(v)],
+    # Listing available names must not materialize archived array values.
+    [''] + [k for k in sorted(dictionary_to_read) if not k.startswith('__')],
     lbl='添加物理量',
     postcommand=add_quantity,
     help='Choose a scan output variable to be plotted.',
     default='',
     updateGUI=True,
+    refresh_tree=False,
 )
 
 if dictionary_to_write in root:
@@ -56,6 +58,7 @@ if dictionary_to_write in root:
             postcommand=delete_quantity,
             default='',
             updateGUI=True,
+            refresh_tree=False,
         )
 
     for k in root[dictionary_to_write]:
@@ -63,6 +66,7 @@ if dictionary_to_write in root:
             "root['%s']['%s']" % (dictionary_to_write, k),
             lbl=k,
             help='Scan output variable to be plotted. Set the plot label in the second field.',
+            refresh_tree=False,
         )
 
 finish_gui_layout(layout_anchor, OMFITx)

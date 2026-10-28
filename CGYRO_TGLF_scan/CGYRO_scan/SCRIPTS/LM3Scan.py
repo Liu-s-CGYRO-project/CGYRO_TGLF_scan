@@ -1,3 +1,4 @@
+from OMFITlib_gui_api import task_action
 from OMFITlib_cgyro_db import run_cases
 from OMFITlib_cgyro_storage import resolve_result
 # x: ky : y: para
@@ -61,8 +62,8 @@ try:
         for ky in kyarr:
             physics['kyarr']=array([ky])
             count=0
-            root['SCRIPTS']['subscan_lin_gyro.py'].run()
-            root['SCRIPTS']['downsync.py'].run()
+            task_action(root['SCRIPTS']['subscan_lin_gyro.py'])
+            task_action(root['SCRIPTS']['downsync.py'])
             for count, para_val in enumerate(para_rang):
                 new_dir = para_name + '~' + num2str_xj(para_val, effnum) + '~ky~' + num2str_xj(ky, effnum)
                 casenode=resolve_result(root, run_cases(root)[new_dir])
@@ -92,8 +93,8 @@ try:
         for para_val in para_rang:
             phy1d['Range']=array([para_val])
             count=0
-            root['SCRIPTS']['subscan_lin_gyro.py'].run()
-            root['SCRIPTS']['downsync.py'].run()
+            task_action(root['SCRIPTS']['subscan_lin_gyro.py'])
+            task_action(root['SCRIPTS']['downsync.py'])
             for count, ky in enumerate(kyarr):
                 new_dir = para_name + '~' + num2str_xj(para_val, effnum) + '~ky~' + num2str_xj(ky, effnum)
                 casenode=resolve_result(root, run_cases(root)[new_dir])

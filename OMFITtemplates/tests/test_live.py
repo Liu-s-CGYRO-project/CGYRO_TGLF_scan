@@ -117,6 +117,59 @@ class LiveTest(unittest.TestCase):
         prepared = Prepared(self.with_examples if data == 'examples' else self.template, data, settings)
         return self.session.preview_live(prepared)
 
+    def test_keep_stages_code_once_without_opening_unselected_example_payloads(self):
+        with zipfile.ZipFile(self.with_examples) as archive:
+            files = json.loads(archive.read('manifest.json'))['files']
+        opened = []
+        original = zipfile.ZipFile.open
+
+        def open_member(archive, member, *args, **kwargs):
+            name = member.filename if isinstance(member, zipfile.ZipInfo) else member
+            opened.append(name)
+            if name.startswith('payload/') and files[name[8:]]['kind'] == 'data':
+                raise AssertionError('Keep update must not read example results')
+            return original(archive, member, *args, **kwargs)
+
+        with patch.object(zipfile.ZipFile, 'open', open_member):
+            prepared = Prepared(self.with_examples, data_policy='keep')
+        self.addCleanup(prepared.discard)
+        for name, spec in files.items():
+            if spec['kind'] in ('code', 'settings'):
+                self.assertEqual(opened.count('payload/' + name), 1, name)
+        self.assertFalse((prepared.path / 'Demo/data').exists())
+
+    def test_damaged_selected_code_is_rejected_and_staging_is_removed(self):
+        rewrite(self.template, lambda entries: entries.__setitem__('payload/Demo/GUIS/main.py', b'# damaged GUI'))
+        stage = self.directory / 'damaged-code-stage'
+        stage.mkdir()
+        with patch('OMFITlib_template_live.tempfile.mkdtemp', return_value=str(stage)):
+            with self.assertRaises(TemplateError):
+                Prepared(self.template)
+        self.assertFalse(stage.exists())
+
+    def test_damaged_examples_are_ignored_only_with_keep_policy(self):
+        def corrupt(entries):
+            key = 'payload/Demo/data/v2.npy'
+            entries[key] = b'X' * len(entries[key])
+        rewrite(self.with_examples, corrupt)
+        prepared = Prepared(self.with_examples, data_policy='keep')
+        self.addCleanup(prepared.discard)
+        with self.assertRaisesRegex(TemplateError, 'SHA-256'):
+            Prepared(self.with_examples, data_policy='examples')
+
+    def test_missing_selected_file_still_rejects_template(self):
+        rewrite(self.template, lambda entries: entries.pop('payload/Demo/GUIS/main.py'))
+        with self.assertRaises(TemplateError):
+            Prepared(self.template)
+
+    def test_tree_checksum_is_checked_before_staging_selected_files(self):
+        def corrupt(entries):
+            name = 'payload/OMFITsave.txt'
+            entries[name] = entries[name].replace(b'source_2', b'source_9')
+        rewrite(self.template, corrupt)
+        with self.assertRaisesRegex(TemplateError, 'SHA-256'):
+            Prepared(self.template)
+
     def test_empty_directory_staging_obeys_host_path_boundary(self):
         relative = r'..\outside'
         template = self.directory / 'empty-directory.omfittpl.zip'

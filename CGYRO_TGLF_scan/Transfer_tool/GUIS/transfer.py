@@ -1,11 +1,13 @@
 # -*-Python-*-
 """Profile and radius controls for Transfer_tool's command-box workflow."""
-from OMFITlib_gui_api import adapt
+from OMFITlib_gui_api import task_action
+from OMFITlib_gui_api import adapt, gui_view
 OMFITx = adapt(OMFITx)
 from collections import OrderedDict
 from builtins import dict, getattr, isinstance, len, list, next, str, tuple
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, PROFILE_KEYS
 from OMFITlib_gui_layout import finish_gui_layout
+from OMFITlib_gui_deferred import deferred_section
 from OMFITlib_transfer_particles import (PRESETS, DESCRIPTIONS, EQUIVALENT_TEMPERATURES, detect_main_ions,
                                         main_ion_label, species_label, thermal_reference_choices)
 from OMFITlib_transfer_equivalent import pressure_audit_lines
@@ -88,125 +90,133 @@ def source_help(key, source_key=None):
     return '原始文件地址：' + path if path else '请选择原始文件，地址会随工程保存。'
 
 
-OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['start_from']",
-               OrderedDict([('input.gacode', 'input.gacode'), ('状态文件（statefile）', 'statefile'),
-                            ('剖面文件（p-file）', 'pfile'), ('input.profiles', 'input.profiles')]),
-               lbl='剖面来源', default='input.gacode', updateGUI=True)
-kind = physics['start_from']
-key = next((key for key in PROFILE_KEYS[kind] if key in root['INPUTS']), kind)
-# Display the recorded selection, never the object's mutable cache filename.
-scratch['profile_filename'] = source_filename(key, kind)
-OMFITx.FilePicker("scratch['profile_filename']", '剖面文件', default='',
-                  transferRemoteFile=None, updateGUI=True, postcommand=load_profile, help=source_help(key, kind))
-anchor = OMFITx.Label('当前剖面：' + key + ('（已载入）' if key in root['INPUTS'] else '（未载入）'), align='left')
-if key in root['INPUTS'] and not scratch['profile_filename']:
-    OMFITx.Label('原始地址未记录，请重新选择文件。', align='left')
-if kind in ('statefile', 'pfile'):
-    equilibrium_key = next((name for name in ('gEQDSK', 'gfile') if name in root['INPUTS']), 'gEQDSK')
-    scratch['equilibrium_filename'] = source_filename(equilibrium_key)
-    OMFITx.FilePicker("scratch['equilibrium_filename']", '平衡文件（p-file 必需）', default='',
-                      transferRemoteFile=None, updateGUI=True, postcommand=load_equilibrium, help=source_help(equilibrium_key))
-    OMFITx.Label('平衡文件：' + ('已载入' if equilibrium_key in root['INPUTS'] else '未载入'), align='left')
-prefix = "root['SETTINGS']['PHYSICS']['generation']"
-OMFITx.Separator('计算半径')
-OMFITx.ComboBox(prefix + "['coordinate']", OrderedDict([('rho', 'rho'), ('r/a', 'r/a')]), '径向坐标', updateGUI=True)
-with OMFITx.same_row():
-    OMFITx.Entry(prefix + "['minimum']", '起始半径', updateGUI=True)
-    OMFITx.Entry(prefix + "['maximum']", '结束半径', updateGUI=True)
-    OMFITx.Entry(prefix + "['points']", '半径点数', updateGUI=True)
-OMFITx.Separator('粒子处理')
-source_profile = root['INPUTS'].get('input.gacode', None) if kind == 'input.gacode' else None
-if kind != 'input.gacode':
-    physics['generation']['thermal_reference_ion'] = 0
-main_ions = []
-particle_issue = ''
-try:
-    if source_profile is not None:
-        main_ions = detect_main_ions(source_profile, physics['generation'])
-        OMFITx.Label('主离子：' + ' · '.join('{}{} {:.2%}'.format(
-            ion['name'], '（快）' if ion['kind'] == 'fast' else '', ion['mean_fraction']) for ion in main_ions),
-            align='left', wraplength=840)
-    else:
-        OMFITx.Label('主离子：待识别', align='left')
-except (KeyError, TypeError, ValueError, OverflowError) as exc:
-    particle_issue = str(exc)
-    OMFITx.Label('主离子识别：' + particle_issue, align='left', wraplength=840)
-details = [
-    '先在原始完整剖面副本上固定电子密度、校正准中性，再识别主离子及执行粒子方案。',
-    '主离子：准中性校正后，所选半径区间内平均 ni/ne > 30%；等效方案还要求为 therm 类型、Z=1、质量为 H/D/T，分离快粒子方案会将其合为一个。',
-    '处理后和局部插值后再次检查密度、密度梯度；CGYRO 同步密度曲率。Zeff 不参与电荷闭合。',
-    DESCRIPTIONS.get(physics['generation']['particle_mode'], '请选择粒子方案。'),
-    '原始剖面保留；处理结果及记录保存到 OUTPUTS/Particle_processing。',
-]
-if main_ions:
-    details.append('当前识别：\n' + '\n'.join(main_ion_label(ion) for ion in main_ions))
-if source_profile is None and kind != 'input.gacode':
-    details.append('其他剖面来源在生成 input.gacode 后自动识别；指定热化参考时可使用已生成的 input.gacode。')
-last_report = root['OUTPUTS'].get('Particle_processing', {})
-if last_report.get('after', None):
-    source_check = last_report.get('source_neutrality', {})
-    if source_check:
-        details.append('原始完整剖面准中性：密度残差 {:.2g} → {:.2g}，梯度残差 {:.2g}。'.format(
-            source_check['density_residual_before'], source_check['density_residual'], source_check['gradient_residual']))
-    details.append('上次剖面组成：\n' + '\n'.join(species_label(ion) for ion in last_report['after']))
-    if last_report.get('equivalent_stage', None) == 'local_inputs':
-        details.append('各半径辅助物种的 Z、密度、MASS、温度、梯度、来源与局部压力变化记录在 OUTPUTS/Particle_processing/local_inputs。')
-        if last_report['options']['particle_mode'] == 'separate_fast':
-            details.append('分组记录位于各局部输入的 equivalent/groups：main 为合并主离子，impurity 为热杂质，fast 为快粒子；solver_index 给出最终物种编号。')
-            audit = pressure_audit_lines(last_report.get('local_inputs', {}))
-            if audit:
-                details.append('上次局部输入简化前后（完整组成已先校正准中性）：P=ΣnT，G=ΣnT(gn+gT)，均采用该输入原生归一化。'
-                               '变化比例为差值/原值绝对值；原值为零时不定义比例。\n' + '\n'.join(audit))
-            else:
-                details.append('旧分组记录尚无总压力梯度检查；更新同温规则后需重新运行 Transfer_tool。')
-    details.append('上次完整剖面阶段：密度残差 {:.2g}，梯度残差 {:.2g}；压力最大相对变化 {:.2%}（不含后续局部等效处理）。'.format(
-        last_report.get('density_residual', 0.0), last_report.get('gradient_residual', 0.0),
-        last_report.get('max_relative_pressure_change', 0.0)))
-if last_report.get('thermal_reference', None):
-    details.append('上次热化参考：' + species_label(last_report['thermal_reference']))
-OMFITx.ComboBox(prefix + "['particle_mode']", PRESETS, '处理方案', updateGUI=True, help='\n\n'.join(details))
-if physics['generation']['particle_mode'] == 'equivalent':
-    OMFITx.ComboBox(prefix + "['equivalent_temperature']", EQUIVALENT_TEMPERATURES, '辅助温度',
-                   state='readonly', updateGUI=True,
-                   help='保留原总压力：辅助温度及温度梯度由原辅助组压力及压力梯度决定（默认）。\n'
-                        '温度随热主离子：Tz=sum(ni*Ti)/sum(ni)，温度梯度由热主离子总压力梯度减去总密度梯度得到；CGYRO 同步温度曲率。\n'
-                        '两种方式均保留辅助组电荷、Zeff 贡献、质量和电荷密度梯度；主离子保留稀释后的密度份额。\n'
-                        '热主离子为 therm 类型、Z=1、H/D/T 质量且区间平均 ni/ne > 30% 的粒子；快 D/T 和少量 H/D/T 归辅助组。\n'
-                        '随热主离子方案会改变总压力，不保留快粒子原来的高温响应；局部压力导数随之更新，原平衡几何保持输入值。\n'
-                        'Transfer 保留原热主离子种类；H/D/T 扫描再将其合成一个主离子，只改变质量。切换后需重新运行 Transfer_tool。')
-    text = ('辅助物种采用合并热主离子的温度和温度梯度；总压力会改变。'
-            if physics['generation']['equivalent_temperature'] == 'main_ion'
-            else '辅助物种保留原辅助组的总压力和压力梯度。')
-    OMFITx.Label(text, align='left', wraplength=840)
-    OMFITx.Label('保留主离子稀释份额；快离子和少量 H/D/T 归入辅助组。', align='left', wraplength=840)
-if physics['generation']['particle_mode'] == 'separate_fast':
-    OMFITx.Label('电子 + 一个热主离子 + 等效热杂质 + 等效快粒子', align='left', wraplength=840)
-    OMFITx.Label('热杂质温度及温度梯度随主离子；快粒子独立保留压力及压力梯度。', align='left', wraplength=840)
-    OMFITx.Label('热杂质密度梯度由其电荷密度梯度确定；压力及梯度差额见方案帮助。', align='left', wraplength=840)
-if physics['generation']['particle_mode'] == 'main_only':
-    OMFITx.Label('先校正完整剖面准中性并计算 Zeff，再保留主离子、归一化密度之和为 1。', align='left', wraplength=840)
-    OMFITx.Entry(prefix + "['zeff_collision_model']", 'CGYRO 碰撞模型', width=8,
-                   updateGUI=False, check=lambda value: value in (1, 5),
-                   help='1：Lorentz；5：简化 Lorentz。\n'
-                        '指定 Zeff 仅在 CGYRO 模型 1 或 5 且 Z_EFF_METHOD=1 时生效；生成输入时一并设置。\n'
-                        '默认模型 4 按实际粒子组成重算 Zeff。若需模型 4，请使用等效杂质方案。\n'
-                        '此方案只保留杂质的有效碰撞贡献，不包含杂质响应、稀释或输运。')
-if not particle_issue:
-    if physics['generation']['particle_mode'] == 'thermalize':
-        OMFITx.ComboBox(prefix + "['thermal_reference_ion']",
-                       thermal_reference_choices(source_profile, main_ions),
-                       '温度 / 流速来源', updateGUI=True,
-                       help='用于对应任一主离子、独立保留的快离子；自动取剖面中首个不属于主离子种类的热离子，也可明确指定。')
-if show_run_button:
-    def run_transfer(location=None):
-        root['SCRIPTS']['main.py'].run(profile_source=physics['start_from'],
-                                      radial_settings=dict(physics['generation']))
-    issues = generation_issues(root, physics['start_from'], physics['generation'])
-    if particle_issue:
-        issues.append(particle_issue)
-    OMFITx.Button('运行 Transfer_tool', run_transfer, updateGUI=True,
-                 state='disabled' if issues else 'normal', help='；'.join(issues))
-    if issues:
-        OMFITx.Label('需要补充：' + '；'.join(issues), align='left', wraplength=840)
-    OMFITx.Button('剖面绘图', lambda: root['GUIS']['plots'].run())
-    finish_gui_layout(anchor, OMFITx)
+def render():
+    OMFITx.ComboBox("root['SETTINGS']['PHYSICS']['start_from']",
+                   OrderedDict([('input.gacode', 'input.gacode'), ('状态文件（statefile）', 'statefile'),
+                                ('剖面文件（p-file）', 'pfile'), ('input.profiles', 'input.profiles')]),
+                   lbl='剖面来源', default='input.gacode', updateGUI=True, refresh_tree=False)
+    kind = physics['start_from']
+    key = next((key for key in PROFILE_KEYS[kind] if key in root['INPUTS']), kind)
+    # Display the recorded selection, never the object's mutable cache filename.
+    scratch['profile_filename'] = source_filename(key, kind)
+    OMFITx.FilePicker("scratch['profile_filename']", '剖面文件', default='',
+                      transferRemoteFile=None, updateGUI=True, postcommand=load_profile, help=source_help(key, kind))
+    anchor = OMFITx.Label('当前剖面：' + key + ('（已载入）' if key in root['INPUTS'] else '（未载入）'), align='left')
+    if key in root['INPUTS'] and not scratch['profile_filename']:
+        OMFITx.Label('原始地址未记录，请重新选择文件。', align='left')
+    if kind in ('statefile', 'pfile'):
+        equilibrium_key = next((name for name in ('gEQDSK', 'gfile') if name in root['INPUTS']), 'gEQDSK')
+        scratch['equilibrium_filename'] = source_filename(equilibrium_key)
+        OMFITx.FilePicker("scratch['equilibrium_filename']", '平衡文件（p-file 必需）', default='',
+                          transferRemoteFile=None, updateGUI=True, postcommand=load_equilibrium, help=source_help(equilibrium_key))
+        OMFITx.Label('平衡文件：' + ('已载入' if equilibrium_key in root['INPUTS'] else '未载入'), align='left')
+    prefix = "root['SETTINGS']['PHYSICS']['generation']"
+    OMFITx.Separator('计算半径')
+    OMFITx.ComboBox(prefix + "['coordinate']", OrderedDict([('rho', 'rho'), ('r/a', 'r/a')]), '径向坐标', updateGUI=True, refresh_tree=False)
+    with OMFITx.same_row():
+        OMFITx.Entry(prefix + "['minimum']", '起始半径', updateGUI=True, refresh_tree=False)
+        OMFITx.Entry(prefix + "['maximum']", '结束半径', updateGUI=True, refresh_tree=False)
+        OMFITx.Entry(prefix + "['points']", '半径点数', updateGUI=True, refresh_tree=False)
+    OMFITx.Separator('粒子处理')
+    source_profile = root['INPUTS'].get('input.gacode', None) if kind == 'input.gacode' else None
+    if kind != 'input.gacode':
+        physics['generation']['thermal_reference_ion'] = 0
+    main_ions = []
+    particle_issue = ''
+    try:
+        if source_profile is not None:
+            main_ions = detect_main_ions(source_profile, physics['generation'])
+            OMFITx.Label('主离子：' + ' · '.join('{}{} {:.2%}'.format(
+                ion['name'], '（快）' if ion['kind'] == 'fast' else '', ion['mean_fraction']) for ion in main_ions),
+                align='left', wraplength=840)
+        else:
+            OMFITx.Label('主离子：待识别', align='left')
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        particle_issue = str(exc)
+        OMFITx.Label('主离子识别：' + particle_issue, align='left', wraplength=840)
+    details = [
+        '先在原始完整剖面副本上固定电子密度、校正准中性，再识别主离子及执行粒子方案。',
+        '主离子：准中性校正后，所选半径区间内平均 ni/ne > 30%；等效方案还要求为 therm 类型、Z=1、质量为 H/D/T，分离快粒子方案会将其合为一个。',
+        '处理后和局部插值后再次检查密度、密度梯度；CGYRO 同步密度曲率。Zeff 不参与电荷闭合。',
+        DESCRIPTIONS.get(physics['generation']['particle_mode'], '请选择粒子方案。'),
+        '原始剖面保留；处理结果及记录保存到 OUTPUTS/Particle_processing。',
+    ]
+    if main_ions:
+        details.append('当前识别：\n' + '\n'.join(main_ion_label(ion) for ion in main_ions))
+    if source_profile is None and kind != 'input.gacode':
+        details.append('其他剖面来源在生成 input.gacode 后自动识别；指定热化参考时可使用已生成的 input.gacode。')
+    last_report = root['OUTPUTS'].get('Particle_processing', {})
+    if last_report.get('after', None):
+        source_check = last_report.get('source_neutrality', {})
+        if source_check:
+            details.append('原始完整剖面准中性：密度残差 {:.2g} → {:.2g}，梯度残差 {:.2g}。'.format(
+                source_check['density_residual_before'], source_check['density_residual'], source_check['gradient_residual']))
+        details.append('上次剖面组成：\n' + '\n'.join(species_label(ion) for ion in last_report['after']))
+        if last_report.get('equivalent_stage', None) == 'local_inputs':
+            details.append('各半径辅助物种的 Z、密度、MASS、温度、梯度、来源与局部压力变化记录在 OUTPUTS/Particle_processing/local_inputs。')
+            if last_report['options']['particle_mode'] == 'separate_fast':
+                details.append('分组记录位于各局部输入的 equivalent/groups：main 为合并主离子，impurity 为热杂质，fast 为快粒子；solver_index 给出最终物种编号。')
+                audit = pressure_audit_lines(last_report.get('local_inputs', {}))
+                if audit:
+                    details.append('上次局部输入简化前后（完整组成已先校正准中性）：P=ΣnT，G=ΣnT(gn+gT)，均采用该输入原生归一化。'
+                                   '变化比例为差值/原值绝对值；原值为零时不定义比例。\n' + '\n'.join(audit))
+                else:
+                    details.append('旧分组记录尚无总压力梯度检查；更新同温规则后需重新运行 Transfer_tool。')
+        details.append('上次完整剖面阶段：密度残差 {:.2g}，梯度残差 {:.2g}；压力最大相对变化 {:.2%}（不含后续局部等效处理）。'.format(
+            last_report.get('density_residual', 0.0), last_report.get('gradient_residual', 0.0),
+            last_report.get('max_relative_pressure_change', 0.0)))
+    if last_report.get('thermal_reference', None):
+        details.append('上次热化参考：' + species_label(last_report['thermal_reference']))
+    OMFITx.ComboBox(prefix + "['particle_mode']", PRESETS, '处理方案', updateGUI=True, help='\n\n'.join(details), refresh_tree=False)
+    if physics['generation']['particle_mode'] == 'equivalent':
+        OMFITx.ComboBox(prefix + "['equivalent_temperature']", EQUIVALENT_TEMPERATURES, '辅助温度',
+                       state='readonly', updateGUI=True,
+                       help='保留原总压力：辅助温度及温度梯度由原辅助组压力及压力梯度决定（默认）。\n'
+                            '温度随热主离子：Tz=sum(ni*Ti)/sum(ni)，温度梯度由热主离子总压力梯度减去总密度梯度得到；CGYRO 同步温度曲率。\n'
+                            '两种方式均保留辅助组电荷、Zeff 贡献、质量和电荷密度梯度；主离子保留稀释后的密度份额。\n'
+                            '热主离子为 therm 类型、Z=1、H/D/T 质量且区间平均 ni/ne > 30% 的粒子；快 D/T 和少量 H/D/T 归辅助组。\n'
+                            '随热主离子方案会改变总压力，不保留快粒子原来的高温响应；局部压力导数随之更新，原平衡几何保持输入值。\n'
+                            'Transfer 保留原热主离子种类；H/D/T 扫描再将其合成一个主离子，只改变质量。切换后需重新运行 Transfer_tool。', refresh_tree=False)
+        text = ('辅助物种采用合并热主离子的温度和温度梯度；总压力会改变。'
+                if physics['generation']['equivalent_temperature'] == 'main_ion'
+                else '辅助物种保留原辅助组的总压力和压力梯度。')
+        OMFITx.Label(text, align='left', wraplength=840)
+        OMFITx.Label('保留主离子稀释份额；快离子和少量 H/D/T 归入辅助组。', align='left', wraplength=840)
+    if physics['generation']['particle_mode'] == 'separate_fast':
+        OMFITx.Label('电子 + 一个热主离子 + 等效热杂质 + 等效快粒子', align='left', wraplength=840)
+        OMFITx.Label('热杂质温度及温度梯度随主离子；快粒子独立保留压力及压力梯度。', align='left', wraplength=840)
+        OMFITx.Label('热杂质密度梯度由其电荷密度梯度确定；压力及梯度差额见方案帮助。', align='left', wraplength=840)
+    if physics['generation']['particle_mode'] == 'main_only':
+        OMFITx.Label('先校正完整剖面准中性并计算 Zeff，再保留主离子、归一化密度之和为 1。', align='left', wraplength=840)
+        OMFITx.Entry(prefix + "['zeff_collision_model']", 'CGYRO 碰撞模型', width=8,
+                       updateGUI=False, check=lambda value: value in (1, 5),
+                       help='1：Lorentz；5：简化 Lorentz。\n'
+                            '指定 Zeff 仅在 CGYRO 模型 1 或 5 且 Z_EFF_METHOD=1 时生效；生成输入时一并设置。\n'
+                            '默认模型 4 按实际粒子组成重算 Zeff。若需模型 4，请使用等效杂质方案。\n'
+                            '此方案只保留杂质的有效碰撞贡献，不包含杂质响应、稀释或输运。', refresh_tree=False)
+    if not particle_issue:
+        if physics['generation']['particle_mode'] == 'thermalize':
+            OMFITx.ComboBox(prefix + "['thermal_reference_ion']",
+                           thermal_reference_choices(source_profile, main_ions),
+                           '温度 / 流速来源', updateGUI=False,
+                           help='用于对应任一主离子、独立保留的快离子；自动取剖面中首个不属于主离子种类的热离子，也可明确指定。', refresh_tree=False)
+    if show_run_button:
+        def run_transfer(location=None):
+            task_action(root['SCRIPTS']['main.py'], profile_source=physics['start_from'],
+                                          radial_settings=dict(physics['generation']))
+        issues = generation_issues(root, physics['start_from'], physics['generation'])
+        if particle_issue:
+            issues.append(particle_issue)
+        OMFITx.Button('运行 Transfer_tool', run_transfer, updateGUI=True,
+                     state='disabled' if issues else 'normal', help='；'.join(issues))
+        if issues:
+            OMFITx.Label('需要补充：' + '；'.join(issues), align='left', wraplength=840)
+        OMFITx.Button('剖面绘图', lambda: gui_view(root['GUIS']['plots']), updateGUI=False, refresh_tree=False)
+        finish_gui_layout(anchor, OMFITx)
+
+
+section = deferred_section(OMFITx, render, local=True, container=True, action=True)
+if section is None:
+    render()
+else:
+    section.show()

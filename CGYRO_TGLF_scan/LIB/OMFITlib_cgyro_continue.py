@@ -24,7 +24,7 @@ from OMFITlib_cgyro_checkpoint import directory_checkpoint
 from OMFITlib_cgyro_launch import validate_checkpoint_runtime
 from OMFITlib_cgyro_scratch import directory_bytes, ensure_capacity
 from OMFITlib_cgyro_run_state import point_complete
-from OMFITlib_cgyro_input_identity import effective_parameters, read_parameters, RUN_CONTROL_PARAMETERS
+from OMFITlib_cgyro_input_identity import effective_parameters, read_parameters, verified_parameters, RUN_CONTROL_PARAMETERS
 
 
 def saved_run(module, token):
@@ -126,17 +126,7 @@ def _file_sha256(path):
 
 def validate_selected_input(result, info, row):
     """Check the selected owner's input against its stored coordinate/hash."""
-    with open(result_file(result, 'input.cgyro'), 'rb') as handle:
-        data = handle.read()
-    expected_hash = row.get('input_sha256', '')
-    if expected_hash and hashlib.sha256(data).hexdigest() != expected_hash:
-        raise ValueError('Selected input.cgyro checksum disagrees with the result index')
-    actual, _ = read_parameters(result_file(result, 'input.cgyro'))
-    effective, source, digest = effective_parameters(result)
-    if source == 'input.cgyro.gen':
-        for name, value in actual.items():
-            if name not in effective or not math.isclose(value, effective[name], rel_tol=1e-9, abs_tol=1e-12):
-                raise ValueError('Selected input.cgyro.gen disagrees with input.cgyro: ' + name)
+    actual, effective, source, digest = verified_parameters(result, row.get('input_sha256', ''))
     if row.get('input_parameters', None) is not None:
         parameters = {name: value for name, value in effective.items() if name not in RUN_CONTROL_PARAMETERS}
         if parameters != dict(row['input_parameters']):

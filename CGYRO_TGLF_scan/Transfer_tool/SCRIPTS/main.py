@@ -1,9 +1,10 @@
 # -*-Python-*-
 """Run the original command box 1 workflow from a single GUI action."""
+from OMFITlib_gui_api import task_action
 import copy
 import numpy as np
 from builtins import abs, max
-from OMFITlib_transfer_workflow import (discard_legacy_outputs, generation_issues, initialize_generation,
+from OMFITlib_transfer_workflow import (generation_issues, initialize_generation,
                                       prepare_tgyro, selected_profile)
 from OMFITlib_transfer_particles import main_ion_label, prepare_particles, species_label
 from OMFITlib_transfer_equivalent import pressure_audit_lines
@@ -30,7 +31,7 @@ outputs.pop('Profiles_gen_diagnostics', None)
 try:
     if kind != 'input.gacode':
         print('Transfer_tool：生成 input.gacode …')
-        root['SCRIPTS']['profiles_gen.py'].run(profile_source=kind)
+        task_action(root['SCRIPTS']['profiles_gen.py'], profile_source=kind)
         root['INPUTS']['input.gacode'] = outputs['Profiles_gen']['input.gacode'].duplicate()
     source_profile = root['INPUTS']['input.gacode']
     options = radial_settings if radial_settings is not None else initialize_generation(root, OMFITtree)
@@ -63,9 +64,9 @@ try:
     prepare_tgyro(root, profile, options)
     root['Transfer_file']['input.gacode'] = profile.duplicate()
     print('Transfer_tool：运行 TGYRO …')
-    root['SCRIPTS']['tgyro_tglf.py'].run()
+    task_action(root['SCRIPTS']['tgyro_tglf.py'])
     print('Transfer_tool：生成各半径的 input.cgyro / input.tglf …')
-    root['SCRIPTS']['profiles_gen4input.py'].run()
+    task_action(root['SCRIPTS']['profiles_gen4input.py'])
     if report.get('equivalent_stage', None) == 'local_inputs':
         local_records = outputs['Particle_processing']['local_inputs']
         if report['options']['particle_mode'] == 'separate_fast':
@@ -103,5 +104,4 @@ except BaseException:
         else:
             branch['input.gacode'] = value
     raise
-discard_legacy_outputs(root)
 print('Transfer_tool 完成。已生成各半径输入，可直接进入 CGYRO 扫描；“生成文件”可查看参数。')

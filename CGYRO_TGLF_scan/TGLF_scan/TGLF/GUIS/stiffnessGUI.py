@@ -1,3 +1,4 @@
+from OMFITlib_gui_api import plot_view
 from OMFITlib_gui_api import adapt
 OMFITx = adapt(OMFITx)
 # -*-Python-*-
@@ -10,4 +11,4 @@ b.configure(width=30)
 
 if 'STIFFNESS' in root:
     OMFITx.Separator()
-    OMFITx.Button('绘制刚度', "root['PLOTS']['plotStiffness']")
+    OMFITx.Button('绘制刚度', lambda: plot_view(root['PLOTS']['plotStiffness']), refresh_tree=False)

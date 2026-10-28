@@ -163,6 +163,7 @@ if 'input.tglf' in root['FILES']:
         default=1,
         updateGUI=True,
         state='readonly',
+        refresh_tree=False,
     )
 
     root['SETTINGS']['PHYSICS']['scanParameters'] = []
@@ -176,11 +177,12 @@ if 'input.tglf' in root['FILES']:
             updateGUI=True,
             default='RLNS_%s' % paramN,
             width='50',
+            refresh_tree=False,
         )
         param = root['SETTINGS']['PHYSICS']['scanParameter' + str(paramN)]
         value = root['FILES']['input.tglf'][root['SETTINGS']['PHYSICS']['scanParameter' + str(paramN)]]
         if (param.startswith('RLTS_') or param.startswith('TAUS_')) and not param.endswith('_1'):
-            OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['single_Ti']", '全部热离子采用相同温度')
+            OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['single_Ti']", '全部热离子采用相同温度', refresh_tree=False)
 
         OMFITx.Label("Experimental Value=%g" % value)
 
@@ -189,24 +191,27 @@ if 'input.tglf' in root['FILES']:
                 "root['SETTINGS']['PHYSICS']['inputParameterDistribution']",
                 ["Normal Distribution"],
                 '选择分布类型',
-                updateGUI=True,
+                updateGUI=False,
                 width='40',
                 default="Normal Distribution",
+                refresh_tree=False,
             )
             if root['SETTINGS']['PHYSICS']['inputParameterDistribution'] == "Normal Distribution":
                 # Mean of normal distribution
                 OMFITx.Entry(
                     "root['SETTINGS']['PHYSICS']['scanParameter%sMean']" % str(paramN),
                     '分布均值',
-                    updateGUI=True,
+                    updateGUI=False,
                     default=value,
+                    refresh_tree=False,
                 )
                 # Std of normal distribution
                 OMFITx.Entry(
                     "root['SETTINGS']['PHYSICS']['scanParameter%sStd']" % str(paramN),
                     '分布标准差',
-                    updateGUI=True,
+                    updateGUI=False,
                     default=0.1 * value,
+                    refresh_tree=False,
                 )
             else:
                 raise NotImplementedError(
@@ -227,14 +232,15 @@ if 'input.tglf' in root['FILES']:
         "root['SETTINGS']['PHYSICS']['inputParameterSamplingMethod']",
         sampling_opts,
         '采样方法',
-        updateGUI=True,
+        updateGUI=False,
         default='M',
         width='40',
+        refresh_tree=False,
     )
     # Number of samples
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['scanParameterSamples']", '样本数（运行次数）', updateGUI=True, default=15)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['scanParameterSamples']", '样本数（运行次数）', updateGUI=False, default=15, refresh_tree=False)
     # Number of parallel runs
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['parallelScan']", '并行运行数', updateGUI=True, default=16)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['parallelScan']", '并行运行数', updateGUI=False, default=16, refresh_tree=False)
 
     # Fix the dimension mismatch if only one input parameter
     if root['SETTINGS']['PHYSICS']['UQInputSamples'].ndim == 1:
@@ -250,6 +256,7 @@ if 'input.tglf' in root['FILES']:
         '对实验子时间窗数据拟合多元正态分布',
         default=False,
         updateGUI=True,
+        refresh_tree=False,
     )
 
 else:

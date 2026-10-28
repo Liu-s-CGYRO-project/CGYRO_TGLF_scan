@@ -1,7 +1,8 @@
 # -*-Python-*-
 # Created by smithsp at 2013/07/22 11:04
 
-root['SCRIPTS']['create_input.neo'].run()
+from OMFITlib_gui_api import task_action
+task_action(root['SCRIPTS']['create_input.neo'])
 
 input_gacode = root['OUTPUTS']['input.gacode']
 inputs = [(input_gacode, 'input.gacode')]
@@ -110,4 +111,4 @@ for file in ['neoequil', 'neoexpnorm', 'neontheta']:
         printw(rootName + ': no vgen/out.vgen.%s \nMake sure you are running the latest version of profiles_gen!' % file)
 
 # postprocessing
-root['SCRIPTS']['postprocess_vgen'].run()
+task_action(root['SCRIPTS']['postprocess_vgen'])

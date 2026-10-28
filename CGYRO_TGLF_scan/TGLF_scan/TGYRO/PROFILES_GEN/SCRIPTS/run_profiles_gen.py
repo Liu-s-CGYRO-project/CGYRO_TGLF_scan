@@ -1,6 +1,7 @@
 # -*-Python-*-
 # Created by holland at 2013/03/06 14:30
 
+from OMFITlib_gui_api import task_action
 defaultVars(enforce_quasineutrality=False, gEQDSK=gEQDSK, profpowbal=profpowbal, calcEr=root['SETTINGS']['PHYSICS']['calcEr'], args='')
 
 inputs = []
@@ -74,7 +75,7 @@ if profpowbal is None:
 
 # reorder ions as per request of the user
 try:
-    root['SCRIPTS']['reorder_ions'].run()
+    task_action(root['SCRIPTS']['reorder_ions'])
 except Exception as _excp:
     root['SETTINGS']['PHYSICS']['reorder_ion_names'] = None
     printe(repr(_excp))
@@ -94,16 +95,16 @@ if 'input.gacode' in root['OUTPUTS']:
 
 # blend eped profile
 if EPED is not None and root['SETTINGS']['PHYSICS']['blendEPED']:
-    root['SCRIPTS']['blendEPED'].run(test=False)
-    root['SCRIPTS']['enforce_quasineutrality'].run()
+    task_action(root['SCRIPTS']['blendEPED'], test=False)
+    task_action(root['SCRIPTS']['enforce_quasineutrality'])
 
 # enforce quasineutrality
 elif enforce_quasineutrality or root['SETTINGS']['PHYSICS']['calcEr']:
-    root['SCRIPTS']['enforce_quasineutrality'].run()
+    task_action(root['SCRIPTS']['enforce_quasineutrality'])
 
 # run a second time with -vgen option if need to calculate Er
 if calcEr:
-    root['SCRIPTS']['run_profiles_gen_vgen'].run()
+    task_action(root['SCRIPTS']['run_profiles_gen_vgen'])
 
 # update ion names in root['SETTINGS']['PHYSICS']['reorder_ion_names']
 import OMFITlib_profilesgen

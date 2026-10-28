@@ -1,2 +1,3 @@
 # Compatibility entry point retained for saved OMFIT button references.
-root['SCRIPTS']['CGYROScan.py'].run()
+from OMFITlib_gui_api import task_action
+task_action(root['SCRIPTS']['CGYROScan.py'])

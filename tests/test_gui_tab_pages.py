@@ -368,6 +368,14 @@ class NativeTabsTests(unittest.TestCase):
         self.host.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
         self.assertNotIn('CUSTOM_NUMBER', table.names)
         with patch('OMFITlib_workbench_cgyro_ui.parameter_catalog', side_effect=AssertionError('catalog reread')):
+            parameter_body = table.section.frame
+            toggle = next(widget for widget in self.host.descendants(self.host.owner.top)
+                          if isinstance(widget, native.ttk.Checkbutton)
+                          and widget.cget('text') == '按 ky 缩放时间')
+            self.host.invoke(lambda: toggle.event_generate('<ButtonRelease-1>'))
+            self.host.drain(60)
+            self.assertTrue(node['SETTINGS']['PHYSICS']['scale_time_with_ky'])
+            self.assertIs(table.section.frame, parameter_body)
             table.query.set('custom_number')
             table.flush()
             self.assertEqual(table.names, ['CUSTOM_NUMBER'])

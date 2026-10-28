@@ -6,6 +6,7 @@ Reading the dashboard never submits jobs, inspects large result arrays, or
 replaces inputs. Selection migration is handled by the planning helpers.
 """
 from OMFITlib_plot_sources import run_choices
+from OMFITlib_gui_api import task_action
 # Keep these imports as compatibility exports for existing GUIs and saved scripts.
 # New helpers depend on data/parameters only, never back on this action layer.
 from OMFITlib_project_inputs import (read, text_value, location, input_digest,
@@ -30,7 +31,7 @@ from OMFITlib_gacode_installations import (PROGRAMS, detection_is_current, insta
     parse_probe, probe_script, same_endpoint, sync_environment, valid_path)
 from OMFITlib_server_capabilities import (adapt_draft, matching_profile, parse_probe as parse_capabilities,
     probe_script as capability_probe, resource_issues)
-from OMFITlib_transfer_workflow import (discard_legacy_outputs, generation_issues, initialize_generation,
+from OMFITlib_transfer_workflow import (generation_issues, initialize_generation,
                                       tgyro_batch_settings, tglf_input_format)
 from OMFITlib_tglf_workbench import (PROFILE_PATH, RADII, initialize as initialize_tglf,
     fully_failed, generation_overrides, input_rows as tglf_rows, plan as tglf_plan)
@@ -294,9 +295,6 @@ class ProjectActions:
                  remote_execute=None, root_name='root'):
         self.root, self.factory = root, factory
         self.settings = initialize(root, factory)
-        transfer = read(root, MODULES['transfer'])
-        if transfer is not None:
-            discard_legacy_outputs(transfer)
         self.readers = readers or {}
         self.resolve_server, self.workdir = resolve_server, workdir
         self.register_server = register_server
@@ -377,7 +375,7 @@ class ProjectActions:
             raise ValueError('工程缺少入口：' + '/'.join(path))
         record = self._record(title, status='running')
         try:
-            result = task.run(**kwargs)
+            result = task_action(task, **kwargs)
         except BaseException as exc:
             self.report_error(title, exc, record)
             raise

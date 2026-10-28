@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from omfit_mapping import treeify
 
 import numpy as np
@@ -30,6 +30,15 @@ def result():
                                    'gamma': np.array([[.2, .3, .4], [.1, .2, .3]]),
                                    'freq': np.array([[.1, .2, .3], [-.1, -.2, -.3]])},
             'gbflux': {'data': [('elec', 1., 2., 3., 4.), ('ion1', .5, .6, .7, .8)]}}
+
+
+class ReadForbidden(dict):
+    """An archived reader may be referenced, but GUI navigation cannot open it."""
+    def __getitem__(self, key):
+        raise AssertionError('GUI opened archived data: ' + str(key))
+
+    def items(self):
+        raise AssertionError('GUI traversed archived data')
 
 
 class TestMultiInput(unittest.TestCase):
@@ -99,6 +108,31 @@ class TestMultiInput(unittest.TestCase):
         for label in ('生成输入', '生成并运行', '对比所选记录的频率与增长率'):
             options = next(kwargs for _, kind, args, kwargs in ui.events if kind == 'Button' and args[0] == label)
             self.assertEqual(options['state'], 'disabled')
+
+    def test_collected_summary_is_used_without_reopening_profiles_or_results(self):
+        self.run_cases()
+        for point in self.latest()['points'].values():
+            attempt = point['attempts'][point['selected_attempt']]
+            self.assertIn('Gamma/Gamma_GB', attempt['flux_summary'])
+            attempt['result'] = ReadForbidden()
+        self.case['input.gacode'] = ReadForbidden()
+        ui = FakeUI(self.root)
+        with (patch.object(data, 'profile_info', side_effect=AssertionError('Profile parsed')),
+              patch.object(data, 'profile_digest', side_effect=AssertionError('Profile hashed'))):
+            MultiInputUI(self.root, ui).render()
+        labels = [args[0] for _, kind, args, _ in ui.events if kind == 'Label']
+        self.assertTrue(any('Gamma/Gamma_GB' in text for text in labels))
+
+    def test_old_record_without_summary_does_not_parse_result_to_fill_it(self):
+        self.run_cases()
+        for point in self.latest()['points'].values():
+            attempt = point['attempts'][point['selected_attempt']]
+            attempt.pop('flux_summary')
+            attempt['result'] = ReadForbidden()
+        ui = FakeUI(self.root)
+        MultiInputUI(self.root, ui).render()
+        labels = [args[0] for _, kind, args, _ in ui.events if kind == 'Label']
+        self.assertTrue(any('旧记录未保存通量摘要' in text for text in labels))
 
     def test_import_same_basename_in_two_directories_and_isolated_snapshot(self):
         original = profile()

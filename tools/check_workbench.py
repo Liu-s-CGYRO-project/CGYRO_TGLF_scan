@@ -5,6 +5,64 @@ import json
 from pathlib import Path
 
 
+def gui_inventory(repo):
+    """Source inventory, not a claim that every callback was executed.
+
+    Include extensionless native GUIs from OMFITsave.txt and callback sites in
+    libraries. This keeps legacy entry points visible in future boundary audits.
+    """
+    repo = Path(repo).resolve()
+    entries, controls, sources = [], [], set()
+    widgets = {'Button', 'CheckBox', 'ComboBox', 'Entry', 'ObjectPicker', 'ModulePicker',
+               'Slider', 'ShotTimeDevice', 'Tab', 'TabPages', 'deferred_section',
+               'Checkbutton', 'Combobox', 'Radiobutton', 'Spinbox', 'Scale', 'bind'}
+    for package in ('CGYRO_TGLF_scan', 'OMFITtemplates'):
+        folder = repo / package
+        for line in (folder / 'OMFITsave.txt').read_text(encoding='utf-8-sig').splitlines():
+            parts = [part.strip() for part in line.split('<-:-:->')]
+            if len(parts) < 3 or parts[1] != 'OMFITpythonGUI':
+                continue
+            path = (folder / parts[2]).resolve()
+            if folder not in path.parents or not path.is_file():
+                raise ValueError('Missing or external GUI source: ' + parts[2])
+            sources.add(path)
+            entries.append(dict(package=package, tree=parts[0], file=path.relative_to(repo).as_posix()))
+        sources.update(path for path in folder.rglob('*.py')
+                       if 'tests' not in path.relative_to(folder).parts)
+
+    class Calls(ast.NodeVisitor):
+        def __init__(self, path):
+            self.path, self.context = path.relative_to(repo).as_posix(), []
+
+        def visit_FunctionDef(self, node):
+            self.context.append(node.name)
+            self.generic_visit(node)
+            self.context.pop()
+
+        def visit_ClassDef(self, node):
+            self.context.append(node.name)
+            self.generic_visit(node)
+            self.context.pop()
+
+        def visit_Call(self, node):
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else (
+                node.func.id if isinstance(node.func, ast.Name) else '')
+            if name in widgets:
+                flags = {kw.arg: ast.unparse(kw.value) for kw in node.keywords
+                         if kw.arg in {'updateGUI', 'refresh_tree', 'refresh_scope', 'local', 'action',
+                                       'command', 'postcommand', 'state'}}
+                controls.append(dict(file=self.path, line=node.lineno, context='.'.join(self.context),
+                                     call=ast.unparse(node.func), args=[ast.unparse(arg) for arg in node.args],
+                                     options=flags))
+            self.generic_visit(node)
+
+    for path in sorted(sources):
+        Calls(path).visit(ast.parse(path.read_text(encoding='utf-8-sig'), filename=str(path), feature_version=(3, 9)))
+    return dict(gui_entries=entries, callback_sites=controls,
+                counts=dict(entries=len(entries), sources=len(sources), sites=len(controls)),
+                limitation='Static call sites; dynamic controls, callback execution and result I/O require runtime tests.')
+
+
 def validate_workbench(project_root):
     library = Path(project_root) / 'LIB'
 
@@ -80,5 +138,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('project', nargs='?', type=Path,
                         default=Path(__file__).resolve().parents[1] / 'CGYRO_TGLF_scan')
+    parser.add_argument('--gui-inventory', type=Path, help='Write all registered GUI and control/callback source locations')
     args = parser.parse_args()
     print(json.dumps(validate_workbench(args.project), indent=2))
+    if args.gui_inventory is not None:
+        inventory = gui_inventory(args.project.parent)
+        args.gui_inventory.parent.mkdir(parents=True, exist_ok=True)
+        args.gui_inventory.write_text(json.dumps(inventory, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(inventory['counts']))

@@ -8,7 +8,7 @@ from collections import OrderedDict
 import tkinter as tk
 from tkinter import ttk
 from OMFITlib_workbench_catalog import STATUS
-from OMFITlib_gui_deferred import TabPages
+from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
 from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choices, installation_issues
 from OMFITlib_project import MODULES, collect_issues, location, read, text_value, sync_run_issues
@@ -24,17 +24,22 @@ class RuntimePage:
     def render_run(self):
         config = initialize_runtime(self.root, self.actions.factory)
         prefix = "root['SETTINGS']['GACODE_RUNTIME']"
-        self.runtime_apply(config)
+        self.runtime_status = deferred_section(self.ui, lambda: self.runtime_apply(config),
+                                               local=True, container=True)
+        if self.runtime_status is None:
+            self.runtime_apply(config)
+        else:
+            self.runtime_status.show()
         renderers = dict(environment=lambda: self.environment(config, prefix),
             installations=lambda: self.gacode_installations(config),
             commands=lambda: self.runtime_commands(prefix),
             records=self.runtime_records, history=self.runtime_history)
-        # Apply status is shared above the tabs, so field changes redraw the
-        # visible runtime page and its header, while hidden tabs stay unloaded.
+        # Draft fields update the small apply-status region. Structural choices
+        # may also rebuild their own tab, never the surrounding notebook.
         self.runtime_pages = TabPages(self.ui, OrderedDict([
             ('environment', '常用配置'), ('installations', '安装路径'), ('commands', '脚本与命令'),
             ('records', '运行记录'), ('history', '操作历史')]),
-            self.settings, 'runtime_tab', lambda page: renderers[page](), local=False)
+            self.settings, 'runtime_tab', lambda page: renderers[page]())
 
     def runtime_records(self):
         manifest = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST'), {})
@@ -42,7 +47,7 @@ class RuntimePage:
         self.label(run_caption(manifest) if manifest else '尚无运行记录。')
         if manifest:
             self.note('收集：' + collection_caption(manifest), record_details(manifest))
-        self.guarded('同步 CGYRO 作业状态', self.actions.sync_cgyro_run, sync_run_issues(self.root))
+        self.guarded('同步 CGYRO 作业状态', self.actions.sync_cgyro_run, sync_run_issues(self.root), refresh_tree=False)
         self.guarded('收集 CGYRO 当前结果', self.actions.collect, collect_issues(self.root),
                      help='读取并归档已有输出；不提交计算，也不等待仍在运行的案例。')
         self.ui.Separator('TGLF 多剖面运行')
@@ -84,10 +89,21 @@ class RuntimePage:
         return control
 
     def runtime_entry(self, path, caption, wide=False, short=False, **kwargs):
+        kwargs.update(dict(updateGUI=False, refresh_tree=False, postcommand=self.runtime_draft_changed))
         return self.runtime_field(self.ui.Entry(path, caption, **kwargs), caption, wide, short)
 
     def runtime_choice(self, path, options, caption, wide=False, **kwargs):
+        postcommand = kwargs.pop('postcommand', None)
+        def changed(location=None):
+            if postcommand is not None:
+                postcommand(location=location)
+            self.runtime_draft_changed()
+        kwargs.update(dict(refresh_tree=False, postcommand=changed))
         return self.runtime_field(self.ui.ComboBox(path, options, caption, **kwargs), caption, wide=wide)
+
+    def runtime_draft_changed(self, location=None):
+        if self.runtime_status is not None:
+            self.runtime_status.refresh.request()
 
     def environment(self, config, prefix):
         self.runtime_section('01  服务器与目录')
@@ -167,7 +183,7 @@ class RuntimePage:
                                '转换半径数', short=True, updateGUI=True)
         if self.open_servers is not None:
             self.runtime_section('OMFIT 设置')
-            self.ui.Button('个人服务器设置', self.open_servers, updateGUI=True)
+            self.ui.Button('个人服务器设置', self.open_servers, refresh_tree=False)
 
     def runtime_apply(self, config):
         """One apply action outside the tabs, shared by every settings page."""

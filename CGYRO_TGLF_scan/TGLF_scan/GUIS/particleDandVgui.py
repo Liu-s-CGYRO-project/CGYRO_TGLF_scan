@@ -1,3 +1,5 @@
+from OMFITlib_gui_api import task_action
+from OMFITlib_gui_api import plot_view
 from OMFITlib_gui_api import adapt
 OMFITx = adapt(OMFITx)
 # -*-Python-*-
@@ -20,16 +22,17 @@ if not compoundGUI:  # OMFIT GUIs have the compoundGUI variable in their namespa
         return True
 
     # get available database elements, excluding the 'scans' tree that comes from frequency scans:
-    available_trees = {x: root['TGLF_SCAN_DB'][x] for x in root['TGLF_SCAN_DB'] if x not in ['scans']}
+    available_trees = [x for x in root['TGLF_SCAN_DB'] if x != 'scans']
     OMFITx.ComboBox(
         "root['SETTINGS']['PHYSICS']['runs_label']",
-        list(available_trees.keys()),
+        available_trees,
         '扫描名称',
         postcommand=lambda location=None: root['SCRIPTS']['reloadDVscan'].runNoGUI(),
         updateGUI=True,
         state='normal',
         check=no_spaces,
         default='',
+        refresh_tree=True,
     )
 else:
     # no need to select runs_label when this GUI is used within another GUI
@@ -63,9 +66,9 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
     else:
         OMFITx.Label('尚未载入 input.gacode')
 
-    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['impElement']" % runs_label, '杂质元素', default='Ca')
-    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['impZ']" % runs_label, '杂质电荷数 Z', default=20)
-    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['impM']" % runs_label, '杂质质量（amu）', default=40)
+    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['impElement']" % runs_label, '杂质元素', default='Ca', refresh_tree=False)
+    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['impZ']" % runs_label, '杂质电荷数 Z', default=20, refresh_tree=False)
+    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['impM']" % runs_label, '杂质质量（amu）', default=40, refresh_tree=False)
     root['SETTINGS']['PHYSICS']['impElement'] = root['TGLF_SCAN_DB'][runs_label]['impElement']
     root['SETTINGS']['PHYSICS']['impZ'] = root['TGLF_SCAN_DB'][runs_label]['impZ']
     root['SETTINGS']['PHYSICS']['impM'] = root['TGLF_SCAN_DB'][runs_label]['impM']
@@ -79,6 +82,7 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
         help="If checked, transport coefficients are computed via a matrix inversion, "
         "using a single TGLF run with multiple impurities rather than multiple runs with different inputs.",
         postcommand=lambda location=None: update_ion_list(),
+        refresh_tree=False,
     )
 
     if root['SETTINGS']['PHYSICS']['transport_matrix_method']:
@@ -88,6 +92,7 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
             default=True,
             updateGUI=True,
             help="If checked, compute diffusion (D), thermodiffusion (vT) and the residual convection term (vp), rather than just D,v. ",
+            refresh_tree=False,
         )
 
         OMFITx.CheckBox(
@@ -96,6 +101,7 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
             default=True,
             updateGUI=True,
             help="If checked, compute rotodiffusion (vR) as well as thermodiffusion (vT).",
+            refresh_tree=False,
         )
 
     # display how many ions are expected to be included in TGLF runs, based on user choices above
@@ -103,7 +109,7 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
         OMFITx.Label('Ion List including new impurity:{}'.format(get_ion_list_short()))
     OMFITx.Label('')
 
-    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['rhoList']" % runs_label, 'Radii (rho)', default=np.arange(0.35, 0.9, 0.1))
+    OMFITx.Entry("root['TGLF_SCAN_DB']['%s']['rhoList']" % runs_label, 'Radii (rho)', default=np.arange(0.35, 0.9, 0.1), refresh_tree=False)
     root['SETTINGS']['PHYSICS']['rhoList'] = root['TGLF_SCAN_DB'][runs_label]['rhoList']
 
     OMFITx.Label('')
@@ -114,11 +120,11 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
 
         def get_transport_matrix():
             '''Form matrix of particle fluxes and solve for transport coefficients'''
-            root['SCRIPTS']['resp_matrix'].run(
+            task_action(root['SCRIPTS']['resp_matrix'],
                 runs_label=root['SETTINGS']['PHYSICS']['runs_label'], rhoList=root['TGLF_SCAN_DB'][runs_label]['rhoList']
             )
             # Obtain and store results using the plot_resp_matrix.py script (but don't plot now)
-            root['PLOTS']['plot_resp_matrix'].run(runs_label=root['SETTINGS']['PHYSICS']['runs_label'], plot_results=False)
+            task_action(root['PLOTS']['plot_resp_matrix'], runs_label=root['SETTINGS']['PHYSICS']['runs_label'], plot_results=False)
 
         OMFITx.Button('计算粒子输运系数', get_transport_matrix, updateGUI=True)
 
@@ -126,8 +132,8 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
 
         def run_transport_scan():
             '''Scan grad(n_z) in separate TGLF runs and then do a linear fit to find transport coefficients'''
-            root['SCRIPTS']['particleDandVscan'].run()  # run TGLF scans
-            root['SCRIPTS']['particleDandVprofile'].run()  # linear fit step
+            task_action(root['SCRIPTS']['particleDandVscan'])  # run TGLF scans
+            task_action(root['SCRIPTS']['particleDandVprofile'])  # linear fit step
 
         OMFITx.Button('运行 TGLF 扫描', run_transport_scan, updateGUI=True)
 
@@ -143,17 +149,19 @@ if len(root['SETTINGS']['PHYSICS']['runs_label']):
             '绘图时采用 STRAHL 类修正',
             default=True,
             updateGUI=False,
+            refresh_tree=False,
         )
         OMFITx.CheckBox(
             "root['SETTINGS']['PHYSICS']['plot_normalized_coeffs']",
             '绘制归一化输运系数',
             default=False,
             updateGUI=False,
+            refresh_tree=False,
         )
 
         if root['SETTINGS']['PHYSICS']['transport_matrix_method']:
-            OMFITx.Button('绘制扫描与剖面', lambda: root['PLOTS']['plot_resp_matrix'].run(plot_results=True))
+            OMFITx.Button('绘制扫描与剖面', lambda: plot_view(root['PLOTS']['plot_resp_matrix'], plot_results=True), refresh_tree=False)
         else:
-            OMFITx.Button('绘制扫描与剖面', "root['PLOTS']['plotDandV']")
+            OMFITx.Button('绘制扫描与剖面', lambda: plot_view(root['PLOTS']['plotDandV']), refresh_tree=False)
 
 finish_gui_layout(layout_anchor, OMFITx)

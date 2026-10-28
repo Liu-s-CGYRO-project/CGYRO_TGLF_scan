@@ -22,6 +22,7 @@ OMFITx.ComboBox(
     help='Choose a variable that is constrained to be a function of other variables',
     default='',
     updateGUI=True,
+    refresh_tree=False,
 )
 
 if 'constraint_vars' in root:
@@ -42,6 +43,7 @@ if 'constraint_vars' in root:
             postcommand=delete_constraint,
             default='',
             updateGUI=True,
+            refresh_tree=False,
         )
 
     for k in root['constraint_vars']:
@@ -68,4 +70,5 @@ if 'constraint_vars' in root:
             lbl=k,
             help='Enter constraint on %s in terms of other variables' % k,
             check=check_constraint,
+            refresh_tree=False,
         )

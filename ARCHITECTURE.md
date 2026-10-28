@@ -21,7 +21,7 @@
 | CGYRO 重试 | `LIB/OMFITlib_cgyro_retry.py` | 确认提交结果、筛选可重试点、复用核对过的输入 |
 | CGYRO 调度器状态 | `LIB/OMFITlib_cgyro_run_state.py` | 解析状态、核对作业身份、取消与已有 Kill local 接口 |
 | CGYRO 准备、下载、归档 | `CGYRO_scan/SCRIPTS/subscan_lin.py`、`downsync.py`、`CGYROScan.py`、`LIB/OMFITlib_cgyro_archive.py` | 原生 OMFIT 任务适配；按完整参数坐标与 ky 逐点合并相同扫描参数组 |
-| TGLF 工作台和多剖面 | `LIB/OMFITlib_tglf_workbench.py`、`OMFITlib_tglf_multi_run.py` | 准备计划和持久运行记录；底层执行在 `TGLF_scan/TGLF/SCRIPTS` |
+| TGLF 工作台和多剖面 | `LIB/OMFITlib_tglf_workbench.py`、`OMFITlib_tglf_multi_run.py`、`OMFITlib_tglf_records.py` | 准备计划、按原生维度分支保存结果；运行记录只保留摘要及引用，底层执行在 `TGLF_scan/TGLF/SCRIPTS` |
 | Transfer 粒子处理 | `Transfer_tool/LIB/OMFITlib_transfer_particles.py`、`OMFITlib_transfer_equivalent.py`、`OMFITlib_transfer_zeff.py` | 原始副本准中性 → 完整组成 Zeff → 粒子方案 → 局部输入复查 |
 | CGYRO 单份结果归档 | `LIB/OMFITlib_cgyro_storage.py`、`SCRIPTS/compact_cgyro_storage.py` | 内容摘要唯一拥有原始结果；普通树索引持久化，读取才解析；保留独有历史；检查点验证择一保存 |
 | 结果浏览引用与旧载荷清理 | `LIB/OMFITlib_cgyro_reference.py`、`LIB/OMFITlib_cgyro_retention.py` | 受控 data 表达式展开唯一所有者；按完整坐标、采样时间、检查点和续算依赖核对替代，清理与字节去重分离 |
@@ -42,18 +42,19 @@
 - CGYRO 的 RUN_BATCH、RUN_HISTORY、RUN_MANIFEST 仅保存身份与状态元数据。冻结点表、输入和下载结果在 RUN_DB/__RUNS__ 下，使用 run_cases / saved_run 访问，切换与收集前后通过 save_current 保存。调度器结束不等于输出已完整下载。
 - RUN_DB 的公开层级为 Jet / nr=1_rho=0.33 / H（或 D、T）/ 扫描。不同有序参数轴独立，按完整参数坐标与带符号 ky 逐点合并，不替换整个参数组。partial、recovered、legacy revision 名称只用于识别旧来源，整理后不再作为目录。归档先在树外合并和校验，再安装。
 - 每个离子案例的 __SCANS__[扫描键] 保存 info / tasks，公开叶指向 RUN_DB/__STORE__。__INFO__ / __TASKS__ 只兼容最近扫描，读取全部扫描用 case_scans。逻辑 case_id 与实际路径分离；比较读者用 catalog_runs，路径读者用 case_destination，不能保存临时视图。
-- 取消后确认 Slurm 终态再自动收集整批。状态记在内部，不另建部分结果目录；空点跳过，其他扫描和 ky 保留，较短部分结果不替换已有完整点。续算从原作业的冻结点表 / 检查点取源，保留未开始点的原号，不用其他作业的相同 p 点号替代。
-- 续算验证区分历史损坏与未推进：前缀、有限性、顺序和检查点不一致仍报错；合法但未超过旧末时刻的段保存在 RUN_DB 内部运行记录，不降低 previous_final_time，不因未推进自动重提。公开合并依据完整坐标和可验证进度；时间曲线 / 续算窗口对停止作业读取原点表。
-- 续算提交 ZIP 由 RUN_DB/__STORE__/__FILES__ 唯一持有，__FILE_REF__ 叶通过 result_view / submission_file 解析。保存快照前去重；新提交不挂载展开检查点。旧展开普通文件只在与 ZIP 成员逐字节摘要相同时移除，编辑型输入和不同内容保留。原目录不删除，上传恢复原点文件名并验证最终副本。新增引用类型时必须同步快照、剪枝、迁移和全部读取入口。
+- 取消后确认 Slurm 终态再收集可读输出。结果只能由 RUN_DB 的现有结果索引定位；source_token / RUN_HISTORY 用于追溯和作业管理，不沿父作业链补齐结果。续算使用用户所选结果的稳定 ID、完整参数坐标、带符号 ky 和实际文件引用；只有明确未开始且没有结果的点，才使用该作业在 RUN_DB 中保留的冻结输入。
+- 续算只校验所选点的输入、前缀、有限性、顺序和检查点，不要求未选点或祖先作业存在。合法但未超过旧末时刻的段保留在待处理运行记录，不因未推进自动重提。相同完整坐标只保留当前有效结果：全新扫描核验后替换，续算优先保留收敛或推进更远的结果；其他坐标保留。本次提交完成与扫描覆盖完整分别记录。
+- 续算提交 ZIP 由 RUN_DB/__STORE__/__FILES__ 唯一持有，__FILE_REF__ 叶通过 result_view / submission_file 解析；新提交不挂载展开检查点。收集仅处理新增点，复用未改变文件的校验与轻量摘要；列表、切换、同步和删除记录不执行全库哈希、去重或输入 ZIP 复制。全库核验和空间清理只由明确维护操作触发。新增引用类型时必须同步剪枝、迁移和相应读取入口。
 - CGYRO 物理目录只归 RUN_DB/__STORE__ 所有，其他叶保存 __RESULT_REF__ 和可选浏览 data 表达式。文件名、长度和完整 SHA-256 相同才去重。复制和元数据遍历不能执行 data；prune_storage 验证全部可达索引后才移除无引用所有者条目，不删除磁盘来源文件。
 - 输出文件探测复用单个点检查函数，按 shell 引号转义后的 UTF-8 命令字节数分批（不超过 16 KiB）。每批返回码和点表均须完整匹配，全部探测确认后才开始读取结果；探测异常不能作为空点或求解器失败的证据。
 - 网络报错后先确认原提交是否成功。无法确认时保留 `submission_uncertain`，不重复提交。重试资格按每个扫描点判定，先前的取消、超时和内存不足状态不能因切换到重试数组而丢失。
 - 手动“重新收集未归档结果”只读取、重读和归档原输出，collect_current 默认禁止求解器重试；配置中的重试次数不授予提交权限。单案例明确传 False，批量仅在原“运行”动作自动收集时传 True。手动批量收集不进入等待循环：活动案例由 downsync 报告后继续其他案例；运行动作和续算动作仍可按原限制重试，取消后的既有禁重提规则继续生效。
 - OMFIT Abort 继承 KeyboardInterrupt。上传阶段不调用调度器，中断可确认未提交；调度阶段保存已收到的回执并重抛，中断处理中不发远程请求。同步从原日志或唯一 WorkDir 匹配恢复身份，新协议可原子封闭尚未开始的提交；无日志、无匹配的旧协议需人工核对，不能靠空队列自动解锁。未成功提交的重试恢复上次已确认身份与点来源，失败记录另存。
 - 提交窗口 Kill local 与 Abort 分开：前者记录 submission_stop_requested，找回回执后沿原身份完成取消，批量停止后自动收集；后者直接传播。状态同步要精确替换元数据，不能残留被撤销的 submission_parent。所有实际运行（含单次续算）都写 RUN_HISTORY；输入 / 配置 / 脚本全部准备成功后才替换活动记录。重复收集已完成的部分归档失败时回滚记录及 Cases，保留恢复入口。重试核对原脚本摘要与完整输入包成员，取消 / OOM 等旧点状态跨重试保存。审查细节与硬退出限制见 [WORKFLOW_AUDIT.md](WORKFLOW_AUDIT.md)。
-- TGLF 批量点允许部分成功；归档和异常传播是两个步骤，后续点失败不能抹去前面已经返回的结果。
+- TGLF 批量点允许部分成功；归档和异常传播是两个步骤，后续点失败不能抹去前面已经返回的结果。新结果使用原生 scanResults / scanResults2D / scanResults3D 及相应 spectra 分支，不写入 CGYRO 的 RUN_DB；旧 TGLF RUN_DB 仅保留兼容读取，详见 [TGLF 保存路径](CGYRO_TGLF_scan/DOCS/TGLF_RESULT_STORAGE.md)。
 - 局部输入转换不会自动选择新的碰撞模型。CGYRO → TGLF 在指定 Zeff 时保留该值；反向旧入口仍采用 `COLLISION_MODEL=4`，没有将 TGLF 的独立 Zeff 转为指定 Zeff 模式。需要改变这一物理约定时，应单独核对模型适用条件，不能只增加一个字段。
 - Transfer 等效方案只把高密度热 H/D/T 识别为主离子，快粒子和微量燃料留在辅助组；规则同时用于原始副本的电荷补偿。`equivalent_temperature` 明确区分保压与温度随热主离子，随同其他选项冻结进生成记录。后者只检查实际保留的电荷 / Zeff / 质量 / 电荷梯度约束，单独记录压力变化；不能把压力变化误报为守恒失败，也不能继续显示“压力守恒”。曲率先还原物理导数再重建，不能直接复制温度改变前的 SDLNNDR。
+- Transfer 旧方案分支可能包含独有输入。存在当前 Profiles_gen 不代表旧分支重复；打开工程、初始化设置和重新生成不得自动删除这些旧分支或 History。
 - 二维 / 三参数 CGYRO 比较必须使用任务的完整 values / result_path，不能用组合扫描键当作单一参数。cgyro_scan_view 的虚拟切片仅存在于绘图上下文：一个变化参数、其余固定坐标和原物理结果引用；谱 / 时间 / 本征函数 / 状态 / 跨模型 / 导出共用，缺网格用 NaN 或实际散点，不平均不同固定坐标。
 - 取值列表的紧凑格式只作用于 Entry 显示和重置默认值，不能重命名原始归档键。多列图例的原曲线、代理线和文字按相同排序绑定；点击须检查横纵区域，不能只按同一行定位。说明文字优先使用短提示，完整内容放入带行距的滚动帮助窗口。
 - 对比选择和半径配对属于所选数据源。切换结果集后恢复该结果集的选择，同时重新检查有效值；图例短名不能取代归档键。
@@ -71,6 +72,8 @@
 7. Tk 变量必须显式使用 `master=`，初值和 Tcl 名称用 `value=` / `name=`。OMFIT 将 StringVar / BooleanVar 封装为 `(name=None, **kw)`，不能按标准 Tk 把窗口作为首个位置参数。打包的 API 与保存树检查通过 AST 核对构造器及导入别名，不导入 Tk。
 
 8. 页面 mixin 不定义构造函数，不覆盖其他页面方法。新增页通过 catalog 登记，并在 ProjectUI 顶部导入；收集动作使用 cgyro_workflow 公开接口。长参数行由 NativeLayout 根据字体和宽度把标题移到控件上方，不手动切断参数名或改动数值。缩略结果名只用于显示，完整身份通过帮助窗口查看。
+
+9. GUI 刷新区分当前 section、当前窗口和 OMFIT 主数据树。`updateGUI=False` 只关闭窗口刷新；纯显示、配置标量、选择、帮助和子窗口入口还需 `refresh_tree=False`，参数控件可使用 `view_only()`。纯绘图/开窗用 `plot_view` / `gui_view`，防止原生 runner 再次无条件重绘主树；结果写入、归档等数据动作保持必要通知。工作台“刷新”只替换当前主体，普通运行配置只更新状态区。原生 Tk 回归需同时断言局部控件保留、未选结果零读取和 `<<update_treeGUI>>` 事件次数；完整边界矩阵见 [GUI_BOUNDARIES.md](GUI_BOUNDARIES.md)。
 
 ## 校验与发布
 

@@ -612,3 +612,9 @@
 ['Transfer_tool']['LIB']['OMFITlib_plot_font_assets'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_font_assets.py <-:-:-> {}
 ['Transfer_tool']['LIB']['OMFITlib_plot_font_data'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_plot_font_data.py <-:-:-> {}
 ['DOCS']['绘图字体许可'] <-:-:-> OMFITascii <-:-:-> ./DOCS/PLOT_FONTS_LICENSE.txt <-:-:-> {}
+['TGLF_scan']['TGLF']['LIB']['OMFITlib_gui_deferred'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_deferred.py <-:-:-> {}
+['TGLF_scan']['TGYRO']['LIB']['OMFITlib_gui_deferred'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_deferred.py <-:-:-> {}
+['TGLF_scan']['TGLF']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
+['TGLF_scan']['TGLF']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}
+['TGLF_scan']['TGYRO']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_context.py <-:-:-> {}
+['TGLF_scan']['TGYRO']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_layout.py <-:-:-> {}

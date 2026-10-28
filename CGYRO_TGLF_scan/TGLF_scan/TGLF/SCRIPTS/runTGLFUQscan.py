@@ -12,6 +12,7 @@ defaultVars(
     inputTGLF=root.get('FILES', {}).get('input.tglf', None),
     results='UQResults',
     results_spectra='UQResults_spectra',
+    cache_records=None,
     include_starting_param=True,
 )
 
@@ -71,7 +72,9 @@ results_spectra['_'.join(param)] = OMFITtree()
 cache = root['LIB']['OMFITlib_tglf_cache'].runNoGUI()
 if result_branch:
     cache['forget_workbench'](root, (result_branch, '_'.join(param)))
-root.setdefault('_scan_cache_provenance', {})['UQResults'] = cache['provenance'](
+if cache_records is None:
+    cache_records = root.setdefault('_scan_cache_provenance', {}) if result_branch else {}
+cache_records['UQResults'] = cache['provenance'](
     root, inputTGLF, 'UQ', {'parameters': param, 'samples': parameterRange})
 
 # generate list of inputs

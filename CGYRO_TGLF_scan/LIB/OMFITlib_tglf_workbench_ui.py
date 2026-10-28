@@ -1,5 +1,6 @@
 """A single, narrow TGLF workbench for local inputs and radial scans."""
 from OMFITlib_gui_fonts import configure_window_fonts, gui_font, style_widget
+from OMFITlib_gui_api import plot_view
 from builtins import abs, any, bool, dict, enumerate, float, getattr, int, isinstance, iter, len, list, max, min, next, range, set, sorted, str, sum, zip
 from collections import OrderedDict
 from datetime import datetime, timezone
@@ -96,7 +97,7 @@ class TGLFWorkbench:
                               ('当前 / 导入 TGLF 文件', 'current'), ('局部互转文件', 'local')]:
             if name in ('radial', 'current') or any(row['group'] == name for row in self.rows) or self.settings['source'] == name:
                 groups[caption] = name
-        self.ui.ComboBox(self.prefix + "['source']", groups, '输入来源', state='readonly', updateGUI=True)
+        self.ui.ComboBox(self.prefix + "['source']", groups, '输入来源', state='readonly', updateGUI=True, refresh_tree=False)
         if self.settings['source'] == 'radial':
             self.profile()
         elif self.settings['source'] == 'current':
@@ -119,10 +120,12 @@ class TGLFWorkbench:
             choices = OrderedDict((row['label'], row['key']) for row in preview_rows)
             if self.settings.get('preview', None) not in choices.values():
                 self.settings['preview'] = preview_rows[0]['key']
-            self.ui.ComboBox(self.prefix + "['preview']", choices, '查看输入', state='readonly', updateGUI=True)
-            row = next(row for row in preview_rows if row['key'] == self.settings['preview'])
-            self.ui.Button('查看 / 编辑输入', lambda: self.view.show_transfer_input(anchor, row['path'], row['label']))
-        self.ui.ComboBox(self.prefix + "['mode']", MODES, '计算方式', state='readonly', updateGUI=True)
+            self.ui.ComboBox(self.prefix + "['preview']", choices, '查看输入', state='readonly', updateGUI=False, refresh_tree=False)
+            def show_input():
+                row = next(row for row in preview_rows if row['key'] == self.settings['preview'])
+                self.view.show_transfer_input(anchor, row['path'], row['label'])
+            self.ui.Button('查看 / 编辑输入', show_input, refresh_tree=False)
+        self.ui.ComboBox(self.prefix + "['mode']", MODES, '计算方式', state='readonly', updateGUI=True, refresh_tree=False)
         mode = self.settings['mode']
         values = parameter_values(self.source)
         scanned = scan_parameter_names(self.settings)
@@ -133,22 +136,22 @@ class TGLFWorkbench:
             for index in range(1, int(mode[0]) + 1):
                 self.ui.ComboBox(self.prefix + "['parameter{}']".format(index), choices,
                                  '扫描参数 {}'.format(index), state='readonly', updateGUI=True,
-                                 help=parameter_help(self.settings['parameter' + str(index)], self.source))
+                                 help=parameter_help(self.settings['parameter' + str(index)], self.source), refresh_tree=False)
                 self.ui.ComboBox(self.prefix + "['value_mode{}']".format(index),
                     {'原值倍数': 'factor', '实际值范围': 'range', '指定数值列表': 'list'},
                     '取值方式', state='readonly', updateGUI=True,
-                    help='原值倍数与 OMFIT 原生扫描一致；多半径时分别乘以每个输入的原值。')
+                    help='原值倍数与 OMFIT 原生扫描一致；多半径时分别乘以每个输入的原值。', refresh_tree=False)
                 if self.settings['value_mode' + str(index)] == 'list':
                     self.ui.Entry(self.prefix + "['values{}']".format(index), '取值列表', width=30,
-                                  updateGUI=True, help='例如 [0.5, 1, 1.5]；仅计算所列值。')
+                                  updateGUI=False, help='例如 [0.5, 1, 1.5]；仅计算所列值。', refresh_tree=False)
                 else:
                     with self.ui.same_row():
-                        self.ui.Entry(self.prefix + "['scan_start{}']".format(index), '起点', width=8, updateGUI=True)
-                        self.ui.Entry(self.prefix + "['scan_end{}']".format(index), '终点', width=8, updateGUI=True)
-                        self.ui.Entry(self.prefix + "['scan_count{}']".format(index), '点数', width=8, updateGUI=True)
+                        self.ui.Entry(self.prefix + "['scan_start{}']".format(index), '起点', width=8, updateGUI=False, refresh_tree=False)
+                        self.ui.Entry(self.prefix + "['scan_end{}']".format(index), '终点', width=8, updateGUI=False, refresh_tree=False)
+                        self.ui.Entry(self.prefix + "['scan_count{}']".format(index), '点数', width=8, updateGUI=False, refresh_tree=False)
         elif mode == 'uq':
             self.ui.Entry(self.prefix + "['uq_count']", '参数数量', width=8, updateGUI=True,
-                          help='整数 1–5；回车后更新下方参数行。')
+                          help='整数 1–5；回车后更新下方参数行。', refresh_tree=False)
             try:
                 count = uq_parameter_count(self.settings)
             except ValueError as exc:
@@ -167,19 +170,19 @@ class TGLFWorkbench:
                 item.setdefault('std', max(abs(float(values.get(name, 1.0))) * 0.1, 0.01))
                 prefix = self.prefix + "['uq'][{!r}]".format(str(index))
                 self.ui.ComboBox(prefix + "['name']", continuous, '参数 {}'.format(index + 1), state='readonly', updateGUI=True,
-                                 help=parameter_help(name, self.source))
+                                 help=parameter_help(name, self.source), refresh_tree=False)
                 with self.ui.same_row():
-                    self.ui.Entry(prefix + "['mean']", '均值', width=10, updateGUI=True)
-                    self.ui.Entry(prefix + "['std']", '标准差', width=10, updateGUI=True)
-            self.ui.Entry(self.prefix + "['samples']", '样本数', width=12, updateGUI=True)
+                    self.ui.Entry(prefix + "['mean']", '均值', width=10, updateGUI=False, refresh_tree=False)
+                    self.ui.Entry(prefix + "['std']", '标准差', width=10, updateGUI=False, refresh_tree=False)
+            self.ui.Entry(self.prefix + "['samples']", '样本数', width=12, updateGUI=False, refresh_tree=False)
             self.ui.ComboBox(self.prefix + "['sampling']", {'Latin Hypercube': 'L', 'Hammersley': 'M'},
-                             '采样方法', state='readonly', updateGUI=True)
+                             '采样方法', state='readonly', updateGUI=False, refresh_tree=False)
             self.label('各参数按独立正态分布采样；均值和标准差是实际数值。')
         if mode != 'single':
             self.view.cgyro_checkbox(self.prefix + "['single_Ti']", self.settings, 'single_Ti', '温度扫描同步到输入中同温的热离子')
 
     def run(self):
-        self.ui.Entry(self.prefix + "['parallel']", '并发任务数', width=12, updateGUI=True)
+        self.ui.Entry(self.prefix + "['parallel']", '并发任务数', width=12, updateGUI=False, refresh_tree=False)
         problems = runtime_issues(self.root, 'tglf')
         try:
             prepared = plan(self.root, self.settings)
@@ -211,9 +214,9 @@ class TGLFWorkbench:
             self.ui.Button('使用 Transfer_tool 当前剖面', self.actions.use_transfer_tglf_profile, updateGUI=True)
         with self.ui.same_row():
             self.ui.ComboBox(self.prefix + "['profile_coordinate']", ['rho', 'r/a'], '径向坐标',
-                             state='readonly', width=12, updateGUI=True)
+                             state='readonly', width=12, updateGUI=True, refresh_tree=False)
             self.ui.ComboBox(self.prefix + "['include_ions']", {'热离子': 'thermal', '全部离子': 'all'},
-                             '离子范围', state='readonly', width=12, updateGUI=True)
+                             '离子范围', state='readonly', width=12, updateGUI=True, refresh_tree=False)
         self.generation_parameters()
         issues = runtime_issues(self.root, 'tgyro')
         try:
@@ -234,18 +237,18 @@ class TGLFWorkbench:
         if self.settings['source'] == 'radial' and self.available:
             self.ui.ComboBox(self.prefix + "['radius_mode']", OrderedDict([
                 ('单个半径', 'single'), ('半径范围', 'range'), ('半径列表', 'list'), ('全部半径', 'all')]),
-                '计算半径', state='readonly', updateGUI=True)
+                '计算半径', state='readonly', updateGUI=True, refresh_tree=False)
             if self.settings['radius_mode'] == 'single':
                 choices = OrderedDict((row['label'], row['rho']) for row in self.available)
-                self.ui.ComboBox(self.prefix + "['radius']", choices, '半径', state='readonly', updateGUI=True)
+                self.ui.ComboBox(self.prefix + "['radius']", choices, '半径', state='readonly', updateGUI=True, refresh_tree=False)
             if self.settings['radius_mode'] == 'range':
                 with self.ui.same_row():
-                    self.ui.Entry(self.prefix + "['radius_start']", '起始', width=8, updateGUI=True)
-                    self.ui.Entry(self.prefix + "['radius_end']", '结束', width=8, updateGUI=True)
-                    self.ui.Entry(self.prefix + "['radius_step']", '间隔', width=8, updateGUI=True)
+                    self.ui.Entry(self.prefix + "['radius_start']", '起始', width=8, updateGUI=True, refresh_tree=False)
+                    self.ui.Entry(self.prefix + "['radius_end']", '结束', width=8, updateGUI=True, refresh_tree=False)
+                    self.ui.Entry(self.prefix + "['radius_step']", '间隔', width=8, updateGUI=True, refresh_tree=False)
             elif self.settings['radius_mode'] == 'list':
                 self.ui.Entry(self.prefix + "['radius_values']", '半径列表', width=28, updateGUI=True,
-                              help='例如 [0.3, 0.5, 0.7]。半径需在已生成的输入中。')
+                              help='例如 [0.3, 0.5, 0.7]。半径需在已生成的输入中。', refresh_tree=False)
         elif self.settings['source'] == 'transfer' and self.available:
             with self.ui.same_row():
                 self.ui.Button('全选', lambda: self.select(True), updateGUI=True, refresh_scope='section')
@@ -425,25 +428,30 @@ class TGLFWorkbench:
             return
         if self.settings.get('result_run', None) not in choices.values():
             self.settings['result_run'] = next(iter(choices.values()))
-        self.ui.ComboBox(self.prefix + "['result_run']", choices, '运行记录', state='readonly', updateGUI=True)
+        self.ui.ComboBox(self.prefix + "['result_run']", choices, '运行记录', state='readonly', updateGUI=True, refresh_tree=False)
         record = runs[self.settings['result_run']]
         points = record.get('points', {})
-        complete = sum(point_current(module, point) for point in points.values())
+        current_points = {key: point for key, point in points.items() if point_current(module, point)}
+        complete = len(current_points)
         anchor = self.label('当前保留 {} / {} 个结果；已替换或重置的点请在原生扫描中查看。'.format(complete, len(points)))
         identity = self.label('记录编号：' + str(self.settings['result_run']))
         if isinstance(identity, tk.Misc):
             identity._cgyro_role = 'muted'
-        self.ui.Button('查看结果表', lambda: self.result_table(anchor, record))
+        self.ui.Button('查看结果表', lambda: self.result_table(anchor, record), refresh_tree=False)
         if complete:
-            self.view.task('查看通量趋势', ('TGLF_scan', 'PLOTS', 'workbench_result'), record=record)
+            path = ('TGLF_scan', 'PLOTS', 'workbench_result')
+            problems = [] if read(self.root, path) is not None else ['工程缺少此绘图入口']
+            self.view.guarded('查看通量趋势', lambda: plot_view(read(self.root, path), record=record),
+                              problems, refresh=False, refresh_tree=False)
             choices = OrderedDict((key + ' · ' + point['label'] + ' · ' + (', '.join(
                 '{}={:g}'.format(name, value) for name, value in point['parameters'].items()) or '原值'), key)
-                for key, point in points.items() if point_current(module, point))
+                for key, point in current_points.items())
             if self.settings.get('result_point', None) not in choices.values():
                 self.settings['result_point'] = next(iter(choices.values()))
-            self.ui.ComboBox(self.prefix + "['result_point']", choices, '计算点', state='readonly', updateGUI=True)
-            self.view.task('查看该点的频率 / 增长率谱', ('TGLF_scan', 'PLOTS', 'workbench_result'),
-                           record=record, point_id=self.settings['result_point'])
+            self.ui.ComboBox(self.prefix + "['result_point']", choices, '计算点', state='readonly', updateGUI=False, refresh_tree=False)
+            self.view.guarded('查看该点的频率 / 增长率谱',
+                lambda: plot_view(read(self.root, path), record=record, point_id=self.settings['result_point']),
+                problems, refresh=False, refresh_tree=False)
         self.view.nav('结果对比绘图', 'plots')
 
     def result_table(self, anchor, record):

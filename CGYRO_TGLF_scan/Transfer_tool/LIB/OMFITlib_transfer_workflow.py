@@ -15,26 +15,12 @@ PROFILE_KEYS = {'input.gacode': ('input.gacode',), 'statefile': ('statefile', 's
 
 
 def discard_legacy_outputs(node):
-    """Keep current inputs; remove only the retired H/D/T presets and run copies."""
-    outputs = node.get('OUTPUTS', {})
-    if not hasattr(outputs, 'get'):
-        return []
-    current = outputs.get('Profiles_gen', {})
-    # Do not discard the only usable local inputs in an old, unfinished project.
-    if not hasattr(current, 'keys') or not any(
-            re.fullmatch(r'input\.(cgyro|tglf)(?:_[1-9][0-9]*)?', str(name)) for name in current.keys()):
-        return []
-    removed = []
-    for isotope in ('H', 'D', 'T'):
-        for suffix in ('', '_simplified', '_simplified_impurity'):
-            key = 'Profiles_gen_' + isotope + suffix
-            if key in outputs:
-                outputs.pop(key)
-                removed.append(key)
-    if 'History' in outputs:
-        outputs.pop('History')
-        removed.append('History')
-    return removed
+    """Compatibility hook for saved scripts; never delete legacy user data.
+
+    Current inputs do not prove that retired schemes/history are duplicates.
+    They remain available until the user explicitly removes those branches.
+    """
+    return []
 
 
 def tglf_input_format(value, for_conversion=False):
@@ -176,7 +162,6 @@ def selected_profile(node, selected=None):
 
 
 def initialize_generation(node, factory=dict):
-    discard_legacy_outputs(node)
     physics = node['SETTINGS']['PHYSICS']
     inputs = node.get('INPUTS', {})
     if physics.get('start_from', None) not in PROFILE_KEYS:

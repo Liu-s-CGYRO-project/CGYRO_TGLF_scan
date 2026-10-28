@@ -10,6 +10,7 @@ import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 import build_project as builder
+from check_workbench import gui_inventory
 
 
 class BuildManifestTest(unittest.TestCase):
@@ -77,6 +78,19 @@ class BuildManifestTest(unittest.TestCase):
         with zipfile.ZipFile(self.output) as package:
             self.assertIsNone(package.testzip())
         self.assertEqual(list(self.root.glob('.project-manifest-*')), [])
+
+    def test_gui_inventory_includes_extensionless_registered_editors_and_callbacks(self):
+        for package in ('CGYRO_TGLF_scan', 'OMFITtemplates'):
+            folder = self.root / package
+            folder.mkdir()
+            (folder / 'OMFITsave.txt').write_text(
+                "['GUIS']['edit'] <-:-:-> OMFITpythonGUI <-:-:-> ./edit <-:-:-> {}\n", encoding='utf-8')
+            (folder / 'edit').write_text(
+                "def render():\n    ui.Entry('value', updateGUI=False, refresh_tree=False)\n", encoding='utf-8')
+        report = gui_inventory(self.root)
+        self.assertEqual(report['counts'], dict(entries=2, sources=2, sites=2))
+        self.assertEqual(report['callback_sites'][0]['context'], 'render')
+        self.assertEqual(report['callback_sites'][0]['options'], dict(updateGUI='False', refresh_tree='False'))
 
     def test_source_edit_between_hashing_and_zip_write_cannot_mismatch_manifest(self):
         source = self.root / 'OMFIT_COMPATIBILITY.md'

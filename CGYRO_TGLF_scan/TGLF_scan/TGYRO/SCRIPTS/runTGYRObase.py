@@ -1,5 +1,6 @@
 # -*-Python-*-
 # Created by meneghini at 2013/08/07 17:34
+from OMFITlib_gui_api import task_action
 from builtins import sum, int, isinstance, list, tuple
 
 defaultVars(waitBatchJob=True, radial_distribution=root['SETTINGS']['PHYSICS']['radial_distribution'], load_input_gacode=True,remote_dir=root['SETTINGS']['REMOTE_SETUP']['workDir'])
@@ -107,4 +108,4 @@ if waitBatchJob:
         del root['RUN_DB'][runid]['job_run']
 
     # fetch the results
-    root['SCRIPTS']['load_remote'].run(load_input_gacode=load_input_gacode)
+    task_action(root['SCRIPTS']['load_remote'], load_input_gacode=load_input_gacode)

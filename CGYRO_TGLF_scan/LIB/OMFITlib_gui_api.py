@@ -113,11 +113,12 @@ def _constructor_copy(function, helpers):
 
 class _ViewRootEvents:
     """Suppress only native tree repaint for explicitly view-only actions."""
-    def __init__(self, root):
+    def __init__(self, root, suppressed=('<<update_treeGUI>>',)):
         self.root = root
+        self.suppressed = suppressed
 
     def event_generate(self, sequence, *args, **kwargs):
-        if sequence != '<<update_treeGUI>>':
+        if sequence not in self.suppressed:
             return self.root.event_generate(sequence, *args, **kwargs)
 
     def __getattr__(self, name):
@@ -138,7 +139,61 @@ def plot_view(script, **kwargs):
     idle draw. Only this invocation's final tree event is omitted; the method,
     its shared globals and any business events inside the script stay intact.
     """
-    method = script.plot
+    return _view_method(script.plot, **kwargs)
+
+
+def gui_view(script, **kwargs):
+    """Open a native settings/browser GUI without repainting the project tree.
+
+    Its own data-changing callbacks still send their normal notifications;
+    only the unconditional event on returning from GUI construction is omitted.
+    """
+    return _view_method(script.run, **kwargs)
+
+
+class _TaskAux(ChainMap):
+    """Keep native halt-window bookkeeping in the actual session dictionary."""
+    def __setitem__(self, key, value):
+        self.maps[1][key] = value
+
+
+class _TaskAction:
+    """One invocation: retain the task receiver except for its final repaint."""
+    def __init__(self, task, finish):
+        self.task, self.finish = task, finish
+
+    def __getattr__(self, name):
+        return getattr(self.task, name)
+
+    def _endGUI(self, *args, **kwargs):
+        return self.finish(self.task, *args, **kwargs)
+
+
+def task_action(script, **kwargs):
+    """Run a scoped task; the calling control owns the refresh notification.
+
+    Native Task.run calls self._endGUI, whose unconditional global GUI event
+    bypasses the button's local refresh. Delegate start/execution to the actual
+    task and isolate only the finish method's globals. Progress, halt/Abort,
+    stack cleanup, success logging and errors keep their native semantics.
+    Nested tasks in this project use this same entry point explicitly; events
+    deliberately generated inside a business script are not intercepted.
+    """
+    run = getattr(script.run, '__func__', None)
+    finish = getattr(getattr(script, '_endGUI', None), '__func__', None)
+    if (isinstance(run, FunctionType) and run.__qualname__ == 'OMFITpythonTask.run'
+            and isinstance(finish, FunctionType)):
+        aux = finish.__globals__.get('OMFITaux', {})
+        root = aux.get('rootGUI', None)
+        if root is not None:
+            events = _ViewRootEvents(root, ('<<update_GUI>>', '<<update_treeGUI>>'))
+            finish = _constructor_copy(finish, {'OMFITaux': _TaskAux({'rootGUI': events}, aux)})
+            return run(_TaskAction(script, finish), **kwargs)
+    # Unknown overrides may use super() or require their own receiver type.
+    return script.run(**kwargs)
+
+
+def _view_method(method, **kwargs):
     function = getattr(method, '__func__', None)
     if isinstance(function, FunctionType):
         helpers = _view_globals(function.__globals__.get('OMFITaux', {}))

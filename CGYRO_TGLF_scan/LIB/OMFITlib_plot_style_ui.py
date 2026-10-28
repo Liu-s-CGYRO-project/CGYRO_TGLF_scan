@@ -10,7 +10,7 @@ from OMFITlib_font_ui import open_font_manager
 
 
 def render_style(root, ui):
-    ui = adapt(ui)
+    ui = adapt(ui).view_only()
     section = deferred_section(ui, lambda: _render_style(root, ui), local=True, container=True, action=True)
     if section is None:
         return _render_style(root, ui)
@@ -27,7 +27,7 @@ def _render_style(root, ui):
                  help=help, kwlabel={'width': 12, 'anchor': 'w'})
 
     with section_group(ui, '界面字体'):
-        ui.Button('界面字体与字号', open_font_manager)
+        ui.Button('界面字体与字号', open_font_manager, refresh_tree=False)
     with section_group(ui, '字体与线条'):
         entry('font_family', '绘图字体', '输出图统一使用英文。默认 Liberation Sans，作为 Arial 的相近替代；用于英文、数字和常用数学符号。')
         entry('font_file', '字体文件', '可选：填写 .ttf、.otf 或 .ttc 文件路径，覆盖缓存的默认英文字体。不要求 Matplotlib 3.6，不读取旧的中文绘图字体设置。')
@@ -55,5 +55,5 @@ def _render_style(root, ui):
         with ui.same_row():
             entry('dpi', '显示 DPI')
             entry('export_dpi', '导出 DPI', '用于 PNG 等位图；PDF / SVG 的线条与文字保持矢量。')
-    ui.Button('重置样式', lambda: state.update(dict(DEFAULTS)), updateGUI=True)
+    ui.Button('重置样式', lambda: state.update(dict(DEFAULTS)), updateGUI=True, refresh_tree=False)
     finish_gui_layout(anchor, ui)

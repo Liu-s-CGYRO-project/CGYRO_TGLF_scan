@@ -26,7 +26,7 @@ class TransferPage:
         self.transfer_pages = TabPages(self.ui, OrderedDict([
             ('run', 'Transfer_tool 运行'), ('files', '生成文件'), ('plots', '剖面绘图'),
             ('schemes', '转换方案批量选择'), ('convert', '局部输入互转'), ('advanced', '高级设置')]),
-            self.settings, 'transfer_tab', lambda page: renderers[page]())
+            self.settings, 'transfer_tab', lambda page: renderers[page](), action=True)
 
     def transfer_run(self):
         self.compound(('Transfer_tool', 'GUIS', 'transfer'), show_run_button=False)
@@ -45,7 +45,7 @@ class TransferPage:
             value = read(node, (branch, 'input.' + kind))
             if value is not None:
                 self.ui.EditASCIIobject(location(MODULES['transfer'] + (branch, 'input.' + kind)),
-                    '编辑 input.' + kind + ' 参数', updateGUI=True)
+                    '编辑 input.' + kind + ' 参数', updateGUI=False)
             self.ui.FilePicker(self.prefix + "['transfer_" + kind + "_file']", '转换工具 input.' + kind, default='',
                 postcommand=lambda location=None, kind=kind: self.actions.import_transfer_seed(kind), updateGUI=True)
         self.label('起止半径、坐标和点数以“Transfer_tool 运行”页为准；离子数量、质量和电荷每次运行时从当前剖面同步。')
@@ -57,7 +57,7 @@ class TransferPage:
         for key, (caption, _) in SCHEMES.items():
             flags.setdefault(key, False)
             self.ui.CheckBox(self.prefix + "['transfer_scheme_flags'][{!r}]".format(key),
-                             caption, default=False, updateGUI=False)
+                             caption, default=False, updateGUI=False, refresh_tree=False)
         self.ui.Button('生成所选方案输入', self.actions.generate_transfer_schemes, updateGUI=True,
                        help='依次运行转换流程；全部成功后保存各方案局部输入。不会提交 CGYRO 扫描。')
         groups = module(self.root, 'transfer').get('OUTPUTS', {}).get('CGYRO_schemes', {})
@@ -76,7 +76,7 @@ class TransferPage:
         options = OrderedDict((row['label'], row['key']) for row in rows)
         if self.settings.get('transfer_preview', None) not in options.values():
             self.settings['transfer_preview'] = rows[0]['key']
-        self.ui.ComboBox(self.prefix + "['transfer_preview']", options, '查看文件', state='readonly', updateGUI=True)
+        self.ui.ComboBox(self.prefix + "['transfer_preview']", options, '查看文件', state='readonly', updateGUI=True, refresh_tree=False)
         row = next(row for row in rows if row['key'] == self.settings['transfer_preview'])
         with self.ui.same_row():
             for code in ('cgyro', 'tglf'):
@@ -84,7 +84,7 @@ class TransferPage:
                 caption = row['label'] + ' / input.' + code
                 self.ui.Button('查看 / 编辑 input.' + code,
                     lambda path=path, caption=caption: self.show_transfer_input(anchor, path, caption),
-                    state='normal' if path is not None else 'disabled')
+                    state='normal' if path is not None else 'disabled', refresh_tree=False)
         self.label('双击数值可编辑；计算半径在 CGYRO 扫描页选择。')
 
     def show_transfer_input(self, anchor, path, caption):
@@ -92,7 +92,7 @@ class TransferPage:
         if value is None:
             raise ValueError('生成文件已变化，请刷新页面。')
         # Edit a draft of the live mapping. Only an explicit save replaces it.
-        state = dict(parameters={}, edits={}, digest='', selected='', loading=False)
+        state = dict(parameters={}, edits={}, digest='', selected='', selected_item='', loading=False)
         code = 'cgyro' if str(path[-1]).startswith('input.cgyro') else 'tglf'
         window = tk.Toplevel(anchor.winfo_toplevel())
         configure_window_fonts(window)
@@ -148,7 +148,7 @@ class TransferPage:
             if not selection:
                 return
             name = str(table.item(selection[0], 'values')[0])
-            state['selected'], state['loading'] = name, True
+            state['selected'], state['selected_item'], state['loading'] = name, selection[0], True
             parameter_name.set(name)
             parameter_text.set(state['edits'].get(name, str(state['parameters'][name])))
             state['loading'] = False
@@ -162,11 +162,9 @@ class TransferPage:
                 state['edits'].pop(name, None)
             else:
                 state['edits'][name] = text
-            for item in table.get_children():
-                if table.item(item, 'values')[0] == name:
-                    table.set(item, 'value', text)
-                    table.item(item, tags=('changed',) if name in state['edits'] else ())
-                    break
+            item = state['selected_item']
+            table.set(item, 'value', text)
+            table.item(item, tags=('changed',) if name in state['edits'] else ())
             save_button.configure(state='normal' if state['edits'] else 'disabled')
             status.set('待保存 {} 项。'.format(len(state['edits'])) if state['edits'] else '双击数值编辑，保存后生效。')
 
@@ -197,7 +195,7 @@ class TransferPage:
             state['digest'] = input_digest(current)
             state['parameters'] = {str(key): item for key, item in current.items() if not str(key).startswith('__')}
             state['edits'].clear()
-            state['selected'], state['loading'] = '', True
+            state['selected'], state['selected_item'], state['loading'] = '', '', True
             children = table.get_children()
             if children:
                 table.delete(*children)

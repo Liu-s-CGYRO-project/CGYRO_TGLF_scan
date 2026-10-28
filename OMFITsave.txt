@@ -648,3 +648,9 @@
 ['CGYRO_TGLF_scan']['Transfer_tool']['LIB']['OMFITlib_plot_font_assets'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_plot_font_assets.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['Transfer_tool']['LIB']['OMFITlib_plot_font_data'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_plot_font_data.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['DOCS']['绘图字体许可'] <-:-:-> OMFITascii <-:-:-> ./CGYRO_TGLF_scan/DOCS/PLOT_FONTS_LICENSE.txt <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['LIB']['OMFITlib_gui_deferred'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_deferred.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['LIB']['OMFITlib_gui_deferred'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_deferred.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['TGLF']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['LIB']['OMFITlib_gui_context'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_context.py <-:-:-> {}
+['CGYRO_TGLF_scan']['TGLF_scan']['TGYRO']['LIB']['OMFITlib_gui_layout'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py <-:-:-> {}

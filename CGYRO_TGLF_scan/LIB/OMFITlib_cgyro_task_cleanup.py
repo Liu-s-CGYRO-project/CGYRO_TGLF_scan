@@ -13,6 +13,7 @@ from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, clean_run_id
                                    point_coordinate, scan_branch, summarize_tasks)
 from OMFITlib_cgyro_cleanup_state import DELETE, commit_cleanup, deletion_markers
 from OMFITlib_cgyro_db import DELETED_TASKS, ensure_layout, run_records, storage_state
+from OMFITlib_cgyro_result_index import matches_planned_coordinate, result_identity, scan_completion
 from OMFITlib_cgyro_task_catalog import (indexed_sources, manifest_sources, mapping,
                                         metadata_revision, row_token, task_catalog)
 
@@ -61,8 +62,18 @@ def _without_points(node, paths):
     return result
 
 
-def _retained_info(info, tasks, manifests):
+def _retained_info(info, tasks, manifests, deleted):
     saved = deepcopy(dict(info))
+    if saved.get('planned_coordinates', None) is not None:
+        scope = saved['planned_coordinates']
+        removed = [result_identity(info, row) for row in deleted.values()]
+        retained = [result_identity(info, row) for row in tasks.values()]
+        # Forget only coordinates explicitly deleted now. An uncollected point
+        # or unknown legacy coverage must not become complete as a side effect.
+        scope['coordinates'] = [coordinate for coordinate in scope['coordinates']
+            if not any(matches_planned_coordinate(item, coordinate) for item in removed)
+            or any(matches_planned_coordinate(item, coordinate) for item in retained)]
+        saved['scan_complete'] = scan_completion(info, tasks, scope)
     tokens = list(dict.fromkeys(row_token(row, info) for row in tasks.values()))
     anchor = str(info.get('run_token', ''))
     if anchor not in tokens:
@@ -120,7 +131,7 @@ def _rewrite_case(case, selected, manifests):
             removed.extend(str(p) for p in deleting)
         if kept:
             affected = bool(deleting) or str(info.get('run_token', '')) in selected
-            records[name] = (dict(info=_retained_info(info, kept, manifests), tasks=kept) if affected else
+            records[name] = (dict(info=_retained_info(info, kept, manifests, deleting), tasks=kept) if affected else
                              dict(info=info, tasks=tasks))
     if not removed and not any(str(info.get('run_token', '')) in selected for _, info, _ in case_scans(case)):
         return None, [], unknown

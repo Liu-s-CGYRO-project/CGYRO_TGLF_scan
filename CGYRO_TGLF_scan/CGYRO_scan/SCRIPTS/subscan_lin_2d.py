@@ -1,2 +1,3 @@
 # Both dimensions share packaging, run isolation and scheduler handling.
-root['SCRIPTS']['subscan_lin.py'].run(scan_dimensions=2)
+from OMFITlib_gui_api import task_action
+task_action(root['SCRIPTS']['subscan_lin.py'], scan_dimensions=2)

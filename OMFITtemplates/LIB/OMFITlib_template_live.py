@@ -8,7 +8,7 @@ import tempfile
 import weakref
 import uuid
 
-from OMFITlib_template_archive import CODE_BRANCHES, SETTINGS_BRANCHES, TemplateError, tree_bytes
+from OMFITlib_template_archive import CHUNK, CODE_BRANCHES, SETTINGS_BRANCHES, TemplateError, tree_bytes
 from OMFITlib_template_service import Template, check_cancel
 from OMFITlib_template_migration import (ArchiveIndex, GROUP, LEGACY, Layout,
                                         branch, kind, rebind, relocated_expression, structure)
@@ -156,6 +156,24 @@ def _staging_path(directory, name):
     return destination
 
 
+def _stage_member(source, name, destination, cancel):
+    """Verify the adopted payload while copying it once into private staging."""
+    digest, size = hashlib.sha256(), 0
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with source.z.open(source.files[name]) as reader, destination.open('xb') as writer:
+        while True:
+            check_cancel(cancel)
+            block = reader.read(CHUNK)
+            if not block:
+                break
+            writer.write(block)
+            digest.update(block)
+            size += len(block)
+    spec = source.manifest['files'][name]
+    if size != spec['bytes'] or digest.hexdigest() != spec['sha256']:
+        raise TemplateError('模板文件大小或 SHA-256 不匹配：' + name)
+
+
 class Prepared:
     def __init__(self, template_path, data_policy='keep', settings_policy='keep', cancel=None):
         if data_policy not in ('keep', 'examples') or settings_policy not in ('keep', 'template'):
@@ -166,7 +184,12 @@ class Prepared:
         self.data_policy, self.settings_policy = data_policy, settings_policy
         try:
             with Template(template_path) as source:
-                source.verify(cancel=cancel)
+                # Template validates every index entry/path. Keep-mode does not
+                # adopt example results, so only the tree and adopted payloads
+                # need content verification; unused data is never opened.
+                tree_digest = source.digest('OMFITsave.txt', lambda _: check_cancel(cancel))
+                if tree_digest != source.manifest['files']['OMFITsave.txt']['sha256']:
+                    raise TemplateError('模板文件 SHA-256 不匹配：OMFITsave.txt')
                 if data_policy == 'examples' and not source.manifest['examples']:
                     raise TemplateError('此版本没有示例，不能切换到示例结果')
                 self.release = dict(source.manifest)
@@ -179,9 +202,7 @@ class Prepared:
                     if name == 'OMFITsave.txt' or (spec['kind'] == 'data' and data_policy == 'keep'):
                         continue
                     destination = _staging_path(self.path, name)
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    with source.z.open(source.files[name]) as reader, destination.open('xb') as writer:
-                        shutil.copyfileobj(reader, writer)
+                    _stage_member(source, name, destination, cancel)
                 for row in rows:
                     if row.ref and row.ref in source.directories:
                         _staging_path(self.path, row.ref).mkdir(parents=True, exist_ok=True)

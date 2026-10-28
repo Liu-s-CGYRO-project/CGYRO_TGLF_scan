@@ -1,6 +1,7 @@
 # -*-Python-*-
 # Created by meneghini at 2015/03/28 13:56
 """Build a 2D scan from independently archived 1D rows."""
+from OMFITlib_gui_api import task_action
 from builtins import enumerate, float, isinstance, len, list, range, set, sorted, str
 import copy
 
@@ -75,7 +76,7 @@ for i, value in enumerate(parameterRange2):
         scratch['tmp1Dscan'][param] = copy.deepcopy(results[param2 + '+' + param][value])
         scratch['tmp1Dscan_spectra'][param] = copy.deepcopy(results_spectra[param2 + '+' + param][value])
     try:
-        root['SCRIPTS']['runTGLFscan'].run(
+        task_action(root['SCRIPTS']['runTGLFscan'],
             inputTGLF=tmpTGLF,
             results=scratch['tmp1Dscan'],
             results_spectra=scratch['tmp1Dscan_spectra'],

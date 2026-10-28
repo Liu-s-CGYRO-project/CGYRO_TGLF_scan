@@ -21,12 +21,13 @@ if root['SETTINGS']['PHYSICS']['rho_nml'] <= 0:
 
 setdefault()
 OMFITx.CheckBox(
-    "root['SETTINGS']['PHYSICS']['rho_nml']", '使用 EPED 剖面', mapFalseTrue=[nml, 0.0], updateGUI=True, postcommand=setdefault
+    "root['SETTINGS']['PHYSICS']['rho_nml']", '使用 EPED 剖面', mapFalseTrue=[nml, 0.0], updateGUI=True, postcommand=setdefault,
+    refresh_tree=False,
 )
 if root['SETTINGS']['PHYSICS']['rho_nml'] != 0:
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_core']", '芯部区域', updateGUI=True)
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_nml']", '过渡区域', updateGUI=True)
-    OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_ped']", '台基区域', updateGUI=True)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_core']", '芯部区域', updateGUI=True, refresh_tree=False)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_nml']", '过渡区域', updateGUI=True, refresh_tree=False)
+    OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_ped']", '台基区域', updateGUI=True, refresh_tree=False)
 
 if deadstart:
     OMFITx.Button('预览初始剖面', lambda: root['SCRIPTS']['blendEPED'].runNoGUI(deadstart=deadstart, test=True))

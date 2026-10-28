@@ -1,4 +1,5 @@
 """Run an explicit TGLF plan and publish into native per-dimension branches."""
+from OMFITlib_gui_api import task_action
 from builtins import all, dict, enumerate, float, int, isinstance, len, list, range, str, zip
 import copy
 import itertools
@@ -72,7 +73,7 @@ outputs = OMFITtree()
 record['outputs'] = outputs
 submission_error = None
 try:
-    root['TGLF']['SCRIPTS']['runTGLFbatch'].run(
+    task_action(root['TGLF']['SCRIPTS']['runTGLFbatch'],
         inputTGLF=[point['input'] for point in record['points'].values()],
         runIDs=list(record['points'].keys()), results=outputs,
         parallel=plan['parallel'], enforce_constraints=False, continue_on_error=True)

@@ -19,8 +19,8 @@ from OMFITlib_project import ION_CASES, MODULES, cgyro_ion_mode, cgyro_plan_issu
 from OMFITlib_cgyro_run_state import submission_pending
 from OMFITlib_cgyro_radius_cleanup import preview_radius, radius_choices
 from OMFITlib_cgyro_task_manager import TaskManager, confirm_scope
-from OMFITlib_gui_deferred import TabPages
-from OMFITlib_gui_controls import ParameterList
+from OMFITlib_gui_deferred import TabPages, deferred_section
+from OMFITlib_gui_controls import ParameterList, checkbox
 
 CGYRO_MAIN_TABS = ('input', 'parameters', 'results')
 
@@ -43,7 +43,7 @@ class CgyroPage:
                 self.render_cgyro_results(node)
         self.cgyro_main_pages = TabPages(self.ui, OrderedDict(zip(
             CGYRO_MAIN_TABS, ('输入与扫描', '计算参数', '结果与记录'))),
-            self.settings, 'cgyro_main_tab', render)
+            self.settings, 'cgyro_main_tab', render, action=True)
         self.cgyro_main_notebook = self.cgyro_main_pages.notebook
         self.cgyro_results_section = self.cgyro_main_pages.sections['results']
 
@@ -69,29 +69,36 @@ class CgyroPage:
             if submission_pending(manifest) or any(submission_pending(entry['manifest']) for _, entry in queued):
                 self.label('提交待确认，请先同步作业状态。')
             with self.ui.same_row():
-                self.guarded('同步作业状态', self.actions.sync_cgyro_run, sync_run_issues(self.root))
+                self.guarded('同步作业状态', self.actions.sync_cgyro_run, sync_run_issues(self.root), refresh_tree=False)
                 self.guarded('重新收集未归档结果', self.actions.collect, collect_issues(self.root),
                              help='只读取、归档已有输出；运行中的案例提示后跳过。需要补算时，进入下方“选择点续算”。')
-        ResultBrowser(self.root, self.ui, continue_callback=self.actions.continue_cgyro).render(title=False)
+        ResultBrowser(self.root, self.ui, continue_callback=self.actions.continue_cgyro,
+            on_continued=getattr(self.ui, 'refresh_callback', lambda **kwargs: None)(scope='section')).render(title=False)
         self.render_cgyro_cleanup(node)
         self.nav('对比绘图（可选）', 'plots')
 
     def render_cgyro_cleanup(self, node):
+        section = deferred_section(self.ui, lambda: self._render_cgyro_cleanup(node), local=True, container=True)
+        if section is None:
+            return self._render_cgyro_cleanup(node)
+        section.show()
+
+    def _render_cgyro_cleanup(self, node):
         """Do not enumerate archives on every ordinary control refresh."""
         changed = self.cgyro_tasks_refresh()
         self.ui.Button('任务管理 / 删除任务…',
-                       lambda: self.open_cgyro_task_manager(changed), updateGUI=False)
+                       lambda: self.open_cgyro_task_manager(changed), updateGUI=False, refresh_tree=False)
         self.settings.setdefault('cgyro_cleanup_open', False)
         self.settings.setdefault('cgyro_cleanup_radius', '')
         self.ui.Button('删除指定半径…', lambda: self.settings.__setitem__(
             'cgyro_cleanup_open', not self.settings['cgyro_cleanup_open']),
-                       updateGUI=True, refresh_scope='section')
+                       updateGUI=True, refresh_scope='section', refresh_tree=False)
         if not self.settings['cgyro_cleanup_open']:
             return
         options = radius_choices(node)
         # Native OMFIT takes (location, options, lbl), not a choices keyword.
         self.ui.ComboBox(self.prefix + "['cgyro_cleanup_radius']", [''] + list(options),
-                         '删除范围', updateGUI=True)
+                         '删除范围', updateGUI=True, refresh_tree=False)
         self.ui.Button('删除该半径的记录和结果', self.confirm_cgyro_radius_cleanup, updateGUI=True,
                        state='normal' if self.settings['cgyro_cleanup_radius'] in options else 'disabled')
 
@@ -118,18 +125,22 @@ class CgyroPage:
     def cgyro_tasks_refresh(self):
         """Task deletion affects the current page even after its dialog outlives a tab.
 
-        Capture the owning window, not its replaceable result tab. An explicit
-        native reload also replaces parentGUI, so resolve its current body only
-        when the persistent task dialog commits a change.
+        Prefer the mounted result tab. The dialog can outlive that tab/window's
+        body, so fall back to the current page after navigation or native reload.
         """
         parent, registry = getattr(self.ui, '_owner', None), getattr(self.ui, '_GUIs', None)
         if not isinstance(parent, tk.Misc) or not isinstance(registry, dict):
             return self.ui.refresh_callback(scope='page')
         key = str(parent.winfo_toplevel())
+        section = getattr(self.ui, '_aux', {}).get('parentGUI', None)
+        while isinstance(section, tk.Misc) and getattr(section, '_cgyro_action_refresh', None) is None:
+            section = section.master
         def changed():
             gui = registry.get(key, None)
             if gui is not None:
-                self.ui.UpdateGUI(top=gui.parentGUI, refresh_scope='page')
+                target = section if (isinstance(section, tk.Misc) and section.winfo_exists()
+                                     and section.winfo_ismapped()) else gui.parentGUI
+                self.ui.UpdateGUI(top=target, refresh_scope='page')
         return changed
 
     def open_cgyro_task_manager(self, on_changed=None):
@@ -153,6 +164,12 @@ class CgyroPage:
             on_changed=on_changed if on_changed is not None else self.ui.UpdateGUI)
 
     def render_cgyro_recovery(self, node):
+        section = deferred_section(self.ui, lambda: self._render_cgyro_recovery(node), local=True, container=True)
+        if section is None:
+            return self._render_cgyro_recovery(node)
+        section.show()
+
+    def _render_cgyro_recovery(self, node):
         """Available even in an empty reopened project after a desktop timeout."""
         self.settings.setdefault('cgyro_recovery_job', '')
         self.settings.setdefault('cgyro_recovery_manifest', '')
@@ -161,12 +178,15 @@ class CgyroPage:
         self.ui.Separator('恢复已提交的作业')
         self.label('服务器：' + str(remote.get('serverPicker', '') or '请先配置运行服务器'))
         with self.ui.same_row():
-            self.ui.Entry(self.prefix + "['cgyro_recovery_job']", '主作业号', width=14, updateGUI=False)
+            self.ui.Entry(self.prefix + "['cgyro_recovery_job']", '主作业号', width=14,
+                          updateGUI=False, refresh_tree=False)
             self.ui.Button('按作业号恢复', self.actions.recover_cgyro_job, updateGUI=True)
-        self.ui.CheckBox(self.prefix + "['cgyro_recovery_advanced']", '指定旧清单位置（可选）', updateGUI=True)
+        self.ui.CheckBox(self.prefix + "['cgyro_recovery_advanced']", '指定旧清单位置（可选）',
+                         updateGUI=True, refresh_tree=False)
         if self.settings['cgyro_recovery_advanced']:
             self.ui.Entry(self.prefix + "['cgyro_recovery_manifest']", '服务器上的 manifest.json',
-                          width=50, updateGUI=False, help='通常无需填写；自动查找失败时使用原 OMFIT 暂存目录中的清单绝对路径。')
+                          width=50, updateGUI=False, refresh_tree=False,
+                          help='通常无需填写；自动查找失败时使用原 OMFIT 暂存目录中的清单绝对路径。')
         self.label('按作业号接回任务；本次同步和收集只处理该作业。')
 
     def render_cgyro_scan_tabs(self):
@@ -195,7 +215,7 @@ class CgyroPage:
     def render_cgyro_input(self):
         self.ui.ComboBox(self.prefix + "['cgyro_source_mode']", OrderedDict([
             ('Transfer_tool 半径输入', 'generated'), ('Transfer_tool 批量方案', 'schemes'), ('导入 input.cgyro', 'imported'),
-            ('CGYRO 当前输入', 'current')]), '输入来源', state='readonly', updateGUI=True)
+            ('CGYRO 当前输入', 'current')]), '输入来源', state='readonly', updateGUI=True, refresh_tree=False)
         mode = self.settings['cgyro_source_mode']
         if mode == 'imported':
             self.ui.FilePicker(self.prefix + "['cgyro_file']", 'input.cgyro 文件', default='',
@@ -213,9 +233,9 @@ class CgyroPage:
             if len(rows) > 1:
                 with self.ui.same_row():
                     self.ui.Button('全部半径', self.actions.select_cgyro_radii,
-                                   updateGUI=True, refresh_scope='section')
+                                   updateGUI=True, refresh_scope='section', refresh_tree=False)
                     self.ui.Button('清空选择', lambda: self.actions.select_cgyro_radii(False),
-                                   updateGUI=True, refresh_scope='section')
+                                   updateGUI=True, refresh_scope='section', refresh_tree=False)
             for offset in range(0, len(rows), 2):
                 with self.ui.same_row():
                     for row in rows[offset:offset + 2]:
@@ -224,8 +244,8 @@ class CgyroPage:
                             caption += ' · rho={:g}'.format(row['rho'])
                         if row.get('scheme', ''):
                             caption = row['scheme_label'] + ' · ' + caption
-                        self.cgyro_checkbox(self.prefix + "['cgyro_radii'][{!r}]".format(row['key']),
-                                             self.settings['cgyro_radii'], row['key'], caption)
+                        checkbox(self.ui, self.prefix + "['cgyro_radii'][{!r}]".format(row['key']),
+                                 self.settings['cgyro_radii'], row['key'], caption, updateGUI=True, refresh_tree=False)
         else:
             self.label('尚无输入，请生成半径输入或导入 input.cgyro。')
         sync_cgyro_ion_cases(self.settings, self.actions.factory)
@@ -233,14 +253,14 @@ class CgyroPage:
             self.settings['cgyro_ion_mode'] = cgyro_ion_mode(self.settings)
         self.ui.ComboBox(self.prefix + "['cgyro_ion_mode']", OrderedDict([
             ('保持原始粒子', 'original'), ('H / D / T 对比', 'hdt'), ('自选方案', 'custom')]),
-            '主离子方案', state='readonly', updateGUI=True, postcommand=self.actions.set_cgyro_ions)
+            '主离子方案', state='readonly', updateGUI=True, refresh_tree=False, postcommand=self.actions.set_cgyro_ions)
         if self.settings['cgyro_ion_mode'] == 'custom':
             cases = list(ION_CASES.items())
             for offset in range(0, len(cases), 2):
                 with self.ui.same_row():
                     for key, caption in cases[offset:offset + 2]:
-                        self.cgyro_checkbox(self.prefix + "['cgyro_ion_cases'][{!r}]".format(key),
-                                             self.settings['cgyro_ion_cases'], key, caption)
+                        checkbox(self.ui, self.prefix + "['cgyro_ion_cases'][{!r}]".format(key),
+                                 self.settings['cgyro_ion_cases'], key, caption, updateGUI=True, refresh_tree=False)
         if any(self.settings['cgyro_ion_cases'].get(key, False) for key in ('H', 'D', 'T')):
             self.label('H / D / T：多个 Z=1 主离子先合并为一个，再分别设置质量。')
         return rows
@@ -252,15 +272,15 @@ class CgyroPage:
             self.label('结果分别保存为“结果名称__transfer_方案”。所有方案共用下方扫描设置和计算参数。')
         with self.ui.same_row():
             self.scan_field(self.ui.Entry(location(base + ('EXPERIMENT', 'runid')), '结果名称',
-                                          width=14, updateGUI=True), 14)
+                                          width=14, updateGUI=False, refresh_tree=False), 14)
             self.scan_field(self.ui.ComboBox(location(base + ('SETUP', 'idimrun')), OrderedDict([
                 ('只扫 ky', 0), ('ky + 1 个参数', 1), ('ky + 2 个参数', 2), ('ky + 3 个参数', 3)]),
-                '扫描内容', state='readonly', width=16, updateGUI=True), 16)
+                '扫描内容', state='readonly', width=16, updateGUI=True, refresh_tree=False), 16)
         self.ui.Separator('ky 取值')
         ky_spec = self.scan_value_spec(physics, 'ky_spec', physics.get('kyarr', []))
         ky_prefix = location(base + ('PHYSICS', 'ky_spec'))
         self.scan_field(self.ui.ComboBox(ky_prefix + "['mode']", KY_MODES, '取值方式', state='readonly',
-            width=14, updateGUI=True, help='列表可直接填写 np.linspace(0.1, 1.0, 10)、np.arange(0.1, 1.01, 0.1)'
+            width=14, updateGUI=True, refresh_tree=False, help='列表可直接填写 np.linspace(0.1, 1.0, 10)、np.arange(0.1, 1.01, 0.1)'
                 ' 或 np.logspace(-2, 0, 9)。\n线性 / 对数范围按起点、终点和点数生成。ky 必须大于 0。'), 14)
         self.scan_value_fields(ky_spec, ky_prefix, location(base + ('PHYSICS', 'kyarr')), 'ky 列表 / 表达式')
         try:
@@ -296,19 +316,19 @@ class CgyroPage:
             self.ui.Separator('参数轴 ' + str(index))
             with self.ui.same_row():
                 self.scan_field(self.ui.ComboBox(location(base + ('PHYSICS', group, pkey)), options,
-                    '参数', state='search', width=16, updateGUI=True,
+                    '参数', state='search', width=16, updateGUI=True, refresh_tree=False,
                     help=parameter_help(str(cfg[pkey]))), 16)
                 self.scan_field(self.ui.ComboBox(prefix + "['mode']", VALUE_MODES, '方式',
-                    state='readonly', width=14, updateGUI=True,
+                    state='readonly', width=14, updateGUI=True, refresh_tree=False,
                     help='实际值范围直接生成数值；原值倍数分别乘以每个输入的原值；沿用输入只计算原值。'), 14)
             self.scan_value_fields(spec, prefix, location(base + ('PHYSICS', group, rkey)))
             linked = 2
             while pkey + str(linked) in cfg or rkey + str(linked) in cfg:
                 self.scan_field(self.ui.ComboBox(location(base + ('PHYSICS', group, pkey + str(linked))), options,
-                    '联动参数', state='search', width=18, default='', updateGUI=True,
+                    '联动参数', state='search', width=18, default='', updateGUI=True, refresh_tree=False,
                     help=parameter_help(str(cfg.get(pkey + str(linked), '')))), 18)
                 self.scan_field(self.ui.Entry(location(base + ('PHYSICS', group, rkey + str(linked))),
-                    '同步取值', width=28, default=[], updateGUI=True,
+                    '同步取值', width=28, default=[], updateGUI=True, refresh_tree=False,
                     help='与参数 ' + str(index) + ' 的取值逐项对应。独立组合请使用多个参数轴。'), 28)
                 linked += 1
 
@@ -331,7 +351,7 @@ class CgyroPage:
         issues = problems + runtime_issues(self.root, 'cgyro')
         if config.get('scheduler', '') in ('slurm', 'pbs'):
             self.ui.Entry(location(MODULES['cgyro'] + ('SETTINGS', 'SETUP', 'failed_point_retries')),
-                          '失败点重试次数', default=2, width=8,
+                          '失败点重试次数', default=2, width=8, refresh_tree=False,
                           help='0–3 次，默认 2。仅补跑可重试的失败点，成功点保留；取消、输入错误、积分报错、内存不足和超时不自动重算。')
         self.guarded('运行所选扫描', self.actions.run_cgyro, issues)
         self.nav('修改运行环境', 'run')
@@ -384,14 +404,25 @@ class CgyroPage:
         self.cgyro_parameter_list = ParameterList(self.ui, self.settings, 'cgyro_parameter_group',
             'cgyro_parameter_search', CGYRO_GROUPS, filter_rows,
             lambda names: self.cgyro_parameter_rows(names, base, catalog, parameters, source_values, scanned, source_key))
+        section = deferred_section(self.ui, lambda: self.cgyro_parameter_options(node, row), local=True, container=True)
+        if section is None:
+            return self.cgyro_parameter_options(node, row)
+        section.show()
+
+    def cgyro_parameter_options(self, node, row):
+        """Small dependent options must not reconstruct the parameter catalogue."""
+        physics = node['SETTINGS']['PHYSICS']
+        base = MODULES['cgyro'] + ('SETTINGS', 'PHYSICS')
         self.ui.Separator('时间缩放')
-        self.cgyro_checkbox(location(base + ('scale_time_with_ky',)), physics, 'scale_time_with_ky', '按 ky 缩放时间')
+        checkbox(self.ui, location(base + ('scale_time_with_ky',)), physics, 'scale_time_with_ky',
+                 '按 ky 缩放时间', updateGUI=True, refresh_tree=False)
         if physics['scale_time_with_ky']:
             self.label('ky > 1 时，步长与运行时长分别除以 ky。')
         self.ui.Separator('重启与源文件')
         self.ui.ComboBox(location(base + ('restart_mode',)), {'新计算': 0, '匹配结果重启': 1},
-                         '运行方式', state='readonly', updateGUI=True)
-        self.cgyro_checkbox(self.prefix + "['cgyro_advanced']", self.settings, 'cgyro_advanced', '直接编辑源 input.cgyro')
+                         '运行方式', state='readonly', updateGUI=False, refresh_tree=False)
+        checkbox(self.ui, self.prefix + "['cgyro_advanced']", self.settings, 'cgyro_advanced',
+                 '直接编辑源 input.cgyro', updateGUI=True, refresh_tree=False)
         if self.settings['cgyro_advanced'] and row is not None:
             self.ui.EditASCIIobject(location(row['path']), '编辑参考输入', updateGUI=True)
         # Whole-scan validation belongs to Run/check/submit. Building every

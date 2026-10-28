@@ -7,6 +7,7 @@ This script is used to launch scans of TGLF inputs to test sensitivity of D,V an
 Quantities to scan are indicated via the "variables_to_scan" dictionary, which by default is built through
 the 'quantities_selection_GUI', used in 'DV_scans_gui'.
 """
+from OMFITlib_gui_api import task_action
 defaultVars(
     variables_to_scan=root['TGLF_inputs_to_scan'],
     runs_label=root['SETTINGS']['PHYSICS']['runs_label'],
@@ -53,13 +54,13 @@ tmp_name = 'DVscan_baseline'  # name of OMFIT Tree where results are stored
 
 if root['SETTINGS']['PHYSICS']['transport_matrix_method']:
     # use matrix inversion method
-    root['SCRIPTS']['resp_matrix'].run(frac_change=frac_change, runs_label=tmp_name, rhoList=rhoList)
+    task_action(root['SCRIPTS']['resp_matrix'], frac_change=frac_change, runs_label=tmp_name, rhoList=rhoList)
     # Obtain and store results using the plot_resp_matrix.py script (but don't plot now)
     root['PLOTS']['plot_resp_matrix'].run(runs_label=tmp_name, plot_results=False)
 else:
     # scan gradients with separate TGLF runs
-    root['SCRIPTS']['particleDandVscan'].run(runs_label=tmp_name)
-    root['SCRIPTS']['particleDandVprofile'].run(runs_label=tmp_name)
+    task_action(root['SCRIPTS']['particleDandVscan'], runs_label=tmp_name)
+    task_action(root['SCRIPTS']['particleDandVprofile'], runs_label=tmp_name)
 
 # ============
 # save sensitivity results in tmp_name dictionary and delete temporary tree. No need to save settings from temporary runs
@@ -92,13 +93,13 @@ for var_cnt, var_name in enumerate(variables_to_scan.keys()):
 
         if root['SETTINGS']['PHYSICS']['transport_matrix_method']:
             # use matrix inversion method
-            root['SCRIPTS']['resp_matrix'].run(frac_change=frac_change, runs_label=tmp_name, rhoList=rhoList)
+            task_action(root['SCRIPTS']['resp_matrix'], frac_change=frac_change, runs_label=tmp_name, rhoList=rhoList)
             # Obtain and store results using the plot_resp_matrix.py script (but don't plot yet)
             root['PLOTS']['plot_resp_matrix'].run(runs_label=tmp_name, plot_results=False)
         else:
             # scan gradients with separate TGLF runs
-            root['SCRIPTS']['particleDandVscan'].run(runs_label=tmp_name)
-            root['SCRIPTS']['particleDandVprofile'].run(runs_label=tmp_name)
+            task_action(root['SCRIPTS']['particleDandVscan'], runs_label=tmp_name)
+            task_action(root['SCRIPTS']['particleDandVprofile'], runs_label=tmp_name)
 
         # ===========
 

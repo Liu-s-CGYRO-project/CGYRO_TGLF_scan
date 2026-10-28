@@ -34,6 +34,7 @@ OMFITx.CheckBox(
     updateGUI=True,
     help=''' The optimal default settings are summarized in TGLF scenarious.
             It is not recommended to deviate from the default settings without consulting Gary Staebler''',
+    refresh_tree=False,
 )
 
 if settings_loc['PHYSICS']['Customized_TGLF_input']:
@@ -83,6 +84,7 @@ if settings_loc['PHYSICS']['Customized_TGLF_input'] == False:
         default=tglf_options['Conventional (SAT_RULE=1)'],
         updateGUI=True,
         help='TGLF scenarios adjust the wavenumber spectrum',
+        refresh_tree=False,
     )
 
     inp_loc_tgyro['TGYRO_TGLF_REVISION'] = 0
@@ -110,6 +112,7 @@ OMFITx.Entry(
 The Waltz quench rule has only been calibrated to GYRO for SAT_RULE=0 and the linear growth rates output to the file out.tglf.eigenvalue spectrum will be the net growth rate after the quench rule is applied, not the actual growth rates.''',
     updateGUI=True,
     state=state_revision,
+    refresh_tree=False,
 )
 
 if inp_loc_tgyro['TGYRO_TGLF_REVISION'] == 2:
@@ -128,6 +131,7 @@ if inp_loc_tgyro['TGYRO_TGLF_REVISION'] >= 3:
         default=1,
         state='disabled',
         help='''Multiplies ExB velocity shear for spectral shift model''',
+        refresh_tree=False,
     )
     OMFITx.Entry(
         inp_loc + "['ALPHA_P']",
@@ -135,6 +139,7 @@ if inp_loc_tgyro['TGYRO_TGLF_REVISION'] >= 3:
         default=1,
         state='disabled',
         help='''Multiplies parallel velocity shear for all species''',
+        refresh_tree=False,
     )
 
 if inp_loc_tgyro['TGYRO_TGLF_REVISION'] == 4:
@@ -153,6 +158,7 @@ OMFITx.Entry(
     updateGUI=True,
     state=state_quench,
     help='''0 = New spectral shift model; 1= Quench rule (2009) that replaces growth rate by growth relative to ExB shear [Waltz 1997].  QL weights from GYRO [Staebler 2007]''',
+    refresh_tree=False,
 )
 
 OMFITx.Entry(
@@ -163,6 +169,7 @@ OMFITx.Entry(
     default=1,
     state=state,
     help=parameter_help('SAT_RULE', inp_loc_tree),
+    refresh_tree=False,
 )
 
 if inp_loc_tree['SAT_RULE'] != 0 and inp_loc_tree['ALPHA_QUENCH'] == 1.0:
@@ -174,6 +181,7 @@ OMFITx.Entry(
     default=1,
     state='disabled',
     help='Zonal flow, should be switched on (1) for SAT1 and SAT1.',
+    refresh_tree=False,
 )
 
 OMFITx.Entry(
@@ -184,6 +192,7 @@ OMFITx.Entry(
     state=state,
     help=parameter_help('KYGRID_MODEL', inp_loc_tree),
     updateGUI=True,
+    refresh_tree=False,
 )
 
 
@@ -199,7 +208,7 @@ def check_nky(s):
 
 
 if inp_loc_tree['KYGRID_MODEL'] == 0:
-    OMFITx.Entry(inp_loc + "['KY']", lbl='KY', help='自定义 ky 网格最大值', default=0.3)
+    OMFITx.Entry(inp_loc + "['KY']", lbl='KY', help='自定义 ky 网格最大值', default=0.3, refresh_tree=False)
 
     OMFITx.Entry(
         inp_loc + "['NKY']",
@@ -210,6 +219,7 @@ if inp_loc_tree['KYGRID_MODEL'] == 0:
 For the user defined ky spectrum (['KYGRID_MODEL'] == 0), the max number of NKY is 480.''',
         check=check_nky,
         updateGUI=True,
+        refresh_tree=False,
     )
 else:
     OMFITx.Entry(
@@ -221,6 +231,7 @@ else:
 For the user defined ky spectrum (['KYGRID_MODEL'] == 0), the max number of NKY is 480.''',
         check=is_int,
         updateGUI=True,
+        refresh_tree=False,
     )
 
 GYRO_units = []
@@ -250,6 +261,7 @@ SAT0 - GYRO ;
 SAT1 - GYRO or CGYRO;
 SAT2 - CGYRO.
 SAT3 - CGYRO.''',
+    refresh_tree=False,
 )
 
 if (
@@ -278,6 +290,7 @@ OMFITx.Entry(
     state=state,
     help='''Number of modes to compute. For SAT0 can only be either 2 or 4. For other saturation rules it can be arbitrary.''',
     check=sat_rule_restr,
+    refresh_tree=False,
 )
 
 OMFITx.Entry(
@@ -287,6 +300,7 @@ OMFITx.Entry(
     state=state,
     help='''Maximum number of parallel basis functions. Default - 4. ''',
     check=sat_rule_restr,
+    refresh_tree=False,
 )
 
 if inp_loc_tree['SAT_RULE'] != 2 and not settings_loc['PHYSICS']['Customized_TGLF_input']:
@@ -311,6 +325,7 @@ OMFITx.Entry(
     help='''Collision model.
 2 = default collision model,
 3 = improved collision model and isotope for SAT2''',
+    refresh_tree=False,
 )
 
 OMFITx.Entry(
@@ -320,6 +335,7 @@ OMFITx.Entry(
     state='disabled',
     help='''New model for the loss of bounce averaging due to the diamagnetic drift.
 0 = default, 1 = for SAT2''',
+    refresh_tree=False,
 )
 
 OMFITx.Entry(
@@ -329,6 +345,7 @@ OMFITx.Entry(
     state=state,
     help='''This setting is used with SAT2 for DT plasma''',
     check=is_int,
+    refresh_tree=False,
 )
 
 OMFITx.Separator()
@@ -349,6 +366,7 @@ OMFITx.ComboBox(
 BPER (A||) - Include transverse magnetic fluctuations (perpendicular B effects)
 BPAR (B||) - Include compressional magnetic fluctuations (parallel B effects)
 Note - for EM effects mach number effects are removed ALPHA_MACH=0.0 ''',
+    refresh_tree=False,
 )
 
 if inp_loc_tgyro['TGYRO_TGLF_REVISION'] == 4:
@@ -359,6 +377,7 @@ if inp_loc_tgyro['TGYRO_TGLF_REVISION'] == 4:
         default=1,
         state='disabled',
         help='''Multiplies parallel velocity for all species.''',
+        refresh_tree=False,
     )
 else:
     inp_loc_tree['ALPHA_MACH'] = 0.0

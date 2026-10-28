@@ -107,6 +107,45 @@ class ResultIdentityTests(unittest.TestCase):
                            {'p000001': new_row}, prefer_progress=True)
         self.assertEqual(case['N_ENERGY']['8']['lin']['0.1'], old)
 
+    def test_collection_rejects_mismatched_input_before_caching_identity(self):
+        module = {}
+        info, row, _ = self.result(module, 'mismatched-input', generated={'MASS_1': 1.})
+        directory = self.base / 'mismatched-input'
+        original = (directory / 'input.cgyro').read_bytes()
+        for change, expected in (({'N_ENERGY': 10}, 'disagrees with input.cgyro: N_ENERGY'),
+                                 ({'MASS_1': 2.}, 'disagrees with input.cgyro')):
+            with self.subTest(change=change):
+                (directory / 'input.cgyro').write_bytes(original)
+                data = Input(directory / 'input.cgyro')
+                data.update(change)
+                data.deploy(directory / 'input.cgyro')
+                uncached = dict(row)
+                for name in ('input_parameters', 'input_parameter_source', 'input_parameter_sha256'):
+                    uncached.pop(name, None)
+                with self.assertRaisesRegex(ValueError, expected):
+                    cache_parameters(uncached, info, fixtures.OMFITcgyro(directory))
+                self.assertNotIn('input_parameters', uncached)
+
+    def test_collection_checks_frozen_input_hash_without_requiring_generated_input(self):
+        module = {}
+        info, row, _ = self.result(module, 'legacy-mismatched-input')
+        directory = self.base / 'legacy-mismatched-input'
+        owner = fixtures.OMFITcgyro(directory)
+        row['input_sha256'] = hashlib.sha256((directory / 'input.cgyro').read_bytes()).hexdigest()
+        self.assertEqual(cache_parameters(row, info, owner)['N_ENERGY'], 8)
+        self.assertNotIn('input_parameters', row)  # No guessed solver defaults for legacy files.
+        data = Input(directory / 'input.cgyro')
+        data['N_ENERGY'] = 10
+        data.deploy(directory / 'input.cgyro')
+        with self.assertRaisesRegex(ValueError, 'checksum'):
+            cache_parameters(row, info, owner)
+        row.pop('input_sha256')
+        with self.assertRaisesRegex(ValueError, 'coordinate: N_ENERGY'):
+            cache_parameters(row, info, owner)
+        (directory / 'input.cgyro').write_text('KY=0.1\n')
+        self.assertEqual(cache_parameters(row, info, owner), {'KY': .1})
+        self.assertNotIn('input_parameters', row)
+
     def result(self, module, token, ky=.1, input_energy=8, corrupt=False, extra_values=None, generated=None):
         directory = self.base / token
         shutil.copytree(self.original, directory)

@@ -19,6 +19,7 @@ First impurity should be the method of choice but in certain cases
 where trace impurities cannot be added (eg. when using NN models)
 """
 # modify_intrinsic must be =True if running with NNs
+from OMFITlib_gui_api import task_action
 modify_intrinsic = (
     'TGYRO_TGLF_NN_MAX_ERROR' in root['INPUTS']['input.tgyro'] and root['INPUTS']['input.tgyro']['TGYRO_TGLF_NN_MAX_ERROR'] > 0
 )
@@ -89,7 +90,7 @@ if update_blend_only:
     )
 
     root['OUTPUTS']['D_and_v'] = D_and_v
-    root['SCRIPTS']['saveTGYRO'].run()
+    task_action(root['SCRIPTS']['saveTGYRO'])
     OMFITx.End()
 
 
@@ -235,7 +236,7 @@ try:
 
         print('Run TGYRO with species: %s' % (', '.join(species)))
 
-        root['SCRIPTS']['runTGYRO'].run(save_profilesgen=False)
+        task_action(root['SCRIPTS']['runTGYRO'], save_profilesgen=False)
 
         runs = [root['OUTPUTS']['output'], root['OUTPUTS']['output']]
         n_ids = [imp_pos, imp_pos + 1]
@@ -275,7 +276,7 @@ try:
 
             # Run TGYRO
             print('Run TGYRO with species: %s' % root['INPUTS']['input.gacode'].ion_names())
-            root['SCRIPTS']['runTGYRO'].run(save_profilesgen=False)
+            task_action(root['SCRIPTS']['runTGYRO'], save_profilesgen=False)
             root['OUTPUTS']['output'].load()  # force load to make sure run completed
 
         runs = [root['RUN_DB'][runid_trace + '_modified' + str(i)]['OUTPUTS']['output'] for i, s in enumerate(scale)]
@@ -296,18 +297,18 @@ try:
     )
 
     root['OUTPUTS']['D_and_v'] = D_and_v
-    root['SCRIPTS']['saveTGYRO'].run(save_profilesgen=False)
+    task_action(root['SCRIPTS']['saveTGYRO'], save_profilesgen=False)
 
     # save the D/v info in the original runid
     root['SETTINGS']['EXPERIMENT']['runid'] = runid
-    root['SCRIPTS']['reloadTGYRO'].run()
+    task_action(root['SCRIPTS']['reloadTGYRO'])
     root['OUTPUTS']['D_and_v'] = D_and_v
 
     # Save the run with the D_and_v information in the runDB
-    root['SCRIPTS']['saveTGYRO'].run()
+    task_action(root['SCRIPTS']['saveTGYRO'])
 
 finally:
     root['SETTINGS']['EXPERIMENT']['runid'] = runid
-    root['SCRIPTS']['reloadTGYRO'].run()
+    task_action(root['SCRIPTS']['reloadTGYRO'])
     root['SETTINGS']['DEPENDENCIES']['input_gacode'] = bkp_input_gacode_dep
     root['SETTINGS']['SETUP']['n_cpu_rad'] = ncpu

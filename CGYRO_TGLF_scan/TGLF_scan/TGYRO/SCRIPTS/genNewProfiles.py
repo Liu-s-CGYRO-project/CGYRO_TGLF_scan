@@ -3,6 +3,7 @@
 #
 # script used to merge GAprofiles input.gacode with relaxation parameter
 
+from OMFITlib_gui_api import task_action
 profiles = copy.deepcopy(input_gacode)
 n = len(profiles['ne'])
 
@@ -75,6 +76,6 @@ else:
     rho_max = interp(root['INPUTS']['input.tgyro']['TGYRO_RMAX'], profiles['rmin'] / profiles['rmin'].max(), profiles['rho'])
 
 # enforce quasineutrality, total pressure, zeff
-PROFILES_GEN['SCRIPTS']['enforce_quasineutrality'].run(input_gacode=profiles)
+task_action(PROFILES_GEN['SCRIPTS']['enforce_quasineutrality'], input_gacode=profiles)
 
 root['OUTPUTS']['input.gacode'] = profiles

@@ -1,6 +1,7 @@
 # -*-Python-*-
 # Created by smithsp at 2013/11/06 14:32
 
+from OMFITlib_gui_api import task_action
 TGYRO = root['TGYRO']
 rho = root['SETTINGS']['PHYSICS']['rho']
 radial_grid = list(arange(1, 100) / 100.0)
@@ -54,7 +55,7 @@ for key in ('input.tglf', 'tgyro_output', 'scanResults', 'scanResults_spectra',
     root.pop(key, None)
 
 # run TGYRO
-TGYRO['SCRIPTS']['runTGYRO'].run()
+task_action(TGYRO['SCRIPTS']['runTGYRO'])
 
 # make sure destination directories are there
 root.setdefault('scanResults', OMFITtree())

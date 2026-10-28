@@ -40,7 +40,7 @@ class ScanControls:
     def scan_value_fields(self, spec, prefix, values_path, caption='取值列表'):
         mode = spec.get('mode', 'list')
         if mode == 'list':
-            self.scan_field(self.ui.Entry(values_path, caption, width=28, updateGUI=True,
+            self.scan_field(self.ui.Entry(values_path, caption, width=28, updateGUI=True, refresh_tree=False,
                 help='可填一个实际数值、列表 [16, 32, 48, 64]，或 NumPy 表达式，如 np.linspace(16, 64, 4)。'
                      '\n表达式在回车确认后生成实际数值；整数参数的各个取值必须是整数。'), 28)
         elif mode == 'original':
@@ -52,7 +52,7 @@ class ScanControls:
                 frame = getattr(self.ui, '_aux', {}).get('parentGUI', None)
                 if isinstance(frame, tk.Misc):
                     frame._cgyro_max_columns = 3
-                self.scan_field(self.ui.Entry(prefix + "['start']", '起点', width=8, updateGUI=True), 8)
-                self.scan_field(self.ui.Entry(prefix + "['end']", '终点', width=8, updateGUI=True), 8)
-                self.scan_field(self.ui.Entry(prefix + "['count']", '点数', width=7, updateGUI=True,
+                self.scan_field(self.ui.Entry(prefix + "['start']", '起点', width=8, updateGUI=True, refresh_tree=False), 8)
+                self.scan_field(self.ui.Entry(prefix + "['end']", '终点', width=8, updateGUI=True, refresh_tree=False), 8)
+                self.scan_field(self.ui.Entry(prefix + "['count']", '点数', width=7, updateGUI=True, refresh_tree=False,
                     help='包含起点和终点；点数为 1 时只取起点。'), 7)

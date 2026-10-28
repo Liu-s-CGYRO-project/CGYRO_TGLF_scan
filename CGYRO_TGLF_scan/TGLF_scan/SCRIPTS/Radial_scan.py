@@ -1,6 +1,7 @@
 # -*-Python-*-
 # Created by thomek at 15 Jun 2016  09:47
 """Archive each successful radius even if a later radius fails or is stopped."""
+from OMFITlib_gui_api import task_action
 from builtins import enumerate, len, str
 import copy
 flx = root.setdefault('Experimental_fluxes', OMFITcollection())
@@ -30,7 +31,7 @@ if len(input_tglf) == 0:
 results = OMFITtree()
 batch_error = None
 try:
-    root['TGLF']['SCRIPTS']['runTGLFbatch'].run(
+    task_action(root['TGLF']['SCRIPTS']['runTGLFbatch'],
         inputTGLF=input_tglf, runIDs=rho_scan, results=results,
         enforce_constraints=False, continue_on_error=True)
 except BaseException as exc:

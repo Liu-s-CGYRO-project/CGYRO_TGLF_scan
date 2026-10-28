@@ -9,6 +9,7 @@ profile for multiple time points
 
 # Times are intentionally explicit; this entry must never start a different
 # shot's demonstration calculations just because it was opened from a project.
+from OMFITlib_gui_api import task_action
 defaultVars(shot=root['SETTINGS']['EXPERIMENT']['shot'],
             runid=root['SETTINGS']['EXPERIMENT']['runid'], times=None, avgtim=0.0,
             rhos=root['SETTINGS']['PHYSICS']['rho_scan'])
@@ -47,26 +48,26 @@ for time in times:
     TRXPL['SETTINGS']['EXPERIMENT']['time'] = time
 
     # Run TRXPL
-    TRXPL['SCRIPTS']['trxpl'].run()
+    task_action(TRXPL['SCRIPTS']['trxpl'])
 
     PROFILES_GEN['SETTINGS']['DEPENDENCIES']['profpowbal'] = "root['TRXPL']['OUTPUTS']['statefile']"
     PROFILES_GEN['SETTINGS']['DEPENDENCIES']['gEQDSK'] = "root['TRXPL']['OUTPUTS']['gEQDSK']"
     if 'reorder_ion_names' in PROFILES_GEN['SETTINGS']['PHYSICS']:
         PROFILES_GEN['SETTINGS']['PHYSICS']['reorder_ion_names'] = None
-    PROFILES_GEN['SCRIPTS']['run_profiles_gen'].run()
+    task_action(PROFILES_GEN['SCRIPTS']['run_profiles_gen'])
     names = PROFILES_GEN['OUTPUTS']['input.gacode'].ion_names()
     printw('ION names:{}'.format(names))
     PROFILES_GEN['SETTINGS']['PHYSICS']['reorder_ion_names'] = names
-    PROFILES_GEN['SCRIPTS']['reorder_ions'].run()
+    task_action(PROFILES_GEN['SCRIPTS']['reorder_ions'])
 
     # Ion inclusion/order follows the current PROFILES_GEN/TGYRO settings.
     # No implicit deletion of B, N, LUMPED ions or forced NS=3.
 
     root['tgyro_output'].clear()
     root['input.tglf'].clear()
-    root['SCRIPTS']['setup_tglf'].run()
+    task_action(root['SCRIPTS']['setup_tglf'])
     root['SETTINGS']['PHYSICS']['rho_scan'] = rhos
-    root['SCRIPTS']['Radial_scan'].run()
+    task_action(root['SCRIPTS']['Radial_scan'])
 
     for rho in rhos:
         root['Experimental_spectra_in_time'][rho][time] = copy.deepcopy(root['Experimental_spectra'][rho])

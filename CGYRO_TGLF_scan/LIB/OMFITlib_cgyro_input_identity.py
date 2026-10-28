@@ -61,16 +61,31 @@ def effective_parameters(result):
     return values, source, digest
 
 
+def verified_parameters(result, expected_hash=''):
+    """Check this owner's explicit/generated inputs before indexing or restart."""
+    actual, input_digest = read_parameters(result_file(result, 'input.cgyro'))
+    if expected_hash and input_digest != expected_hash:
+        raise ValueError('Saved input.cgyro checksum disagrees with the frozen input')
+    values, source, digest = effective_parameters(result)
+    if source == 'input.cgyro.gen':
+        for name, value in actual.items():
+            if name not in values or not math.isclose(value, values[name], rel_tol=1e-9, abs_tol=1e-12):
+                raise ValueError('Saved input.cgyro.gen disagrees with input.cgyro: ' + name)
+    return actual, values, source, digest
+
+
 def cache_parameters(row, info, result):
     """Attach verified effective parameters to this existing point row only."""
-    values, source, digest = effective_parameters(result)
-    if source != 'input.cgyro.gen':
-        return values  # Legacy metadata is usable; absent solver defaults are not invented.
+    _, values, source, digest = verified_parameters(result, row.get('input_sha256', ''))
     expected = dict(point_values(info, row))
     expected.update(row.get('effective_time', {}))
     for name, value in expected.items():
+        if source == 'input.cgyro' and name not in values:
+            continue  # Old files may omit solver defaults; never guess them.
         if name not in values or not math.isclose(float(value), values[name], rel_tol=1e-9, abs_tol=1e-12):
             raise ValueError('Saved ' + source + ' disagrees with coordinate: ' + name)
+    if source != 'input.cgyro.gen':
+        return values
     row['input_parameters'] = {name: value for name, value in values.items() if name not in RUN_CONTROL_PARAMETERS}
     row['input_parameter_source'] = source
     row['input_parameter_sha256'] = digest

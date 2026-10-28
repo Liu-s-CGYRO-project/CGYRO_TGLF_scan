@@ -16,6 +16,7 @@ sys.path.insert(0, str(REPO / 'CGYRO_TGLF_scan/LIB'))
 sys.path.insert(0, str(REPO / 'OMFITtemplates/LIB'))
 from OMFITlib_template_archive import parse_tree
 import OMFITlib_project as project
+from OMFITlib_transfer_workflow import discard_legacy_outputs
 from OMFITlib_project_ui import ProjectUI
 import OMFITlib_workbench_runtime_ui as runtime_ui
 
@@ -127,6 +128,20 @@ class ProjectTest(unittest.TestCase):
         self.cg = self.root['CGYRO_scan']
         self.tg = self.root['TGLF_scan']['TGLF']
         self.transfer = self.root['Transfer_tool']
+
+    def test_open_and_generation_settings_preserve_legacy_transfer_outputs(self):
+        outputs = self.transfer.setdefault('OUTPUTS', self.tree_factory())
+        outputs['Profiles_gen'] = {'input.cgyro_1': cgyro()}
+        # Retired branches can contain unique inputs unrelated to the current
+        # radius/particle scheme. Opening a GUI grants no deletion authority.
+        legacy = {name: {'unique': object()} for name in
+                  ('Profiles_gen_H', 'Profiles_gen_D_simplified', 'History')}
+        outputs.update(legacy)
+        project.ProjectActions(self.root, self.tree_factory)
+        project.initialize_generation(self.transfer, self.tree_factory)
+        self.assertEqual(discard_legacy_outputs(self.transfer), [])
+        for name, value in legacy.items():
+            self.assertIs(outputs[name], value)
 
     def configure(self, name='cgyro'):
         node = project.module(self.root, name)
@@ -639,7 +654,7 @@ class ProjectTest(unittest.TestCase):
             for fail in (False, True):
                 with self.subTest(dimension=dimension, fail=fail):
                     scan['SETTINGS']['PHYSICS']['scanDimensions'] = dimension
-                    def run(inputTGLF):
+                    def run(inputTGLF, **kwargs):
                         self.assertEqual(inputTGLF['SAT_RULE'], 0)
                         inputTGLF['SAT_RULE'] = 9
                         if fail:

@@ -4,6 +4,7 @@ Transport recovery never resubmits; it can seal a gated attempt before it starts
 A solver retry uses verified inputs in a new directory and retains successful
 points. A failed upload restores the previous confirmed attempt.
 """
+from OMFITlib_gui_api import task_action
 from builtins import BaseException, Exception, KeyboardInterrupt, RuntimeError, ValueError, any, bool, dict, enumerate, int, isinstance, iter, len, list, print, range, set, str
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -445,7 +446,7 @@ def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_r
         if collection_done(manifest):
             preserved = (deepcopy(manifest), copy_result_tree(run_cases(root, manifest), factory))
         try:
-            root['SCRIPTS']['downsync.py'].run()
+            task_action(root['SCRIPTS']['downsync.py'])
         except BaseException as exc:
             manifest = root['RUN_MANIFEST']
             read_error = bool(manifest.get('load_errors', {}))

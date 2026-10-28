@@ -48,6 +48,27 @@ def _put(module, path, value, factory):
     module[path[-1]] = value
 
 
+def _forget_native_cache(scope, source, mode, flux_path):
+    # Native provenance describes a complete scan group, not individual points.
+    # Replacing a point through the workbench makes that group's digest stale.
+    radial = source.get('group', 'current') == 'radial'
+    if mode == 'single':
+        if radial:
+            scope.get('_radial_cache_provenance', {}).pop(source['rho'], None)
+        return
+    records = scope.get('_scan_cache_provenance', {})
+    if radial:
+        records = records.get(source['rho'], {})
+    branch = flux_path[0]
+    if mode == 'uq':
+        records.pop(branch, None)
+    else:
+        group = flux_path[2 if radial else 1]
+        records = records.get(branch, {})
+        records.pop(group, None)
+        records.pop(group + '_rows', None)
+
+
 def publish_point(module, record, point_id, source, result, factory=dict):
     """Publish an already validated point; the run retains only its summary."""
     point = record['points'][point_id]
@@ -61,6 +82,7 @@ def publish_point(module, record, point_id, source, result, factory=dict):
         data = result['gbflux'] if record['mode'] == 'single' else result['gbflux']['data']
         _put(scope, flux_path, data, factory)
     _put(scope, result_path, result, factory)
+    _forget_native_cache(scope, source, record['mode'], flux_path)
     owner = record['id'] + ':' + point_id
     # Plain metadata mapping: no physical result objects or array copies.
     scope.setdefault('_workbench_index', {})[tuple(result_path)] = owner

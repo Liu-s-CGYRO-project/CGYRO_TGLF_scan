@@ -1,6 +1,7 @@
 # -*-Python-*-
 # Created by meneghini at 2013/03/28 14:35
 
+from OMFITlib_gui_api import task_action
 defaultVars(
     auto_remove_bogus_parameters=scratch.setdefault('auto_remove_bogus_parameters', True),
     reload=root['SETTINGS']['PHYSICS']['reload'],
@@ -9,7 +10,7 @@ defaultVars(
 
 # reload
 if reload:
-    root['SCRIPTS']['load_remote'].run(load_input_gacode=True)
+    task_action(root['SCRIPTS']['load_remote'], load_input_gacode=True)
 # run
 else:
     # Check EPED_NN compatibility with device:
@@ -28,23 +29,23 @@ else:
     if not root['INPUTS']['input.tgyro']['LOC_RESTART_FLAG']:
 
         if PROFILES_GEN is not None and root['SETTINGS']['PHYSICS']['runPROFILES_GEN']:
-            PROFILES_GEN['SCRIPTS']['run_profiles_gen'].run(enforce_quasineutrality=True)
+            task_action(PROFILES_GEN['SCRIPTS']['run_profiles_gen'], enforce_quasineutrality=True)
 
         # update the ion info in input.tgyro
-        root['SCRIPTS']['update_ion_data'].run()
+        task_action(root['SCRIPTS']['update_ion_data'])
 
     # automatically remove deprecated and bous parameters from input.tgyro
     if scratch['auto_remove_bogus_parameters']:
-        root['SCRIPTS']['removeBogusParams'].run()
+        task_action(root['SCRIPTS']['removeBogusParams'])
 
     # run TGYRO
     if root['SETTINGS']['PHYSICS']['Turb_Model'] == 'OMFIT QLGYRO':
-        root['SCRIPTS']['omfit_qlgyro'].run()
+        task_action(root['SCRIPTS']['omfit_qlgyro'])
     else:
-        root['SCRIPTS']['runTGYRObase'].run()
+        task_action(root['SCRIPTS']['runTGYRObase'])
 
 # save TGYRO run
-root['SCRIPTS']['saveTGYRO'].run(save_profilesgen=save_profilesgen)
+task_action(root['SCRIPTS']['saveTGYRO'], save_profilesgen=save_profilesgen)
 
 # print info
-root['SCRIPTS']['print_residual_and_convergence'].run()
+task_action(root['SCRIPTS']['print_residual_and_convergence'])

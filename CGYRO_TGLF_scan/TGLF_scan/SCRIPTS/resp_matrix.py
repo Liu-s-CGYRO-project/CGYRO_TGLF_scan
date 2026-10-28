@@ -12,6 +12,7 @@ R \Gamma / n_z = D ( R/Lnz + cT * R / LTz + cR * vz' + cp)
 
 """
 
+from OMFITlib_gui_api import task_action
 from OMFITlib_tglf import compute_STRAHL_correction
 from scipy.constants import e as q_electron, m_p
 
@@ -95,7 +96,7 @@ if (
 else:
     # Setup the inputs for TGLF (all trace ions still being the same)
     root.setdefault('input.tglf', OMFITtree()).clear()
-    root['SCRIPTS']['setup_tglf'].run()
+    task_action(root['SCRIPTS']['setup_tglf'])
 
 # ==========
 

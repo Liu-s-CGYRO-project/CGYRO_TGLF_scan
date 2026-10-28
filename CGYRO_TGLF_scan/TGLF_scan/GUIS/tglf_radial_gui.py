@@ -1,3 +1,4 @@
+from OMFITlib_gui_api import plot_view
 from OMFITlib_gui_api import adapt
 OMFITx = adapt(OMFITx)
 # -*-Python-*-
@@ -23,20 +24,22 @@ def clean_rho(location):
     root['SETTINGS']['PHYSICS']['rho_scan'] = rad_new
 
 
-OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_scan']", 'rho', default=[0.2, 0.25, 0.5, 0.75, 0.9], updateGUI=True, postcommand=clean_rho)
-OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['recalculate']", '重新计算已有结果的半径', default=False)
+OMFITx.Entry("root['SETTINGS']['PHYSICS']['rho_scan']", 'rho', default=[0.2, 0.25, 0.5, 0.75, 0.9], updateGUI=False, postcommand=clean_rho, refresh_tree=False)
+OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['recalculate']", '重新计算已有结果的半径', default=False, refresh_tree=False)
 OMFITx.Button('按实验参数运行 TGLF', "root['SCRIPTS']['Radial_scan']")
 if len(xp_flx):
     #    OMFITx.Button('Plot shears',"root['PLOTS']['plotGammaMaxvsExB'].runNoGUI",help='At experimental parameters, plot max shear at ky<1 and ExB experimental shear vs radii')
     OMFITx.Button(
         '绘制通量',
-        "root['PLOTS']['plotFluxesvsRho'].runNoGUI",
+        lambda: plot_view(root['PLOTS']['plotFluxesvsRho']),
         help='绘制实验参数下的径向粒子、热量和动量通量',
+        refresh_tree=False,
     )
     OMFITx.Button(
         '绘制增长率 / 频率随 ky 和半径的变化',
-        "root['PLOTS']['plot_gamma_vs_k_and_r']",
+        lambda: plot_view(root['PLOTS']['plot_gamma_vs_k_and_r']),
         help=("Make a plot of growth rate and frequency"  "vs ky and radius for each mode"),
+        refresh_tree=False,
     )
 
 finish_gui_layout(layout_anchor, OMFITx)

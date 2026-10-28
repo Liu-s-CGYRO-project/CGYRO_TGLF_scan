@@ -8,7 +8,7 @@ import copy
 from types import ModuleType, SimpleNamespace
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import test_cgyro_storage  # Existing isolated native reader stand-ins.
 import test_gui_refresh_native as native
@@ -16,6 +16,8 @@ import test_gui_tab_pages as tabs_fixture
 import OMFITlib_plot_style_ui as style_ui
 import OMFITlib_cgyro_results as results_ui
 import OMFITlib_tglf_multi_ui as multi_ui
+import OMFITlib_tglf_multi_data as multi_data
+import OMFITlib_tglf_multi_plot as multi_plot
 import OMFITlib_compare_ui as compare_ui
 import OMFITlib_compare_cases as compare_cases
 import OMFITlib_workbench_cgyro_ui as cgyro_ui
@@ -36,6 +38,8 @@ class RefreshBoundaryTests(unittest.TestCase):
         self.host.api.TitleGUI = lambda title: self.host.owner.top.title(title)
         self.host.tree['SETTINGS'] = {'WORKBENCH': {}}
         self.counts = Counter()
+        self.tree_events = []
+        self.host.root.bind('<<update_treeGUI>>', lambda event: self.tree_events.append('tree'), add='+')
 
     def start_patch(self, patcher):
         value = patcher.start()
@@ -49,6 +53,7 @@ class RefreshBoundaryTests(unittest.TestCase):
             self.external_action = ui.Button('External task action', lambda: None)
             render(ui)
         self.host.render(build)
+        self.tree_events.clear()
 
     def combo(self, containing):
         return next(widget for widget in self.host.descendants(self.host.owner.top)
@@ -87,6 +92,7 @@ class RefreshBoundaryTests(unittest.TestCase):
         self.assertEqual(self.host.tree['SETTINGS']['PLOT_STYLE']['palette'], 'okabe_ito')
         self.assertEqual(render.call_count, 3)
         self.assert_external_survives(header, action)
+        self.assertEqual(self.tree_events, [])
 
     def test_result_selection_rebuilds_only_browser_without_opening_results(self):
         view = results_ui._view_settings(self.host.tree)
@@ -112,10 +118,101 @@ class RefreshBoundaryTests(unittest.TestCase):
         reader.assert_not_called()
         summary.assert_not_called()
         self.assert_external_survives(header, action)
+        self.assertEqual(self.tree_events, [])
+
+    def test_cgyro_recovery_and_cleanup_view_controls_do_not_relist_results(self):
+        self.host.tree['CGYRO_scan'] = {'SETTINGS': {'REMOTE_SETUP': {'serverPicker': 'synthetic'}}}
+        view = cgyro_ui.CgyroPage()
+        view.root, view.settings = self.host.tree, self.host.tree['SETTINGS']['WORKBENCH']
+        view.prefix = "root['SETTINGS']['WORKBENCH']"
+        view.actions = SimpleNamespace(recover_cgyro_job=lambda: None)
+        choices = self.start_patch(patch.object(cgyro_ui, 'radius_choices', return_value={'Jet / rho=.3': {}}))
+        def render(ui):
+            view.ui, view.label = ui, ui.Label
+            def body():
+                self.counts['results'] += 1
+                view.render_cgyro_recovery(self.host.tree['CGYRO_scan'])
+                self.browser_marker = ui.Label('Indexed result browser')
+                view.render_cgyro_cleanup(self.host.tree['CGYRO_scan'])
+            self.result_section = deferred_section(ui, body, local=True, container=True, action=True)
+            self.result_section.show()
+        self.build(render)
+        header, action, marker = self.header, self.external_action, self.browser_marker
+        choices.assert_not_called()
+        advanced = next(widget for widget in self.host.descendants(self.host.owner.top)
+                        if isinstance(widget, native.ttk.Checkbutton)
+                        and widget.cget('text') == '指定旧清单位置（可选）')
+        self.host.invoke(lambda: advanced.event_generate('<ButtonRelease-1>'))
+        self.host.drain(60)
+        self.assertTrue(view.settings['cgyro_recovery_advanced'])
+        self.host.button(self.host.owner.top, '删除指定半径…').invoke()
+        self.host.drain(60)
+        self.choose(self.combo('Jet / rho=.3'), 'Jet / rho=.3')
+        self.assertEqual(view.settings['cgyro_cleanup_radius'], 'Jet / rho=.3')
+        self.assertEqual(self.counts['results'], 1)
+        self.assertIs(self.browser_marker, marker)
+        self.assertTrue(marker.winfo_exists())
+        self.assertEqual(self.tree_events, [])
+        self.assert_external_survives(header, action)
+
+    def test_continuation_refreshes_owning_result_tab_once_only_after_success(self):
+        view = results_ui._view_settings(self.host.tree)
+        entry = dict(runid='Jet', case_id='nr=1__rho=.3__ion=T', dimensions=1,
+                     scan_axes=[dict(name='N_ENERGY')], tasks={
+                         'p000001': dict(values={'N_ENERGY': 48, 'KY': .5})})
+        self.start_patch(patch.object(results_ui, 'selected_record', return_value=(view, 'scan-a', entry, {'Scan A': 'scan-a'})))
+        self.start_patch(patch.object(results_ui, 'record_details', return_value='metadata'))
+        self.start_patch(patch.object(results_ui, 'select_result', return_value={'result_id': 'owner-a'}))
+        self.start_patch(patch.object(results_ui, 'configure_window_fonts'))
+        self.start_patch(patch.object(results_ui.messagebox, 'showerror'))
+        self.host.tree['CGYRO_scan'] = {}
+        continued = Mock(side_effect=ValueError('selected checkpoint invalid'))
+        def render(ui):
+            def body():
+                self.counts['result-tab'] += 1
+                self.summary = ui.Label('Job summary')
+                self.browser = results_ui.ResultBrowser(self.host.tree, ui, continue_callback=continued,
+                                                       on_continued=ui.refresh_callback(scope='section'))
+                self.browser.render()
+            self.results_body = deferred_section(ui, body, local=True, container=True, action=True)
+            self.results_body.show()
+        self.build(render)
+        header, action, summary = self.header, self.external_action, self.summary
+        def open_points():
+            self.browser._show_points()
+            dialog = next(widget for widget in self.host.owner.top.winfo_children()
+                          if isinstance(widget, native.tk.Toplevel))
+            table = next(widget for widget in self.host.descendants(dialog)
+                         if isinstance(widget, native.ttk.Treeview))
+            table.selection_set('p000001')
+            return dialog
+        dialog = open_points()
+        self.host.button(dialog, '从检查点续算所选点').invoke()
+        self.host.drain(60)
+        self.assertEqual(continued.call_count, 1)
+        self.assertTrue(dialog.winfo_exists())
+        self.assertIs(self.summary, summary)
+        self.assertEqual(self.counts['result-tab'], 1)
+        dialog.destroy()  # Closing/cancelling the point chooser has no action.
+        dialog = open_points()
+        dialog.destroy()
+        self.host.drain(60)
+        self.assertEqual(continued.call_count, 1)
+        self.assertEqual(self.counts['result-tab'], 1)
+        continued.side_effect = None
+        dialog = open_points()
+        self.host.button(dialog, '从检查点续算所选点').invoke()
+        self.host.drain(60)
+        self.assertFalse(dialog.winfo_exists())
+        self.assertEqual(continued.call_count, 2)
+        self.assertEqual(self.counts['result-tab'], 2)
+        self.assertFalse(summary.winfo_exists())
+        self.assert_external_survives(header, action)
 
     def build_multi(self):
         plan = dict(coordinate='rho', radii=[.5], parameters={'NKY': 12})
-        attempt = dict(status='complete', workdir='/synthetic/result', result={'opaque': True})
+        attempt = dict(status='complete', workdir='/synthetic/result', result={'opaque': True},
+                       flux_summary='flux metadata')
         point = dict(radius=.5, status='complete', attempts={'a': attempt}, selected_attempt='a')
         run = dict(created='2026-10-27', status='complete', plan=plan, points={'p': point})
         self.host.tree['TGLF_CASES'] = {'case-a': dict(enabled=True, label='Profile A', radii='', extra='',
@@ -125,9 +222,12 @@ class RefreshBoundaryTests(unittest.TestCase):
                         for name in ('run_tglf_multi', 'import_tglf_multi')}
         self.host.tree['SCRIPTS'] = self.scripts
         self.probes = {}
-        for name, result in [('shared_issues', []), ('prepared_run_issues', []), ('case_plan', plan),
-                             ('profile_digest', 'digest'), ('flux_summary', 'flux metadata')]:
+        for name, result in [('shared_issues', []), ('prepared_run_issues', []), ('case_plan', plan)]:
             self.probes[name] = self.start_patch(patch.object(multi_ui, name, return_value=result))
+        self.probes['profile_digest'] = self.start_patch(patch.object(multi_data, 'profile_digest',
+            side_effect=AssertionError('Navigation hashed a profile')))
+        self.probes['flux_summary'] = self.start_patch(patch.object(multi_plot, 'flux_summary',
+            side_effect=AssertionError('Navigation opened a result')))
         def render(ui):
             self.multi = multi_ui.MultiInputUI(self.host.tree, ui)
             self.multi.render()
@@ -154,20 +254,20 @@ class RefreshBoundaryTests(unittest.TestCase):
         self.build_multi()
         header, action = self.header, self.external_action
         self.select_multi('results')
-        self.assertEqual(self.probes['flux_summary'].call_count, 1)
+        self.probes['flux_summary'].assert_not_called()
         self.select_multi('cases')
         old_notebook = self.multi.pages.notebook
         self.host.button(self.host.owner.top, '复制为新案例').invoke()
         self.host.drain(60)
         self.assertEqual(len(self.multi.cases), 2)
         self.assertFalse(old_notebook.winfo_exists())
-        self.assertEqual(self.probes['flux_summary'].call_count, 1)
+        self.probes['flux_summary'].assert_not_called()
         self.select_multi('results')
         labels = [str(widget.cget('text')) for widget in self.host.descendants(self.host.owner.top)
                   if isinstance(widget, native.ttk.Label)]
         self.assertTrue(any(text.startswith('已选择 2 / 2 个案例') for text in labels))
         self.assertEqual(self.probes['prepared_run_issues'].call_count, 3)
-        self.assertEqual(self.probes['flux_summary'].call_count, 2)
+        self.probes['flux_summary'].assert_not_called()
         self.assert_external_survives(header, action)
         self.assert_notebooks_alive()
         # Native GUI.update reads this registry before clearing its children.
@@ -182,13 +282,46 @@ class RefreshBoundaryTests(unittest.TestCase):
         import_button = self.host.button(self.host.owner.top, '导入多个 input.gacode')
         self.host.button(self.host.owner.top, '刷新状态').invoke()
         self.host.drain(60)
-        self.assertEqual(self.probes['flux_summary'].call_count, 2)
+        self.probes['flux_summary'].assert_not_called()
         self.assertIs(self.multi.pages.notebook, notebook)
         self.assertTrue(import_button.winfo_exists())
         self.assertEqual(self.host.updates, [])
         self.assert_notebooks_alive()
 
-    def test_comparison_check_refreshes_only_selected_mode_and_shared_footer(self):
+    def test_legacy_tglf_mode_and_numeric_edits_stay_inside_module(self):
+        self.host.tree['FILES'] = {'input.tglf': dict(USE_TRANSPORT_MODEL=True, NN_MAX_ERROR=-1., NS=2,
+            USE_BPER=True, USE_BPAR=True, USE_MHD_RULE=False, ADIABATIC_ELEC=False,
+            SAT_RULE=1, ALPHA_QUENCH=0., SIGN_BT=1, SIGN_IT=1)}
+        self.host.tree['GUIS'] = {'constraints_GUI': 'constraints'}
+        native_globals = self.host.api.__dict__
+        def read_location(location):
+            if isinstance(location, list):
+                return [eval(item, native_globals) for item in location]
+            return eval(location, native_globals)
+        native_globals['_eval'] = read_location
+        native_globals['repr_eval'] = lambda location, preentry=None, collect=False: repr(
+            preentry(read_location(location)) if preentry else read_location(location))
+        compounds = []
+        self.host.api.CompoundGUI = lambda source, **kwargs: compounds.append(source)
+        source = native.REPO / 'CGYRO_TGLF_scan/TGLF_scan/TGLF/GUIS/TGLF_GUI.py'
+        def render(ui):
+            namespace = dict(root=self.host.tree, scratch={}, OMFITx=ui, showButtons=False,
+                             is_int=lambda value: isinstance(value, int))
+            namespace['defaultVars'] = lambda **values: [namespace.setdefault(key, value)
+                                                        for key, value in values.items()]
+            exec(compile(source.read_text(encoding='utf-8'), str(source), 'exec'), namespace)
+        self.build(render)
+        header, action = self.header, self.external_action
+        self.assertEqual(compounds, [])
+        # Model changes replace this legacy module's content, not its owner.
+        self.choose(self.combo('计算指定 ky 的本征函数'), '计算指定 ky 的本征函数')
+        self.assertFalse(self.host.tree['FILES']['input.tglf']['USE_TRANSPORT_MODEL'])
+        self.assertEqual(compounds, [])
+        self.assertEqual(self.tree_events, [])
+        self.assert_external_survives(header, action)
+        self.assert_notebooks_alive()
+
+    def test_comparison_check_updates_footer_without_rebuilding_mode_or_tabs(self):
         self.host.tree['SETTINGS']['PHYSICS'] = {'compare_mode': 'TGLF_vs_TGLF'}
         counts = Counter()
         class Controls:
@@ -212,15 +345,15 @@ class RefreshBoundaryTests(unittest.TestCase):
         old_status = pane.status_label
         self.host.button(self.host.owner.top, '检查选择').invoke()
         self.host.drain(60)
-        self.assertEqual(counts, {'TGLF_vs_TGLF': 2})
+        self.assertEqual(counts, {'TGLF_vs_TGLF': 1})
         self.assertEqual(check.call_count, 3)
-        self.assertFalse(old_status.winfo_exists())
+        self.assertIs(pane.status_label, old_status)
         self.assertTrue(pane.status_label.winfo_exists())
         self.assertIs(self.compare.mode_notebook, notebook)
         self.assert_external_survives(header, action)
         self.assert_notebooks_alive()
 
-    def build_task_change_listener(self):
+    def build_task_change_listener(self, result_action=False):
         self.task_state = dict(page='tasks', results=2)
         self.host.tree['CGYRO_scan'] = {}
         callbacks = []
@@ -236,14 +369,97 @@ class RefreshBoundaryTests(unittest.TestCase):
                 self.counts[self.task_state['page']] += 1
                 self.current_count = ui.Label(str(self.task_state['results']))
                 if self.task_state['page'] == 'tasks':
-                    TabPages(ui, {'results': 'Results'}, {}, 'tab',
-                             lambda tab: view.render_cgyro_cleanup(self.host.tree['CGYRO_scan']))
+                    def result_tab(tab):
+                        self.counts['result-tab'] += 1
+                        view.render_cgyro_cleanup(self.host.tree['CGYRO_scan'])
+                    TabPages(ui, {'results': 'Results'}, {}, 'tab', result_tab, action=result_action)
             self.task_body = deferred_section(ui, body, local=True, container=True, action=True)
             self.task_body.parent.master._cgyro_action_refresh = self.task_body.refresh
             self.task_body.show()
         self.build(render)
         self.host.button(self.host.owner.top, '任务管理 / 删除任务…').invoke()
         self.task_callback = callbacks[0]
+
+    def test_task_delete_on_result_tab_keeps_outer_page_and_refreshes_only_that_tab(self):
+        self.build_task_change_listener(result_action=True)
+        header, action, count = self.header, self.external_action, self.current_count
+        self.task_callback()
+        self.host.drain(60)
+        self.assertEqual(self.counts['tasks'], 1)
+        self.assertEqual(self.counts['result-tab'], 2)
+        self.assertIs(self.current_count, count)
+        self.assertTrue(count.winfo_exists())
+        self.assert_external_survives(header, action)
+
+    def test_cgyro_scan_specification_commits_without_repainting_project_tree(self):
+        from OMFITlib_workbench_scan_ui import ScanControls
+        class Page(cgyro_ui.CgyroPage, ScanControls):
+            pass
+        view = Page()
+        view.root, view.settings = self.host.tree, self.host.tree['SETTINGS']['WORKBENCH']
+        view.actions = SimpleNamespace(factory=dict)
+        node = dict(SETTINGS=dict(EXPERIMENT={'runid': 'Jet'}, SETUP={'idimrun': 0}, PHYSICS={'kyarr': [.1]}))
+        self.host.tree['CGYRO_scan'] = node
+        fields = {}
+        def render(ui):
+            view.ui, view.label = ui, ui.Label
+            entry = ui.Entry
+            def capture(path, *args, **kwargs):
+                fields[path] = entry(path, *args, **kwargs)
+                return fields[path]
+            ui.Entry = capture
+            self.scan_body = deferred_section(ui, lambda: view.render_cgyro_scan_settings(node, []),
+                                              local=True, container=True, action=True)
+            self.scan_body.show()
+        self.build(render)
+        header, action, body = self.header, self.external_action, self.scan_body.frame
+        name = fields["root['CGYRO_scan']['SETTINGS']['EXPERIMENT']['runid']"]
+        name.delete(0, 'end')
+        name.insert(0, "'Jet-new'")
+        self.host.submit_entry(name)
+        self.host.drain(60)
+        self.assertEqual(node['SETTINGS']['EXPERIMENT']['runid'], 'Jet-new')
+        self.assertIs(self.scan_body.frame, body)
+        self.choose(self.combo('ky + 1 个参数'), 'ky + 1 个参数')
+        self.assertEqual(node['SETTINGS']['SETUP']['idimrun'], 1)
+        ranges = fields["root['CGYRO_scan']['SETTINGS']['PHYSICS']['1d']['Range']"]
+        ranges.delete(0, 'end')
+        ranges.insert(0, '[1, 2]')
+        self.host.submit_entry(ranges)
+        self.host.drain(60)
+        self.assertEqual(node['SETTINGS']['PHYSICS']['1d']['Range'], [1, 2])
+        self.assertEqual(self.tree_events, [])
+        self.assert_external_survives(header, action)
+
+    def test_cgyro_status_sync_refreshes_metadata_tab_without_main_tree_repaint(self):
+        view = cgyro_ui.CgyroPage()
+        view.root, view.settings = self.host.tree, self.host.tree['SETTINGS']['WORKBENCH']
+        view.settings['cgyro_main_tab'] = 'results'
+        self.host.tree['CGYRO_scan'] = {'RUN_MANIFEST': {'status': 'submitted'}}
+        calls = Mock()
+        view.actions = SimpleNamespace(sync_cgyro_run=calls, collect=Mock(), continue_cgyro=Mock())
+        view.render_cgyro_recovery = view.render_cgyro_cleanup = view.nav = lambda *a, **k: None
+        self.start_patch(patch.object(cgyro_ui, 'queue_records', return_value=[]))
+        self.start_patch(patch.object(cgyro_ui, 'sync_run_issues', return_value=[]))
+        self.start_patch(patch.object(cgyro_ui, 'collect_issues', return_value=[]))
+        self.start_patch(patch.object(cgyro_ui, 'run_caption', return_value='metadata state'))
+        self.start_patch(patch.object(cgyro_ui, 'collection_caption', return_value='uncollected'))
+        self.start_patch(patch.object(cgyro_ui, 'submission_pending', return_value=False))
+        browser = self.start_patch(patch.object(cgyro_ui, 'ResultBrowser'))
+        def render(ui):
+            view.ui, view.label = ui, ui.Label
+            view.guarded = lambda title, callback, issues, **kwargs: ui.Button(
+                title, callback, updateGUI=True, refresh_tree=kwargs.get('refresh_tree', True))
+            view.render_cgyro()
+        self.build(render)
+        header, action, notebook = self.header, self.external_action, view.cgyro_main_notebook
+        self.host.button(self.host.owner.top, '同步作业状态').invoke()
+        self.host.drain(60)
+        calls.assert_called_once()
+        self.assertEqual(browser.call_count, 2)
+        self.assertIs(view.cgyro_main_notebook, notebook)
+        self.assertEqual(self.tree_events, [])
+        self.assert_external_survives(header, action)
 
     def test_task_delete_after_page_navigation_updates_current_page_only(self):
         self.build_task_change_listener()
@@ -273,7 +489,7 @@ class RefreshBoundaryTests(unittest.TestCase):
         self.assertEqual(self.counts['plots'], 2)
         self.assertEqual(self.host.updates, [])
 
-    def build_comparison_options(self, mode='CGYRO_vs_CGYRO'):
+    def build_comparison_options(self, mode='CGYRO_vs_CGYRO', tab='plot'):
         class Tasks(dict):
             visits = 0
             def values(tasks):
@@ -295,7 +511,7 @@ class RefreshBoundaryTests(unittest.TestCase):
         self.host.tree['TGLF_scan'] = {'RUN_DB': {'tglf-run': dict(points=self.tglf_points)}}
         self.host.tree['SETTINGS']['PHYSICS'] = dict(compare_mode=mode,
             CGYRO_vs_CGYRO=dict(runid='Jet', nr_CGYRO=['nr=1__rho=0.33__ion=BASE'],
-                selected_paras={'A': [1]}, view_tab='plot'),
+                selected_paras={'A': [1]}, view_tab=tab),
             TGLF_vs_TGLF=dict(TGLF=dict(result_source='tglf-run', spectra_mode='1D',
                                       rho_selected=[.33], selected_paras={'A': [1]}), view_tab='plot'))
         namespace = self.host.api.__dict__
@@ -331,6 +547,22 @@ class RefreshBoundaryTests(unittest.TestCase):
         self.build(render)
         self.tree_events.clear()
 
+    def test_bulk_radius_selection_never_repaints_main_tree(self):
+        self.build_comparison_options(tab='cases')
+        header, action = self.header, self.external_action
+        pane = self.compare.panes[compare_ui.MODES.index('CGYRO_vs_CGYRO')]
+        notebook, footer = pane.controls_notebook, pane.status_label
+        for caption in ('全选半径', '清空半径'):
+            self.host.button(self.host.owner.top, caption).invoke()
+            self.host.drain(60)
+        selected = self.host.tree['SETTINGS']['PHYSICS']['CGYRO_vs_CGYRO']['nr_CGYRO']
+        self.assertEqual(selected, [])
+        self.assertEqual(self.tree_events, [])
+        self.assertIs(pane.controls_notebook, notebook)
+        self.assertTrue(notebook.winfo_exists())
+        self.assertIs(pane.status_label, footer)
+        self.assert_external_survives(header, action)
+
     def test_plot_checkbox_never_walks_archive_catalog_or_point_tables(self):
         self.build_comparison_options()
         header, action = self.header, self.external_action
@@ -347,6 +579,7 @@ class RefreshBoundaryTests(unittest.TestCase):
         self.assertEqual(self.tglf_points.visits, 0)
         self.assertEqual(self.tree_events, [])
         self.assertTrue(footer.winfo_exists())
+        self.assertTrue(control.winfo_exists())
         self.assertIn('选择尚未完成', str(footer.cget('text')))
         self.assert_external_survives(header, action)
 
@@ -365,6 +598,7 @@ class RefreshBoundaryTests(unittest.TestCase):
         self.catalog.assert_not_called()
         self.assertEqual(self.tree_events, [])
         self.assertIs(pane.status_label, footer)
+        self.assertTrue(control.winfo_exists())
         # An explicit check still revalidates availability after data changes.
         self.tglf_points['p999']['status'] = 'failed'
         self.host.button(self.host.owner.top, '检查选择').invoke()
@@ -372,6 +606,41 @@ class RefreshBoundaryTests(unittest.TestCase):
         self.assertEqual(self.tglf_points.visits, 2000)
         self.assertIn('暂无可绘图', str(pane.status_label.cget('text')))
         self.assertEqual(str(self.host.button(self.host.owner.top, '绘制所选数据').cget('state')), 'disabled')
+
+    def test_structural_plot_choice_replaces_only_plot_controls(self):
+        self.build_comparison_options()
+        pane = self.compare.panes[compare_ui.MODES.index('CGYRO_vs_CGYRO')]
+        notebook, footer = pane.controls_notebook, pane.status_label
+        combo = self.combo('Ballooning 本征函数')
+        self.choose(combo, 'Ballooning 本征函数')
+        self.assertFalse(combo.winfo_exists())
+        self.assertIs(pane.controls_notebook, notebook)
+        self.assertTrue(notebook.winfo_exists())
+        self.assertIs(pane.status_label, footer)
+        self.assertTrue(self.combo('最大增长率').winfo_exists())
+        self.catalog.assert_not_called()
+        self.assertEqual([tasks.visits for tasks in self.point_tables], [0, 0, 0])
+        self.assertEqual(self.tree_events, [])
+
+    def test_scaling_choice_and_nonstructural_checks_keep_widgets(self):
+        self.build_comparison_options()
+        pane = self.compare.panes[compare_ui.MODES.index('CGYRO_vs_CGYRO')]
+        pane.plot_settings.update(dict(divide_by_ky=True, divide_by_ky2=True))
+        pane._update_selection_status()
+        self.assertIn('选择尚未完成', str(pane.status_label.cget('text')))
+        combo = self.combo('ω / ky²、γ / ky²')
+        self.choose(combo, 'ω / ky²、γ / ky²')
+        self.assertTrue(combo.winfo_exists())
+        self.assertIn('当前选择已就绪', str(pane.status_label.cget('text')))
+        for caption in ('合并所选半径', '使用 |ky|', '按主离子归一化', '过滤未收敛点', 'Y 对数轴'):
+            control = next(widget for widget in self.host.descendants(self.host.owner.top)
+                           if isinstance(widget, native.ttk.Checkbutton) and widget.cget('text') == caption)
+            self.host.invoke(lambda: control.event_generate('<ButtonRelease-1>'))
+            self.host.drain(60)
+            self.assertTrue(control.winfo_exists(), caption)
+        self.catalog.assert_not_called()
+        self.assertEqual([tasks.visits for tasks in self.point_tables], [0, 0, 0])
+        self.assertEqual(self.tree_events, [])
 
 
 if __name__ == '__main__':

@@ -135,10 +135,12 @@ class StorageCases(unittest.TestCase):
             root['RUN_MANIFEST'] = dict(run_token='current', case_tag='case')
         return storage.compact_storage(root)
 
-    def result(self, name, content=b'0 1 2\n'):
+    def result(self, name, content=b'0 1 2\n', parameters=None):
         directory = self.base / name
         directory.mkdir()
-        (directory / 'input.cgyro').write_text('KY=0.1\n', encoding='utf-8')
+        parameters = {'KY': .1} if parameters is None else parameters
+        (directory / 'input.cgyro').write_text(''.join('{}={}\n'.format(key, value)
+            for key, value in parameters.items()), encoding='utf-8')
         (directory / 'out.cgyro.freq').write_bytes(content)
         return OMFITcgyro(directory)
 
@@ -219,7 +221,7 @@ class StorageCases(unittest.TestCase):
                 point = 'p{:06d}'.format(index)
                 table[point] = dict(values={'N_ENERGY': 48, 'KY': ky},
                     result_path=['N_ENERGY', '48', 'lin', str(ky)])
-                result = self.result(token + point, token.encode())
+                result = self.result(token + point, token.encode(), parameters={'N_ENERGY': 48, 'KY': ky})
                 Path(result.filename, 'out.cgyro.time').write_text('0\n{}\n'.format(final_time))
                 cases[point] = result
             manifest = dict(run_token=token, status='loaded', collection_status='ready',
@@ -286,7 +288,7 @@ class StorageCases(unittest.TestCase):
             points=list(manifest['points']), source_points=['p000001', 'p000002', 'p000003'])
         results = {}
         for point in manifest['points']:
-            result = self.result('resumed' + point)
+            result = self.result('resumed' + point, parameters=manifest['point_table'][point]['values'])
             Path(result.filename, 'out.cgyro.time').write_text('0\n60\n')
             results[point] = result
         root['RUN_MANIFEST'], root['Cases'] = manifest, {manifest['case_tag']: results}
@@ -508,7 +510,7 @@ class StorageCases(unittest.TestCase):
                 case_tag='case', case_id='nr=1__rho=0.33__ion='+ion, nr=1, rho=.33, mass=ion, runid='Jet',
                 workDir='/runs/'+token, server='fixture', points=['p000001'], loaded_points=['p000001'],
                 point_table={'p000001':dict(values=dict(values, KY=ky), result_path=path)})
-            root['Cases'] = {'case': {'p000001':self.result(token, token.encode())}}
+            root['Cases'] = {'case': {'p000001':self.result(token, token.encode(), parameters=dict(values, KY=ky))}}
             publish(root)
         collect('normal_theta', ['N_THETA'])
         collect('original_reference', ['N_THETA'], reference=True)
@@ -1218,7 +1220,7 @@ class StorageCases(unittest.TestCase):
                 case_tag='case', case_id=case_id, nr=1, rho=.33, mass='T', runid='Jet',
                 workDir='/runs/' + token, server='fixture', points=['p000001'], loaded_points=['p000001'],
                 point_table={'p000001': dict(values=dict(values, KY=ky), result_path=point_path)})
-            root['Cases'] = {'case': {'p000001': self.result(token, content)}}
+            root['Cases'] = {'case': {'p000001': self.result(token, content, parameters=dict(values, KY=ky))}}
             namespace['publish_loaded_run'](root)
 
         collect('theta', ['N_THETA'], b'theta')
@@ -1296,7 +1298,7 @@ class StorageCases(unittest.TestCase):
                 workDir='/runs/' + token, server='fixture', points=['p000001'], loaded_points=['p000001'],
                 point_table={'p000001': dict(values={'N_ENERGY': 8, 'KY': ky},
                                             result_path=['N_ENERGY', '8', 'lin', str(ky)])})
-            root['Cases'] = {'case': {'p000001': self.result(token, token.encode())}}
+            root['Cases'] = {'case': {'p000001': self.result(token, token.encode(), parameters={'N_ENERGY': 8, 'KY': ky})}}
             publish(root)
         with self.browsable_expressions():
             collect('browsable_h_old', .1)

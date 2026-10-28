@@ -5,6 +5,7 @@ from contextlib import ExitStack
 import os
 from pathlib import Path
 import re
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -100,6 +101,34 @@ class OutputProbeTests(unittest.TestCase):
         for _, command in batches:
             self.assertLessEqual(len(('/bin/bash -c ' + state.quote(command)).encode('utf-8')), 16 * 1024)
         self.assertIn('/runs/retried/' + points[-1], batches[-1][1])
+
+    def test_actual_probe_requires_normal_linear_termination_even_with_zero_exit(self):
+        points = ['p000001', 'p000002', 'p000003', 'p000004']
+        manifest = dict(workDir='/cgyro_probe_fixture', case_tag='linear')
+        source = '''set -eu
+probe_dir=$(mktemp -d)
+trap 'rm -r -- "$probe_dir"' EXIT
+cd "$probe_dir"
+for point in p000001 p000002 p000003 p000004; do
+  mkdir "$point"
+  for file in out.cgyro.grids out.cgyro.time out.cgyro.freq; do printf '1\\n' > "$point/$file"; done
+  printf '0\\n' > "$point/cgyro.exit"
+done
+printf 'Still initializing\\n' > p000001/out.cgyro.info
+printf 'Linear converged\\n' > p000002/out.cgyro.info
+printf 'Linear terminated at max time\\n' > p000003/out.cgyro.info
+printf 'Linear converged\\nERROR: Integration error exceeded limit\\n' > p000004/out.cgyro.info
+'''
+        source += '\n'.join(command.replace('/cgyro_probe_fixture/', './')
+                            for _, command in self.functions['output_probe_commands'](manifest, points))
+        command = ['wsl.exe', '-d', 'Ubuntu', '--', '/bin/bash', '-s'] if os.name == 'nt' else ['/bin/bash', '-s']
+        completed = subprocess.run(command, input=source.encode(), stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, timeout=20)
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode(errors='replace'))
+        result = self.parse(completed.stdout.decode(), points)
+        self.assertEqual(result['complete'], {'p000002', 'p000003'})
+        self.assertEqual(result['failed'], {'p000001', 'p000004'})
+        self.assertEqual(result['missing'], {})  # Keep readable partial data.
 
 
 class NativeCollectionEntryTests(unittest.TestCase):

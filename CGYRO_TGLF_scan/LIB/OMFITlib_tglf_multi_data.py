@@ -18,13 +18,14 @@ DEFAULTS = {
 MODEL_KEYS = ('SAT_RULE', 'NKY', 'NMODES', 'USE_BPER', 'USE_BPAR')
 
 
-def prepared_run_issues(run, plan, digest):
+def prepared_run_issues(run, plan, digest=None):
     """Validate resumability from frozen inputs, independently of cancellation.
 
     A calculation Abort leaves preparation intact; a preparation Abort may
     leave only some radii populated. Older records have no preparation_status,
     so require the complete radius/input inventory before adopting them.
-    This metadata check does not open result files and is shared with the GUI.
+    The GUI checks metadata only; execution also supplies the freshly computed
+    profile digest so edited inputs cannot bypass validation.
     """
     if not hasattr(run, 'get') or not run or run.get('status', None) in ('preparing', 'prepare_failed', 'running'):
         return ['请先完成输入生成；正在运行的记录不能重复启动']
@@ -33,7 +34,7 @@ def prepared_run_issues(run, plan, digest):
         return ['请先生成完整输入']
     if run.get('plan', None) != plan:
         return ['计算设置已变化，请重新生成输入']
-    if run.get('profile_digest', None) != digest:
+    if digest is not None and run.get('profile_digest', None) != digest:
         return ['剖面已变化，请重新生成输入']
     points = run.get('points', {})
     radii = plan.get('radii', [])
@@ -186,12 +187,12 @@ def duplicate_case(root, case_id, factory=dict):
     return key
 
 
-def case_plan(settings, case):
+def case_plan(settings, case, info=None):
     radii = parse_radii(case.get('radii', None) or settings['radii'])
     coordinate = settings['coordinate']
     if coordinate not in ('rho', 'r/a'):
         raise ValueError('未知半径坐标。')
-    info = profile_info(case['input.gacode'])
+    info = profile_info(case['input.gacode']) if info is None else info
     lower, upper = (info['rho_min'], info['rho_max']) if coordinate == 'rho' else (info['ra_min'], 1.)
     if radii[0] < lower or radii[-1] > upper:
         raise ValueError('选择的半径超出该 input.gacode 的范围。')
@@ -252,3 +253,15 @@ def tgyro_input(profile, plan):
 def tglf_text(parameters):
     return '\n'.join('{}={}'.format(key, '.true.' if value is True else '.false.' if value is False else value)
                      for key, value in parameters.items()) + '\n'
+
+
+def flux_summary(result):
+    rows = result['gbflux']['data']
+    labels = result.get('input.tglf', {})
+    lines = ['物种 | Gamma/Gamma_GB | Q/Q_GB']
+    for index, row in enumerate(rows, 1):
+        species = str(row[0])
+        if 'ZS_' + str(index) in labels:
+            species += ' (Z={}, M={})'.format(labels['ZS_' + str(index)], labels.get('MASS_' + str(index), '?'))
+        lines.append('{} | {:.6g} | {:.6g}'.format(species, float(row[1]), float(row[2])))
+    return '\n'.join(lines)

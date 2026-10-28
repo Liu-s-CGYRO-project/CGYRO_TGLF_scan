@@ -203,6 +203,115 @@ class NativeStorageTests(unittest.TestCase):
         self.assertTrue(point_current(self.scan, three['points']['p000001']))
         self.assertEqual(module['scanResults']['SAT_RULE'][0][0]['Q/Q_GB'], 99)
 
+    def test_workbench_replacement_invalidates_only_its_native_cache(self):
+        module = self.scan['TGLF']
+        old = dict(reusable=True, sha256='old', solver_sha256='a' * 64)
+        module['_scan_cache_provenance'] = {
+            'scanResults': {'SAT_RULE': old, 'XNUE': old}, 'scanResults2D': {'other': old}}
+        self.execute()
+        self.assertNotIn('SAT_RULE', module['_scan_cache_provenance']['scanResults'])
+        self.assertIs(module['_scan_cache_provenance']['scanResults']['XNUE'], old)
+        self.assertIs(module['_scan_cache_provenance']['scanResults2D']['other'], old)
+        module['_scan_cache_provenance']['scanResults2D'].update(
+            {'XNUE+SAT_RULE': old, 'XNUE+SAT_RULE_rows': {'row': old}})
+        self.settings['mode'] = '2d'
+        self.execute()
+        self.assertEqual(module['_scan_cache_provenance']['scanResults2D'], {'other': old})
+        module['_scan_cache_provenance']['UQResults'] = old
+        self.settings.update(mode='uq', uq_count=1, samples=2, uq={'0': dict(name='XNUE', mean=.1, std=.02)})
+        cp = SimpleNamespace(Normal=lambda *a: None, J=lambda *a: SimpleNamespace(sample=lambda *a: [[.08, .12]]))
+        with patch.dict(sys.modules, {'chaospy': cp}):
+            self.execute()
+        self.assertNotIn('UQResults', module['_scan_cache_provenance'])
+
+        self.scan['input.tglf'] = {.3: dict(self.source), .5: dict(self.source)}
+        self.scan['_scan_cache_provenance'] = {
+            .3: {'scanResults': {'SAT_RULE': old}, 'scanResults2D': {'other': old}},
+            .5: {'scanResults': {'SAT_RULE': old}}}
+        self.settings.update(source='radial', radius_mode='single', radius=.3, mode='1d')
+        self.execute()
+        self.assertNotIn('SAT_RULE', self.scan['_scan_cache_provenance'][.3]['scanResults'])
+        self.assertIs(self.scan['_scan_cache_provenance'][.5]['scanResults']['SAT_RULE'], old)
+        self.assertIs(self.scan['_scan_cache_provenance'][.3]['scanResults2D']['other'], old)
+        self.scan['_radial_cache_provenance'] = {.3: old, .5: old}
+        self.settings['mode'] = 'single'
+        self.execute()
+        self.assertNotIn(.3, self.scan['_radial_cache_provenance'])
+        self.assertIs(self.scan['_radial_cache_provenance'][.5], old)
+
+    def test_native_scan_does_not_reuse_workbench_data_with_an_old_digest(self):
+        module = self.scan['TGLF']
+        digest = dict(reusable=True, sha256='old', solver_sha256='a' * 64)
+        module['_scan_cache_provenance'] = {'scanResults': {'SAT_RULE': digest}}
+        self.execute()  # Same coordinate, a different calculation owns its data now.
+        module = treeify(module, ScanTree)
+        self.scan['TGLF'] = module
+        module['SETTINGS']['PHYSICS'] = dict(scanParameter='SAT_RULE', scanParameterRange=[0], single_Ti=False)
+        module['LIB'] = {'OMFITlib_tglf_cache': SimpleNamespace(runNoGUI=lambda: dict(vars(native_cache),
+                                                                                   provenance=lambda *a: digest))}
+        submitted = []
+        def batch(**kw):
+            submitted.extend(kw['inputTGLF'])
+            kw['results'].update({0: payload(99)})
+        module['SCRIPTS']['runTGLFbatch'] = SimpleNamespace(run=batch)
+        script = REPO / 'CGYRO_TGLF_scan/TGLF_scan/TGLF/SCRIPTS/runTGLFscan.py'
+        namespace = dict(root=module, scratch={}, OMFITtree=ScanTree, print=lambda *a: None,
+                         printe=lambda *a: None, OMFITx=SimpleNamespace(End=lambda: self.fail('Stale cache reused')))
+        namespace['defaultVars'] = lambda **kw: namespace.update(kw)
+        exec(compile(script.read_text(encoding='utf-8'), str(script), 'exec'), namespace)
+        self.assertEqual(len(submitted), 1)
+        self.assertEqual(module['scanResults']['SAT_RULE'][0][0]['Q/Q_GB'], 99)
+
+    def test_radial_native_scan_preserves_single_file_results_and_partial_points(self):
+        for dimension, name, branch, axes in (
+                (1, 'runTGLFscan', 'scanResults', 'SAT_RULE'),
+                (2, 'runTGLFscan2D', 'scanResults2D', 'XNUE+SAT_RULE'),
+                ('UQ', 'runTGLFUQscan', 'UQResults', 'SAT_RULE_XNUE')):
+            for fail in (False, True):
+                with self.subTest(dimension=dimension, fail=fail):
+                    single = Unread({'single': payload()})
+                    single_index = {(branch + '_spectra', 'single'): 'saved:point'}
+                    module = self.scan['TGLF']
+                    module[branch] = single
+                    module[branch + '_spectra'] = single
+                    module['_workbench_index'] = single_index
+                    native_cache_record = Unread({'unrelated': 'unchanged'})
+                    module['_scan_cache_provenance'] = native_cache_record
+                    self.scan['input.tglf'] = {.3: dict(self.source)}
+                    self.scan['SETTINGS'] = {'PHYSICS': {'rho': .3, 'scanDimensions': dimension}}
+                    module['SETTINGS']['PHYSICS'] = dict(scanParameter='SAT_RULE', scanParameter2D='XNUE',
+                                                          scanParameters=['SAT_RULE', 'XNUE'])
+                    old_path = (branch + '_spectra', .3, axes, 0)
+                    unrelated = (branch + '_spectra', .5, axes, 0)
+                    other_axes = (branch + '_spectra', .3, 'OTHER', 0)
+                    self.scan['_workbench_index'] = {
+                        old_path: 'old:point', unrelated: 'other:point', other_axes: 'other-axis:point'}
+                    def run(**kw):
+                        kw['results'][axes] = {'new': 99}
+                        kw['results_spectra'][axes] = {'new': payload(99)}
+                        kw['cache_records']['updated'] = True
+                        if fail:
+                            raise RuntimeError('synthetic partial failure')
+                    module['SCRIPTS'][name] = SimpleNamespace(run=run)
+                    self.scan['SCRIPTS'] = {'setup_UQ_inputs': SimpleNamespace(run=lambda: None)}
+                    script = REPO / 'CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/runScanAtRho.py'
+                    namespace = dict(root=self.scan, copy=copy, OMFITtree=dict, printi=lambda *a: None)
+                    if fail:
+                        with self.assertRaisesRegex(RuntimeError, 'partial failure'):
+                            exec(compile(script.read_text(encoding='utf-8'), str(script), 'exec'), namespace)
+                    else:
+                        exec(compile(script.read_text(encoding='utf-8'), str(script), 'exec'), namespace)
+                    self.assertIs(module[branch], single)
+                    self.assertIs(module[branch + '_spectra'], single)
+                    self.assertIs(module['_workbench_index'], single_index)
+                    self.assertEqual(single_index, {(branch + '_spectra', 'single'): 'saved:point'})
+                    self.assertIs(module['_scan_cache_provenance'], native_cache_record)
+                    self.assertEqual(self.scan[branch][.3][axes]['new'], 99)
+                    self.assertEqual(self.scan[branch + '_spectra'][.3][axes]['new']['gbflux']['data'][0]['Q/Q_GB'], 99)
+                    self.assertNotIn(old_path, self.scan['_workbench_index'])
+                    self.assertIn(unrelated, self.scan['_workbench_index'])
+                    self.assertIn(other_axes, self.scan['_workbench_index'])
+
     def test_cleanup_covers_native_three_dimensions_and_new_running_records(self):
         self.settings['mode'] = '3d'
         record = self.execute()

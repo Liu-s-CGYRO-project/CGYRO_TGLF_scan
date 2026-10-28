@@ -69,6 +69,8 @@ def _copy_member(source, name, output, dest_name, expected=None, cancel=None, pr
     check_cancel(cancel)
     info = source.files[name]
     target = zipfile.ZipInfo(dest_name, date_time=info.date_time)
+    # Keep ZIP names verbatim; Windows ZipInfo rewrites Linux backslashes.
+    target.filename = target.orig_filename = dest_name
     target.compress_type = info.compress_type
     target.external_attr = info.external_attr
     target.internal_attr = info.internal_attr

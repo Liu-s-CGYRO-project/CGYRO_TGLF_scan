@@ -11,7 +11,7 @@ from OMFITlib_cgyro_db import legacy_branch, run_records, storage_state
 from OMFITlib_cgyro_present import record_options, record_details
 from OMFITlib_compare_core import cgyro_frequency_history
 from OMFITlib_plot_window import fit_figure_window
-from builtins import (Exception, KeyError, TypeError, ValueError, abs, all, any, dict, float, int, iter, next,
+from builtins import (Exception, KeyError, TypeError, ValueError, abs, all, any, dict, float, getattr, int, iter, next,
                       len, list, max, min, range, set, sorted, str, tuple, zip)
 from collections import OrderedDict
 import math
@@ -206,9 +206,13 @@ def frequency_window(result, fraction):
 
 
 class ResultBrowser:
-    def __init__(self, root, ui, continue_callback=None):
-        self.root, self.ui = root, ui
+    def __init__(self, root, ui, continue_callback=None, on_continued=None):
+        # These fields select an indexed record/slice or its averaging window;
+        # they do not alter scientific data or need a native main-tree repaint.
+        view = getattr(ui, 'view_only', lambda: ui)()
+        self.root, self.ui = root, ui if view is None else view
         self.continue_callback = continue_callback
+        self.on_continued = on_continued
         self.prefix = "root['SETTINGS']['WORKBENCH']['cgyro_result_view']"
 
     def render(self, title=True):
@@ -219,6 +223,8 @@ class ResultBrowser:
         self.content = deferred_section(self.ui, self._render, local=True, container=True, action=True)
         if self.content is None:
             return self._render()
+        if self.on_continued is None:
+            self.on_continued = self.content.refresh.request
         self.content.show()
 
     def _render(self):
@@ -436,7 +442,9 @@ class ResultBrowser:
                         messagebox.showerror('CGYRO 续算', str(exc), parent=window)
                 else:
                     if window.winfo_exists():
-                        window.destroy()  # Reload the browser after the result token changes.
+                        window.destroy()
+                    if self.on_continued is not None:
+                        self.on_continued()
                 finally:
                     if window.winfo_exists():
                         button.configure(state='normal')

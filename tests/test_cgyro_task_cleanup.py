@@ -12,6 +12,7 @@ from omfit_mapping import OMFITMapping, treeify
 import OMFITlib_cgyro_task_catalog as catalog
 import OMFITlib_cgyro_task_cleanup as cleanup
 import OMFITlib_cgyro_cleanup_state as transaction
+from OMFITlib_cgyro_result_index import result_identity, scan_scope
 
 
 class TaskCleanupTests(unittest.TestCase):
@@ -95,6 +96,27 @@ class TaskCleanupTests(unittest.TestCase):
         self.assertEqual(record['info']['merged_run_tokens'], ['old'])
         self.assertEqual(record['info']['points'], 2)
         self.assertEqual(len(record['tasks']), 2)
+
+    def test_result_deletion_removes_only_deleted_coordinates_from_coverage(self):
+        for pending in (False, True):
+            module = copy.deepcopy(self.module)
+            case = module['RUN_DB']['Jet']['nr=1_rho=0.33']['T']
+            record = case['__SCANS__']['N_ENERGY']
+            info, tasks = record['info'], record['tasks']
+            coordinates = [result_identity(info, row) for row in tasks.values()]
+            if pending:
+                uncollected = copy.deepcopy(coordinates[-1])
+                uncollected['values']['KY'] = .7
+                coordinates.append(uncollected)
+            info['planned_coordinates'] = dict(coordinates=coordinates, unknown=[], issues=[])
+            info['scan_complete'] = True
+            with self.subTest(pending=pending), patch.object(fixture.storage, 'resolve_result',
+                                                           side_effect=AssertionError('result read')):
+                self.delete(['old'], module)
+            record = module['RUN_DB']['Jet']['nr=1_rho=0.33']['T']['__SCANS__']['N_ENERGY']
+            scope = scan_scope(dict(record['info'], tasks=record['tasks']))
+            self.assertEqual({item['values']['KY'] for item in scope['coordinates']}, {.2, .7} if pending else {.2})
+            self.assertEqual(record['info']['scan_complete'], not pending)
 
     def test_same_coordinate_now_owned_by_newer_job_is_not_deleted_with_old_record(self):
         self.make_scan('replacement', 106, (.1,), ion='T')

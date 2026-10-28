@@ -159,7 +159,7 @@ def font_family(widget, retry=False, verified_path=None):
             parent = parent.master
     failed = getattr(owner, '_project_cjk_failed', None)
     if not retry and failed is not None and failed[0] == FONT_PROFILE:
-        if failed[1] or cached_fonts('gui') is None:
+        if failed[1] or cached_fonts('gui', verify=False) is None:
             return None
     family = None
     actual = {}
@@ -184,7 +184,7 @@ def font_family(widget, retry=False, verified_path=None):
     finally:
         owner._project_cjk_loading = False
     owner._project_cjk_family = (FONT_PROFILE, family)
-    owner._project_cjk_failed = None if family else (FONT_PROFILE, verified_path is not None or cached_fonts('gui') is not None)
+    owner._project_cjk_failed = None if family else (FONT_PROFILE, verified_path is not None or cached_fonts('gui', verify=False) is not None)
     owner._project_cjk_diagnostic = {'active': bool(family), 'actual': actual, 'error': error,
                                    'registration': _registration_source, 'requested': FONT_FAMILY}
     return family

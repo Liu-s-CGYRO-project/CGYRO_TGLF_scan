@@ -1,4 +1,5 @@
 # The linear run script of CGYRO
+from OMFITlib_gui_api import task_action
 root = OMFIT['CGYRO_TGLF_scan']['CGYRO_scan']
 import numpy as np
 module_location = OMFIT['CGYRO_TGLF_scan']['CGYRO_scan']
@@ -151,4 +152,4 @@ for k in array(['H','D','T']):
     EXPERIMENT=settings['EXPERIMENT']
     EXPERIMENT['runid'] = 'Jet'
 
-    module_location['SCRIPTS']['runCGYRO.py'].run()
+    task_action(module_location['SCRIPTS']['runCGYRO.py'])

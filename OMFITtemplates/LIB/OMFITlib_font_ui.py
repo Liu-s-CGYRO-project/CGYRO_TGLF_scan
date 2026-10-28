@@ -2,7 +2,7 @@
 from builtins import max, min, str
 import tkinter as tk
 from tkinter import filedialog, ttk
-from OMFITlib_font_cache import FontCancelled, FontError, cache_directory, cached_fonts, set_proxy
+from OMFITlib_font_cache import FontCancelled, FontError, cache_directory, cached_fonts, font_cache_status, set_proxy
 from OMFITlib_font_download_ui import _dialog, _parent, ensure_fonts
 from OMFITlib_font_manifest import FONT_BUNDLES
 from OMFITlib_gui_fonts import (
@@ -12,7 +12,7 @@ from OMFITlib_gui_fonts import (
 
 
 def _refresh_gui(parent):
-    if cached_fonts('gui') is not None:
+    if cached_fonts('gui', verify=False) is not None:
         refresh_window_fonts(parent)
 
 
@@ -21,6 +21,7 @@ def open_font_manager(parent=None):
     if parent is None:
         raise FontError('Font resources needs an existing Tk window.')
     dialog = tk.Toplevel(parent)
+    dialog._project_cjk_defer_load = True
     dialog.title('OMFIT Font Resources')
     dialog.resizable(True, False)
     body = ttk.Frame(dialog, padding=16)
@@ -37,10 +38,9 @@ def open_font_manager(parent=None):
     ttk.Spinbox(typography, textvariable=size, from_=MIN_SIZE, to=MAX_SIZE, width=5).grid(row=0, column=1, sticky='w')
 
     def describe():
-        ready = cached_fonts('gui') is not None
         runtime = font_status(parent)
-        lines = ['GUI file: ' + ('ready' if ready else 'not downloaded'),
-                 'Plot fonts: ' + ('ready' if cached_fonts('plot') is not None else 'not downloaded')]
+        lines = ['GUI file: ' + font_cache_status('gui'),
+                 'Plot fonts: ' + font_cache_status('plot')]
         lines.append('GUI active: ' + (runtime.get('requested', '') if runtime['active'] else 'no'))
         lines.append('GUI size: {} pt | Tk backend: {}'.format(runtime['size'], runtime['backend']))
         actual = runtime['actual']
@@ -50,10 +50,10 @@ def open_font_manager(parent=None):
             lines.append(runtime['error'])
         status.set('\n'.join(lines))
 
-    def refresh():
-        _refresh_gui(parent)
-        if cached_fonts('gui') is not None:
-            configure_window_fonts(dialog)
+    def refresh(changed=False):
+        if changed:
+            _refresh_gui(parent)
+        configure_window_fonts(dialog)
         describe()
 
     def apply_size():
@@ -76,7 +76,7 @@ def open_font_manager(parent=None):
         except (FontError, OSError) as exc:
             status.set(str(exc))
             return
-        refresh()
+        refresh(changed=True)
 
     def offline():
         path = filedialog.askopenfilename(parent=dialog, title='Import offline font ZIP', filetypes=[('Font ZIP', '*.zip')])
@@ -87,7 +87,7 @@ def open_font_manager(parent=None):
         except (FontError, OSError) as exc:
             status.set(str(exc))
             return
-        refresh()
+        refresh(changed=True)
 
     actions = ttk.Frame(body)
     actions.pack(fill='x')

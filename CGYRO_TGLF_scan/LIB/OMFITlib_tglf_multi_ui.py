@@ -1,12 +1,12 @@
 """OMFIT page for importing, configuring and running multiple input.gacode files."""
+from OMFITlib_gui_api import task_action
 from builtins import all, any, bool, dict, len, list, str, sum
 from OMFITlib_gui_layout import finish_gui_layout
-from OMFITlib_gui_api import plot_view
+from OMFITlib_gui_api import gui_view, plot_view
 from OMFITlib_gui_controls import checkbox
 from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_project_runtime import shared_issues
-from OMFITlib_tglf_multi_data import DEFAULTS, case_plan, duplicate_case, initialize, prepared_run_issues, profile_digest
-from OMFITlib_tglf_multi_plot import flux_summary
+from OMFITlib_tglf_multi_data import DEFAULTS, case_plan, duplicate_case, initialize, prepared_run_issues
 from OMFITlib_tglf_parameter_help import parameter_help
 
 STATUS = {'ready': '输入已生成', 'preparing': '正在生成输入', 'prepare_failed': '生成失败',
@@ -20,7 +20,7 @@ class MultiInputUI:
         self.prefix = "root['SETTINGS']['TGLF_MULTI']"
 
     def command(self, script, **kwargs):
-        return lambda: self.root['SCRIPTS'][script].run(**kwargs)
+        return lambda: task_action(self.root['SCRIPTS'][script], **kwargs)
 
     def check(self):
         messages = []
@@ -60,8 +60,8 @@ class MultiInputUI:
         ui = self.ui
         with ui.same_row():
             ui.ComboBox(self.prefix + "['coordinate']", {'rho（input.gacode 的 rho）': 'rho', 'r/a（归一化小半径）': 'r/a'},
-                        '半径坐标', default='rho', updateGUI=True)
-            ui.Entry(self.prefix + "['radii']", '共用半径', default='0.5')
+                        '半径坐标', default='rho', updateGUI=True, refresh_tree=False)
+            ui.Entry(self.prefix + "['radii']", '共用半径', default='0.5', refresh_tree=False)
         ui.Label('案例半径留空时使用共用半径。复制案例可对同一剖面使用不同参数。', align='left')
         if not self.cases:
             ui.Label('尚未导入文件。支持不同目录下同名的 input.gacode。', align='left')
@@ -70,11 +70,11 @@ class MultiInputUI:
             ui.Separator(case['label'])
             with ui.same_row():
                 checkbox(ui, path + "['enabled']", case, 'enabled', '参与运行与对比', default=True)
-                ui.Entry(path + "['label']", '案例名称')
+                ui.Entry(path + "['label']", '案例名称', refresh_tree=False)
                 ui.Button('复制为新案例', lambda key=key: duplicate_case(self.root, key, self.factory), updateGUI=True)
             with ui.same_row():
-                ui.Entry(path + "['radii']", '此案例半径（可留空）', default='')
-                ui.Entry(path + "['extra']", '此案例参数', default='', help='例如 SAT_RULE=2; NKY=24; USE_BPER=true；覆盖共用参数。')
+                ui.Entry(path + "['radii']", '此案例半径（可留空）', default='', refresh_tree=False)
+                ui.Entry(path + "['extra']", '此案例参数', default='', help='例如 SAT_RULE=2; NKY=24; USE_BPER=true；覆盖共用参数。', refresh_tree=False)
             ui.Label('{}\n{} 个径向点；{} 个离子；输入 SHA-256: {}'.format(
                 case['source'], case['info']['points'], case['info']['ions'], case['sha256'][:16]), align='left')
 
@@ -84,21 +84,21 @@ class MultiInputUI:
         ui.Label('计算增长率/频率谱和通量；局部几何、梯度和物种由每个 input.gacode 生成。', align='left')
         with ui.same_row():
             for key in ('SAT_RULE', 'NKY', 'NMODES'):
-                ui.Entry(self.prefix + '[{!r}]'.format(key), key, default=DEFAULTS[key], help=parameter_help(key))
+                ui.Entry(self.prefix + '[{!r}]'.format(key), key, default=DEFAULTS[key], help=parameter_help(key), refresh_tree=False)
         with ui.same_row():
             for key in ('USE_BPER', 'USE_BPAR'):
                 checkbox(ui, self.prefix + '[{!r}]'.format(key), self.settings, key, key, default=DEFAULTS[key],
                          help=parameter_help(key))
         ui.ComboBox(self.prefix + "['include_ions']", {'全部离子': 'all', '仅热离子': 'thermal'},
-                    '参与 TGLF 的离子', default='all')
+                    '参与 TGLF 的离子', default='all', refresh_tree=False)
         ui.Entry(self.prefix + "['extra']", '共用附加参数', default='', multiline=True,
-                 help='每行 KEY=value，或用分号分隔；例如 KYGRID_MODEL=1; NBASIS_MAX=8。')
+                 help='每行 KEY=value，或用分号分隔；例如 KYGRID_MODEL=1; NBASIS_MAX=8。', refresh_tree=False)
         ui.Separator('执行环境')
         ui.Label('使用工程共用的 GACODE 服务器与环境；请在“环境配置与记录”中统一设置。', align='left')
         def open_environment():
             self.root['SETTINGS'].setdefault('WORKBENCH', {})['page'] = 'run'
-            self.root['GUIS']['main'].run()
-        ui.Button('打开统一环境配置', open_environment)
+            gui_view(self.root['GUIS']['main'])
+        ui.Button('打开统一环境配置', open_environment, refresh_tree=False)
         checkbox(ui, self.prefix + "['continue_on_error']", self.settings, 'continue_on_error',
                  '单项失败后继续其他计算', default=True)
 
@@ -112,7 +112,7 @@ class MultiInputUI:
         for case in selected_cases:
             run = case['runs'].get(case['selected_run'], None)
             try:
-                problems = prepared_run_issues(run, case_plan(self.settings, case), profile_digest(case['input.gacode']))
+                problems = prepared_run_issues(run, case_plan(self.settings, case, info=case['info']))
                 run_issues.extend(case['label'] + '：' + problem for problem in problems)
             except (KeyError, ValueError, TypeError) as exc:
                 run_issues.append(case['label'] + '：' + str(exc))
@@ -129,7 +129,7 @@ class MultiInputUI:
         with ui.same_row():
             ui.Button('对比所选记录的频率与增长率', lambda: plot_view(self.root['PLOTS']['TGLF_multi']),
                       state='normal' if can_plot else 'disabled', refresh_tree=False)
-            ui.Button('刷新状态', lambda: None, updateGUI=True, refresh_scope='section')
+            ui.Button('刷新状态', lambda: None, updateGUI=True, refresh_scope='section', refresh_tree=False)
         ui.Label('结果选择独立于当前设置。更改参数后先重新生成输入；计算按案例和半径依次执行。', align='left')
         ui.Label('显示各案例原始 TGLF 归一化数值；不同剖面的物理单位比较需另行转换。', align='left')
         for key, case in self.cases.items():
@@ -138,7 +138,7 @@ class MultiInputUI:
             ui.Separator(case['label'])
             choices = {'{} | {} | {}'.format(run['created'], STATUS.get(run['status'], run['status']), run_id[-8:]): run_id
                        for run_id, run in case['runs'].items()}
-            ui.ComboBox("root['TGLF_CASES'][{!r}]['selected_run']".format(key), choices, '运行记录', updateGUI=True)
+            ui.ComboBox("root['TGLF_CASES'][{!r}]['selected_run']".format(key), choices, '运行记录', updateGUI=True, refresh_tree=False)
             run = case['runs'].get(case['selected_run'], None)
             if run is None:
                 continue
@@ -151,6 +151,6 @@ class MultiInputUI:
                 attempt = point['attempts'].get(point.get('selected_attempt', None), None)
                 if attempt and attempt['status'] == 'complete':
                     ui.Label('结果目录：' + attempt['workdir'], align='left')
-                    ui.Label(flux_summary(attempt['result']), align='left')
+                    ui.Label(attempt.get('flux_summary', '旧记录未保存通量摘要；绘图时按所选记录读取。'), align='left')
         ui.Separator('检查与运行消息')
         ui.Label(self.settings['status'] or '就绪。计算结果随当前 OMFIT 工程保存，不进入 GitHub 模板。', align='left')

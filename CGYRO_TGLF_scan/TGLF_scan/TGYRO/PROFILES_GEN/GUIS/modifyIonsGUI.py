@@ -6,6 +6,7 @@ This script contains the GUI that drives the modify_ions script
 that allows the user to add and remove ions from input.gacode
 
 """
+from OMFITlib_gui_api import task_action
 from OMFITlib_gui_api import adapt
 OMFITx = adapt(OMFITx)
 defaultVars(add_ion=True)
@@ -21,18 +22,18 @@ for i in root['OUTPUTS']['input.gacode']['IONS']:
 OMFITx.Label('Existing ions: {}'.format(ions))
 
 opts = {'Add': True, 'Remove': False}
-OMFITx.ComboBox("scratch['modify_ions_add']", opts, 'Action', default=add_ion, updateGUI=True)
+OMFITx.ComboBox("scratch['modify_ions_add']", opts, 'Action', default=add_ion, updateGUI=True, refresh_tree=False)
 
 if scratch['modify_ions_add']:
-    OMFITx.Entry("scratch['add_ions_name']", 'Name', default='F')
-    OMFITx.Entry("scratch['add_ions_Z']", 'Charge', default=9)
-    OMFITx.Entry("scratch['add_ions_mass']", 'Mass', default=19.0)
-    OMFITx.Entry("scratch['add_ions_concen']", 'Concentration', default=1e-6)
-    OMFITx.Entry("scratch['add_ions_aoLn']", 'a/Ln', default=None)
-    OMFITx.Entry("scratch['add_ions_num']", '列表序号', default=3)
+    OMFITx.Entry("scratch['add_ions_name']", 'Name', default='F', refresh_tree=False)
+    OMFITx.Entry("scratch['add_ions_Z']", 'Charge', default=9, refresh_tree=False)
+    OMFITx.Entry("scratch['add_ions_mass']", 'Mass', default=19.0, refresh_tree=False)
+    OMFITx.Entry("scratch['add_ions_concen']", 'Concentration', default=1e-6, refresh_tree=False)
+    OMFITx.Entry("scratch['add_ions_aoLn']", 'a/Ln', default=None, refresh_tree=False)
+    OMFITx.Entry("scratch['add_ions_num']", '列表序号', default=3, refresh_tree=False)
     OMFITx.Button(
         '运行离子修改',
-        lambda: root['SCRIPTS']['modify_ions'].run(
+        lambda: task_action(root['SCRIPTS']['modify_ions'],
             name=scratch['add_ions_name'],
             Z=scratch['add_ions_Z'],
             mass=scratch['add_ions_mass'],
@@ -44,15 +45,15 @@ if scratch['modify_ions_add']:
         ),
     )
 else:
-    OMFITx.ComboBox("scratch['remove_ions_name']", ions, 'Name', default=ions[-1], updateGUI=True)
+    OMFITx.ComboBox("scratch['remove_ions_name']", ions, 'Name', default=ions[-1], updateGUI=True, refresh_tree=False)
     # EYES for next few lines
     OMFITx.Button(
         '运行离子修改',
-        lambda: root['SCRIPTS']['modify_ions'].run(
+        lambda: task_action(root['SCRIPTS']['modify_ions'],
             name=scratch['remove_ions_name'].replace('[fast]', ''), thermal=not 'fast' in scratch.pop('remove_ions_name'), add=False
         ),
     )  # EYES
     # OMFITx.CheckBox("scratch['remove_ions_thermal']",'Thermal',default=False)
     # OMFITx.Button('Run MODIFY_IONS', lambda: root['SCRIPTS']['modify_ions'].run(name=scratch['remove_ions_name'], thermal=scratch['remove_ions_thermal'], add=False))
 
-OMFITx.Button('重置 input.gacode', lambda: root['SCRIPTS']['modify_ions'].run(reset=True))
+OMFITx.Button('重置 input.gacode', lambda: task_action(root['SCRIPTS']['modify_ions'], reset=True))
