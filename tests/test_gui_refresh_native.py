@@ -423,6 +423,62 @@ class NativeTkRefreshTests(unittest.TestCase):
         self.drain(300)
         self.assertFalse(self.controls['button'].instate(['disabled']))
 
+    def test_plot_view_runs_task_registered_plot_with_selected_arguments_without_refresh(self):
+        events, calls, draws = [], [], []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        record = {'points': {'p000003': {'status': 'complete'}}}
+        def execute(receiver, **kwargs):
+            self.assertIs(receiver, script)
+            calls.append(kwargs)
+            return 'selected spectrum'
+        script = self.native_task(execute)
+        self.assertFalse(hasattr(script, 'plot'))
+        results = []
+        self.render_scoped(lambda api: self.controls.update(button=api.Button(
+            'TGLF spectrum', lambda: results.append(widgets.plot_view(script, record=record, point_id='p000003')),
+            refresh_tree=False)))
+        events.clear()
+        self.root.after_idle(lambda: draws.append('canvas drawn'))
+        self.invoke(self.controls['button'].invoke)
+        self.drain(300)
+        self.assertEqual(results, ['selected spectrum'])
+        self.assertEqual(calls, [{'record': record, 'point_id': 'p000003'}])
+        self.assertIs(calls[0]['record'], record)
+        self.assertEqual(draws, ['canvas drawn'])
+        self.assertEqual(events, [])
+        self.assertEqual(self.updates, [])
+        self.assertEqual(self.region_updates, [])
+        self.assertEqual(self.api.OMFITaux['pythonRunWindows'], [])
+        self.assertFalse(self.controls['button'].instate(['disabled']))
+
+    def test_plot_view_task_failure_keeps_error_and_cleans_native_progress(self):
+        events = []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        def execute(receiver, **kwargs):
+            self.assertEqual(kwargs, {'record': 'chosen', 'point_id': 'p000003'})
+            raise ValueError('Selected point files are incomplete')
+        script = self.native_task(execute)
+        with self.assertRaisesRegex(ValueError, 'Selected point files are incomplete'):
+            widgets.plot_view(script, record='chosen', point_id='p000003')
+        self.assertEqual(events, [])
+        self.assertEqual(self.updates, [])
+        self.assertEqual(self.api.OMFITaux['pythonRunWindows'], [])
+        self.assertNotIn('Done @ ', self.task_log.getvalue())
+
+    def test_plot_view_task_preserves_explicit_no_gui_and_business_notifications(self):
+        events = []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        def execute(receiver, **kwargs):
+            self.assertEqual(kwargs, {'noGUI': True, 'point_id': 'p000003'})
+            self.assertEqual(self.api.OMFITaux['pythonRunWindows'], [None, None])
+            self.api.OMFITaux['rootGUI'].event_generate('<<update_treeGUI>>')
+            return kwargs['point_id']
+        script = self.native_task(execute)
+        self.assertEqual(widgets.plot_view(script, noGUI=True, point_id='p000003'), 'p000003')
+        self.assertEqual(events, ['tree'])
+        self.assertEqual(self.updates, [])
+        self.assertEqual(self.api.OMFITaux['pythonRunWindows'], [])
+
     def test_view_plot_restores_directory_return_value_and_error_without_changing_native_method(self):
         events, calls = [], []
         self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')

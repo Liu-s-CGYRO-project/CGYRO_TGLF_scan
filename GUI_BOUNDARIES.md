@@ -50,7 +50,9 @@ python tools/check_workbench.py --gui-inventory dist/gui-inventory.json
 
 按钮的 `updateGUI=False` 并不能阻止 OMFIT 的原生 task runner 在 `_endGUI` 中广播 `update_GUI` 和 `update_treeGUI`。本轮增加 `task_action`，工程按钮与项目内受控的嵌套脚本调用统一使用该入口：执行和进度窗口仍使用原对象，只隔离本次结束方法的无条件刷新事件，由调用控件请求已声明的局部刷新。原生中止窗口、任务栈、成功日志和异常清理保留，`haltWindow` 等会话写入仍落在真实会话对象中。
 
-这不是全局 monkeypatch；脚本中明确产生的数据变更事件仍有效，外部模块、第三方覆写 runner 或用户直接调用原生 runner 的语义不变。`gui_view` / `plot_view` 同样只消除本次打开窗口/绘图后的无条件主树刷新，正常 canvas idle draw 保留。
+这不是全局 monkeypatch；脚本中明确产生的数据变更事件仍有效，外部模块、第三方覆写 runner 或用户直接调用原生 runner 的语义不变。`gui_view` / `plot_view` 同样只消除本次打开窗口/绘图后的无条件主树刷新，正常 canvas idle draw 保留。PLOTS 中的节点按实际 Plot / Task 能力调用；树目录不代表对象类型，旧工程不需改类型。
+
+TGLF 结果路径标签只读当前点元数据、原位更新。旧 sourceResults 的归位是明确按钮操作，只处理所选记录，不在切页时触发；冲突点保留。旧径向绘图传入所选半径映射，不把整组结果复制到子模块。
 
 ## 验证与适用范围
 

@@ -23,7 +23,7 @@ TABS = OrderedDict([('scan', '输入与扫描'), ('parameters', '计算参数'),
 from OMFITlib_workbench_catalog import SCAN_TABS  # Shared with CGYRO; retained public alias.
 
 
-from OMFITlib_tglf_records import point_current, record_summary, run_records
+from OMFITlib_tglf_records import native_destination, point_current, record_summary, result_location, run_records
 
 
 class TGLFWorkbench:
@@ -187,6 +187,11 @@ class TGLFWorkbench:
         try:
             prepared = plan(self.root, self.settings)
             self.label('本次运行：{} 个输入，{} 个任务'.format(len(prepared['sources']), prepared['total']))
+            for source in prepared['sources'][:4]:
+                parameters = {axis['name']: axis['values'][0] for axis in source.get('axes', [])}
+                prefix, flux_path, result_path = native_destination(source, prepared['mode'], parameters)
+                branch = result_path[:2] if source['group'] in ('radial', 'transfer') else result_path[:1]
+                self.label('保存分支：' + result_location(dict(result_path=prefix + branch)))
         except (TypeError, ValueError, KeyError) as exc:
             problems.append(str(exc))
         remote = read(self.root, MODULES['tglf'] + ('SETTINGS', 'REMOTE_SETUP'), {})
@@ -401,6 +406,9 @@ class TGLFWorkbench:
         self.mark_custom(combo)
 
     def results(self):
+        message = self.root['SETTINGS']['WORKBENCH'].get('message', '')
+        if message:
+            self.label(message)
         module = self.root.get('TGLF_scan', {})
         runs = run_records(module)
         if not runs:
@@ -438,6 +446,11 @@ class TGLFWorkbench:
         if isinstance(identity, tk.Misc):
             identity._cgyro_role = 'muted'
         self.ui.Button('查看结果表', lambda: self.result_table(anchor, record), refresh_tree=False)
+        if any(point.get('result_path', [''])[0] == 'sourceResults' for point in current_points.values()):
+            run_id = self.settings['result_run']
+            self.label('该记录仍在旧 sourceResults 位置；可归位本条记录，无需重算。目标已有结果的点会保留原位置。')
+            self.ui.Button('将这条记录归位到原生扫描',
+                           lambda: self.actions.restore_tglf_native_results(run_id), updateGUI=True)
         if complete:
             path = ('TGLF_scan', 'PLOTS', 'workbench_result')
             problems = [] if read(self.root, path) is not None else ['工程缺少此绘图入口']
@@ -448,7 +461,13 @@ class TGLFWorkbench:
                 for key, point in current_points.items())
             if self.settings.get('result_point', None) not in choices.values():
                 self.settings['result_point'] = next(iter(choices.values()))
-            self.ui.ComboBox(self.prefix + "['result_point']", choices, '计算点', state='readonly', updateGUI=False, refresh_tree=False)
+            def update_location(location=None):
+                if isinstance(location_label, tk.Misc):
+                    location_label.configure(text='所选点保存位置：' + result_location(
+                        current_points[self.settings['result_point']]))
+            self.ui.ComboBox(self.prefix + "['result_point']", choices, '计算点', state='readonly', updateGUI=False,
+                             refresh_tree=False, postcommand=update_location)
+            location_label = self.label('所选点保存位置：' + result_location(current_points[self.settings['result_point']]))
             self.view.guarded('查看该点的频率 / 增长率谱',
                 lambda: plot_view(read(self.root, path), record=record, point_id=self.settings['result_point']),
                 problems, refresh=False, refresh_tree=False)
@@ -541,7 +560,7 @@ class TGLFWorkbench:
             if not selected:
                 return
             point = record['points'][selected[0]]
-            lines = [point['label'], '输入：' + location(point['source'])]
+            lines = [point['label'], '输入：' + location(point['source']), '结果：' + result_location(point)]
             for row in point.get('fluxes', []):
                 lines.append('{species}: Γ/ΓGB={particle:.6g}, Q/QGB={heat:.6g}, Π/ΠGB={momentum:.6g}'.format(**row))
             if point.get('error', None):

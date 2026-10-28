@@ -381,6 +381,17 @@ def plan(root, settings):
     rows = selected_rows(root, settings)
     if not rows:
         raise ValueError('请选择至少一个 TGLF 输入')
+    radii = {}
+    for row in rows:
+        if row['group'] != 'transfer':
+            continue
+        if row.get('rho', None) is None:
+            raise ValueError(row['label'] + ' 缺少半径元数据，无法确定原生结果位置；请重新生成 Transfer_tool 输入。')
+        radius = parameter_value('半径', row['rho'], 0.)
+        if radius in radii:
+            raise ValueError('Transfer_tool 输入半径重复：{} 和 {}。原生扫描按半径保存，请分次选择不同输入方案。'.format(
+                radii[radius], row['label']))
+        radii[radius] = row['label']
     mode = settings['mode']
     if mode not in MODES.values():
         raise ValueError('请选择计算方式')

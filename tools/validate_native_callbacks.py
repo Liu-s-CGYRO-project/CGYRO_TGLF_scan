@@ -161,6 +161,38 @@ class CallbackTests(unittest.TestCase):
         self.assertTrue(any('ion | 1 | 2' in text for text in labels))
         self.assert_cleaned(before)
 
+    def test_task_registered_tglf_plot_after_import_cleanup_reads_only_selected_result(self):
+        root = self.host.modules[('CGYRO_TGLF_scan', 'TGLF_scan')]
+        root['SETTINGS'] = treeify({'PLOT_STYLE': {
+            'font_file': str(Path(get_data_path()) / 'fonts/ttf/DejaVuSans.ttf')}}, self.host.factory)
+        script = root['PLOTS']['workbench_result']
+        self.assertFalse(hasattr(script, 'plot'))
+        record = treeify(dict(mode='1d', plan=dict(axes=[dict(name='SAT_RULE')], sources=[]), points={
+            'p000001': dict(status='complete', label='input A', parameters={'SAT_RULE': 0},
+                fluxes=[dict(species='elec', heat=1.)],
+                result={'eigenvalue_spectrum': {'ky': np.array([.1, .2]),
+                        'gamma(1)': np.array([.2, .3]), 'freq(1)': np.array([1., 2.])}}),
+            # Complete metadata but no readable physical payload: opening this
+            # point's spectrum would fail. A different point must remain usable.
+            'p000002': dict(status='complete', label='input A', parameters={'SAT_RULE': 1},
+                fluxes=[dict(species='elec', heat=2.)])}), self.host.factory)
+        before = list(sys.meta_path)
+        out = self.host.execute(
+            'from OMFITlib_gui_api import plot_view\n'
+            'callback = lambda **kwargs: plot_view(root["PLOTS"]["workbench_result"], record=record, **kwargs)',
+            root, record=record)
+        self.assert_cleaned(before)
+        out['callback'](point_id='p000001')
+        figure = plt.figure(plt.get_fignums()[-1])
+        self.assertEqual(figure._suptitle.get_text(), 'p000001')
+        np.testing.assert_allclose(figure.axes[0].lines[0].get_ydata(), [.2, .3])
+        np.testing.assert_allclose(figure.axes[1].lines[0].get_ydata(), [1., 2.])
+        self.assert_cleaned(before)
+        # The other view uses saved flux summaries, not any spectrum payload.
+        out['callback']()
+        self.assertEqual(len(plt.get_fignums()), 2)
+        self.assert_cleaned(before)
+
 
 def validate(source):
     host = NativeHost(source)

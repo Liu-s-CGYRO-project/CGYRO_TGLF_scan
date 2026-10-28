@@ -10,6 +10,8 @@ defaultVars parameters
 :param param: scan parameter for the given rho.
 """
 
+from OMFITlib_gui_api import plot_view
+
 defaultVars(
     rho=root['SETTINGS']['PHYSICS']['rho'],
     param=root['TGLF']['SETTINGS']['PHYSICS']['scanParameter'],
@@ -18,12 +20,9 @@ defaultVars(
 assert rho in root['scanResults_spectra'], f"rho = {rho} does not exist in root['scanResults_spectra']"
 assert param in root['scanResults_spectra'][rho], f"param: '{param}' does not exist in root['scanResults_spectra'][{rho}]"
 
-# Move the scan results to the sub module,
-root['TGLF'].setdefault('scanResults_spectra', OMFITtree())
-# no need for a deepcopy here I think,
-root['TGLF']['scanResults_spectra'][param] = root['scanResults_spectra'][rho][param]
-# call the existing script with the TGLF_scan = True kwarg
-out = root['TGLF']['PLOTS']['plotScanSpec'].run(param=param, TGLF_scan=True, plot_settings=root['SETTINGS'].get('PLOTS', {}))
+# Pass the selected radius directly; plotting must not replace single-file results.
+out = plot_view(root['TGLF']['PLOTS']['plotScanSpec'], results=root['scanResults_spectra'][rho],
+                param=param, TGLF_scan=True, plot_settings=root['SETTINGS'].get('PLOTS', {}))
 
 # update the figure notebook with cornernotes,
 fn = out['fn']

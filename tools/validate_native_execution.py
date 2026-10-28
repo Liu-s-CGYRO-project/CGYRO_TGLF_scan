@@ -77,7 +77,6 @@ class NativeHost:
             def run(node, **kwargs):
                 return self.execute(Path(node.filename).read_text(encoding='utf-8'), node.root, user=kwargs)
             runNoGUI = run
-            plot = run
             __run__ = run
         # Use the unmodified native importCode boundary too: browser data links
         # execute a saved LIB task after the ordinary import hook is gone.
@@ -88,10 +87,14 @@ class NativeHost:
         exec(compile(ast.Module(body=[import_code], type_ignores=[]), str(source), 'exec'), method_scope)
         Task.importCode = method_scope['importCode']
         class Plot(Task):
-            pass
+            plot = Task.run
         class Reader(self.factory):
             pass
         self.Task = Task
+        self.omfit_package = ModuleType('omfit_classes')
+        self.omfit_package.__path__ = []
+        self.path_module = ModuleType('omfit_classes.omfit_path')
+        self.path_module.OMFITpath = type('OMFITpath', (), {})
         self.gacode = ModuleType('omfit_classes.omfit_gacode')
         self.gacode.OMFITcgyro = type('OMFITcgyro', (Reader,), {})
         self.gacode.OMFITgyro = type('OMFITgyro', (Reader,), {})
@@ -118,12 +121,15 @@ class NativeHost:
                 node = root
                 for key in keys[len(owner):-1]:
                     node = node.setdefault(key, self.factory())
-                node[keys[-1]] = Task(REPO / ref, root)
+                kind_class = Plot if kind == 'OMFITpythonPlot' else Task
+                node[keys[-1]] = kind_class(REPO / ref, root)
         self.cg = self.modules[('CGYRO_TGLF_scan', 'CGYRO_scan')]
 
     def execute(self, text, root=None, user=None, **inputs):
         inputs.update(root=root if root is not None else self.cg, rootName='test_root')
-        with patch.dict(sys.modules, {'omfit_classes.utils_base': self.registry,
+        with patch.dict(sys.modules, {'omfit_classes': self.omfit_package,
+                                      'omfit_classes.omfit_path': self.path_module,
+                                      'omfit_classes.utils_base': self.registry,
                                       'omfit_classes.omfit_gacode': self.gacode}):
             return self.executor(text, dict(user or {}), inputs, {}, {})
 

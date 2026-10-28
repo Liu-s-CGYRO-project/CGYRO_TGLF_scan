@@ -18,6 +18,7 @@ import OMFITlib_cgyro_results as results_ui
 import OMFITlib_tglf_multi_ui as multi_ui
 import OMFITlib_tglf_multi_data as multi_data
 import OMFITlib_tglf_multi_plot as multi_plot
+import OMFITlib_tglf_workbench_ui as tglf_ui
 import OMFITlib_compare_ui as compare_ui
 import OMFITlib_compare_cases as compare_cases
 import OMFITlib_workbench_cgyro_ui as cgyro_ui
@@ -119,6 +120,42 @@ class RefreshBoundaryTests(unittest.TestCase):
         summary.assert_not_called()
         self.assert_external_survives(header, action)
         self.assertEqual(self.tree_events, [])
+
+    def test_tglf_result_path_updates_in_place_without_opening_either_result(self):
+        class NoResultRead(dict):
+            def get(self, *args):
+                raise AssertionError('Result payload opened while selecting a path')
+        first_path = ['scanResults_spectra', .3, 'SAT_RULE', 0]
+        second_path = ['sourceResults', 'transfer:1', 'scanResults_spectra', 'SAT_RULE', 1]
+        points = {
+            'p000001': dict(status='complete', label='rho=0.3', parameters={'SAT_RULE': 0},
+                           result_path=first_path, owner_path=['_workbench_index'], owner_key=first_path, owner='run:p1'),
+            'p000002': dict(status='complete', label='rho=0.3', parameters={'SAT_RULE': 1},
+                           result_path=second_path, owner_path=['_workbench_index'], owner_key=second_path, owner='run:p2')}
+        self.host.tree['TGLF_scan'] = dict(scanResults_spectra=NoResultRead(),
+            _workbench_runs={'run': dict(id='run', mode='1d', plan={'axes': [{'name': 'SAT_RULE'}]}, points=points)},
+            _workbench_index={tuple(first_path): 'run:p1', tuple(second_path): 'run:p2'})
+        self.host.tree['SETTINGS']['WORKBENCH']['tglf'] = dict(result_run='run', result_point='p000001')
+        def render(ui):
+            def guarded(caption, callback, issues, refresh=True, refresh_tree=True):
+                return ui.Button(caption, callback, updateGUI=refresh, refresh_tree=refresh_tree)
+            view = SimpleNamespace(root=self.host.tree, ui=ui, prefix="root['SETTINGS']['WORKBENCH']",
+                actions=SimpleNamespace(factory=dict, restore_tglf_native_results=Mock()),
+                label=lambda text: ui.Label(text), nav=lambda *args: None, guarded=guarded)
+            tglf_ui.TGLFWorkbench(view).results()
+        self.build(render)
+        header, action = self.header, self.external_action
+        labels = [widget for widget in self.host.descendants(self.host.owner.top)
+                  if isinstance(widget, native.ttk.Label) and str(widget.cget('text')).startswith('所选点保存位置：')]
+        self.assertEqual(len(labels), 1)
+        label = labels[0]
+        self.assertIn("['scanResults_spectra'][0.3]", str(label.cget('text')))
+        combo = self.combo('p000002 · rho=0.3 · SAT_RULE=1')
+        self.choose(combo, 'p000002 · rho=0.3 · SAT_RULE=1')
+        self.assertTrue(combo.winfo_exists() and label.winfo_exists())
+        self.assertIn("['sourceResults']['transfer:1']", str(label.cget('text')))
+        self.assertEqual(self.tree_events, [])
+        self.assert_external_survives(header, action)
 
     def test_cgyro_recovery_and_cleanup_view_controls_do_not_relist_results(self):
         self.host.tree['CGYRO_scan'] = {'SETTINGS': {'REMOTE_SETUP': {'serverPicker': 'synthetic'}}}

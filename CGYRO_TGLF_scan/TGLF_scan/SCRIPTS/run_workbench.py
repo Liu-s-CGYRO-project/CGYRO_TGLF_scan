@@ -26,6 +26,7 @@ project = project_root
 if project is None:
     raise ValueError('Project root is required')
 prepared = []
+baselines = {}
 for source in plan['sources']:
     original = get(project, source['path'])
     if original is None:
@@ -41,7 +42,9 @@ for source in plan['sources']:
         candidate.pop('rho', None)
         candidate.update(source['parameters'])
         candidate.setdefault('NS', 2)  # Native parser default for a partial input.
+        candidate['USE_TRANSPORT_MODEL'] = True
         baseline = clone(candidate)
+        baselines[tuple(source['path'])] = baseline
         for name, value in scan_values.items():
             candidate[name] = parameter_value(name, value, candidate[name])
             if (plan['single_Ti'] and name.startswith(('RLTS_', 'TAUS_'))
@@ -51,7 +54,6 @@ for source in plan['sources']:
                     if (field not in scan_values and candidate.get('ZS_' + str(species), -1) > 0
                             and baseline.get(field, None) == baseline[name]):
                         candidate[field] = candidate[name]
-        candidate['USE_TRANSPORT_MODEL'] = True
         if int(candidate['NS']) < 1 or float(candidate['NS']) != int(candidate['NS']):
             raise ValueError('NS must be a positive integer')
         validate_width_search(candidate)
@@ -102,7 +104,8 @@ finally:
             if not fluxes:
                 raise ValueError('No TGLF flux rows')
             source = prepared[int(key[1:]) - 1][0]
-            publish_point(root, record, key, source, result, OMFITtree)
+            publish_point(root, record, key, source, result, OMFITtree,
+                          baseline=baselines[tuple(source['path'])])
             point.update(dict(status='complete', fluxes=fluxes))
         except Exception as exc:
             point.update(dict(status='failed', error=str(exc), diagnostics=result))

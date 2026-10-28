@@ -14,7 +14,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / 'CGYRO_TGLF_scan/LIB'))
 sys.path.insert(0, str(REPO / 'OMFITtemplates/LIB'))
 from OMFITlib_tglf_workbench import initialize, plan, scan_parameter_names
-from OMFITlib_tglf_records import at, point_current, point_result, run_records
+from OMFITlib_tglf_records import at, point_current, point_result, result_location, restore_native_results, run_records
 from OMFITlib_plot_sources import run_choices, source_dimension, tglf_results
 import OMFITlib_tglf_cache as native_cache
 import test_cgyro_storage  # Explicit native reader stand-ins for cleanup dependencies.
@@ -105,12 +105,160 @@ class NativeStorageTests(unittest.TestCase):
             'Particle_processing': {'local_inputs': {'input.tglf_1': {'rho': .3}, 'input.tglf_2': {'rho': .3}}}}}
         initialize(self.root)
         self.settings.update(source='transfer', selected={'transfer:1': True, 'transfer:2': True})
+        with self.assertRaisesRegex(ValueError, '半径重复'):
+            plan(self.root, self.settings)
+        self.assertNotIn('_workbench_runs', self.scan)
+
+    def transfer_inputs(self):
+        self.root['Transfer_tool'] = {'OUTPUTS': {'Profiles_gen': {
+            'input.tglf_1': dict(self.source), 'input.tglf_2': dict(self.source, BETAE=.3)},
+            'Particle_processing': {'local_inputs': {'input.tglf_1': {'rho': .3}, 'input.tglf_2': {'rho': .5}}}}}
+        initialize(self.root)
+        self.settings.update(source='transfer', selected={'transfer:1': True, 'transfer:2': True})
+
+    def legacy_transfer_record(self):
+        self.transfer_inputs()
         record = self.execute()
-        left = point_result(self.scan, record['points']['p000001'])
-        right = point_result(self.scan, record['points']['p000003'])
-        self.assertEqual(left['input.tglf']['BETAE'], .01)
-        self.assertEqual(right['input.tglf']['BETAE'], .3)
-        self.assertIsNot(left, right)
+        for point in record['points'].values():
+            old_path = point['result_path']
+            result = at(self.scan, old_path[:-1]).pop(old_path[-1])
+            flux = [old_path[0].replace('_spectra', '')] + old_path[1:]
+            at(self.scan, flux[:-1]).pop(flux[-1])
+            self.scan['_workbench_index'].pop(tuple(old_path))
+            source = next(s for s in record['plan']['sources'] if list(s['path']) == point['source'])
+            scope = self.scan.setdefault('sourceResults', {}).setdefault(source['key'], {})
+            local = [old_path[0]] + old_path[2:]
+            for path, value in ((local, result), ([flux[0]] + flux[2:], result['gbflux']['data'])):
+                parent = scope
+                for part in path[:-1]:
+                    parent = parent.setdefault(part, {})
+                parent[path[-1]] = value
+            scope.setdefault('_workbench_index', {})[tuple(local)] = point['owner']
+            point.update(result_path=['sourceResults', source['key']] + local,
+                         owner_path=['sourceResults', source['key'], '_workbench_index'], owner_key=local)
+        self.scan.pop('input.tglf', None)
+        return record
+
+    def test_transfer_scans_write_outer_native_branches_in_all_dimensions(self):
+        self.transfer_inputs()
+        for mode, branch, coordinate in (
+                ('1d', 'scanResults', ['SAT_RULE', 1]),
+                ('2d', 'scanResults2D', ['XNUE+SAT_RULE', .2, 1]),
+                ('3d', 'scanResults3D', ['BETAE+XNUE+SAT_RULE', .02, .2, 1])):
+            self.settings['mode'] = mode
+            record = self.execute()
+            for radius in (.3, .5):
+                result = at(self.scan, [branch + '_spectra', radius] + coordinate)
+                self.assertIsNotNone(result)
+                np.testing.assert_array_equal(at(self.scan, [branch, radius] + coordinate), result['gbflux']['data'])
+                self.assertEqual(self.scan['input.tglf'][radius]['SAT_RULE'], 0)
+                self.assertIs(self.scan['input.tglf'][radius]['USE_TRANSPORT_MODEL'], True)
+            self.assertNotIn('sourceResults', self.scan)
+            self.assertNotIn('RUN_DB', self.scan)
+            self.assertTrue(all(p['result_path'][0] == branch + '_spectra' for p in record['points'].values()))
+
+    def test_transfer_failed_point_preserves_existing_native_result(self):
+        self.transfer_inputs()
+        old = self.execute()
+        point = old['points']['p000001']
+        result = point_result(self.scan, point)
+        new = self.execute(fail=0)
+        self.assertIs(point_result(self.scan, point), result)
+        self.assertEqual(new['status'], 'partial')
+        self.assertFalse(point_current(self.scan, old['points']['p000002']))
+        self.assertEqual(set(self.scan['scanResults']), {.3, .5})
+
+    def test_restore_only_selected_record_without_recalculation_or_old_copies(self):
+        record = self.legacy_transfer_record()
+        self.scan['sourceResults']['unrelated'] = Unread()
+        self.scan['_workbench_runs']['unrelated'] = Unread()
+        report = restore_native_results(self.scan, record)
+        self.assertEqual(report, dict(moved=4, conflicts=[], unavailable=[]))
+        self.assertEqual(set(self.scan['scanResults']), {.3, .5})
+        self.assertEqual(self.scan['sourceResults']['transfer:1']['scanResults_spectra']['SAT_RULE'], {})
+        point = record['points']['p000001']
+        self.assertIn("TGLF_scan['scanResults_spectra'][0.3]['SAT_RULE'][0]", result_location(point))
+        self.assertIs(point_result(self.scan, point), self.scan['scanResults_spectra'][.3]['SAT_RULE'][0])
+        self.assertIsNot(self.scan['input.tglf'][.3], point_result(self.scan, point)['input.tglf'])
+        self.assertEqual(self.scan['input.tglf'][.3]['SAT_RULE'], 0)
+        self.scan.pop('_workbench_runs')
+        self.assertIn('legacy:1D', run_choices(self.root).values())
+        self.assertEqual(tglf_results(self.root, {'result_source': 'legacy:1D'})[.3]['SAT_RULE'][0]['gbflux']['data'][0]['Q/Q_GB'], 2.)
+
+    def test_restore_conflict_preserves_both_results_and_old_reference(self):
+        record = self.legacy_transfer_record()
+        old = record['points']['p000001']
+        old_path = list(old['result_path'])
+        existing = payload(99.)
+        self.scan['scanResults_spectra'][.3]['SAT_RULE'][0] = existing
+        report = restore_native_results(self.scan, record)
+        self.assertEqual(report['moved'], 3)
+        self.assertEqual(len(report['conflicts']), 1)
+        self.assertIs(self.scan['scanResults_spectra'][.3]['SAT_RULE'][0], existing)
+        self.assertEqual(old['result_path'], old_path)
+        self.assertTrue(point_current(self.scan, old))
+
+    def test_restored_references_survive_strict_mapping_serialization(self):
+        record = self.legacy_transfer_record()
+        self.scan['TGLF']['SCRIPTS'] = {}
+        reopened = pickle.loads(pickle.dumps(treeify(self.root, OMFITMapping)))
+        module = reopened['TGLF_scan']
+        saved = module['_workbench_runs'][record['id']]
+        self.assertEqual(restore_native_results(module, saved)['moved'], 4)
+        again = pickle.loads(pickle.dumps(reopened))['TGLF_scan']
+        point = again['_workbench_runs'][record['id']]['points']['p000001']
+        self.assertTrue(point_current(again, point))
+        self.assertEqual(point_result(again, point)['input.tglf']['BETAE'], .01)
+
+    def test_transfer_missing_radius_stops_before_creating_a_run(self):
+        self.transfer_inputs()
+        self.root['Transfer_tool']['OUTPUTS']['Particle_processing']['local_inputs']['input.tglf_1'] = {}
+        with self.assertRaisesRegex(ValueError, '半径元数据'):
+            plan(self.root, self.settings)
+        self.assertNotIn('_workbench_runs', self.scan)
+
+    def test_restore_missing_source_radius_does_not_block_other_radius(self):
+        record = self.legacy_transfer_record()
+        record['plan']['sources'][0].pop('rho')
+        report = restore_native_results(self.scan, record)
+        self.assertEqual(report['moved'], 2)
+        self.assertEqual(len(report['unavailable']), 2)
+        self.assertTrue(point_current(self.scan, record['points']['p000001']))
+        self.assertEqual(record['points']['p000001']['result_path'][0], 'sourceResults')
+        self.assertEqual(record['points']['p000003']['result_path'][:2], ['scanResults_spectra', .5])
+
+    def test_radial_plot_entries_pass_selected_native_maps_without_changing_child_results(self):
+        for dimension, name, branch in (
+                (1, 'plotScanAtRho', 'scanResults'),
+                (2, 'plotScanAtRho', 'scanResults2D'),
+                (1, 'plotScanSpecAtRho', 'scanResults_spectra')):
+            with self.subTest(name=name, dimension=dimension):
+                selected = {'SAT_RULE': {0: payload()}}
+                other = Unread()
+                baseline = dict(self.source)
+                single = Unread({'single': payload()})
+                calls = []
+                fig = SimpleNamespace(get_axes=lambda: [object()], canvas=SimpleNamespace(draw=lambda: None))
+                def plot(**kwargs):
+                    calls.append(kwargs)
+                    return {'fn': [fig]}
+                child = self.scan['TGLF']
+                child['SETTINGS']['PHYSICS'] = {'scanParameter': 'SAT_RULE'}
+                child['scanResults'] = child['scanResults2D'] = child['scanResults_spectra'] = single
+                child['PLOTS'] = {key: SimpleNamespace(plot=plot) for key in ('plotScan', 'plotScan2D', 'plotScanSpec')}
+                original_input = child['FILES']['input.tglf']
+                self.scan.update(SETTINGS={'PHYSICS': {'rho': .3, 'scanDimensions': dimension}},
+                                 **{branch: {.3: selected, .5: other}, 'input.tglf': {.3: baseline, .5: other}})
+                namespace = dict(root=self.scan, figure=lambda: fig, nan=float('nan'), cornernote=lambda *a, **kw: None)
+                namespace['defaultVars'] = lambda **kw: [namespace.setdefault(key, value) for key, value in kw.items()]
+                script = REPO / ('CGYRO_TGLF_scan/TGLF_scan/PLOTS/' + name + '.py')
+                exec(compile(script.read_text(encoding='utf-8'), str(script), 'exec'), namespace)
+                self.assertEqual(len(calls), 1)
+                self.assertIs(calls[0]['results'], selected)
+                if name == 'plotScanAtRho':
+                    self.assertIs(calls[0]['inputTGLF'], baseline)
+                self.assertIs(child['FILES']['input.tglf'], original_input)
+                self.assertTrue(all(child[key] is single for key in ('scanResults', 'scanResults2D', 'scanResults_spectra')))
 
     def test_failed_download_retains_prior_native_point_and_other_dimensions(self):
         old = self.execute()

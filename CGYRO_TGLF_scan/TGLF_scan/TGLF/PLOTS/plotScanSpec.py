@@ -12,16 +12,17 @@ defaultVars(
 if plot_settings is None:
     plot_settings = root['SETTINGS'].get('PLOTS', {})
 
-results = results + '_spectra'
-vals = list(root[results][param].keys())
-quench = root[results][param][vals[0]]['input.tglf']['ALPHA_QUENCH']
+if isinstance(results, str):
+    results = root[results + '_spectra']
+vals = list(results[param].keys())
+quench = results[param][vals[0]]['input.tglf']['ALPHA_QUENCH']
 colors = mpl.cm.rainbow(linspace(0, 1, len(vals)))
 
 fn = FigureNotebook(0, 'TGLF Spectra')
 
 fig, ax = fn.subplots(nrows=2, ncols=2, label='Eigenvalue', sharex=True, sharey='row')
 for i, v in enumerate(vals):
-    evs = root[results][param][v]['eigenvalue_spectrum']
+    evs = results[param][v]['eigenvalue_spectrum']
     if plot_settings.get('Divided ky', False):
         ax[0, 0].plot(evs['ky'], evs['gamma(1)']/evs['ky'], color=colors[i])
         ax[0, 1].plot(evs['ky'], evs['gamma(2)']/evs['ky'], color=colors[i])
@@ -64,12 +65,12 @@ else:
     ax[1, 0].set_ylabel('$\\omega (c_s/a)$')
 
 vals0 = vals[0]
-for field in root[results][param][vals0]['potential_spectrum']:
+for field in results[param][vals0]['potential_spectrum']:
     if field == 'ky':
         continue
     fig, ax = fn.subplots(label=field.title())
     for i, v in enumerate(vals):
-        spec = root[results][param][v]['potential_spectrum']
+        spec = results[param][v]['potential_spectrum']
         if TGLF_scan:
             spec = spec.sel(mode_num=mode_num)
         ax.plot(spec['ky'], spec[field], color=colors[i])
@@ -83,7 +84,7 @@ fs_txt = "flux_spectrum"
 if TGLF_scan:
     fs_txt = "sum_" + fs_txt
 
-fs = root[results][param][vals[0]][fs_txt]
+fs = results[param][vals[0]][fs_txt]
 ns = fs.n_species
 nf = fs.n_fields
 for chan in fs:
@@ -91,7 +92,7 @@ for chan in fs:
         continue
     fig, ax = fn.subplots(nrows=ns, ncols=nf, label=chan, sharex=True, sharey='row', squeeze=False)
     for i, v in enumerate(vals):
-        fs = root[results][param][v][fs_txt]
+        fs = results[param][v][fs_txt]
         # for k in fs.labels:
         for s in range(ns):
             for f in range(nf):

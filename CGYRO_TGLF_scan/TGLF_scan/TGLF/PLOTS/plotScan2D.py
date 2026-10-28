@@ -13,6 +13,7 @@ defaultVars(
     gbPi=nan,
     what=['Gam/Gam_GB', 'Q/Q_GB', 'Pi/Pi_GB'],
     results='scanResults2D',
+    inputTGLF=None,
     combine_ions=root['SETTINGS']['PHYSICS']['combine_ions'],
     doSave=False,
     plot_contours=False,
@@ -21,6 +22,8 @@ defaultVars(
 
 if isinstance(results, str):
     results = root[results]
+if inputTGLF is None:
+    inputTGLF = root['FILES']['input.tglf']
 results = results[param2 + '+' + param]
 
 labels = {'Gam/Gam_GB': r'$\Gamma/\Gamma_{GB}$', 'Q/Q_GB': r'$Q/Q_{GB}$', 'Pi/Pi_GB': r'$\Pi/\Pi_{GB}$'}
@@ -65,8 +68,8 @@ def plot_data(col, row, data, nrows, elec=False, norm=1, name=what[0]):
         title(labels[name])
     if row == nrows - 1:
         xlabel(param2)
-    val1 = root['FILES']['input.tglf'][param]
-    val2 = root['FILES']['input.tglf'][param2]
+    val1 = inputTGLF[param]
+    val2 = inputTGLF[param2]
     axhline(val1, color='w', ls='-')
     axvline(val2, color='w', ls='-')
     axhline(val1, color='k', ls='--')

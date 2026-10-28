@@ -1,23 +1,17 @@
 # -*-Python-*-
 # Created by lugaimin at 2014/06/12 15:14
+from OMFITlib_gui_api import plot_view
 
 defaultVars(doSave=False)
 
-rho = round(root['SETTINGS']['PHYSICS']['rho'], 3)
+rho = root['SETTINGS']['PHYSICS']['rho']
 if root['SETTINGS']['PHYSICS']['scanDimensions'] == 1:
     scanResults = 'scanResults'
 else:
     scanResults = 'scanResults2D'
 
-# restore solution in TGLF module
-if rho not in root.setdefault(scanResults, OMFITtree()):
-    root['TGLF'][scanResults] = OMFITtree()
-else:
-    root['TGLF'][scanResults] = copy.deepcopy(root[scanResults][rho])
-
-
-# make copy of experimental tglf input file
-root['TGLF']['FILES']['input.tglf'] = copy.deepcopy(root['input.tglf'][rho])
+results = root[scanResults][rho]
+inputTGLF = root['input.tglf'][rho]
 
 
 # TGLF experimental values
@@ -43,7 +37,7 @@ if 'tgyro_output' in root:
         # However this is opposite to GACODE standards (hence the negatives).
         # The following lines mirror the TGYRO source code.
         tglf_sign_it_in = (
-            -1.0 * (-1.0 * root['TGLF']['FILES']['input.tglf']['SIGN_BT']) * (-1.0 * root['TGLF']['FILES']['input.tglf']['SIGN_IT'])
+            -1.0 * (-1.0 * inputTGLF['SIGN_BT']) * (-1.0 * inputTGLF['SIGN_IT'])
         )
         # Sign to be applied to Pi
         sign_tglf_Pi = -1.0 * tglf_sign_it_in
@@ -56,13 +50,13 @@ if 'tgyro_output' in root:
 
 # plot the TGLF scan at the selected radius
 if root['SETTINGS']['PHYSICS']['scanDimensions'] == 1:
-    root['TGLF']['PLOTS']['plotScan'].plotFigure(
+    plot_view(root['TGLF']['PLOTS']['plotScan'], fig=figure(), results=results, inputTGLF=inputTGLF,
         expGm=expGm, expQe=expQe, expQi=expQi, expPi=expPi, gbGm=gbGm, gbQ=gbQ, gbPi=gbPi, doSave=doSave
     )
 
 # 2D plot
 else:
-    root['TGLF']['PLOTS']['plotScan2D'].plotFigure(
+    plot_view(root['TGLF']['PLOTS']['plotScan2D'], fig=figure(), results=results, inputTGLF=inputTGLF,
         expGm=expGm, expQe=expQe, expQi=expQi, expPi=expPi, gbGm=gbGm, gbQ=gbQ, gbPi=gbPi, doSave=doSave
     )
 

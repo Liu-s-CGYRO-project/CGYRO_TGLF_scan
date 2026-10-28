@@ -12,12 +12,15 @@ defaultVars(
     gbPi=nan,
     what=['Gam/Gam_GB', 'Q/Q_GB', 'Pi/Pi_GB'],
     results='scanResults',
+    inputTGLF=None,
     combine_ions=root['SETTINGS']['PHYSICS']['combine_ions'],
     doSave=False,
 )
 
 if isinstance(results, str):
     results = root[results]
+if inputTGLF is None:
+    inputTGLF = root['FILES']['input.tglf']
 
 labels = {'Gam/Gam_GB': r'$\Gamma/\Gamma_{GB}$', 'Q/Q_GB': r'$Q/Q_{GB}$', 'Pi/Pi_GB': r'$\Pi/\Pi_{GB}$'}
 
@@ -54,7 +57,7 @@ for k, name in enumerate(what):
                 labels[name] = labels[name].split('/')[0].rstrip('$') + '$'
                 quantity = name.split('/')[0]
             if not doSave and not isnan(expGm):
-                axs[k].plot(root['FILES']['input.tglf'][param], expGm * norm, marker='*', ms=15)
+                axs[k].plot(inputTGLF[param], expGm * norm, marker='*', ms=15)
                 color = axs[k].lines[-1].get_color()
         elif name in ['Q/Q_GB', 'Q_low/Q_GB']:
             if t == 'elec':
@@ -66,7 +69,7 @@ for k, name in enumerate(what):
                 labels[name] = labels[name].split('/')[0].rstrip('$') + '$'
                 quantity = name.split('/')[0]
             if not doSave and not isnan(expQ):
-                axs[k].plot(root['FILES']['input.tglf'][param], expQ * norm, marker='*', ms=15)
+                axs[k].plot(inputTGLF[param], expQ * norm, marker='*', ms=15)
                 color = axs[k].lines[-1].get_color()
         elif name == 'Pi/Pi_GB':
             if not isnan(gbPi):
@@ -74,7 +77,7 @@ for k, name in enumerate(what):
                 labels[name] = labels[name].split('/')[0].rstrip('$') + '$'
                 quantity = name.split('/')[0]
             if not doSave and not isnan(expPi):
-                axs[k].plot(root['FILES']['input.tglf'][param], expPi * norm, marker='*', ms=15)
+                axs[k].plot(inputTGLF[param], expPi * norm, marker='*', ms=15)
                 color = axs[k].lines[-1].get_color()
 
         if not doSave:
@@ -89,7 +92,7 @@ for k, name in enumerate(what):
                 else:
                     axs[k].plot(prange, data * norm, label=t, color=color, marker='.', ls='-', alpha=0.75)
             axs[k].set_title(labels[name])
-            axs[k].axvline(root['FILES']['input.tglf'][param], color='black', ls='--')
+            axs[k].axvline(inputTGLF[param], color='black', ls='--')
 
         outlines.append(t + ' ' + quantity)
         s = StringIO()

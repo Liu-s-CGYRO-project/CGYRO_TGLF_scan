@@ -131,7 +131,7 @@ def _view_globals(aux):
 
 
 def plot_view(script, **kwargs):
-    """Execute a display-only native plot without its unconditional tree repaint.
+    """Execute a display-only Plot or legacy Task without a global repaint.
 
     OMFITpythonPlot.plot refreshes the main tree even when updateGUI=False on
     the button. That can evaluate every expression/library in the project.
@@ -139,7 +139,12 @@ def plot_view(script, **kwargs):
     idle draw. Only this invocation's final tree event is omitted; the method,
     its shared globals and any business events inside the script stay intact.
     """
-    return _view_method(script.plot, **kwargs)
+    method = getattr(script, 'plot', None)
+    if method is None:
+        # PLOTS is a tree location, not an OMFIT class. Existing TGLF plots
+        # are registered as Tasks and must keep their native run/progress path.
+        return task_action(script, **kwargs)
+    return _view_method(method, **kwargs)
 
 
 def gui_view(script, **kwargs):

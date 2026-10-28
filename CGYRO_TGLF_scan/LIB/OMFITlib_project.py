@@ -36,6 +36,7 @@ from OMFITlib_transfer_workflow import (generation_issues, initialize_generation
 from OMFITlib_tglf_workbench import (PROFILE_PATH, RADII, initialize as initialize_tglf,
     fully_failed, generation_overrides, input_rows as tglf_rows, plan as tglf_plan)
 from OMFITlib_tglf_multi_data import profile_digest, profile_info, tgyro_input
+from OMFITlib_tglf_records import run_records, restore_native_results
 from OMFITlib_transfer_particles import particle_options
 from OMFITlib_transfer_schemes import generate_schemes, scheme_runid
 from OMFITlib_cgyro_parameters import (initialize_parameters,
@@ -1239,6 +1240,21 @@ class ProjectActions:
             self.settings['message'] = '已选用此 TGLF 输入，参数内容未变化。'
             return
         self.install_tglf(incoming, title, destination)
+
+    def restore_tglf_native_results(self, run_id):
+        node = self.root['TGLF_scan']
+        record = run_records(node).get(run_id, None)
+        if record is None:
+            raise ValueError('所选 TGLF 记录已不存在')
+        report = restore_native_results(node, record, self.factory)
+        self._record('归位 TGLF 原生结果', status='complete', run_id=run_id, **report)
+        self.settings['message'] = '已将 {} 个点归位到原生扫描分支。'.format(report['moved'])
+        issues = report['conflicts'] + report['unavailable']
+        if issues:
+            self.settings['message'] += ' {} 个点保持原位置：{}'.format(len(issues), '；'.join(issues[:3]))
+            if len(issues) > 3:
+                self.settings['message'] += '；其余见操作历史。'
+        return report
 
     def run_tglf_plan(self):
         settings, _ = initialize_tglf(self.root, self.factory)
