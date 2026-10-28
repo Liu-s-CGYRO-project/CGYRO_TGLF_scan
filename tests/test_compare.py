@@ -9,6 +9,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 import warnings
+from unittest.mock import patch
 from contextlib import nullcontext
 
 import matplotlib
@@ -289,6 +290,89 @@ class RefactorTest(unittest.TestCase):
         self.render(root)
         pages=list(modules['dispatch'].collect_comparison_pages(root,core.build_context(root)))
         self.assertEqual({c['nr'] for c in pages[0][1]},{'nr=2','nr=10'})
+
+    def automatic_radius_fixture(self, mode='CGYRO_vs_TGLF'):
+        root = fixture(mode)
+        run = root['CGYRO_scan']['RUN_DB']['run']
+        keys = ['nr=2__rho=0.3__ion=BASE', 'nr=10__rho=0.5__ion=T']
+        for old, new in zip(('nr=2', 'nr=10'), keys):
+            run[new] = run.pop(old)
+        selected = root['SETTINGS']['PHYSICS'][mode]
+        selected['CGYRO'].update(nr_selected=keys)
+        selected['CGYRO'].pop('rho_pair_cfg', None)
+        selected['TGLF'].pop('rho_pair_flags', None)
+        selected['TGLF']['rho_selected'] = [.3, .5]
+        ui = FakeUI(root)
+        app = modules['ui'].ComparisonUI(root, ui)
+        return root, selected, keys, app, ui
+
+    def test_same_radius_automatically_pairs_without_matrix_or_result_read(self):
+        root, selected, keys, app, ui = self.automatic_radius_fixture()
+        with patch.object(core, 'cgyro_frequency_stats', side_effect=AssertionError('result read')):
+            app.render_mode_cgyro_vs_tglf(selected)
+        self.assertEqual(selected['radius_pairing'], 'auto')
+        self.assertEqual(selected['TGLF']['rho_pair_flags'], {keys[0]: {'0.3': True}, keys[1]: {'0.5': True}})
+        self.assertFalse(any(name == 'CheckBox' and 'rho_pair_flags' in args[0] for _, name, args, _ in ui.events))
+        pairs, _, _, _ = series.read_settings(root, core.build_context(root), 'CGYRO_vs_TGLF')
+        self.assertEqual(pairs, {keys[0]: [.3], keys[1]: [.5]})
+        self.assertFalse(state.selection_check(root)['errors'])
+
+    def test_radius_matching_accepts_roundoff_but_never_index_or_nearest_radius(self):
+        self.assertTrue(state.same_radius('0.58750000', .5875))
+        self.assertTrue(state.same_radius('0.33333333', 1. / 3))
+        self.assertFalse(state.same_radius('unknown', .5))
+        self.assertFalse(state.same_radius('nr=1', 1.))
+        self.assertFalse(state.same_radius('0.5', .50001))
+        self.assertFalse(state.same_radius('nan', float('nan')))
+
+    def test_legacy_radius_uses_saved_metadata_not_input_ordinal(self):
+        root, selected, keys, app, ui = self.automatic_radius_fixture()
+        self.assertEqual(app._case_radius('nr=1', {'nr=1': {'__INFO__': {'rho': .5}}}), .5)
+        self.assertIsNone(app._case_radius('nr=1', {'nr=1': {}}))
+        self.assertEqual(app._case_radius('nr=1__rho=0.3__ion=T', {}), '0.3')
+
+    def test_missing_and_ambiguous_radius_do_not_choose_other_data(self):
+        root, selected, keys, app, ui = self.automatic_radius_fixture()
+        spectra = root['TGLF_scan']['scanResults_spectra']
+        spectra['0.30000000'] = spectra[.3]
+        spectra[.5001] = spectra.pop(.5)
+        app.render_mode_cgyro_vs_tglf(selected)
+        self.assertEqual(selected['TGLF']['rho_pair_flags'], dict.fromkeys(keys, {}))
+        errors = state.selection_check(root)['errors']
+        self.assertEqual(sum('唯一的同半径' in item for item in errors), 2)
+
+    def test_reverse_auto_pairing_includes_only_same_radius_isotopes(self):
+        root, selected, keys, app, ui = self.automatic_radius_fixture('TGLF_vs_CGYRO')
+        run = root['CGYRO_scan']['RUN_DB']['run']
+        extra = 'nr=2__rho=0.3__ion=D'
+        run[extra] = copy.deepcopy(run[keys[0]])
+        app.render_mode_tglf_vs_cgyro(selected)
+        pairs, _, _, _ = series.read_settings(root, core.build_context(root), 'TGLF_vs_CGYRO')
+        self.assertEqual(set(pairs[.3]), {keys[0], extra})
+        self.assertEqual(pairs[.5], [keys[1]])
+        self.assertFalse(any(name == 'CheckBox' and 'rho_pair_cfg' in args[0] for _, name, args, _ in ui.events))
+
+    def test_explicit_old_manual_pairs_survive_and_can_switch_to_auto(self):
+        root, selected, keys, app, ui = self.automatic_radius_fixture()
+        selected['TGLF']['rho_pair_flags'] = {keys[0]: {'0.5': True}, keys[1]: {'0.3': True}}
+        app.render_mode_cgyro_vs_tglf(selected)
+        self.assertEqual(selected['radius_pairing'], 'manual')
+        self.assertTrue(selected['TGLF']['rho_pair_flags'][keys[0]]['0.5'])
+        selected['radius_pairing'] = 'auto'
+        app.render_mode_cgyro_vs_tglf(selected)
+        self.assertEqual(selected['TGLF']['rho_pair_flags'][keys[0]], {'0.3': True})
+
+    def test_auto_pairing_rechecks_selected_source_after_saved_state_reopens(self):
+        root, selected, keys, app, ui = self.automatic_radius_fixture()
+        app.render_mode_cgyro_vs_tglf(selected)
+        saved = json.loads(json.dumps(root['SETTINGS'], default=lambda value: value.tolist()))
+        root['SETTINGS'] = saved
+        selected = saved['PHYSICS']['CGYRO_vs_TGLF']
+        root['TGLF_scan']['scanResults2D_spectra'] = {.5: {'A+B': {1.: {2.: {}}}}}
+        selected['TGLF']['result_source'] = 'legacy:2D'
+        app = modules['ui'].ComparisonUI(root, FakeUI(root))
+        app.render_mode_cgyro_vs_tglf(selected)
+        self.assertEqual(selected['TGLF']['rho_pair_flags'], {keys[0]: {}, keys[1]: {'0.5': True}})
 
     def test_no_overlap_missing_and_single_point_errors(self):
         out=core.cgyro_tglf_error([.1],[1.],[2.],[.3],[1.],[2.])

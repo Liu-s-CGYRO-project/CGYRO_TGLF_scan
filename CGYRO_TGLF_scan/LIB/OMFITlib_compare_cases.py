@@ -26,6 +26,7 @@ from OMFITlib_compare_state import (
     stable_keys,
     sync_flags,
     selected_items,
+    same_radius,
 )
 
 
@@ -256,6 +257,21 @@ class CaseSelection(ComparisonWidgets):
         self._render_tglf_parameter_selection_block(
             state, path, results, parameters, state.get('spectra_mode', '1D'), radii)
 
+    def _automatic_pairing(self, state, path, previous):
+        # Keep explicitly saved manual comparisons. New/unconfigured selections
+        # use same-rho pairing without creating a radius-by-radius checkbox matrix.
+        state.setdefault('radius_pairing', 'manual' if previous else 'auto')
+        self.ui.ComboBox(path('radius_pairing'), OrderedDict([
+            ('相同半径自动匹配', 'auto'), ('手动配对（跨半径）', 'manual')]),
+            '半径配对', updateGUI=True, state='readonly')
+        return state['radius_pairing'] == 'auto'
+
+    def _case_radius(self, case, run):
+        parts = self._case_parts(case)
+        if parts is not None and parts[1] != 'unknown':
+            return parts[1]
+        return run[case].get('__INFO__', {}).get('rho', None)
+
     def render_mode_cgyro_vs_tglf(self, state):
         prefix = "root['SETTINGS']['PHYSICS']['CGYRO_vs_TGLF']"
         path = lambda *keys: self._dict_path(prefix, *keys)
@@ -267,9 +283,20 @@ class CaseSelection(ComparisonWidgets):
         remap_pair_flags(tg, self._cgyro_case_aliases)
         selected = cg.get('nr_selected', [])
         pairs = tg.setdefault('rho_pair_flags', {})
+        automatic = self._automatic_pairing(state, path, any(any(flags.values()) for flags in pairs.values()))
         paired_rhos = []
         for nr in selected:
             key = str(nr)
+            if automatic:
+                radius = self._case_radius(nr, run)
+                matches = [rho for rho in rhos if same_radius(radius, rho)]
+                pairs[key] = {str(matches[0]): True} if len(matches) == 1 else {}
+                if len(matches) != 1:
+                    self.ui.Label('{}：{}，可切换为手动配对。'.format(labels[nr][0],
+                        '同半径有多个 TGLF 条目' if matches else '没有对应的 TGLF 半径'), align='left')
+                else:
+                    paired_rhos.extend(matches)
+                continue
             flags = pairs.setdefault(key, {})
             for rho in rhos:
                 flags.setdefault(str(rho), False)
@@ -277,6 +304,8 @@ class CaseSelection(ComparisonWidgets):
             self.ui.Label('{} → 配对 TGLF 半径'.format(labels[nr][0]), align='left')
             self._render_key_checkbox_grid(lambda rho: path('TGLF', 'rho_pair_flags', key, str(rho)), rhos)
             paired_rhos.extend(rho for rho in rhos if flags.get(str(rho), None))
+        if automatic:
+            self.ui.Label('已按相同 ρ 匹配 {} / {} 个 CGYRO 案例。'.format(len(paired_rhos), len(selected)), align='left')
         self._cgyro_parameters(cg, lambda *k: path('CGYRO', *k), run, selected)
         self._tglf_parameters(tg, path, results, list(dict.fromkeys(paired_rhos)))
 
@@ -288,12 +317,24 @@ class CaseSelection(ComparisonWidgets):
         run, radii = self._choose_cgyro(cg, lambda *k: path('CGYRO', *k), select_radii=False)
         self._activate_pairing(cg, cg, tg, 'rho_pair_cfg')
         pairs = cg.setdefault('rho_pair_cfg', {})
+        automatic = self._automatic_pairing(state, path, any(
+            cfg.get('nr_selected', []) or any(cfg.get('nr_flag', {}).values()) for cfg in pairs.values()))
+        case_rhos = {case: self._case_radius(case, run) for case in radii} if automatic else {}
         paired_radii = []
         for rho in tg.get('rho_selected', []):
+            if automatic:
+                matches = [case for case in radii if same_radius(case_rhos[case], rho)]
+                pairs[str(rho)] = dict(nr_selected=matches)
+                paired_radii.extend(matches)
+                if not matches:
+                    self.ui.Label('TGLF {}：没有对应的 CGYRO 半径，可切换为手动配对。'.format(rho), align='left')
+                continue
             cfg = pairs.setdefault(str(rho), {})
             self.ui.Label('TGLF {} → 配对 CGYRO 输入案例'.format(rho), align='left')
             self._select_cgyro_cases(cfg, lambda *keys: path('CGYRO', 'rho_pair_cfg', str(rho), *keys), radii)
             paired_radii.extend(cfg['nr_selected'])
+        if automatic:
+            self.ui.Label('按相同 ρ 匹配，包含该半径保存的各离子案例。', align='left')
         self._tglf_parameters(tg, path, results, tg.get('rho_selected', []))
         self._cgyro_parameters(cg, lambda *k: path('CGYRO', *k), run, list(dict.fromkeys(paired_radii)))
 

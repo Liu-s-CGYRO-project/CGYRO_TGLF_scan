@@ -156,6 +156,58 @@ def gui_view(script, **kwargs):
     return _view_method(script.run, **kwargs)
 
 
+def begin_view_open(api):
+    """Omit the native launcher's two unconditional tree repaints for this view.
+
+    A raw tree double-click does not go through gui_view. Both GUI.update and
+    OMFITpythonGUI.run repaint the whole tree after main.py returns, evaluating
+    saved result expressions. A temporary Tk bind tag filters only those exact
+    callers/receivers. Business events, other windows and later edits pass
+    through unchanged. No OMFIT class, method or existing binding is replaced.
+    """
+    aux = getattr(api, '_aux', {})
+    parent = aux.get('parentGUI', None)
+    if not isinstance(parent, tk.Misc) or aux.get('is_compoundGUI', False):
+        return
+    root = getattr(api, 'OMFITaux', {}).get('rootGUI', None)
+    if not isinstance(root, tk.Misc):
+        return
+    top = parent.winfo_toplevel()
+    gui = getattr(api, '_GUIs', {}).get(str(top), None)
+    if gui is None or getattr(top, '_cgyro_open_filter', None) is not None:
+        return
+    tag = 'CGYROViewOpen' + str(id(top))
+
+    def repaint(event):
+        frame = inspect.currentframe()
+        try:
+            # Inspect the immediate emitter, not merely an enclosing GUI.run:
+            # a data-changing script inside that call must still repaint.
+            while frame is not None:
+                if frame.f_code is tk.Misc.event_generate.__code__:
+                    frame = frame.f_back
+                    if frame is not None and (
+                            (frame.f_code.co_name == 'update' and frame.f_locals.get('self', None) is gui)
+                            or (frame.f_code.co_name == 'run' and frame.f_locals.get('self', None) is gui.pythonFile)):
+                        return 'break'
+                    return
+                frame = frame.f_back
+        finally:
+            del frame
+
+    def finish():
+        top._cgyro_open_filter = None
+        root.bindtags(tuple(value for value in root.bindtags() if value != tag))
+        root.unbind_class(tag, '<<update_treeGUI>>')
+        root.deletecommand(command)
+
+    command = root.bind_class(tag, '<<update_treeGUI>>', repaint)
+    root.bindtags((tag,) + root.bindtags())
+    # A regular timer runs after the outer launcher returns, unlike idle work
+    # drained from native geometry code. It also cleans up a failed opening.
+    top._cgyro_open_filter = root.after(0, finish)
+
+
 class _TaskAux(ChainMap):
     """Keep native halt-window bookkeeping in the actual session dictionary."""
     def __setitem__(self, key, value):

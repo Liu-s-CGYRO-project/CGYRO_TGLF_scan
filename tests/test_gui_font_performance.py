@@ -175,6 +175,11 @@ class GuiFontPerformanceTests(unittest.TestCase):
         field.pack(fill='x')
         layout.finish_gui_layout(heading, compact=False)
         self.root.update()
+        # Geometry is deliberately scheduled on a normal 10 ms timer, outside
+        # native update_idletasks. A single update can finish before it is due.
+        ready = tk.BooleanVar(self.root, value=False)
+        self.root.after(50, lambda: ready.set(True))
+        self.root.wait_variable(ready)
         self.assertEqual(tkfont.Font(root=self.root, font=heading.cget('font')).actual('weight'), 'bold')
         self.assertGreater(content.winfo_height(), 1)
         self.assertGreater(field.winfo_height(), 1)

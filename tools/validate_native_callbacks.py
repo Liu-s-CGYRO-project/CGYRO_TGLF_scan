@@ -57,8 +57,14 @@ class CallbackTests(unittest.TestCase):
         self.assertEqual(sys.meta_path, importers)
         self.assertFalse(any(name.startswith('OMFITlib_') for name in sys.modules))
 
-    def page(self, mode='CGYRO_vs_CGYRO'):
+    def page(self, mode='CGYRO_vs_CGYRO', automatic=False):
         root = treeify(self.fixture['fixture'](mode), self.host.factory)
+        if automatic:
+            run = root['CGYRO_scan']['RUN_DB']['run']
+            for case, rho in (('nr=2', .3), ('nr=10', .5)):
+                run[case]['__INFO__'] = self.host.factory({'rho': rho})
+            root['SETTINGS']['PHYSICS'][mode]['CGYRO']['nr_selected'] = ['nr=2', 'nr=10']
+            root['SETTINGS']['PHYSICS'][mode]['TGLF']['rho_pair_flags'] = self.host.factory()
         # This importer/callback check uses Matplotlib's installed local font;
         # acquiring the independent default font pack is outside its scope.
         root['SETTINGS']['PLOT_STYLE'] = dict(font_file=str(Path(get_data_path()) / 'fonts/ttf/DejaVuSans.ttf'))
@@ -81,6 +87,18 @@ class CallbackTests(unittest.TestCase):
         controls = ui.children[mode]
         buttons = {args[0]: args[1] for _, kind, args, _ in controls.events if kind == 'Button'}
         return root, buttons, plots, before
+
+    def test_automatic_radius_pairing_and_plot_after_native_import_cleanup(self):
+        root, buttons, plots, before = self.page('CGYRO_vs_TGLF', automatic=True)
+        state = root['SETTINGS']['PHYSICS']['CGYRO_vs_TGLF']
+        self.assertEqual(state['radius_pairing'], 'auto')
+        self.assertEqual(list(state['TGLF']['rho_pair_flags']['nr=2'].items()), [('0.3', True)])
+        self.assertEqual(list(state['TGLF']['rho_pair_flags']['nr=10'].items()), [('0.5', True)])
+        self.assertEqual(buttons['检查选择']()['errors'], [])
+        buttons['绘制所选数据']()
+        self.assertEqual(len(plots), 1)
+        self.assertTrue(plt.get_fignums())
+        self.assert_cleaned(before)
 
     def test_four_modes_plot_and_check_after_gui_returns(self):
         for mode in ('CGYRO_vs_CGYRO', 'CGYRO_vs_TGLF', 'TGLF_vs_TGLF', 'TGLF_vs_CGYRO'):

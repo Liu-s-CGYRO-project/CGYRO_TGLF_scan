@@ -113,6 +113,20 @@ def selected_items(flags, items):
     return [item for i, item in enumerate(items) if flags.get(i, flags.get(str(i), False))]
 
 
+def same_radius(cgyro_rho, tglf_rho):
+    """Match saved rho metadata, allowing only archive formatting roundoff.
+
+    Do not equate a radial input ordinal or a missing rho with a physical
+    radius. A 3D slice retains its full identity; multiple matches need an
+    explicit selection rather than silently choosing a slice/version.
+    """
+    try:
+        left, right = float(cgyro_rho), float(str(tglf_rho).split(' · ', 1)[0])
+        return math.isfinite(left) and math.isfinite(right) and math.isclose(left, right, rel_tol=1e-8, abs_tol=1e-10)
+    except (TypeError, ValueError):
+        return False
+
+
 def activate_source(state, source):
     """Switch only selection state, retaining a small snapshot per run/source.
 
@@ -270,7 +284,8 @@ def selection_check(root, mode=None):
                               else '请选择 CGYRO 半径。')
             for nr in cg.get('nr_selected', []):
                 if not any(tg.get('rho_pair_flags', {}).get(str(nr), {}).values()):
-                    errors.append('请为 CGYRO {} 配对 TGLF 半径。'.format(nr))
+                    errors.append(('CGYRO {} 没有唯一的同半径 TGLF 结果，请检查来源或手动配对。'
+                                   if state.get('radius_pairing', 'manual') == 'auto' else '请为 CGYRO {} 配对 TGLF 半径。').format(nr))
         if mode == 'TGLF_vs_CGYRO':
             for rho in tg.get('rho_selected', []):
                 cfg = cg.get('rho_pair_cfg', {}).get(str(rho), {})
