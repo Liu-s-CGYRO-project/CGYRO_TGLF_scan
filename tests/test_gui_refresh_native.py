@@ -464,6 +464,44 @@ class NativeTkRefreshTests(unittest.TestCase):
         self.assertEqual(other, ['ready'])
         self.assertEqual(proxy.winfo_exists(), self.root.winfo_exists())
 
+    def test_parameter_fields_opt_out_of_tree_paint_without_losing_native_edits(self):
+        events, post = [], []
+        self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        def build(ui):
+            # Both orders share one refresh scope: a cached ordinary Entry
+            # constructor must not leak its event destination into this field.
+            self.controls['ordinary'] = ui.Entry("root['number']", updateGUI=False)
+            self.controls['parameter'] = ui.Entry("root['number']", updateGUI=False, refresh_tree=False,
+                postcommand=lambda location: post.append(location))
+            self.controls['boolean'] = ui.ComboBox("root['mode']", ['spectra', 'ballooning'],
+                updateGUI=False, refresh_tree=False)
+        self.render_scoped(build)
+        events.clear()
+        entry = self.controls['parameter']
+        entry.delete(0, tk.END)
+        entry.insert(0, '9.5')
+        self.submit_entry(entry)
+        self.drain()
+        self.assertEqual(self.tree['number'], 9.5)
+        self.assertEqual(post, ["root['number']"])
+        combo = self.controls['boolean']
+        combo.set('ballooning')
+        combo.event_generate('<<ComboboxSelected>>')
+        self.drain()
+        self.assertEqual(self.tree['mode'], 'ballooning')
+        self.assertEqual(events, [])
+        self.assertEqual(self.region_updates, [])
+        self.assertEqual(self.updates, [])
+        self.submit_entry(self.controls['ordinary'])
+        self.assertEqual(events, ['tree'])
+        self.render(lambda ui: self.controls.update(entry=ui.Entry("root['number']", multiline=True,
+            refresh_tree=False, updateGUI=True, norm=2.)))
+        events.clear()
+        self.apply_multiline('4.5')
+        self.assertEqual(self.tree['number'], 9.)
+        self.assertEqual(events, [])
+        self.assert_owner_refresh()
+
     def test_normal_physical_checkbox_still_notifies_tree(self):
         self.tree['visible'] = False
         events = []

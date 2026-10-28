@@ -1,5 +1,6 @@
 """RUN_DB version selection with real v3 files; no scheduler or solver calls."""
 import copy
+import ast
 import hashlib
 import json
 from pathlib import Path
@@ -225,6 +226,54 @@ class ResultIdentityTests(unittest.TestCase):
         plan = continuation_plan(module, 'defaults', ['p000001'], 1.)
         current, _, _ = prepare_point(module, plan, 'p000001', str(self.base / 'defaults-stage'), Input, runtime=self.current)
         self.assertEqual((current['ERROR_TOL'], current['MASS_1'], current['MAX_TIME']), (1e-5, 1.5, 1.))
+
+    def test_restart_keeps_integer_defaults_in_solver_readable_form(self):
+        class TypedInput(Input):
+            """Match OMFIT's type-sensitive save; :g would hide this regression."""
+            def __init__(self, filename=None, values=None):
+                if values is None:
+                    values = {key: ast.literal_eval(value) for key, value in
+                              (line.split('=', 1) for line in Path(filename).read_text().splitlines())}
+                super().__init__(filename, values)
+
+            def duplicate(self):
+                return TypedInput(values=dict(self))
+
+            def deploy(self, filename):
+                Path(filename).write_text(''.join('{}={}\n'.format(key, value) for key, value in self.items()))
+                self.filename = str(filename)
+
+        module = {}
+        integers = dict(E_FIX=2, RESTART_STEP=10, RESTART_PRESERVATION_MODE=3, MPIIO_STRIPE_FACTOR=0,
+                        PROFILE_MODEL=1, COLLISION_FIELD_MAX_L=-2, FULL_T_ASYM_PRINT_FLAG=0)
+        self.result(module, 'typed-defaults', generated=dict(integers, ERROR_TOL=1e-5, MASS_1=1.5))
+        plan = continuation_plan(module, 'typed-defaults', ['p000001'], 1.)
+        stage = self.base / 'typed-stage'
+        current, _, _ = prepare_point(module, plan, 'p000001', str(stage), TypedInput, runtime=self.current)
+        saved = dict(line.split('=', 1) for line in (stage / 'input.cgyro').read_text().splitlines())
+        for name, value in integers.items():
+            self.assertIs(type(current[name]), int, name)
+            self.assertEqual(saved[name], str(value), name)
+        self.assertEqual(float(saved['ERROR_TOL']), 1e-5)
+        self.assertEqual(float(saved['MASS_1']), 1.5)
+
+    def test_input_parser_preserves_integer_and_real_tokens_without_rounding(self):
+        tokens = {'RESTART_STEP': '10', 'COLLISION_FIELD_MAX_L': '-2', 'PROFILE_MODEL': '+1',
+                  'LARGE_INTEGER': '9007199254740993', 'UP_THETA': '1.0',
+                  'MASS_1': '1D0', 'ERROR_TOL': '1.000D-4', 'KY': '-0.5'}
+        for generated in (False, True):
+            with self.subTest(generated=generated):
+                path = self.base / 'typed-input'
+                path.write_text(''.join((value + ' ' + name if generated else name + '=' + value) + '\n'
+                                        for name, value in tokens.items()))
+                values, digest = read_parameters(path, generated=generated)
+                self.assertEqual(digest, hashlib.sha256(path.read_bytes()).hexdigest())
+                for name in ('RESTART_STEP', 'COLLISION_FIELD_MAX_L', 'PROFILE_MODEL', 'LARGE_INTEGER'):
+                    self.assertIs(type(values[name]), int, name)
+                    self.assertEqual(values[name], int(tokens[name]))
+                for name in ('UP_THETA', 'MASS_1', 'ERROR_TOL', 'KY'):
+                    self.assertIs(type(values[name]), float, name)
+                self.assertEqual(values['ERROR_TOL'], 1e-4)
 
     def test_old_generated_input_is_read_only_for_competing_coordinates(self):
         module = {}

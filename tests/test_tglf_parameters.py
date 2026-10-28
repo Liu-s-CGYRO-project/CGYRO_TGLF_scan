@@ -13,7 +13,8 @@ from test_project import UI
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / 'CGYRO_TGLF_scan/LIB'))
-from OMFITlib_tglf_parameters import parameter_catalog, parameter_values
+from OMFITlib_tglf_parameters import FIELDS, MANAGED, parameter_catalog, parameter_values
+from OMFITlib_gui_controls import parameter_matches
 from OMFITlib_tglf_parameter_help import parameter_help
 from OMFITlib_tglf_workbench import (apply_scenario, generation_overrides, initialize, parameter_overrides,
                                     parameter_value, plan, save_preset, scan_parameter_names, scenario_choices)
@@ -89,6 +90,68 @@ class TGLFParametersTest(unittest.TestCase):
         values = parameter_values(self.source)
         self.assertEqual(values['RLTS_8'], 7.5)
         self.assertNotIn('RLNS_8', values)  # Native catalog only verifies species 1..7.
+
+    def test_catalog_covers_every_official_parser_field_with_matching_default(self):
+        snapshot = json.loads((REPO / 'tests/fixtures/tglf_defaults.json').read_text(encoding='utf-8-sig'))
+        expected = {name: (text == '.true.' if text in ('.true.', '.false.') else
+                          text if name == 'UNITS' else float(text))
+                    for name, text in snapshot['defaults'].items()}
+        actual = parameter_values({'NS': 7})
+        actual.update({name: FIELDS[name][0] for name in MANAGED})
+        actual['UNITS'] = 'GYRO'
+        self.assertEqual(len(expected), 177)
+        self.assertEqual(actual, expected)
+
+    def test_omitted_ns_uses_native_default_without_changing_source(self):
+        del self.source['NS']
+        self.settings.update(mode='single', single_Ti=True)
+        before = dict(self.source)
+        values = parameter_values(self.source)
+        self.assertIn('RLTS_2', values)
+        self.assertNotIn('RLTS_3', values)
+        inputs = self.execute(plan(self.root, self.settings))
+        self.assertEqual(inputs[0]['NS'], 2)
+        self.assertEqual(self.source, before)
+
+    def test_search_crosses_group_boundaries_and_matches_chinese_and_plain_names(self):
+        catalog = parameter_catalog(self.source)
+        rows = [(name, spec[1], spec[2], name == 'SAT_RULE') for name, spec in catalog.items()]
+        self.assertEqual(parameter_matches(rows, 'common', ' q_loc '), ['Q_LOC'])
+        self.assertEqual(parameter_matches(rows, 'common', '安全因子 绝对'), ['Q_LOC'])
+        self.assertEqual(parameter_matches(rows, 'common', ''), ['SAT_RULE'])
+        self.assertEqual(parameter_matches(rows, 'all', 'not_a_parameter'), [])
+        self.settings.update(parameter_group='common', search='Q_LOC')
+        workbench, ui = self.workbench()
+        workbench.parameters()
+        self.assertEqual(set(self.parameter_controls(ui)), {'Q_LOC'})
+
+    def test_width_min_signed_value_survives_edit_preset_scan_and_submission(self):
+        workbench, _ = self.workbench()
+        self.settings['parameters']['WIDTH_MIN'] = dict(enabled=False, value=-.3)
+        workbench.edit_parameter('WIDTH_MIN', .3)
+        self.assertEqual(parameter_overrides(self.settings, self.source)['WIDTH_MIN'], -.3)
+        save_preset(self.settings, self.source, 'signed width')
+        self.assertEqual(self.settings['presets']['signed width']['WIDTH_MIN'], -.3)
+        self.settings.update(parameter1='WIDTH_MIN', values1=[-.3, .3])
+        inputs = self.execute(plan(self.root, self.settings))
+        self.assertEqual([row['WIDTH_MIN'] for row in inputs], [-.3, .3])
+        self.assertIn('符号不能丢弃', parameter_help('WIDTH_MIN'))
+
+    def test_width_min_zero_is_checked_after_scan_and_find_width_are_combined(self):
+        self.settings.update(mode='single')
+        self.settings['parameters'].update(WIDTH_MIN=dict(enabled=True, value=0),
+                                           FIND_WIDTH=dict(enabled=True, value=False))
+        inputs = self.execute(plan(self.root, self.settings))
+        self.assertEqual(inputs[0]['WIDTH_MIN'], 0)
+        self.assertFalse(inputs[0]['FIND_WIDTH'])
+        prior_runs = set(self.root['TGLF_scan']['RUN_DB'])
+        self.settings.update(mode='1d', parameter1='FIND_WIDTH', values1=[False, True])
+        with self.assertRaisesRegex(ValueError, 'log10'):
+            self.execute(plan(self.root, self.settings))
+        self.assertEqual(set(self.root['TGLF_scan']['RUN_DB']), prior_runs)
+        self.assertEqual(parameter_value('NBASIS_MIN', 0, 2), 0)
+        with self.assertRaisesRegex(ValueError, 'NBASIS_MIN'):
+            parameter_value('NBASIS_MIN', -2, 2)
 
     def test_one_dimensional_scan_materializes_only_the_selected_default(self):
         before = copy.deepcopy(self.source)

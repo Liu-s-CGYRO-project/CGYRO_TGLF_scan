@@ -5,7 +5,7 @@ its raw bytes would mistake formatting, a new duration or an MPI layout for a
 different physical point. Keep the normalized parameters in the existing point
 row; ordinary catalog queries never open these files.
 """
-from builtins import (FileNotFoundError, KeyError, TypeError, ValueError, all, any, dict, float, len, open, str)
+from builtins import (FileNotFoundError, KeyError, TypeError, ValueError, all, any, dict, float, int, len, open, str)
 import hashlib
 import math
 import re
@@ -29,7 +29,10 @@ def read_parameters(path, generated=False):
         name, value = (field.strip() for field in fields)
         if re.fullmatch(r'[A-Z][A-Z0-9_]*', name) is None or name in values:
             raise ValueError('Invalid or duplicate CGYRO input parameter: ' + name)
-        value = float(value.replace('D', 'e').replace('d', 'e'))
+        # These values also freeze solver defaults into continuation inputs.
+        # Fortran integer reads reject "10.0"; preserve the original token type
+        # instead of converting every parameter to float or guessing by name.
+        value = int(value) if re.fullmatch(r'[+-]?[0-9]+', value) else float(value.replace('D', 'e').replace('d', 'e'))
         if not math.isfinite(value):
             raise ValueError('Non-finite CGYRO input parameter: ' + name)
         values[name] = value

@@ -6,7 +6,7 @@ import math
 import uuid
 import numpy as np
 from datetime import datetime, timezone
-from OMFITlib_tglf_workbench import clone, get, parameter_value
+from OMFITlib_tglf_workbench import clone, get, parameter_value, validate_width_search
 
 defaultVars(plan=None, project_root=None)
 if not plan or not plan.get('sources', None):
@@ -38,6 +38,7 @@ for source in plan['sources']:
         candidate = clone(original)
         candidate.pop('rho', None)
         candidate.update(source['parameters'])
+        candidate.setdefault('NS', 2)  # Native parser default for a partial input.
         baseline = clone(candidate)
         for name, value in scan_values.items():
             candidate[name] = parameter_value(name, value, candidate[name])
@@ -51,6 +52,7 @@ for source in plan['sources']:
         candidate['USE_TRANSPORT_MODEL'] = True
         if int(candidate['NS']) < 1 or float(candidate['NS']) != int(candidate['NS']):
             raise ValueError('NS must be a positive integer')
+        validate_width_search(candidate)
         prepared.append((source, dict(scan_values), candidate))
 
 run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '_' + uuid.uuid4().hex[:8]

@@ -67,7 +67,7 @@ class ResultCallbackImportTests(unittest.TestCase):
             sys.modules.update(previous)
 
     def public_point(self, module, token='chosen', ky=.1):
-        info, row, reference = self.files.result(module, token, ky=ky, generated={'ERROR_TOL': 1e-4})
+        info, row, reference = self.files.result(module, token, ky=ky, generated={'ERROR_TOL': 1e-4, 'RESTART_STEP': 10})
         case = self.files.public(module, info, row, reference)
         return info, row, reference, case
 
@@ -96,6 +96,8 @@ class ResultCallbackImportTests(unittest.TestCase):
                     runtime=self.files.current)
             self.assertEqual(current['MAX_TIME'], 1.)
             self.assertEqual(current['ERROR_TOL'], 1e-4)
+            self.assertIs(type(current['RESTART_STEP']), int)
+            self.assertEqual(current['RESTART_STEP'], 10)
             self.assertEqual(metadata['continuation']['checkpoint']['time'], .3)
             self.assertIn('out.cgyro.timing', names)
 

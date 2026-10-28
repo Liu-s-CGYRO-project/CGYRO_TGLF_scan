@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -175,6 +176,27 @@ class ManifestTests(unittest.TestCase):
 
 
 class IdentityTests(unittest.TestCase):
+    @unittest.skipIf(sys.platform == 'win32', 'The recovery probe executes on a Bash server')
+    def test_pending_array_accounting_is_expanded_before_identity_validation(self):
+        # Model Slurm's actual pending-array response: without --array it
+        # returns one compressed ID. Exercise the generated shell query so
+        # the parser remains strict about ownership and exact child IDs.
+        fake_scheduler = '''
+id() { printf 'user\\n'; }
+squeue() { return 0; }
+sacct() {
+  case " $* " in
+    *" --array "*) printf '123_0|user|PENDING|WORKDIR\\n123_1|user|PENDING|WORKDIR\\n';;
+    *) printf '123_[0-1]|user|PENDING|WORKDIR\\n';;
+  esac
+}
+'''.replace('WORKDIR', WORKDIR)
+        result = subprocess.run(['bash', '-c', fake_scheduler + probe.identity_command('123')],
+                                capture_output=True, text=True, check=True)
+        identity = probe.parse_identity(result.stdout, '123')
+        self.assertEqual([row['job_id'] for row in identity['rows']], ['123_0', '123_1'])
+        self.assertEqual(identity['workdir'], WORKDIR)
+
     def test_empty_live_queue_with_accounting_finds_old_job(self):
         self.assertEqual(probe.parse_identity(identity_text(), '123')['workdir'], WORKDIR)
 

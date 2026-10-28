@@ -31,7 +31,7 @@ SCENARIOS = OrderedDict([
 ])
 USER_SCENARIO_PREFIX = 'user:'
 INTEGERS = INPUT_INTEGERS | {'并发任务数', 'UQ 参数数', '样本数', '扫描点数'}
-POSITIVE = {'NS', 'NKY', 'NMODES', 'NBASIS_MIN', 'NBASIS_MAX', 'NXGRID', 'NWIDTH', 'WIDTH', 'WIDTH_MIN'}
+POSITIVE = {'NS', 'NKY', 'NMODES', 'NBASIS_MAX', 'NXGRID', 'NWIDTH', 'WIDTH'}
 
 
 def get(root, path, default=None):
@@ -83,7 +83,21 @@ def parameter_value(name, value, original):
         number = int(number)
     if (name in POSITIVE or name.startswith(('MASS_', 'TAUS_'))) and number <= 0:
         raise ValueError(name + ' 必须大于 0')
+    if name == 'NBASIS_MIN' and number < 0:
+        raise ValueError('NBASIS_MIN 必须大于或等于 0')
     return number
+
+
+def validate_width_search(source):
+    """Validate the effective point, after fixed values and scan axes combine.
+
+    tglf_max uses abs(WIDTH_MIN) in log space. Its sign is a SAT2/3
+    electromagnetic-search switch, so never normalize it on the user's behalf.
+    A disabled search does not use WIDTH_MIN at all.
+    """
+    searching = parameter_value('FIND_WIDTH', source.get('FIND_WIDTH', True), True)
+    if searching and parameter_value('WIDTH_MIN', source.get('WIDTH_MIN', 0.3), 0.3) == 0:
+        raise ValueError('FIND_WIDTH=True 时 WIDTH_MIN 不能为 0：宽度搜索使用 log10(abs(WIDTH_MIN))；可使用非零负值。')
 
 
 def uq_parameter_count(settings):
@@ -219,7 +233,7 @@ def initialize(root, factory=dict):
     defaults = dict(mode='single', parameter1=physics.get('scanParameter', 'RLTS_1'),
                     parameter2=physics.get('scanParameter2D', 'XNUE'), values1=[], values2=[],
                     parallel=physics.get('parallelScan', 3), single_Ti=physics.get('single_Ti', False),
-                    uq_count=1, samples=15, sampling='L', parameter_group='common', search='',
+                    uq_count=1, samples=15, sampling='L', parameter_group='all', search='',
                     page='scan', scan_page='input', show_failed_runs=False)
     coordinate = 'rho' if get(root, ('TGLF_scan', 'TGYRO', 'INPUTS', 'input.tgyro', 'TGYRO_USE_RHO'), 1) else 'r/a'
     try:
@@ -375,9 +389,7 @@ def plan(root, settings):
     sources, axes, uq = [], [], []
     for row in rows:
         source = get(root, row['path'])
-        if 'NS' not in source:
-            raise ValueError(row['label'] + ' 缺少 NS')
-        parameter_value('NS', source['NS'], 2)
+        parameter_value('NS', source.get('NS', 2), 2)
         values = parameter_values(source)
         parameters = parameter_overrides(settings, source)
         values.update(parameters)

@@ -38,7 +38,9 @@ def identity_command(job_id):
     return ('set -e\nfor name in ${!SQUEUE_@} ${!SACCT_@}; do unset "$name"; done\nunset SLURM_CLUSTERS\n'
         + slurm_queue_query(job_id) + '\n' + frame('USER', 'id -un')
         + frame('QUEUE', 'cgyro_queue_rows ' + quote('%i|%u|%T|%Z'))
-        + frame('ACCOUNT', 'LC_ALL=C sacct -X -n -P -j ' + job_id
+        # Pending arrays can be compacted to 123_[0-6] by accounting even
+        # though squeue -r expands them. Request exact child IDs from both.
+        + frame('ACCOUNT', 'LC_ALL=C sacct --array -X -n -P -j ' + job_id
                 + ' --format=JobID%128,User%128,State%64,WorkDir%4096'))
 
 

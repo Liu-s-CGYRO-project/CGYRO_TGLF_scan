@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import font as tkfont, messagebox, simpledialog, ttk
 from OMFITlib_gui_layout import section_group
 from OMFITlib_gui_deferred import TabPages
-from OMFITlib_gui_controls import checkbox
+from OMFITlib_gui_controls import ParameterList, checkbox
 from OMFITlib_project import MODULES, location, read, runtime_issues
 from OMFITlib_tglf_preparation import preparation_resources
 from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, SCENARIOS, USER_SCENARIO_PREFIX,
@@ -275,7 +275,8 @@ class TGLFWorkbench:
     def units_field(self, source):
         combo = getattr(self, 'preset_combo', None)
         self.ui.ComboBox(self.prefix + "['units_override']", {'沿用输入': '', 'GYRO': 'GYRO', 'CGYRO': 'CGYRO'},
-                         '归一化', width=12, state='readonly', updateGUI=False, help=parameter_help('UNITS', source),
+                         '归一化', width=12, state='readonly', updateGUI=False, refresh_tree=False,
+                         help=parameter_help('UNITS', source),
                          postcommand=lambda location=None: self.mark_custom(combo))
 
     def parameter_field(self, name, source, label):
@@ -295,14 +296,14 @@ class TGLFWorkbench:
     def parameter_editor(self, prefix, label, reference, callback, help_text, width=12):
         # Numeric solver codes are numeric inputs too. Keep their meaning in
         # help, not in a second dropdown-only list of supported values.
-        options = dict(width=width, updateGUI=False, postcommand=callback, help=help_text)
+        options = dict(width=width, updateGUI=False, refresh_tree=False, postcommand=callback, help=help_text)
         if isinstance(reference, bool):
             return self.ui.ComboBox(prefix, {'开启': True, '关闭': False}, label, state='readonly', **options)
         return self.ui.Entry(prefix, label, **options)
 
     def preset_controls(self, source):
         self.preset_combo = self.ui.ComboBox(self.prefix + "['scenario']", scenario_choices(self.settings),
-            '参数预设', state='readonly', updateGUI=True,
+            '参数预设', state='readonly', updateGUI=True, refresh_tree=False,
             postcommand=lambda location=None: apply_scenario(self.settings, source, self.actions.factory),
             help='内置方案复用 OMFIT 的 SAT0、SAT1、SAT2、JET、ST、ITER 设置。\n'
                  '选择后可继续修改。扫描参数始终由扫描设置控制。\n'
@@ -345,18 +346,20 @@ class TGLFWorkbench:
             self.label('参考：' + self.reference['label'])
         self.preset_controls(self.source)
         catalog = parameter_catalog(self.source)
-        self.ui.ComboBox(self.prefix + "['parameter_group']", GROUPS,
-                         '显示', state='readonly', updateGUI=True)
-        self.ui.Entry(self.prefix + "['search']", '搜索', width=24, updateGUI=True)
         self.units_field(self.source)
-        self.ui.Button('全部沿用输入值', self.reset_parameters, updateGUI=True, refresh_scope='section')
-        group = self.settings['parameter_group']
+        self.label('NS = {} · 粒子种类数沿用参考输入；USE_TRANSPORT_MODEL = True · 当前工作台计算输运谱。'.format(
+            scalar(self.source.get('NS', 2))))
+        self.ui.Button('全部沿用输入值', self.reset_parameters, updateGUI=True,
+                       refresh_scope='section', refresh_tree=False)
         scanned = scan_parameter_names(self.settings)
-        for name, (reference, label, category) in catalog.items():
-            if (group == 'common' and name not in COMMON) or (group not in ('common', 'all') and group != category):
-                continue
-            if str(self.settings['search']).strip().upper() not in (name + ' ' + label).upper():
-                continue
+        # Typing a filter uses this captured catalog, not input/result files.
+        rows = [(name, spec[1], spec[2], name in COMMON) for name, spec in catalog.items()]
+        self.parameter_list = ParameterList(self.ui, self.settings, 'parameter_group', 'search', GROUPS, rows,
+            lambda names, combo=self.preset_combo: self.parameter_rows(names, catalog, scanned, combo))
+
+    def parameter_rows(self, names, catalog, scanned, combo):
+        for name in names:
+            reference, label, category = catalog[name]
             if name in scanned:
                 self.label(name + ' · ' + label + ' · 由扫描设置控制')
                 continue
@@ -373,10 +376,10 @@ class TGLFWorkbench:
                 self.label(name + ' · ' + label)
                 # Capture this mounted tab's control: another cached input tab
                 # may build its own preset menu before this callback runs.
-                callback = lambda location=None, name=name, reference=reference, combo=self.preset_combo: self.edit_parameter(name, reference, combo)
+                callback = lambda location=None, name=name, reference=reference: self.edit_parameter(name, reference, combo)
                 self.parameter_editor(prefix + "['value']", '', reference, callback, hint)
-                self.ui.Button('沿用输入', lambda name=name: self.reset_parameter(name), updateGUI=True,
-                               refresh_scope='section')
+                self.ui.Button('沿用输入', lambda name=name: self.reset_parameter(name, combo), updateGUI=True,
+                               refresh_scope='section', refresh_tree=False)
 
     def edit_parameter(self, name, reference, combo=None):
         item = self.settings['parameters'][name]
@@ -390,9 +393,9 @@ class TGLFWorkbench:
         self.settings['units_override'] = ''
         self.settings['scenario'] = 'input'
 
-    def reset_parameter(self, name):
+    def reset_parameter(self, name, combo=None):
         self.settings['parameters'][name]['enabled'] = False
-        self.mark_custom()
+        self.mark_custom(combo)
 
     def results(self):
         runs = read(self.root, ('TGLF_scan', 'RUN_DB'), {})

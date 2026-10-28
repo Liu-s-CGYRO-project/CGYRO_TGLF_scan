@@ -442,8 +442,9 @@ class ProjectWidgets:
             parent = getattr(self._api, '_aux', {}).get('parentGUI', None)
             scope = kwargs.pop('refresh_scope', 'page' if name == 'Button' else 'section')
             # updateGUI controls settings windows, not OMFIT's main tree.
-            # Display buttons opt out explicitly; mutations keep notifications.
-            refresh_tree = kwargs.pop('refresh_tree', True) if name == 'Button' else True
+            # Scalar parameter edits can skip the main tree repaint while
+            # retaining native writes/validation and hidden-preview invalidation.
+            refresh_tree = kwargs.pop('refresh_tree', True)
             arguments = dict(kwargs)
             bound = None
             if args:
@@ -471,15 +472,16 @@ class ProjectWidgets:
                     # previews. Committing an Entry must not leave Run stale.
                     bound.arguments['updateGUI'] = refresh.invalidate_only
                     args, kwargs = bound.args, bound.kwargs
-                text_function = function.__globals__.get('_Text', None) if isinstance(function, FunctionType) else None
+                text_function = constructor.__globals__.get('_Text', None) if isinstance(constructor, FunctionType) else None
                 if name == 'Entry' and isinstance(function, FunctionType) and callable(text_function):
                     # Own the closure on its refresh scope. An adapter lives
                     # longer than rebuilt tabs and must not retain dead ones.
-                    key = 'view_entry_constructor' if self._view_controls else 'entry_constructor'
-                    constructor = getattr(refresh, key, None)
-                    if constructor is None:
-                        constructor = _local_entry(function, text_function, refresh)
-                        setattr(refresh, key, constructor)
+                    key = 'view_entry_constructor' if self._view_controls or not refresh_tree else 'entry_constructor'
+                    cached = getattr(refresh, key, None)
+                    if cached is None:
+                        cached = _local_entry(constructor, text_function, refresh)
+                        setattr(refresh, key, cached)
+                    constructor = cached
             help_text = arguments.get('help', '')
             before = set(parent.winfo_children()) if isinstance(parent, tk.Misc) else set()
             result = constructor(*args, **kwargs)

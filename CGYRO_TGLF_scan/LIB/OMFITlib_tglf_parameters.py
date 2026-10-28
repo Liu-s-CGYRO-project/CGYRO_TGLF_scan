@@ -163,7 +163,7 @@ def parameter_catalog(source):
     explicit = numeric_parameters(source)
     catalog = OrderedDict((name, spec) for name, spec in FIELDS.items() if name not in MANAGED)
     try:
-        species_count = int(scalar(source.get('NS', 0)))
+        species_count = int(scalar(source.get('NS', FIELDS['NS'][0])))
     except (TypeError, ValueError, OverflowError):
         species_count = 0  # Invalid NS is diagnosed when preparing a run.
     for index in range(1, min(species_count, 7) + 1):

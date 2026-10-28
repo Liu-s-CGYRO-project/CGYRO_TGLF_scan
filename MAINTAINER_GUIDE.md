@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.31。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.32。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## TGLF 扫描控制与参数预设（1.24.31）
 
@@ -448,6 +448,10 @@ configure_window_fonts 在同一字体配置下只注册一次；显式导入字
 适配器 UpdateGUI() 默认从捕获的所有者寻找 page 边界；top 可指定目标，refresh_scope 可明确 section/page/window，all_windows=True 显式请求原生全局行为。延后执行应在构建时使用 refresh_callback 捕获边界。跨窗口例外及模板热更新范围见上表后的说明；不得为缩小范围而改变计算、归档或事务验证行为。
 
 ## 重跑隔离回归
+
+CGYRO/TGLF 计算参数页共用 `OMFITlib_gui_controls.ParameterList`。它只接收当前输入的轻量目录，纯文本搜索合并 180 ms 内的变化，搜索跨分组、空搜索按分组过滤，每页最多创建 24 行。查询与翻页只重建列表的 `DeferredSection`，不使其他标签失效、不重读目录或结果；搜索框在列表外保持存活。页面销毁时取消其搜索定时器。
+
+参数字段显式传 `refresh_tree=False`，沿用原生 Entry/ComboBox 的写值、校验、锁定与 postcommand，只抑制其无条件 `<<update_treeGUI>>`。`updateGUI=False` 仍保留隐藏运行预览的失效通知。适配器的普通/免主树重绘构造函数缓存必须分开，`_Text` 也必须使用相同事件目标。不要全局屏蔽树事件，其他修改仍保留原行为。完整参数目录的回归基准保存在 `tests/fixtures/tglf_defaults.json`，包含官方来源和 blob 身份；升级目录时一起核对默认值与运行时校验。
 
 在仓库根目录使用有 NumPy、Matplotlib 和 Tk 的 Python 环境运行；`--omfit-source` 指向原生 OMFIT 的 `omfit/` 源码目录（含 `omfit_classes/OMFITx.py` 和 `utils_tk.py`）。Linux 的真实 Tk 测试需要可用 `DISPLAY`，可在桌面终端或 Xvfb 中执行。缺少显示或原生源码时，相关套件明确失败，不计作通过。
 

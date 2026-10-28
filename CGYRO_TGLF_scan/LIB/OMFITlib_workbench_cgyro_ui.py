@@ -20,6 +20,7 @@ from OMFITlib_cgyro_run_state import submission_pending
 from OMFITlib_cgyro_radius_cleanup import preview_radius, radius_choices
 from OMFITlib_cgyro_task_manager import TaskManager, confirm_scope
 from OMFITlib_gui_deferred import TabPages
+from OMFITlib_gui_controls import ParameterList
 
 CGYRO_MAIN_TABS = ('input', 'parameters', 'results')
 
@@ -349,7 +350,7 @@ class CgyroPage:
             if self.settings.get('cgyro_parameter_reference', '') not in choices.values():
                 self.settings['cgyro_parameter_reference'] = available[0]['key']
             self.ui.ComboBox(self.prefix + "['cgyro_parameter_reference']", choices, '参考输入',
-                             state='readonly', updateGUI=True)
+                             state='readonly', updateGUI=True, refresh_tree=False)
             row = next(item for item in available if item['key'] == self.settings['cgyro_parameter_reference'])
             source_key, source = row['key'], read(self.root, row['path'])
         else:
@@ -376,30 +377,13 @@ class CgyroPage:
             self.settings['cgyro_parameter_search'] = ''
             self.settings['cgyro_parameter_catalog_revision'] = 1
         scanned = scan_parameter_names(physics, int(node['SETTINGS']['SETUP']['idimrun']))
-        self.ui.ComboBox(self.prefix + "['cgyro_parameter_group']", CGYRO_GROUPS, '参数分组',
-                         state='readonly', width=24, updateGUI=True)
-        self.ui.Entry(self.prefix + "['cgyro_parameter_search']", '搜索参数', width=28, updateGUI=True)
-        group = self.settings['cgyro_parameter_group']
-        query = str(self.settings['cgyro_parameter_search']).strip().upper()
-        names = [name for name, spec in catalog.items()
-                 if (group == 'all' or (group == 'common' and name in CGYRO_FIELDS) or spec['group'] == group)
-                 and (not query or query in name or query in spec['label'].upper())]
-        with self.ui.same_row():
-            self.ui.Button('本组沿用输入值',
-                           lambda: self.actions.reset_cgyro_parameters(names, source_key),
-                           updateGUI=True, refresh_scope='section')
-            self.ui.Button('全部沿用输入值', self.actions.inherit_cgyro_parameters,
-                           updateGUI=True, refresh_scope='section')
-        if not names:
-            self.label('没有匹配的参数。')
-        previous_group = None
-        labels = {value: label for label, value in CGYRO_GROUPS.items()}
-        for name in names:
-            spec = catalog[name]
-            if spec['group'] != previous_group:
-                self.ui.Separator(labels.get(spec['group'], '其他输入参数'))
-                previous_group = spec['group']
-            self.cgyro_parameter_row(base, name, spec, parameters[name], source_values, scanned, source_key)
+        self.ui.Button('全部沿用输入值', self.actions.inherit_cgyro_parameters,
+                       updateGUI=True, refresh_scope='section', refresh_tree=False)
+        filter_rows = [(name, spec['label'], spec['group'], name in CGYRO_FIELDS)
+                       for name, spec in catalog.items()]
+        self.cgyro_parameter_list = ParameterList(self.ui, self.settings, 'cgyro_parameter_group',
+            'cgyro_parameter_search', CGYRO_GROUPS, filter_rows,
+            lambda names: self.cgyro_parameter_rows(names, base, catalog, parameters, source_values, scanned, source_key))
         self.ui.Separator('时间缩放')
         self.cgyro_checkbox(location(base + ('scale_time_with_ky',)), physics, 'scale_time_with_ky', '按 ky 缩放时间')
         if physics['scale_time_with_ky']:
@@ -412,6 +396,12 @@ class CgyroPage:
             self.ui.EditASCIIobject(location(row['path']), '编辑参考输入', updateGUI=True)
         # Whole-scan validation belongs to Run/check/submit. Building every
         # radius/isotope input on each parameter edit makes typing expensive.
+
+    def cgyro_parameter_rows(self, names, base, catalog, parameters, source_values, scanned, source_key):
+        self.ui.Button('本页沿用输入值', lambda: self.actions.reset_cgyro_parameters(names, source_key),
+                       updateGUI=True, refresh_scope='section', refresh_tree=False)
+        for name in names:
+            self.cgyro_parameter_row(base, name, catalog[name], parameters[name], source_values, scanned, source_key)
 
     def cgyro_parameter_row(self, base, name, spec, item, source_values, scanned, source_key):
         if name in scanned:
@@ -427,8 +417,8 @@ class CgyroPage:
             if isinstance(frame, tk.Misc):
                 frame._cgyro_inline = True
             self.label(name + ' · ' + spec['label'])
-            self.ui.Entry(location(path + ('value',)), '', width=14, updateGUI=False,
+            self.ui.Entry(location(path + ('value',)), '', width=14, updateGUI=False, refresh_tree=False,
                           state='normal' if spec.get('supported', True) else 'disabled', help=help_text,
                           postcommand=lambda location=None: self.actions.edit_cgyro_parameter(name))
             self.ui.Button('沿用输入', lambda: self.actions.reset_cgyro_parameters([name], source_key),
-                           updateGUI=True, refresh_scope='section')
+                           updateGUI=True, refresh_scope='section', refresh_tree=False)
