@@ -3,9 +3,9 @@ from builtins import dict, hasattr, list, str, tuple
 from OMFITlib_compare_state import MODES, SELECTION_KEYS
 from OMFITlib_cgyro_task_catalog import manifest_sources
 
-RESULT_KEYS = ('scanResults', 'scanResults_spectra', 'scanResults2D', 'scanResults2D_spectra',
+RESULT_KEYS = ('scanResults', 'scanResults_spectra', 'scanResults2D', 'scanResults2D_spectra', 'scanResults3D', 'scanResults3D_spectra',
                'UQResults', 'UQResults_spectra', 'Experimental_fluxes', 'Experimental_spectra',
-               'tgyro_output', '_scan_cache_provenance',
+               'tgyro_output', '_scan_cache_provenance', '_workbench_index',
                '_radial_cache_provenance')
 BRANCHES = (
     ((), ('OUTPUTS',)),
@@ -14,7 +14,7 @@ BRANCHES = (
     # together, while INPUTS and prepared BATCH_INPUTS remain available.
     (('CGYRO_scan',), ('OUTPUTS', 'OUTPUTScan', 'RUN_DB', 'RUN_MANIFEST', 'RUN_BATCH',
                      'RUN_HISTORY', 'RUN_INDEX', 'Cases', 'LEGACY_UNCLASSIFIED', '_PLOT_CACHE', 'RESULT_STORE', 'RESULT_STORAGE')),
-    (('TGLF_scan',), ('RUN_DB',) + RESULT_KEYS),
+    (('TGLF_scan',), ('RUN_DB', '_workbench_runs', 'sourceResults') + RESULT_KEYS),
     (('TGLF_scan', 'TGLF'), RESULT_KEYS),
     (('TGLF_scan', 'TGYRO'), ('OUTPUTS', 'RUN_DB')),
     (('Transfer_tool', 'OUTPUTS'), ('TGYRO',)),
@@ -37,7 +37,7 @@ def active_jobs(root):
     # protect whole-project cleanup even when RUN_BATCH no longer lists them.
     records.extend(('CGYRO ' + str(token), manifest)
                    for token, manifest, _ in manifest_sources(node_at(root, ('CGYRO_scan',))))
-    for path in (('TGLF_scan', 'RUN_DB'), ('TGLF_scan', 'TGYRO', 'RUN_DB'), ('PROJECT_STATE', 'activity')):
+    for path in (('TGLF_scan', '_workbench_runs'), ('TGLF_scan', 'RUN_DB'), ('TGLF_scan', 'TGYRO', 'RUN_DB'), ('PROJECT_STATE', 'activity')):
         records.extend((str(key), record) for key, record in node_at(root, path).items())
     for case in root.get('TGLF_CASES', {}).values():
         for key, record in case.get('runs', {}).items():

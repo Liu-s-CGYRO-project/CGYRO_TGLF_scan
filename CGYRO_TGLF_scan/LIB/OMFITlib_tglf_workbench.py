@@ -14,7 +14,7 @@ SEED_PATH = ('TGLF_scan', 'TGYRO', 'INPUTS', 'input.tglf')
 RADII = [index / 100.0 for index in range(1, 100)]
 
 MODES = OrderedDict([('原始参数', 'single'), ('一维参数扫描', '1d'),
-                     ('二维参数扫描', '2d'), ('不确定度扫描（UQ）', 'uq')])
+                     ('二维参数扫描', '2d'), ('三维参数扫描', '3d'), ('不确定度扫描（UQ）', 'uq')])
 # These scenarios are the bundled OMFIT TGYRO/TGLFinputGUI definitions.
 SCENARIO_FIELDS = ('ALPHA_QUENCH', 'SAT_RULE', 'ALPHA_ZF', 'NKY', 'KYGRID_MODEL',
                    'NBASIS_MAX', 'NMODES', 'UNITS', 'XNU_MODEL', 'WDIA_TRAPPED', 'USE_AVE_ION_GRID')
@@ -110,9 +110,9 @@ def uq_parameter_count(settings):
 def scan_parameter_names(settings):
     """Active axes only; no input/result access or scan-point construction."""
     mode = settings.get('mode', 'single')
-    if mode in ('1d', '2d'):
+    if mode in ('1d', '2d', '3d'):
         return {settings.get('parameter' + str(index), '')
-                for index in range(1, 3 if mode == '2d' else 2)} - {''}
+                for index in range(1, int(mode[0]) + 1)} - {''}
     if mode == 'uq':
         try:
             count = uq_parameter_count(settings)
@@ -231,7 +231,8 @@ def initialize(root, factory=dict):
     settings = root['SETTINGS']['WORKBENCH'].setdefault('tglf', factory())
     physics = get(root, ('TGLF_scan', 'TGLF', 'SETTINGS', 'PHYSICS'), {})
     defaults = dict(mode='single', parameter1=physics.get('scanParameter', 'RLTS_1'),
-                    parameter2=physics.get('scanParameter2D', 'XNUE'), values1=[], values2=[],
+                    parameter2=physics.get('scanParameter2D', 'XNUE'), parameter3='BETAE',
+                    values1=[], values2=[], values3=[],
                     parallel=physics.get('parallelScan', 3), single_Ti=physics.get('single_Ti', False),
                     uq_count=1, samples=15, sampling='L', parameter_group='all', search='',
                     page='scan', scan_page='input', show_failed_runs=False)
@@ -246,8 +247,8 @@ def initialize(root, factory=dict):
                          radius_end=0.8, radius_step=0.05, radius_values=[0.3, 0.5, 0.7],
                          radius=native_radius,
                          scenario='input', units_override=''))
-    for index in (1, 2):
-        key = 'scanParameter' if index == 1 else 'scanParameter2D'
+    for index in (1, 2, 3):
+        key = 'scanParameter' if index == 1 else 'scanParameter' + str(index) + 'D'
         try:
             has_values = len(settings.get('values' + str(index), [])) > 0
         except TypeError:
@@ -393,9 +394,9 @@ def plan(root, settings):
         values = parameter_values(source)
         parameters = parameter_overrides(settings, source)
         values.update(parameters)
-        names = [settings['parameter1']] if mode == '1d' else ([settings['parameter1'], settings['parameter2']] if mode == '2d' else [])
+        names = [settings['parameter' + str(index)] for index in range(1, int(mode[0]) + 1)] if mode in ('1d', '2d', '3d') else []
         if len(names) != len(set(names)):
-            raise ValueError('两个扫描参数不能相同')
+            raise ValueError('扫描参数不能重复')
         axes = []
         for index, name in enumerate(names, 1):
             if name not in values or name == 'NS':
@@ -428,9 +429,7 @@ def plan(root, settings):
         raise ValueError('样本数必须大于 0')
     if mode == 'uq' and settings['sampling'] not in ('L', 'M'):
         raise ValueError('请选择采样方法')
-    points = samples if mode == 'uq' else (len(axes[0]['values']) if axes else 1)
-    if len(axes) == 2:
-        points *= len(axes[1]['values'])
+    points = samples if mode == 'uq' else math.prod(len(axis['values']) for axis in axes)
     return dict(mode=mode, sources=sources, axes=axes, uq=uq, samples=samples,
                 sampling=settings['sampling'], parallel=parallel, single_Ti=bool(settings['single_Ti']),
                 points_per_input=points, total=points * len(sources))

@@ -1,0 +1,222 @@
+"""Native result paths, dimension separation, selected reads and old projects."""
+import copy
+import pickle
+from pathlib import Path
+import sys
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+
+import numpy as np
+from omfit_mapping import OMFITMapping, treeify
+
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / 'CGYRO_TGLF_scan/LIB'))
+sys.path.insert(0, str(REPO / 'OMFITtemplates/LIB'))
+from OMFITlib_tglf_workbench import initialize, plan, scan_parameter_names
+from OMFITlib_tglf_records import at, point_current, point_result, run_records
+from OMFITlib_plot_sources import run_choices, source_dimension, tglf_results
+import OMFITlib_tglf_cache as native_cache
+import test_cgyro_storage  # Explicit native reader stand-ins for cleanup dependencies.
+from OMFITlib_result_cleanup import active_jobs, clear_results
+from OMFITlib_template_migration import ArchiveIndex
+
+
+def payload(value=2.):
+    return {'gbflux': {'data': np.array([('elec', 1., value, 3.)],
+        dtype=[('species', 'U12'), ('Gam/Gam_GB', float), ('Q/Q_GB', float), ('Pi/Pi_GB', float)])},
+        'eigenvalue_spectrum': dict(ky=np.array([.1, .2]), freq=np.array([[1., 2.]]), gamma=np.array([[3., 4.]]))}
+
+
+class Unread(dict):
+    def __getitem__(self, key):
+        raise AssertionError('Unselected payload read')
+
+    def __deepcopy__(self, memo):
+        raise AssertionError('Unselected payload copied')
+
+
+class ScanTree(OMFITMapping):
+    def sort(self, **kw):
+        pass
+
+
+class NativeStorageTests(unittest.TestCase):
+    def setUp(self):
+        self.source = dict(NS=2, ZS_1=-1., ZS_2=1., SAT_RULE=0, XNUE=.1, BETAE=.01)
+        self.root = dict(SETTINGS={'WORKBENCH': {}}, CGYRO_scan={'RUN_DB': {'untouched': [42]}},
+                         TGLF_scan={'TGLF': {'FILES': {'input.tglf': self.source},
+                                               'SCRIPTS': {}, 'SETTINGS': {'REMOTE_SETUP': {}}}})
+        self.scan = self.root['TGLF_scan']
+        self.settings, _ = initialize(self.root)
+        self.settings.update(source='current', mode='1d', parameter1='SAT_RULE', values1=[0, 1], value_mode1='list',
+                             parameter2='XNUE', values2=[.1, .2], value_mode2='list',
+                             parameter3='BETAE', values3=[.01, .02], value_mode3='list')
+
+    def execute(self, fail=None):
+        def batch(**kw):
+            for index, key in enumerate(kw['runIDs']):
+                kw['results'][key] = ({'_load_error': 'failed', 'run_log': 'diagnostic'} if index == fail else payload(index + 2))
+        self.scan['TGLF']['SCRIPTS']['runTGLFbatch'] = SimpleNamespace(run=batch)
+        prepared = plan(self.root, self.settings)
+        script = REPO / 'CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/run_workbench.py'
+        namespace = dict(root=self.scan, project_root=self.root, plan=prepared,
+                         defaultVars=lambda **kw: None, OMFITtree=dict, print=lambda *a: None)
+        if fail is None:
+            exec(compile(script.read_text(encoding='utf-8'), str(script), 'exec'), namespace)
+        else:
+            with self.assertRaisesRegex(RuntimeError, 'failed'):
+                exec(compile(script.read_text(encoding='utf-8'), str(script), 'exec'), namespace)
+        return self.scan['_workbench_runs'][self.settings['result_run']]
+
+    def test_one_two_three_dimensions_are_separate_and_native_ordered(self):
+        for mode, key, coordinate in (
+                ('1d', 'scanResults', ['SAT_RULE', 1]),
+                ('2d', 'scanResults2D', ['XNUE+SAT_RULE', .2, 1]),
+                ('3d', 'scanResults3D', ['BETAE+XNUE+SAT_RULE', .02, .2, 1])):
+            self.settings['mode'] = mode
+            record = self.execute()
+            node = at(self.scan, ['TGLF', key + '_spectra'] + coordinate)
+            self.assertIsNotNone(node)
+            np.testing.assert_array_equal(at(self.scan, ['TGLF', key] + coordinate), node['gbflux']['data'])
+            self.assertEqual(len(record['points']), 2 ** int(mode[0]))
+            self.assertTrue(all('result' not in p and 'input' not in p for p in record['points'].values()))
+            self.assertNotIn('RUN_DB', self.scan)
+        self.assertEqual(self.root['CGYRO_scan']['RUN_DB'], {'untouched': [42]})
+        self.assertEqual(scan_parameter_names(self.settings), {'SAT_RULE', 'XNUE', 'BETAE'})
+
+    def test_radial_and_single_file_native_shapes(self):
+        self.scan['input.tglf'] = {.3: dict(self.source), .5: dict(self.source)}
+        self.settings.update(source='radial', radius_mode='all', mode='2d')
+        self.execute()
+        self.assertIn(.3, self.scan['scanResults2D'])
+        self.assertIn(.5, self.scan['scanResults2D_spectra'])
+        self.settings['mode'] = 'single'
+        self.execute()
+        self.assertIn('data', self.scan['Experimental_fluxes'][.3])
+        self.assertIn('eigenvalue_spectrum', self.scan['Experimental_spectra'][.5])
+        self.settings.update(source='current')
+        record = self.execute()
+        self.assertIs(point_result(self.scan, record['points']['p000001']), self.scan['TGLF']['FILES'])
+
+    def test_transfer_inputs_with_same_radius_are_not_mixed(self):
+        self.root['Transfer_tool'] = {'OUTPUTS': {'Profiles_gen': {
+            'input.tglf_1': dict(self.source), 'input.tglf_2': dict(self.source, BETAE=.3)},
+            'Particle_processing': {'local_inputs': {'input.tglf_1': {'rho': .3}, 'input.tglf_2': {'rho': .3}}}}}
+        initialize(self.root)
+        self.settings.update(source='transfer', selected={'transfer:1': True, 'transfer:2': True})
+        record = self.execute()
+        left = point_result(self.scan, record['points']['p000001'])
+        right = point_result(self.scan, record['points']['p000003'])
+        self.assertEqual(left['input.tglf']['BETAE'], .01)
+        self.assertEqual(right['input.tglf']['BETAE'], .3)
+        self.assertIsNot(left, right)
+
+    def test_failed_download_retains_prior_native_point_and_other_dimensions(self):
+        old = self.execute()
+        point = old['points']['p000001']
+        result = point_result(self.scan, point)
+        new = self.execute(fail=0)
+        self.assertEqual(new['status'], 'partial')
+        self.assertIs(point_result(self.scan, point), result)
+        self.assertFalse(point_current(self.scan, old['points']['p000002']))
+        with self.assertRaisesRegex(ValueError, '替换'):
+            point_result(self.scan, old['points']['p000002'])
+        self.assertTrue(point_current(self.scan, new['points']['p000002']))
+        self.settings.update(mode='2d')
+        self.execute()
+        self.assertIs(point_result(self.scan, point), result)
+
+    def test_native_lookup_without_records_and_metadata_reads_without_payloads(self):
+        record = self.execute()
+        point = record['points']['p000002']
+        parent = at(self.scan, point['result_path'][:-1])
+        parent[point['result_path'][-1]] = Unread(payload())
+        self.assertIn(record['id'], run_choices(self.root).values())
+        state = {'result_source': record['id']}
+        view = tglf_results(self.root, state)
+        first = next(iter(view.values()))['SAT_RULE'][0]
+        self.assertEqual(first['eigenvalue_spectrum']['gamma(1)'][0], 3.)
+        # Deleting run metadata does not delete or make native results dependent on history.
+        self.scan.pop('_workbench_runs')
+        native = tglf_results(self.root, {'result_source': 'native:TGLF:1D'})
+        self.assertEqual(native['TGLF']['SAT_RULE'][0]['eigenvalue_spectrum']['freq(1)'][1], 2.)
+
+    def test_three_dimensions_plot_as_labelled_slices_without_losing_points(self):
+        self.settings['mode'] = '3d'
+        record = self.execute()
+        for source in (record['id'], 'native:TGLF:3D'):
+            self.assertEqual(source_dimension(self.root, source), '2D')
+            view = tglf_results(self.root, {'result_source': source})
+            self.assertEqual(len(view), 2)
+            self.assertTrue(all('BETAE=' in label for label in view))
+            count = sum(len(inner) for params in view.values() for outer in params.values() for inner in outer.values())
+            self.assertEqual(count, 8)
+
+    def test_uq_uses_native_sample_coordinates(self):
+        self.settings.update(mode='uq', uq_count=1, samples=2, uq={'0': dict(name='XNUE', mean=.1, std=.02)})
+        cp = SimpleNamespace(Normal=lambda *a: None, J=lambda *a: SimpleNamespace(sample=lambda *a: [[.08, .12]]))
+        with patch.dict(sys.modules, {'chaospy': cp}):
+            self.execute()
+        self.assertEqual(set(self.scan['TGLF']['UQResults']['XNUE']), {'0.08', '0.12'})
+        self.assertNotIn('scanResults', self.scan['TGLF'])
+
+    def test_round_trip_paths_owner_keys_and_legacy_reader_survive(self):
+        record = self.execute()
+        # Native OMFIT mappings have stricter get() semantics than plain dicts.
+        self.scan['TGLF']['SCRIPTS'] = {}
+        reopened = pickle.loads(pickle.dumps(treeify(self.root, OMFITMapping)))
+        scan = reopened['TGLF_scan']
+        point = scan['_workbench_runs'][record['id']]['points']['p000001']
+        self.assertTrue(point_current(scan, point))
+        self.assertEqual(point_result(scan, point)['input.tglf']['SAT_RULE'], 0)
+        scan['RUN_DB'] = {'old': dict(mode='1d', plan={'axes': [{'name': 'SAT_RULE'}]},
+            points={'p': dict(status='complete', parameters={'SAT_RULE': 3}, result=payload(), label='old')})}
+        view = tglf_results(reopened, {'result_source': 'old'})
+        self.assertIn('old', run_records(scan))
+        self.assertEqual(view['old']['SAT_RULE'][3]['eigenvalue_spectrum']['gamma(1)'][1], 4.)
+
+    def test_template_update_does_not_read_or_relocate_native_tglf(self):
+        native = Unread(scanResults=Unread(), scanResults2D_spectra=Unread(), scanResults3D=Unread(), RUN_DB=Unread())
+        migration = ArchiveIndex()
+        self.assertEqual(migration.tglf(native), {})
+        self.assertFalse(migration.sources)
+
+    def test_native_one_dimensional_rerun_keeps_other_dimension_references(self):
+        one = self.execute()
+        self.settings['mode'] = '2d'
+        two = self.execute()
+        self.settings['mode'] = '3d'
+        three = self.execute()
+        module = treeify(self.scan['TGLF'], ScanTree)
+        self.scan['TGLF'] = module
+        module['SETTINGS']['PHYSICS'] = dict(scanParameter='SAT_RULE', scanParameterRange=[0], single_Ti=False)
+        module['LIB'] = {'OMFITlib_tglf_cache': SimpleNamespace(runNoGUI=lambda: vars(native_cache))}
+        module['SCRIPTS']['runTGLFbatch'] = SimpleNamespace(
+            run=lambda **kw: kw['results'].update({0: payload(99)}))
+        script = REPO / 'CGYRO_TGLF_scan/TGLF_scan/TGLF/SCRIPTS/runTGLFscan.py'
+        namespace = dict(root=module, scratch={}, OMFITtree=ScanTree, print=lambda *a: None, printe=lambda *a: None)
+        namespace['defaultVars'] = lambda **kw: namespace.update(kw)
+        exec(compile(script.read_text(encoding='utf-8'), str(script), 'exec'), namespace)
+        self.assertFalse(point_current(self.scan, one['points']['p000001']))
+        self.assertTrue(point_current(self.scan, two['points']['p000001']))
+        self.assertTrue(point_current(self.scan, three['points']['p000001']))
+        self.assertEqual(module['scanResults']['SAT_RULE'][0][0]['Q/Q_GB'], 99)
+
+    def test_cleanup_covers_native_three_dimensions_and_new_running_records(self):
+        self.settings['mode'] = '3d'
+        record = self.execute()
+        record['status'] = 'running'
+        self.assertTrue(active_jobs(self.root))
+        with self.assertRaises(ValueError):
+            clear_results(self.root)
+        record['status'] = 'complete'
+        clear_results(self.root)
+        self.assertFalse(self.scan['TGLF']['scanResults3D'])
+        self.assertFalse(self.scan['TGLF']['scanResults3D_spectra'])
+        self.assertFalse(self.scan['_workbench_runs'])
+        self.assertFalse(self.scan['TGLF']['_workbench_index'])
+
+
+if __name__ == '__main__':
+    unittest.main()

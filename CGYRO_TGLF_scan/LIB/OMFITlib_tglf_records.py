@@ -1,6 +1,91 @@
-"""Human-readable metadata for saved TGLF runs; no GUI or solver imports."""
-from builtins import str
+"""Lightweight run summaries and references to native TGLF result branches."""
+from builtins import dict, len, list, str, tuple
+from collections import ChainMap
 from datetime import datetime, timezone
+
+
+def run_records(module):
+    # Existing projects keep their old payloads. No migration, parsing or copy
+    # is performed by a selector; new submissions only write _workbench_runs.
+    return ChainMap(module.get('_workbench_runs', {}), module.get('RUN_DB', {}))
+
+
+def at(module, path, default=None):
+    for key in path:
+        if not hasattr(module, 'get'):
+            return default
+        module = module.get(key, default)
+    return module
+
+
+def native_destination(source, mode, parameters):
+    """Match native single-file/radial shapes, including outer-to-inner axes.
+
+    Transfer inputs have their own native-shaped scope: two distinct inputs
+    can share a radius and must never overwrite each other's calculation.
+    """
+    group = source.get('group', 'current')
+    prefix = [] if group == 'radial' else (['TGLF'] if group == 'current' else
+              ['sourceResults', source['key']])
+    radial = [source['rho']] if group == 'radial' else []
+    if mode == 'single':
+        return prefix, (['Experimental_fluxes'] + radial if radial else []), (
+            ['Experimental_spectra'] + radial if radial else ['FILES'])
+    names = list(parameters)
+    if mode == 'uq':
+        key = 'UQResults'
+        coordinates = ['_'.join(names), '_'.join(str(parameters[name]) for name in names)]
+    else:
+        key = {'1d': 'scanResults', '2d': 'scanResults2D', '3d': 'scanResults3D'}[mode]
+        names = names[::-1]  # Native 2D: param2+param / value2 / value1.
+        coordinates = ['+'.join(names)] + [parameters[name] for name in names]
+    return prefix, [key] + radial + coordinates, [key + '_spectra'] + radial + coordinates
+
+
+def _put(module, path, value, factory):
+    for key in path[:-1]:
+        module = module.setdefault(key, factory())
+    module[path[-1]] = value
+
+
+def publish_point(module, record, point_id, source, result, factory=dict):
+    """Publish an already validated point; the run retains only its summary."""
+    point = record['points'][point_id]
+    prefix, flux_path, result_path = native_destination(source, record['mode'], point['parameters'])
+    scope = module
+    for key in prefix:
+        scope = scope.setdefault(key, factory())
+    if 'input.tglf' not in result and 'input' in point:
+        result['input.tglf'] = point['input']
+    if flux_path:
+        data = result['gbflux'] if record['mode'] == 'single' else result['gbflux']['data']
+        _put(scope, flux_path, data, factory)
+    _put(scope, result_path, result, factory)
+    owner = record['id'] + ':' + point_id
+    # Plain metadata mapping: no physical result objects or array copies.
+    scope.setdefault('_workbench_index', {})[tuple(result_path)] = owner
+    point.update(dict(result_path=prefix + result_path, owner_path=prefix + ['_workbench_index'],
+                      owner_key=result_path, owner=owner))
+    point.pop('input', None)
+    point.pop('result', None)
+
+
+def point_current(module, point):
+    if point.get('status', None) != 'complete':
+        return False
+    if 'result_path' not in point:
+        return True  # Read-only compatibility with pre-native workbench runs.
+    return at(module, point['owner_path'], {}).get(tuple(point['owner_key']), None) == point['owner']
+
+
+def point_result(module, point):
+    """Resolve only the explicitly selected point, never another run's payload."""
+    if not point_current(module, point):
+        raise ValueError('该 TGLF 点已被替换或重置，请选择当前原生扫描结果。')
+    result = at(module, point['result_path']) if 'result_path' in point else point.get('result', None)
+    if result is None:
+        raise ValueError('所选 TGLF 点的原生结果已不存在。')
+    return result
 
 
 def record_summary(record, run_id):

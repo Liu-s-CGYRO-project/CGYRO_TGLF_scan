@@ -348,10 +348,13 @@ class ProjectActions:
         return record
 
     def clear_failed_tglf_records(self):
-        runs = read(self.root, ('TGLF_scan', 'RUN_DB'), {})
-        keys = [key for key, record in runs.items() if fully_failed(record)]
-        for key in keys:
-            del runs[key]
+        scan, keys = self.root.get('TGLF_scan', {}), []
+        for branch in ('_workbench_runs', 'RUN_DB'):  # RUN_DB is old-project compatibility only.
+            runs = scan.get(branch, {})
+            failed = [key for key, record in runs.items() if fully_failed(record)]
+            for key in failed:
+                del runs[key]
+            keys.extend(failed)
         settings, _ = initialize_tglf(self.root, self.factory)
         if settings.get('result_run', '') in keys:
             settings['result_run'] = ''
@@ -490,8 +493,8 @@ class ProjectActions:
             # Preserve their associated results before the existing setup regenerates them.
             old = self.factory()
             cache_keys = ('input.tglf', 'tgyro_output', 'scanResults', 'scanResults_spectra',
-                          'scanResults2D', 'scanResults2D_spectra', 'UQResults', 'UQResults_spectra',
-                          'Experimental_fluxes', 'Experimental_spectra', '_scan_cache_provenance',
+                          'scanResults2D', 'scanResults2D_spectra', 'scanResults3D', 'scanResults3D_spectra', 'UQResults', 'UQResults_spectra',
+                          'Experimental_fluxes', 'Experimental_spectra', '_scan_cache_provenance', '_workbench_index',
                           '_radial_cache_provenance', '_input_cache_provenance')
             for key in cache_keys:
                 if key in scan:
@@ -1220,6 +1223,7 @@ class ProjectActions:
         new_files['input.tglf'] = incoming.duplicate() if hasattr(incoming, 'duplicate') else copy.deepcopy(incoming)
         self._record(title, status='inputs_copied', previous_tglf_files=archived)
         node['FILES'] = new_files
+        node.get('_workbench_index', {}).pop(('FILES',), None)
         self.settings['message'] = title + '。原 TGLF 输入和对应结果已保存在输入历史中。'
 
     def propose_tglf(self, incoming, title, source_path=None, destination='tglf'):

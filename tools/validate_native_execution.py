@@ -147,6 +147,30 @@ class NativeExecutionTests(unittest.TestCase):
     def setUp(self):
         self.addCleanup(plt.close, 'all')
 
+    def test_tglf_native_three_dimensional_reference_after_import_cleanup(self):
+        host = self.host
+        source = {'group': 'radial', 'rho': .3}
+        scan = host.factory()
+        record = treeify(dict(id='new', mode='3d', points={'p': dict(status='complete',
+            parameters={'SAT_RULE': 2, 'XNUE': .1, 'BETAE': .02}, input={'SAT_RULE': 2})}), host.factory)
+        payload = host.factory({'gbflux': {'data': np.array([1., 2.])}})
+        out = host.execute(
+            "from OMFITlib_tglf_records import publish_point, point_result, point_current\n"
+            "publish_point(scan, record, 'p', source, payload, OMFITtree)\n"
+            "def selected():\n"
+            "    return point_result(scan, record['points']['p'])\n"
+            "def current():\n"
+            "    return point_current(scan, record['points']['p'])\n",
+            root=host.modules[('CGYRO_TGLF_scan', 'TGLF_scan')], scan=scan, record=record,
+            source=source, payload=payload)
+        self.assertNotIn('OMFITlib_tglf_records', sys.modules)
+        self.assertTrue(out['current']())
+        self.assertIs(out['selected'](), payload)
+        self.assertIs(scan['scanResults3D_spectra'][.3]['BETAE+XNUE+SAT_RULE'][.02][.1][2], payload)
+        self.assertNotIn('RUN_DB', scan)
+        self.assertNotIn('input', record['points']['p'])
+        self.assertNotIn('result', record['points']['p'])
+
     def reader(self):
         return self.host.execute('from OMFITlib_cgyro_read import *')
 

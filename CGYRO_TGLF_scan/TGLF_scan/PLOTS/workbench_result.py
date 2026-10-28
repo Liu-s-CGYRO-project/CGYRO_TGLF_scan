@@ -2,18 +2,19 @@
 from builtins import all, enumerate, len, sorted, str, sum, tuple, zip
 import numpy as np
 from OMFITlib_plot_style import plot_context
+from OMFITlib_tglf_records import point_current, point_result
 
 with plot_context(root):
 
     defaultVars(record=None, point_id=None)
     if record is None:
         raise ValueError('Select a TGLF run first')
-    points = [(key, point) for key, point in record['points'].items() if point.get('status', None) == 'complete']
+    points = [(key, point) for key, point in record['points'].items() if point_current(root, point)]
     if not points:
         raise ValueError('This run has no completed results')
     if point_id is not None:
         point = record['points'][point_id]
-        spectrum = point['result']['eigenvalue_spectrum']
+        spectrum = point_result(root, point)['eigenvalue_spectrum']
         ky = np.asarray(spectrum['ky'])
         figure, axes = subplots(2, 1, sharex=True, figsize=(7, 7))
         if 'gamma' in spectrum and 'freq' in spectrum:
@@ -50,8 +51,8 @@ with plot_context(root):
         groups = {}
         for index, (key, point) in enumerate(points, 1):
             group = point['label']
-            if len(axes_plan) == 2:
-                name = axes_plan[1]['name']
+            for axis in axes_plan[1:]:
+                name = axis['name']
                 group += ' · {}={:g}'.format(name, point['parameters'][name])
             source = sources.get(tuple(point.get('source', ())), {})
             x = point['parameters'][x_name] if x_name else (source['rho'] if radial else index)

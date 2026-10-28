@@ -705,80 +705,10 @@ class ArchiveIndex:
             target=[str(part) for part in ['RUN_DB', run, identity, key]], points=len(tasks)))
 
     def tglf(self, module):
-        """Index old 1D/2D radial scans as explicit records, preserving payloads."""
-        current = self.get(module, 'RUN_DB', {})
-        runs = {key: Reference(value) for key, value in self.read(current).items()}
-        replacements, grouped = {}, {}
-        for depth, name in ((1, 'scanResults'), (2, 'scanResults2D')):
-            for suffix in ('', '_spectra'):
-                field = name + suffix
-                original = self.get(module, field, None)
-                if not branch(original) or not self.read(original):
-                    continue
-                remaining = {}
-                source_count = len(self.sources)
-                for radius, cases in self.read(original).items():
-                    if not branch(cases):
-                        remaining[radius] = Reference(cases)
-                        self.issue([field, radius], '无法识别的 TGLF 半径分支，保留原节点')
-                        continue
-                    for parameter, data in self.read(cases).items():
-                        path = [field, radius, parameter]
-                        try:
-                            axes = str(parameter).split('+')
-                            if len(axes) != depth or not all(re.fullmatch(r'[A-Z][A-Z0-9_]*', axis) for axis in axes):
-                                raise ValueError('Unrecognized TGLF parameter axes')
-                            points = {}
-                            def visit(node, coordinates):
-                                if len(coordinates) == depth:
-                                    if suffix:
-                                        if not kind(node, 'OMFITtglf'):
-                                            columns = self.read(node)
-                                            if 'eigenvalue_spectrum' not in columns and 'gbflux' not in columns:
-                                                raise ValueError('Unrecognized TGLF result columns')
-                                        result = Reference(node)
-                                    else:
-                                        # The old flux branch stores a row array,
-                                        # while the current reader expects gbflux.
-                                        if branch(node) or node is None:
-                                            raise ValueError('Unrecognized legacy TGLF flux array')
-                                        result = dict(gbflux=dict(data=Reference(node)))
-                                    point = 'legacy{:06d}'.format(len(points) + 1)
-                                    points[point] = dict(status='complete', source=[field, radius], label=str(radius),
-                                        parameters=dict(zip(axes, coordinates)), result=result)
-                                    return
-                                for value, child in self.read(node).items():
-                                    self.number(value)
-                                    visit(child, coordinates + [value])
-                            visit(data, [])
-                            if not points:
-                                raise ValueError('Empty TGLF scan')
-                            group = (field, parameter)
-                            if group not in grouped:
-                                base = 'legacy-' + field + '-' + str(parameter)
-                                run, number = base, 1
-                                while run in runs:
-                                    number += 1
-                                    run = base + '-' + str(number)
-                                grouped[group] = run
-                                runs[run] = dict(mode='1d' if depth == 1 else '2d', migration_source=[field, parameter],
-                                    plan=dict(axes=[dict(name=axis) for axis in axes], sources=[]), points={})
-                            run = grouped[group]
-                            try:
-                                rho = self.number(radius)
-                            except (TypeError, ValueError):
-                                rho = None
-                            record = runs[run]
-                            record['plan']['sources'].append(dict(path=[field, radius], label=str(radius), rho=rho))
-                            offset = len(record['points'])
-                            for number, point in enumerate(points.values(), offset + 1):
-                                record['points']['legacy{:06d}'.format(number)] = point
-                            self.sources.append(dict(source=[str(part) for part in path], target=['RUN_DB', run], points=len(points)))
-                        except (TypeError, ValueError, KeyError) as exc:
-                            remaining.setdefault(radius, {})[parameter] = Reference(data)
-                            self.issue(path, exc)
-                if len(self.sources) > source_count:
-                    replacements[field] = Layout(remaining)
-        if replacements:
-            replacements['RUN_DB'] = Layout(runs)
-        return replacements
+        """TGLF keeps its native result branches; only CGYRO uses RUN_DB.
+
+        Existing workbench RUN_DB records are retained unchanged and remain
+        readable by the compatibility adapter. Updating a template must never
+        consume scanResults / scanResults2D / scanResults3D as migration input.
+        """
+        return {}

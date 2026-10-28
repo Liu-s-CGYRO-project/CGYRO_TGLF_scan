@@ -144,11 +144,11 @@ class TGLFParametersTest(unittest.TestCase):
         inputs = self.execute(plan(self.root, self.settings))
         self.assertEqual(inputs[0]['WIDTH_MIN'], 0)
         self.assertFalse(inputs[0]['FIND_WIDTH'])
-        prior_runs = set(self.root['TGLF_scan']['RUN_DB'])
+        prior_runs = set(self.root['TGLF_scan']['_workbench_runs'])
         self.settings.update(mode='1d', parameter1='FIND_WIDTH', values1=[False, True])
         with self.assertRaisesRegex(ValueError, 'log10'):
             self.execute(plan(self.root, self.settings))
-        self.assertEqual(set(self.root['TGLF_scan']['RUN_DB']), prior_runs)
+        self.assertEqual(set(self.root['TGLF_scan']['_workbench_runs']), prior_runs)
         self.assertEqual(parameter_value('NBASIS_MIN', 0, 2), 0)
         with self.assertRaisesRegex(ValueError, 'NBASIS_MIN'):
             parameter_value('NBASIS_MIN', -2, 2)
@@ -163,7 +163,7 @@ class TGLFParametersTest(unittest.TestCase):
             self.assertNotIn('NKY', row)
             self.assertNotIn('Q_LOC', row)
         self.assertEqual(self.source, before)
-        record = self.root['TGLF_scan']['RUN_DB'][self.settings['result_run']]
+        record = self.root['TGLF_scan']['_workbench_runs'][self.settings['result_run']]
         self.assertEqual(record['status'], 'complete')
         self.assertEqual(len(record['points']), 2)
 

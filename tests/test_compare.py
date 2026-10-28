@@ -275,7 +275,7 @@ class RefactorTest(unittest.TestCase):
         node['gamma(1)']=np.array([1.])
         ctx=core.build_context(self.root)
         self.assertEqual(len(series.collect_tglf_series(self.root,ctx,.3,'A',1.)[0]),0)
-        self.assertIn('different lengths',ctx['_diagnostics'][0])
+        self.assertIn('维度不一致',ctx['_diagnostics'][0])
 
     def test_two_dimensional_only_and_optional_second_mode(self):
         ctx=core.build_context(self.root)

@@ -22,7 +22,7 @@ TABS = OrderedDict([('scan', '输入与扫描'), ('parameters', '计算参数'),
 from OMFITlib_workbench_catalog import SCAN_TABS  # Shared with CGYRO; retained public alias.
 
 
-from OMFITlib_tglf_records import record_summary
+from OMFITlib_tglf_records import point_current, record_summary, run_records
 
 
 class TGLFWorkbench:
@@ -129,8 +129,8 @@ class TGLFWorkbench:
         values.update((name, item['value']) for name, item in self.settings['parameters'].items()
                       if item.get('enabled', False) and name in values and name not in scanned)
         choices = sorted(values)
-        if mode in ('1d', '2d'):
-            for index in range(1, 3 if mode == '2d' else 2):
+        if mode in ('1d', '2d', '3d'):
+            for index in range(1, int(mode[0]) + 1):
                 self.ui.ComboBox(self.prefix + "['parameter{}']".format(index), choices,
                                  '扫描参数 {}'.format(index), state='readonly', updateGUI=True,
                                  help=parameter_help(self.settings['parameter' + str(index)], self.source))
@@ -398,7 +398,8 @@ class TGLFWorkbench:
         self.mark_custom(combo)
 
     def results(self):
-        runs = read(self.root, ('TGLF_scan', 'RUN_DB'), {})
+        module = self.root.get('TGLF_scan', {})
+        runs = run_records(module)
         if not runs:
             self.label('尚无新界面的运行记录。原有 TGLF 结果仍在工程数据树中。')
             self.view.nav('已有结果绘图', 'plots')
@@ -427,8 +428,8 @@ class TGLFWorkbench:
         self.ui.ComboBox(self.prefix + "['result_run']", choices, '运行记录', state='readonly', updateGUI=True)
         record = runs[self.settings['result_run']]
         points = record.get('points', {})
-        complete = sum(point.get('status', None) == 'complete' for point in points.values())
-        anchor = self.label('已完成 {} / {} 个任务。'.format(complete, len(points)))
+        complete = sum(point_current(module, point) for point in points.values())
+        anchor = self.label('当前保留 {} / {} 个结果；已替换或重置的点请在原生扫描中查看。'.format(complete, len(points)))
         identity = self.label('记录编号：' + str(self.settings['result_run']))
         if isinstance(identity, tk.Misc):
             identity._cgyro_role = 'muted'
@@ -437,7 +438,7 @@ class TGLFWorkbench:
             self.view.task('查看通量趋势', ('TGLF_scan', 'PLOTS', 'workbench_result'), record=record)
             choices = OrderedDict((key + ' · ' + point['label'] + ' · ' + (', '.join(
                 '{}={:g}'.format(name, value) for name, value in point['parameters'].items()) or '原值'), key)
-                for key, point in points.items() if point.get('status', None) == 'complete')
+                for key, point in points.items() if point_current(module, point))
             if self.settings.get('result_point', None) not in choices.values():
                 self.settings['result_point'] = next(iter(choices.values()))
             self.ui.ComboBox(self.prefix + "['result_point']", choices, '计算点', state='readonly', updateGUI=True)
@@ -470,10 +471,13 @@ class TGLFWorkbench:
             table.heading(key, text=title)
             table.column(key, width=width, anchor='w')
         for key, point in record.get('points', {}).items():
-            fluxes = point.get('fluxes', [])
+            current = point_current(self.root.get('TGLF_scan', {}), point)
+            fluxes = point.get('fluxes', []) if current else []
             qe = sum(row['heat'] for row in fluxes if row['species'] == 'elec')
             qi = sum(row['heat'] for row in fluxes if row['species'] != 'elec')
             status = {'complete': '完成', 'failed': '失败', 'prepared': '待运行', 'cancelled': '已中止'}.get(point.get('status', None), point.get('status', ''))
+            if point.get('status', None) == 'complete' and not current:
+                status = '已替换 / 重置'
             table.insert('', 'end', iid=key, values=(key, point['label'],
                 ', '.join('{}={:g}'.format(name, value) for name, value in point['parameters'].items()) or '原值',
                 status, '{:.6g}'.format(qe) if fluxes else '—', '{:.6g}'.format(qi) if fluxes else '—'))

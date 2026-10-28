@@ -20,6 +20,7 @@ if not recalculate:
     rho_scan = rho_needed
 # Remove stale pairs before submission; a failed new run cannot leave old data labelled current.
 for rho in rho_scan:
+    root.get('_workbench_index', {}).pop(('Experimental_spectra', rho), None)
     for collection in (flx, spec, records):
         collection.pop(rho, None)
 input_tglf = [copy.deepcopy(root['input.tglf'][rho]) for rho in rho_scan]

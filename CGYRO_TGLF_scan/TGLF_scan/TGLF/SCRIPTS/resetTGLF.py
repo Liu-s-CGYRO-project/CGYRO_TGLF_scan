@@ -1,7 +1,7 @@
 # -*-Python-*-
-# Created by meneghini at 2014/11/12 10:28
-
 print('Resetting all TGLF variables scans')
-
-root['FILES'].clear()
-root['scanResults'].clear()
+for key in ('FILES', 'scanResults', 'scanResults_spectra', 'scanResults2D', 'scanResults2D_spectra',
+            'scanResults3D', 'scanResults3D_spectra', 'UQResults', 'UQResults_spectra',
+            '_scan_cache_provenance', '_workbench_index'):
+    root.pop(key, None)
+root['FILES'] = OMFITtree()

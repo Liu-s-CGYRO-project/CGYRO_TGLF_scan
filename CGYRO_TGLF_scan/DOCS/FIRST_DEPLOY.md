@@ -38,7 +38,7 @@ exec(compile(b, 'omfit-manager-bootstrap.py', 'exec'), {'OMFIT': OMFIT})
 | N_THETA 与 N_ENERGY；一至三维参数 / 取值 / lin / ky | 扫描参数组分别保留；重建点表并保留实际 ky 与参数取值 |
 | 同一参数组多份旧版本或 __previous_… | 分开保存为 legacy revision 结果集，不凭 UUID 或目录顺序判断哪个可覆盖 |
 | 只有 OUTPUTScan、没有 RUN_DB、点表或运行记录 | 从参数 / 取值 / lin / ky 树和对应结果目录的原 input.cgyro 核对；也识别直接 ky → 结果、单个原生结果。原始输入可证明身份时自动归类，完全无身份信息时单独列为“未标识旧结果” |
-| TGLF 的 scanResults、scanResults_spectra、scanResults2D 及其谱 | 按一维 / 二维参数组建立 RUN_DB，保留多个半径；旧版谱与旧版通量有独立来源标识 |
+| TGLF 的 scanResults、scanResults2D、scanResults3D 及其谱 | 保留原生结构及各个半径，按维度读取；不迁入 RUN_DB。既有 RUN_DB 记录兼容读取，新提交使用原生分支 |
 
 只读取归档树结构、已有元数据及原结果附带的 input.cgyro 标量文本；不加载 CGYRO 数值数组来推测身份，也不使用当前 GUI 设置替历史结果补半径、离子、作业号或结果目录。旧记录只有 nr、没有 rho 时保留为 rho=unknown，界面按 nr 选择。裸 OUTPUTScan 无 rho 时，原输入含固定 RMIN 就明确显示 RMIN，不能把它冒充为原始 rho；质量扫描、混合氢同位素和无法判断的离子组成不强行贴 H/D/T 标签。扫描键和原输入坐标不一致时，完整原分支进入待核对区。
 

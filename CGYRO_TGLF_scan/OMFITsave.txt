@@ -496,6 +496,7 @@
 ['TGLF_scan']['LIB']['OMFITlib_tglf_preparation'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_preparation.py <-:-:-> {}
 ['LIB']['OMFITlib_tglf_workbench_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_workbench_ui.py <-:-:-> {}
 ['TGLF_scan']['LIB']['OMFITlib_tglf_workbench'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_workbench.py <-:-:-> {}
+['TGLF_scan']['LIB']['OMFITlib_tglf_records'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_records.py <-:-:-> {}
 ['TGLF_scan']['LIB']['OMFITlib_tglf_parameters'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_parameters.py <-:-:-> {}
 ['TGLF_scan']['LIB']['OMFITlib_tglf_multi_data'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tglf_multi_data.py <-:-:-> {}
 ['TGLF_scan']['LIB']['OMFITlib_project_runtime'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_project_runtime.py <-:-:-> {}
@@ -541,6 +542,7 @@
 ['DOCS']['按作业号恢复'] <-:-:-> OMFITascii <-:-:-> ./DOCS/JOB_RECOVERY.md <-:-:-> {}
 ['DOCS']['任务管理与删除'] <-:-:-> OMFITascii <-:-:-> ./DOCS/TASK_CLEANUP.md <-:-:-> {}
 ['DOCS']['结果归档去重'] <-:-:-> OMFITascii <-:-:-> ./DOCS/RESULT_STORAGE.md <-:-:-> {}
+['DOCS']['TGLF结果保存'] <-:-:-> OMFITascii <-:-:-> ./DOCS/TGLF_RESULT_STORAGE.md <-:-:-> {}
 ['DOCS']['多参数扫描绘图'] <-:-:-> OMFITascii <-:-:-> ./DOCS/MULTI_AXIS_PLOTS.md <-:-:-> {}
 ['DOCS']['TGLF参数与扫描'] <-:-:-> OMFITascii <-:-:-> ./DOCS/TGLF_PARAMETERS.md <-:-:-> {}
 ['DOCS']['字体许可'] <-:-:-> OMFITascii <-:-:-> ./DOCS/FONT_LICENSE.txt <-:-:-> {}

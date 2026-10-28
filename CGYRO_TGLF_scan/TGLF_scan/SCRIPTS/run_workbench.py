@@ -1,4 +1,4 @@
-"""Run an explicit TGLF plan; archive every input and outcome in RUN_DB."""
+"""Run an explicit TGLF plan and publish into native per-dimension branches."""
 from builtins import all, dict, enumerate, float, int, isinstance, len, list, range, str, zip
 import copy
 import itertools
@@ -7,6 +7,7 @@ import uuid
 import numpy as np
 from datetime import datetime, timezone
 from OMFITlib_tglf_workbench import clone, get, parameter_value, validate_width_search
+from OMFITlib_tglf_records import publish_point
 
 defaultVars(plan=None, project_root=None)
 if not plan or not plan.get('sources', None):
@@ -65,7 +66,7 @@ for index, (source, values, candidate) in enumerate(prepared, 1):
     point.update(dict(label=source['label'], source=list(source['path']), parameters=values,
                       status='prepared', input=candidate))
     record['points']['p{:06d}'.format(index)] = point
-root.setdefault('RUN_DB', OMFITtree())[run_id] = record
+root.setdefault('_workbench_runs', OMFITtree())[run_id] = record
 project['SETTINGS']['WORKBENCH']['tglf']['result_run'] = run_id
 outputs = OMFITtree()
 record['outputs'] = outputs
@@ -89,7 +90,6 @@ finally:
                 point['diagnostics'] = result
             failures.append(key)
             continue
-        point['result'] = result
         try:
             data = result['gbflux']['data']
             fluxes = []
@@ -100,9 +100,11 @@ finally:
                 fluxes.append(dict(species=str(species[0]), particle=values[0], heat=values[1], momentum=values[2]))
             if not fluxes:
                 raise ValueError('No TGLF flux rows')
+            source = prepared[int(key[1:]) - 1][0]
+            publish_point(root, record, key, source, result, OMFITtree)
             point.update(dict(status='complete', fluxes=fluxes))
         except Exception as exc:
-            point.update(dict(status='failed', error=str(exc)))
+            point.update(dict(status='failed', error=str(exc), diagnostics=result))
             failures.append(key)
     final_status = 'complete' if not failures else ('failed' if len(failures) == len(prepared) else 'partial')
     if isinstance(submission_error, KeyboardInterrupt):
@@ -115,6 +117,6 @@ finally:
     if submission_error is not None:
         raise submission_error
     if failures:
-        raise RuntimeError('TGLF: {} / {} points failed; see TGLF results in RUN_DB ({})\n{}: {}'.format(
+        raise RuntimeError('TGLF: {} / {} points failed; see TGLF results and records ({})\n{}: {}'.format(
             len(failures), len(prepared), run_id, failures[0], record['points'][failures[0]]['error']))
-    print('TGLF: {} points saved to RUN_DB / {}'.format(len(prepared), run_id))
+    print('TGLF: {} points saved to native {} result branches; record {}'.format(len(prepared), plan['mode'], run_id))

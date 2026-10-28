@@ -1,6 +1,7 @@
 # -*-Python-*-
 # Created by lugaimin at 2014/06/12 15:01
 
+from builtins import list
 rho = root['SETTINGS']['PHYSICS']['rho']
 if root['SETTINGS']['PHYSICS']['scanDimensions'] == 1:
     scanResults = 'scanResults'
@@ -10,6 +11,9 @@ elif root['SETTINGS']['PHYSICS']['scanDimensions'] == 'UQ':
     scanResults = 'UQResults'
     root['SCRIPTS']['setup_UQ_inputs'].run()
 scanResults_spectra = scanResults + '_spectra'
+for path in list(root['TGLF'].get('_workbench_index', {})):
+    if path[0] == scanResults_spectra:
+        del root['TGLF']['_workbench_index'][path]
 
 # Pass a private radial input to the scan. FILES belongs to the single-file run.
 radial_input = copy.deepcopy(root['input.tglf'][rho])
@@ -39,6 +43,9 @@ elif root['SETTINGS']['PHYSICS']['scanDimensions'] == 'UQ':
 # store solution at this radius
 for scanName in [scanResults, scanResults_spectra]:
     root[scanName][rho] = root['TGLF'].pop(scanName)
+for path in list(root.get('_workbench_index', {})):
+    if path[:2] == (scanResults_spectra, rho):
+        del root['_workbench_index'][path]
 
 radial_provenance[rho] = copy.deepcopy(root['TGLF'].get('_scan_cache_provenance', {}))
 printi('Scan is finished')

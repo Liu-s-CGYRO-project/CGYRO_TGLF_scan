@@ -138,6 +138,14 @@ input and its associated results together under PROJECT_STATE/activity. The
 standalone keep/replace page has been removed. Radial sources are copied only for
 execution, so each saved input and older result remains independent.
 
+TGLF parameter scans write to native ``scanResults``, ``scanResults2D`` and
+``scanResults3D`` with matching ``_spectra`` branches. Radial scans add the
+radius key in TGLF_scan; current-file scans live in its TGLF child. UQ uses
+``UQResults``. Three-dimensional comparisons expose labelled third-axis slices.
+The workbench keeps summaries and direct native paths, not a second result
+archive. Existing TGLF RUN_DB records remain readable for compatibility; new
+runs and template updates never move native TGLF results there.
+
 TGLF batch jobs use the applied scheduler, queue, wall time, program environment
 and threads. Submission is bounded by the TGLF concurrency setting. Each job
 writes an exit marker and log, and its flux output is validated before loading.

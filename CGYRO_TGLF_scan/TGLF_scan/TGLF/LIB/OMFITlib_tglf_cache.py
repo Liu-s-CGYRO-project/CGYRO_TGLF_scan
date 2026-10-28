@@ -74,6 +74,15 @@ def matches(previous, current):
                 and previous.get("solver_sha256", None) == current.get("solver_sha256", None))
 
 
+def forget_workbench(module, prefix):
+    """Invalidate metadata only for the native branch being replaced."""
+    index = module.get('_workbench_index', {})
+    prefix = tuple(prefix)
+    for path in list(index):
+        if path[:len(prefix)] == prefix:
+            del index[path]
+
+
 def flux_data(result):
     """Return a usable legacy flux row set, or report the saved point failure.
 

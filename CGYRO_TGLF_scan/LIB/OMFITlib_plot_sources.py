@@ -7,35 +7,48 @@ from builtins import any, dict, enumerate, float, int, iter, len, list, next, ra
 from collections import OrderedDict
 from collections.abc import Mapping
 import numpy as np
-from OMFITlib_tglf_records import record_summary
+from OMFITlib_tglf_records import point_current, point_result, record_summary, run_records
+
+
+def native_sources(scan):
+    scopes = [('', scan, True), ('TGLF', scan.get('TGLF', {}), False)]
+    scopes.extend(('source:' + str(key), value, False) for key, value in scan.get('sourceResults', {}).items())
+    sources = {}
+    for scope, node, radial in scopes:
+        for dimension, key in (('1D', 'scanResults'), ('2D', 'scanResults2D'), ('3D', 'scanResults3D')):
+            if node.get(key, None) or node.get(key + '_spectra', None):
+                token = 'legacy:' + dimension if not scope else 'native:' + scope + ':' + dimension
+                sources[token] = (node, radial, key, dimension)
+    return sources
 
 
 def run_choices(root):
     choices = OrderedDict()
-    runs = root.get('TGLF_scan', {}).get('RUN_DB', {})
+    scan = root.get('TGLF_scan', {})
+    runs = run_records(scan)
     for key in sorted(runs, key=str, reverse=True):
         record = runs[key]
-        if not any(p.get('status', None) == 'complete' for p in record.get('points', {}).values()):
+        if not any(point_current(scan, p) for p in record.get('points', {}).values()):
             continue
         caption = record_summary(record, key)
+        if record.get('mode', None) == '3d':
+            caption += ' · 3D（按第三轴分片）'
         label, repeat = caption, 1
         while label in choices:
             repeat += 1
             label = caption + '（{}）'.format(repeat)
         choices[label] = str(key)
-    scan = root.get('TGLF_scan', {})
-    for dimension in ('1D', '2D'):
-        key = 'scanResults2D' if dimension == '2D' else 'scanResults'
-        if scan.get(key, None) or scan.get(key + '_spectra', None):
-            choices['旧版 ' + dimension + ' 扫描'] = 'legacy:' + dimension
+    for token, (_, radial, _, dimension) in native_sources(scan).items():
+        caption = ('原生径向' if radial else token.split(':', 1)[1].rsplit(':', 1)[0]) + ' ' + dimension + ' 扫描'
+        choices[caption + ('（按第三轴分片）' if dimension == '3D' else '')] = token
     return choices
 
 
 def source_dimension(root, source):
-    if str(source).startswith('legacy:'):
-        return str(source).split(':', 1)[1]
-    record = root.get('TGLF_scan', {}).get('RUN_DB', {}).get(source, {})
-    return '2D' if record.get('mode', record.get('plan', {}).get('mode', None)) == '2d' else '1D'
+    if str(source).startswith(('legacy:', 'native:')):
+        return '2D' if str(source).rsplit(':', 1)[1] in ('2D', '3D') else '1D'
+    record = run_records(root.get('TGLF_scan', {})).get(source, {})
+    return '2D' if record.get('mode', record.get('plan', {}).get('mode', None)) in ('2d', '3d') else '1D'
 
 
 def selected_tglf_source(root, state, dimension=None, choices=None):
@@ -80,10 +93,17 @@ def spectrum_arrays(spectrum):
 
 class ResultView(Mapping):
     """Lazy payload view: opening a selector never parses output arrays."""
-    def __init__(self, point):
+    def __init__(self, point, module=None):
         self.point = point
-        self.result = point.get('result', {})
+        self.module = module
+        self._result = None
         self._spectrum = None
+
+    @property
+    def result(self):
+        if self._result is None:
+            self._result = point_result(self.module, self.point) if self.module is not None else self.point.get('result', {})
+        return self._result
 
     def __iter__(self):
         return iter(dict.fromkeys(list(self.result.keys()) + ['input.tglf']))
@@ -110,15 +130,59 @@ class ResultView(Mapping):
         return spec
 
 
+class NativeView(Mapping):
+    """Descend native coordinate keys lazily; wrap only requested spectra."""
+    def __init__(self, node, depth, target):
+        self.node, self.depth, self.target = node, depth, target
+        self.children = {}
+
+    def __iter__(self):
+        return iter(self.node)
+
+    def __len__(self):
+        return len(self.node)
+
+    def __getitem__(self, key):
+        if key in self.children:
+            return self.children[key]
+        value = self.node[key]
+        if self.depth > 1:
+            value = NativeView(value, self.depth - 1, self.target)
+        elif self.target == 'Spectra':
+            value = ResultView({'result': value})
+        self.children[key] = value
+        return value
+
+
+def native_results(scan, source, target):
+    selected = native_sources(scan).get(source, None)
+    if selected is None:
+        return {}
+    node, radial, key, dimension = selected
+    data = node.get(key + ('_spectra' if target == 'Spectra' else ''), {})
+    if not radial:
+        data = {source.split(':', 1)[1].rsplit(':', 1)[0]: data}
+    if dimension != '3D':
+        return NativeView(data, int(dimension[0]) + 2, target)
+    # Existing 2D plotting controls show an explicit slice label for axis 3.
+    # No third coordinate is discarded or combined with another slice.
+    slices = {}
+    for radius in data:
+        for name, planes in data[radius].items():
+            names = str(name).split('+')
+            for value in planes:
+                label = '{} · {}={}'.format(radius, names[0], value)
+                slices.setdefault(label, {})['+'.join(names[1:])] = NativeView(planes[value], 2, target)
+    return slices
+
+
 def tglf_results(root, state, target='Spectra', dimension=None):
     """Resolve one explicit saved run, falling back to legacy only when selected."""
     scan = root.get('TGLF_scan', {})
     source = selected_tglf_source(root, state, dimension)
-    if str(source).startswith('legacy:'):
-        dimension = source_dimension(root, source)
-        key = 'scanResults2D' if dimension == '2D' else 'scanResults'
-        return scan.get(key + ('_spectra' if target == 'Spectra' else ''), {})
-    record = scan.get('RUN_DB', {}).get(source, {})
+    if str(source).startswith(('legacy:', 'native:')):
+        return native_results(scan, source, target)
+    record = run_records(scan).get(source, {})
     saved = record.get('plan', {})
     axes = saved.get('axes', [])
     sources = {tuple(s.get('path', ())): s for s in saved.get('sources', [])}
@@ -130,10 +194,9 @@ def tglf_results(root, state, target='Spectra', dimension=None):
             radius_owners.setdefault(key, []).append(path)
     output = {}
     for index, (point_id, point) in enumerate(record.get('points', {}).items(), 1):
-        if point.get('status', None) != 'complete':
+        if not point_current(scan, point):
             continue
-        result = point.get('result', {})
-        if target == 'Spectra' and 'eigenvalue_spectrum' not in result:
+        if target == 'Spectra' and 'result_path' not in point and 'eigenvalue_spectrum' not in point.get('result', {}):
             continue
         source_path = tuple(point.get('source', ()))
         item = sources.get(source_path, {})
@@ -154,12 +217,15 @@ def tglf_results(root, state, target='Spectra', dimension=None):
             coordinates = [values[name] for name in names]
         else:
             names, coordinates = ['原值'], [0]
+        if mode == '3d':
+            radius = '{} · {}={}'.format(radius, names[2], coordinates[2])
+            names, coordinates = names[:2], coordinates[:2]
         node = output.setdefault(radius, {}).setdefault('+'.join(names), {})
         for coordinate in coordinates[:-1]:
             node = node.setdefault(coordinate, {})
         if coordinates[-1] in node:
             raise ValueError('运行记录存在重复计算点：' + str(point_id))
-        node[coordinates[-1]] = ResultView(point)
+        node[coordinates[-1]] = ResultView(point, scan)
     return output
 
 

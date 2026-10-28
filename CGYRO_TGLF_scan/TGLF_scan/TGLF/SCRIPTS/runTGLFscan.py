@@ -22,6 +22,8 @@ cache = root['LIB']['OMFITlib_tglf_cache'].runNoGUI()
 if cache_records is None:
     cache_records = root.setdefault('_scan_cache_provenance', {}).setdefault(results, {}) if isinstance(results, str) else {}
 
+result_branch = results + '_spectra' if isinstance(results, str) else None
+
 # setup the directory structure
 if isinstance(results, str):
     results_spectra = results + '_spectra'
@@ -45,6 +47,8 @@ if param not in results_spectra:
     results_spectra[param] = OMFITtree()
 
 current = cache['provenance'](root, inputTGLF, '1D', {'param': param, 'range': parameterRange})
+if result_branch and not cache['matches'](cache_records.get(param, None), current):
+    cache['forget_workbench'](root, (result_branch, param))
 cache['prepare'](results, results_spectra, param, cache_records, current, OMFITtree)
 
 # generate list of inputs
@@ -86,6 +90,8 @@ for k, value in enumerate(valuesToRun):
         data = cache['flux_data'](point)
         results[param][value] = data
         results_spectra[param][value] = point
+        if result_branch:
+            cache['forget_workbench'](root, (result_branch, param, value))
     except Exception as _excp:
         failures.append(value)
         printe('TGLF scan failed for %s=%f : %s' % (param, value, repr(_excp)))

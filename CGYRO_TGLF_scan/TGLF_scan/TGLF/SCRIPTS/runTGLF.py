@@ -25,3 +25,4 @@ outputs = ['./']
 OMFITx.executable(root, inputs, outputs)
 
 result = root['FILES'] = OMFITtglf(root['SETTINGS']['SETUP']['workDir'])
+root.get('_workbench_index', {}).pop(('FILES',), None)

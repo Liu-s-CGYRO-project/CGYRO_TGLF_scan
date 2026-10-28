@@ -23,6 +23,8 @@ if param2 == param:
     printe('Param1 = param2 -> change one of them')
     OMFITx.End()
 
+result_branch = results + '_spectra' if isinstance(results, str) else None
+
 cache = root['LIB']['OMFITlib_tglf_cache'].runNoGUI()
 if cache_records is None:
     cache_records = root.setdefault('_scan_cache_provenance', {}).setdefault(results, {}) if isinstance(results, str) else {}
@@ -46,6 +48,8 @@ cache_key = param2 + '+' + param
 current = cache['provenance'](root, inputTGLF, '2D', {'param': param, 'param2': param2, 'range': parameterRange, 'range2': parameterRange2})
 if not cache['matches'](cache_records.get(cache_key, None), current):
     cache_records[cache_key + '_rows'] = {}
+    if result_branch:
+        cache['forget_workbench'](root, (result_branch, cache_key))
 cache['prepare'](results, results_spectra, cache_key, cache_records, current, OMFITtree)
 row_records = cache_records.setdefault(cache_key + '_rows', {})
 tmpTGLF = copy.deepcopy(inputTGLF)
@@ -87,5 +91,7 @@ for i, value in enumerate(parameterRange2):
             results[cache_key][value] = scratch['tmp1Dscan'].pop(param)
         if param in scratch['tmp1Dscan_spectra']:
             results_spectra[cache_key][value] = scratch['tmp1Dscan_spectra'].pop(param)
+            if result_branch:
+                cache['forget_workbench'](root, (result_branch, cache_key, value))
 results[param2 + '+' + param].sort(key=float)
 results_spectra[param2 + '+' + param].sort(key=float)

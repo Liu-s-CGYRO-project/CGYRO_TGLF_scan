@@ -70,12 +70,12 @@ class TglfRenderingTests(unittest.TestCase):
                 axes = {'A+B': {'para1_values': [1., 3.], 'para2_values': [2., 4.]}}
                 record.update(dict(spectra_mode='2D', selected_paras_2d=copy.deepcopy(axes)))
                 before = plot_sources.tglf_results(root, record)
-                self.assertIs(before, root['TGLF_scan']['scanResults2D_spectra'])
+                self.assertIs(before.node, root['TGLF_scan']['scanResults2D_spectra'])
                 comparison.modules['ui'].ComparisonUI(root, comparison.FakeUI(root)).render()
                 self.assertEqual(record['result_source'], 'legacy:2D')
                 self.assertEqual(record['spectra_mode'], '2D')
                 self.assertEqual(record['selected_paras_2d'], axes)
-                self.assertIs(plot_sources.tglf_results(root, record), before)
+                self.assertIs(plot_sources.tglf_results(root, record).node, before.node)
 
     def test_source_resolution_preserves_explicit_choice_and_absent_legacy_fallback(self):
         choices = plot_sources.run_choices(self.root)

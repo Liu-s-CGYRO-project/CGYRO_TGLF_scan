@@ -48,8 +48,8 @@ if rho in root.get('input.tglf', {}) and cache['matches'](root.get('_input_cache
         root['TGLF']['FILES'] = OMFITtree({'input.tglf': copy.deepcopy(root['input.tglf'][rho])})
     OMFITx.End()
 for key in ('input.tglf', 'tgyro_output', 'scanResults', 'scanResults_spectra',
-            'scanResults2D', 'scanResults2D_spectra', 'UQResults', 'UQResults_spectra',
-            'Experimental_fluxes', 'Experimental_spectra', '_scan_cache_provenance',
+            'scanResults2D', 'scanResults2D_spectra', 'scanResults3D', 'scanResults3D_spectra', 'UQResults', 'UQResults_spectra',
+            'Experimental_fluxes', 'Experimental_spectra', '_scan_cache_provenance', '_workbench_index',
             '_radial_cache_provenance', '_input_cache_provenance'):
     root.pop(key, None)
 

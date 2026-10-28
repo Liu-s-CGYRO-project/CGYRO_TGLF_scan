@@ -18,6 +18,8 @@ defaultVars(
 if inputTGLF is None:
     raise ValueError('Need an input.tglf file to run a TGLF scan')
 
+result_branch = results + '_spectra' if isinstance(results, str) else None
+
 # setup simple distributions
 if rv is None:
     if root['SETTINGS']['PHYSICS'].get('multiWindowDist', False):
@@ -67,6 +69,8 @@ if '_'.join(param) not in results_spectra:
 results['_'.join(param)] = OMFITtree()
 results_spectra['_'.join(param)] = OMFITtree()
 cache = root['LIB']['OMFITlib_tglf_cache'].runNoGUI()
+if result_branch:
+    cache['forget_workbench'](root, (result_branch, '_'.join(param)))
 root.setdefault('_scan_cache_provenance', {})['UQResults'] = cache['provenance'](
     root, inputTGLF, 'UQ', {'parameters': param, 'samples': parameterRange})
 
