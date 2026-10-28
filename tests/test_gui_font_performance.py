@@ -5,6 +5,8 @@ to a locally installed face so these tests never download a font pack.
 """
 from pathlib import Path
 import sys
+import threading
+from types import SimpleNamespace
 import tkinter as tk
 from tkinter import font as tkfont, ttk
 import unittest
@@ -37,6 +39,39 @@ class GuiFontPerformanceTests(unittest.TestCase):
         self.family.stop()
         self.root.destroy()
         self.assertEqual(self.errors, [])
+
+    def test_geometry_queue_waits_for_native_idle_pass_and_cancels_on_close(self):
+        canvas = tk.Canvas(self.window, width=600, height=300)
+        canvas.pack()
+        content = ttk.Frame(canvas)
+        canvas.create_window(0, 0, anchor='nw', window=content)
+        row = ttk.Frame(content)
+        row.pack()
+        label = ttk.Label(row, text='Workbench content')
+        label.pack()
+        view = layout.NativeLayout(content, label, compact=True, resize_window=False)
+        content._cgyro_gui_layout = view
+        view._cancel_scroll()
+        with patch.object(view, '_sync_scroll', wraps=view._sync_scroll) as sync:
+            for _ in range(20):
+                view._queue_scroll()
+            timer = view.scroll_pending
+            self.root.update_idletasks()
+            sync.assert_not_called()
+            self.assertEqual(view.scroll_pending, timer)
+            settled = tk.BooleanVar(self.root, False)
+            self.root.after(80, lambda: settled.set(True))
+            self.root.wait_variable(settled)
+            self.assertGreater(sync.call_count, 0)
+            self.assertGreater(content.winfo_height(), 0)
+            self.assertEqual(len(canvas.cget('scrollregion').split()), 4)
+            sync.reset_mock()
+            view._cancel_scroll()
+            view._queue_scroll()
+            content.destroy()
+            self.root.update()
+            sync.assert_not_called()
+            self.assertIsNone(view.scroll_pending)
 
     def test_registration_does_not_rescan_existing_pages(self):
         labels = [ttk.Label(self.window, text='Scan parameter ' + str(index)) for index in range(50)]
@@ -166,6 +201,90 @@ class GuiFontPerformanceTests(unittest.TestCase):
             self.root.update()
             self.assertIsNotNone(getattr(added, '_cgyro_console_layout', None))
             self.assertEqual(tkfont.Font(root=self.root, font=added.cget('font')).actual('size'), 11)
+
+
+
+
+class WorkbenchFontStartupTests(unittest.TestCase):
+    def setUp(self):
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.window = tk.Toplevel(self.root)
+        self.ui = SimpleNamespace(_aux=dict(parentGUI=self.window))
+        self.errors = []
+        self.root.report_callback_exception = lambda kind, error, trace: self.errors.append(error)
+        self.addCleanup(self.root.destroy)
+
+    def drain(self, ms=60):
+        done = tk.BooleanVar(self.root, False)
+        self.root.after(ms, lambda: done.set(True))
+        self.root.wait_variable(done)
+        self.assertEqual(self.errors, [])
+
+    def test_slow_cache_check_keeps_controls_live_and_reflows_only_owner(self):
+        started, release = threading.Event(), threading.Event()
+        self.addCleanup(release.set)
+        threads = []
+        def verify(kind):
+            threads.append(threading.get_ident())
+            started.set()
+            release.wait(2)
+            return {layout.FONT_FILENAME: '/verified/local/font'}
+        own = SimpleNamespace(refresh_font_metrics=unittest.mock.Mock())
+        other = tk.Toplevel(self.root)
+        other._cgyro_gui_layout = SimpleNamespace(refresh_font_metrics=unittest.mock.Mock())
+        self.window._cgyro_gui_layout = own
+        calls = []
+        with (patch.object(layout, 'cached_fonts', side_effect=verify) as cache,
+              patch.object(layout, 'font_family', side_effect=lambda *a, **k: calls.append(threading.get_ident())),
+              patch.object(layout, 'configure_window_fonts')):
+            layout.prepare_gui_fonts(self.ui)
+            self.assertTrue(started.wait(1))
+            layout.prepare_gui_fonts(self.ui)
+            button = ttk.Button(self.window, command=lambda: calls.append('click'))
+            button.pack()
+            button.invoke()
+            self.assertEqual(calls, ['click'])
+            self.assertEqual(cache.call_count, 1)
+            self.assertNotEqual(threads[0], threading.get_ident())
+            release.set()
+            self.drain()
+        self.assertEqual(calls, ['click', threading.get_ident()])
+        own.refresh_font_metrics.assert_called_once_with()
+        other._cgyro_gui_layout.refresh_font_metrics.assert_not_called()
+
+    def test_missing_cache_uses_system_fonts_without_a_download(self):
+        with (patch.object(layout, 'cached_fonts', return_value=None),
+              patch.object(fonts, 'ensure_fonts', side_effect=AssertionError('Startup downloaded fonts'))):
+            layout.prepare_gui_fonts(self.ui)
+            fonts.gui_font(self.window)
+            self.drain()
+            fonts.gui_font(self.window)
+        self.assertTrue(self.window._project_cjk_defer_load)
+
+    def test_close_during_verification_drops_poll_without_touching_tk(self):
+        release = threading.Event()
+        self.addCleanup(release.set)
+        def verify(kind):
+            release.wait(2)
+            return {layout.FONT_FILENAME: '/verified/local/font'}
+        with (patch.object(layout, 'cached_fonts', side_effect=verify),
+              patch.object(layout, 'font_family') as register):
+            layout.prepare_gui_fonts(self.ui)
+            state = self.window._cgyro_font_startup
+            self.window.destroy()
+            release.set()
+            self.assertTrue(state['ready'].wait(1))
+            self.drain()
+            register.assert_not_called()
+        self.assertIsNone(state['timer'])
+
+    def test_registered_font_skips_all_cache_io_on_reopen(self):
+        self.root._project_cjk_family = (layout.FONT_PROFILE, 'Cached font')
+        with patch.object(layout, 'cached_fonts', side_effect=AssertionError('Repeated cache I/O')):
+            layout.prepare_gui_fonts(self.ui)
+        self.assertFalse(hasattr(self.window, '_cgyro_font_startup'))
+
 
 
 if __name__ == '__main__':

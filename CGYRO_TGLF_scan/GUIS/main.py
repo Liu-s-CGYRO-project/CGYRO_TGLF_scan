@@ -1,5 +1,7 @@
 """Default workbench for Linux OMFIT desktops."""
 from OMFITlib_gui_api import adapt, gui_view
+from OMFITlib_gui_layout import prepare_gui_fonts
+prepare_gui_fonts(OMFITx)
 OMFITx = adapt(OMFITx)
 from OMFITlib_project import ProjectActions
 from OMFITlib_project_ui import ProjectUI

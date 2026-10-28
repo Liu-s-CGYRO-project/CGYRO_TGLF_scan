@@ -2,7 +2,6 @@
 from builtins import any, dict, float, int, len, list, max, min, str
 import math
 import numpy as np
-from scipy.interpolate import CubicSpline
 
 ZEFF_RULE = 'source_neutral_composition_zeff_v3'
 ZEFF_DEFAULTS = dict(zeff_collision_model=1)
@@ -40,6 +39,8 @@ def zeff_profile(source, options, mains):
 
 def prescribe_local_zeff(value, kind, record):
     """Apply after charge closure; never store audit keys in a solver card."""
+    from scipy.interpolate import CubicSpline
+
     if record.get('rule', '') != ZEFF_RULE:
         raise ValueError('Zeff 规则记录缺失，请重新运行 Transfer_tool。')
     x, y = np.asarray(record['rmin_normalized']), np.asarray(record['values'])

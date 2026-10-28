@@ -6,7 +6,65 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 from OMFITlib_gui_context import bind_actions
-from OMFITlib_gui_fonts import FONT_PROFILE, configure_window_fonts, fit_field_height, font_size, gui_font
+from OMFITlib_gui_fonts import FONT_FILENAME, FONT_PROFILE, configure_window_fonts, fit_field_height, font_family, font_size, gui_font
+from OMFITlib_font_cache import FontError, cached_fonts
+
+
+def prepare_gui_fonts(ui):
+    """Verify cached fonts off-thread; opening the workbench never downloads."""
+    parent = getattr(ui, '_aux', {}).get('parentGUI', None)
+    if not isinstance(parent, tk.Misc):
+        return
+    top = parent.winfo_toplevel()
+    family = getattr(top._root(), '_project_cjk_family', None)
+    if family and family[0] == FONT_PROFILE and family[1]:
+        return
+    if getattr(top, '_cgyro_font_startup', None) is not None:
+        return
+    top._project_cjk_defer_load = True
+    state = top._cgyro_font_startup = dict(ready=threading.Event(), fonts=None, timer=None, closed=False)
+
+    def verify():
+        try:
+            state['fonts'] = cached_fonts('gui')
+        except (FontError, OSError, ValueError):
+            pass  # System fonts remain usable; Font Resources supports retry/import.
+        finally:
+            state['ready'].set()
+
+    def complete():
+        state['timer'] = None
+        if state['closed']:
+            return
+        if not state['ready'].is_set():
+            state['timer'] = top.after(25, complete)
+            return
+        if not state['fonts']:
+            return
+        top._project_cjk_defer_load = False
+        font_family(top, retry=True, verified_path=state['fonts'][FONT_FILENAME])
+        configure_window_fonts(top, refresh=True)
+        # Reflow only this window. Other project windows keep their widgets.
+        pending = [top]
+        while pending:
+            widget = pending.pop()
+            if isinstance(widget, tk.Toplevel) and widget is not top:
+                continue
+            layout = getattr(widget, '_cgyro_gui_layout', None)
+            if layout is not None:
+                layout.refresh_font_metrics()
+            pending.extend(widget.winfo_children())
+
+    def close(event):
+        if event.widget is top:
+            state['closed'] = True
+            if state['timer'] is not None:
+                top.after_cancel(state['timer'])
+                state['timer'] = None
+
+    top.bind('<Destroy>', close, add='+')
+    threading.Thread(target=verify, name='omfit-workbench-fonts', daemon=True).start()
+    state['timer'] = top.after(25, complete)
 
 
 @contextmanager
@@ -439,7 +497,10 @@ class NativeLayout:
 
     def _queue_scroll(self):
         if self.scroll_pending is None:
-            self.scroll_pending = self.content.after_idle(self._sync_scroll)
+            # Native GUI.update drains idle handlers while sizing the window.
+            # Coalesce its Configure burst after that pass, avoiding repeated
+            # native/local geometry corrections inside update_idletasks().
+            self.scroll_pending = self.content.after(10, self._sync_scroll)
 
     def _cancel_scroll(self):
         if self.scroll_pending is not None:

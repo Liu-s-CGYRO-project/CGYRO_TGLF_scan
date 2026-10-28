@@ -215,8 +215,7 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
             self.nav('导入 / 转换 / 传递输入', 'transfer')
             self.nav('批量导入 input.gacode', 'multi')
         self.ui.Separator('2  CGYRO / TGLF · 计算任务')
-        cg_issues = cgyro_input_issues(self.root)
-        self.label('CGYRO：' + ('；'.join(cg_issues) if cg_issues else '转换工具输入已准备并传递'))
+        self.label('CGYRO 当前输入：' + ('已载入；运行前检查参数' if s['cgyro_input'] else '未载入'))
         self.label('TGLF 单文件：{}；多剖面案例：{}，已选 {}。'.format(
             '已载入' if s['tglf_input'] else '未载入', s['multi_cases'], s['multi_selected']))
         with self.ui.same_row():

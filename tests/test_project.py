@@ -457,6 +457,25 @@ class ProjectTest(unittest.TestCase):
                 action()
         self.assert_no_scripts_run()
 
+    def test_overview_uses_input_presence_without_parsing_or_scan_preflight(self):
+        class UnreadInput(dict):
+            def keys(self):
+                raise AssertionError('Overview parsed the input card')
+            def __getitem__(self, key):
+                raise AssertionError('Overview read a parameter')
+        self.cg['INPUTS']['input.cgyro'] = UnreadInput()
+        with patch('OMFITlib_project_ui.cgyro_input_issues', side_effect=AssertionError('Full preflight')):
+            ui = self.render('overview')
+        labels = [args[0] for name, args, kwargs in ui.events if name == 'Label']
+        self.assertTrue(any('CGYRO 当前输入：已载入' in text for text in labels))
+        self.assert_no_scripts_run()
+
+    def test_explicit_configuration_check_keeps_scan_validation(self):
+        with patch.object(project, 'cgyro_input_issues', return_value=['Selected input is invalid']) as check:
+            self.actions.check()
+        check.assert_called_once_with(self.root)
+        self.assertIn('Selected input is invalid', self.actions.settings['message'])
+
     def test_transfer_missing_profile_blocks_pipeline_execution(self):
         ui = self.render('transfer')
         _, options = ui.button('运行 Transfer_tool')

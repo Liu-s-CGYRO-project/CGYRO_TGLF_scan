@@ -153,6 +153,30 @@ class NativeExecutionTests(unittest.TestCase):
     def setUp(self):
         self.addCleanup(plt.close, 'all')
 
+    def test_workbench_open_does_not_import_scipy_interpolation(self):
+        import builtins
+        original = builtins.__import__
+        def lightweight(name, *args, **kwargs):
+            if name == 'scipy.interpolate' or name.startswith('scipy.interpolate.'):
+                raise AssertionError('Opening the workbench loaded Zeff interpolation')
+            return original(name, *args, **kwargs)
+        with patch.object(builtins, '__import__', side_effect=lightweight):
+            out = self.host.execute('from OMFITlib_project_ui import ProjectUI',
+                                    self.host.modules[('CGYRO_TGLF_scan',)])
+        self.assertIn('ProjectUI', out)
+
+    def test_zeff_interpolation_remains_callable_after_native_import_cleanup(self):
+        out = self.host.execute('from OMFITlib_transfer_zeff import prescribe_local_zeff, ZEFF_RULE',
+                                self.host.modules[('CGYRO_TGLF_scan', 'Transfer_tool')])
+        self.assertNotIn('OMFITlib_transfer_zeff', sys.modules)
+        value = {'RMIN': .5}
+        record = dict(rule=out['ZEFF_RULE'], rmin_normalized=[0., 1.], values=[1., 2.], collision_model=1,
+                      source='neutralized_full_composition')
+        out['prescribe_local_zeff'](value, 'cgyro', record)
+        self.assertAlmostEqual(value['Z_EFF'], 1.5)
+        self.assertEqual(value['Z_EFF_METHOD'], 1)
+        self.assertEqual(value['COLLISION_MODEL'], 1)
+
     def test_tglf_native_three_dimensional_reference_after_import_cleanup(self):
         host = self.host
         source = {'group': 'radial', 'rho': .3}
