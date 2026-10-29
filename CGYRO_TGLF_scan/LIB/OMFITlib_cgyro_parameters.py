@@ -1,5 +1,5 @@
 """Scalar calculation settings shared by the workbench and CGYRO submitter."""
-from builtins import any, bool, dict, float, hasattr, int, len, list, set, sorted, str, zip
+from builtins import any, bool, dict, float, frozenset, hasattr, int, len, list, range, set, sorted, str, zip
 from collections import OrderedDict
 import math
 import re
@@ -8,7 +8,8 @@ from OMFITlib_cgyro_archive import RUN_CONTROL_PARAMETERS
 GROUPS = OrderedDict([('常用设置', 'common'), ('时间与收敛', 'time'),
                       ('网格与速度空间', 'grid'), ('场与碰撞', 'model'),
                       ('数值耗散与算法', 'algorithm'), ('平衡与剪切', 'geometry'),
-                      ('输出选项', 'output'), ('其他输入参数', 'other'), ('全部参数', 'all')])
+                      ('输出选项', 'output'), ('粒子温度与梯度', 'species'),
+                      ('其他输入参数', 'other'), ('全部参数', 'all')])
 # Fallbacks are explicit GUI reference values, not forced solver values.
 # Nothing is written until the user edits a value or selects a scan axis.
 FIELDS = OrderedDict([
@@ -60,11 +61,114 @@ FIELDS = OrderedDict([
     ('GAMMA_E', ('E×B 剪切', 'geometry', 0.0, 'float', False)),
     ('GAMMA_P', ('旋转剪切', 'geometry', 0.0, 'float', False)),
     ('MACH', ('旋转马赫数', 'geometry', 0.0, 'float', False)),
+    ('HIPREC_FLAG', ('二进制输出双精度', 'output', 0, 'int', False)),
     ('FIELD_PRINT_FLAG', ('输出场数据', 'output', 0, 'int', False)),
     ('MOMENT_PRINT_FLAG', ('输出粒子矩', 'output', 0, 'int', False)),
     ('H_PRINT_FLAG', ('输出分布函数', 'output', 0, 'int', False)),
     ('SILENT_FLAG', ('精简终端输出', 'output', 0, 'int', False)),
 ])
+
+# Display membership is independent of the full solver catalog.
+COMMON = frozenset(FIELDS)
+
+# Remaining native cgyro_parse.py parameters, checked 2026-10-29.
+# GACODE Git blob: f2d22f2a30e95d36ae06c85c66d95d05985767f8.
+# Indexed species families expand exactly as SimpleInput.add(n=11).
+# KY, linear mode, toroidal count and ion identity stay workflow-owned.
+FIELDS.update([
+    ('ALPHA_POLY', ('能量多项式参数', 'grid', 0.0, 'float', False)),
+    ('E_FIX', ('能量网格模式', 'grid', 2, 'int', False)),
+    ('RESTART_STEP', ('检查点写出间隔', 'time', 10, 'int', False)),
+    ('RESTART_PRESERVATION_MODE', ('检查点保留方式', 'time', 3, 'int', False)),
+    ('MPIIO_STRIPE_FACTOR', ('MPI-IO 条带数', 'algorithm', 0, 'int', False)),
+    ('MPIIO_SMALL_STRIPE_FACTOR', ('小文件 MPI-IO 条带数', 'algorithm', 0, 'int', False)),
+    ('N_WAVE', ('波数算法参数', 'algorithm', 2, 'int', False)),
+    ('CONSTANT_STREAM_FLAG', ('平行流项处理', 'algorithm', 1, 'int', False)),
+    ('EXPLICIT_TRAP_FLAG', ('显式俘获项', 'algorithm', 0, 'int', False)),
+    ('IPCCW', ('等离子体电流方向', 'geometry', -1.0, 'float', False)),
+    ('BTCCW', ('环向磁场方向', 'geometry', -1.0, 'float', False)),
+    ('PROFILE_MODEL', ('剖面输入来源', 'geometry', 1, 'int', False)),
+    ('COLLISION_ION_MODEL', ('离子碰撞选项', 'model', 0, 'int', False)),
+    ('COLLISION_PRECISION_MODE', ('碰撞矩阵精度', 'model', 0, 'int', False)),
+    ('COLLISION_TEST_MODE', ('碰撞测试模式', 'model', 0, 'int', False)),
+    ('COLLISION_FIELD_MAX_L', ('碰撞场项最高阶数', 'model', -2, 'int', False)),
+    ('COLLISION_TEST_MAX_L', ('碰撞测试最高阶数', 'model', -2, 'int', False)),
+    ('ZF_TEST_MODE', ('带状流测试模式', 'algorithm', 0, 'int', False)),
+    ('AE_FLAG', ('绝热电子选项', 'model', 0, 'int', False)),
+    ('TEMP_AE', ('绝热电子温度', 'species', 1.0, 'float', False)),
+    ('DENS_AE', ('绝热电子密度', 'species', 1.0, 'float', False)),
+    ('MASS_AE', ('绝热电子质量', 'species', 0.0002724486, 'float', False)),
+    ('DLNTDR_AE', ('绝热电子温度梯度', 'species', 1.0, 'float', False)),
+    ('DLNNDR_AE', ('绝热电子密度梯度', 'species', 1.0, 'float', False)),
+    ('LAMBDA_STAR', ('压力梯度参数', 'model', 0.0, 'float', False)),
+    ('GFLUX_PRINT_FLAG', ('输出全局通量', 'output', 0, 'int', False)),
+    ('AMP0', ('零模初始幅度', 'algorithm', 0.0, 'float', False)),
+    ('AMP', ('有限模初始幅度', 'algorithm', 0.1, 'float', False)),
+    ('ROTATION_MODEL', ('旋转模型', 'geometry', 1, 'int', False)),
+    ('TOROIDALS_PER_PROC', ('每进程环向模数', 'algorithm', 1, 'int', False)),
+    ('UDSYMMETRY_FLAG', ('上下对称选项', 'algorithm', 0, 'int', False)),
+    ('SHEAR_METHOD', ('剪切处理方式', 'geometry', 2, 'int', False)),
+    ('GLOBAL_FLAG', ('全局剖面选项', 'model', 0, 'int', False)),
+    ('N_GLOBAL', ('全局输出谐波数', 'output', 4, 'int', False)),
+    ('NU_GLOBAL', ('全局源项速率', 'model', 15.0, 'float', False)),
+    ('THETA_PLOT', ('输出极向采样', 'output', 1, 'int', False)),
+    ('GPU_BIGMEM_FLAG', ('GPU 碰撞矩阵内存选项', 'algorithm', 1, 'int', False)),
+    ('UPWIND_SINGLE_FLAG', ('迎风通信单精度', 'algorithm', 0, 'int', False)),
+    ('NL_SINGLE_FLAG', ('非线性项精度', 'algorithm', 0, 'int', False)),
+    ('EXCH_FLAG', ('交换项选项', 'algorithm', 0, 'int', False)),
+    ('RES_WEIGHT_POWER', ('分辨率权重指数', 'algorithm', 1.0, 'float', False)),
+    ('SCALE_INDEX', ('缩放索引', 'algorithm', 0, 'int', False)),
+    ('SCALE_STREAM', ('平行流项倍率', 'algorithm', 1.0, 'float', False)),
+    ('SCALE_TRAP', ('俘获项倍率', 'algorithm', 1.0, 'float', False)),
+    ('SCALE_DRIFT', ('漂移项倍率', 'algorithm', 1.0, 'float', False)),
+    ('ZETA', ('方形度', 'geometry', 0.0, 'float', False)),
+    ('S_ZETA', ('方形度剪切', 'geometry', 0.0, 'float', False)),
+    ('ZMAG', ('磁面中心高度', 'geometry', 0.0, 'float', False)),
+    ('DZMAG', ('磁面高度径向导数', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_SIN3', ('形状谐波系数', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_S_SIN3', ('形状谐波径向剪切', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_SIN4', ('形状谐波系数', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_S_SIN4', ('形状谐波径向剪切', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_SIN5', ('形状谐波系数', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_S_SIN5', ('形状谐波径向剪切', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_SIN6', ('形状谐波系数', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_S_SIN6', ('形状谐波径向剪切', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_COS0', ('形状谐波系数', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_S_COS0', ('形状谐波径向剪切', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_COS1', ('形状谐波系数', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_S_COS1', ('形状谐波径向剪切', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_COS2', ('形状谐波系数', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_S_COS2', ('形状谐波径向剪切', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_COS3', ('形状谐波系数', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_S_COS3', ('形状谐波径向剪切', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_COS4', ('形状谐波系数', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_S_COS4', ('形状谐波径向剪切', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_COS5', ('形状谐波系数', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_S_COS5', ('形状谐波径向剪切', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_COS6', ('形状谐波系数', 'geometry', 0.0, 'float', False)),
+    ('SHAPE_S_COS6', ('形状谐波径向剪切', 'geometry', 0.0, 'float', False)),
+    ('SBETA', ('径向 beta 系数', 'model', 0.0, 'float', False)),
+    ('QUASINEUTRAL_FLAG', ('准中性选项', 'model', 1, 'int', False)),
+    ('LAMBDA_STAR_SCALE', ('压力梯度参数倍率', 'model', 0.0, 'float', False)),
+    ('GAMMA_E_SCALE', ('E×B 剪切倍率', 'model', 1.0, 'float', False)),
+    ('GAMMA_P_SCALE', ('旋转剪切倍率', 'model', 1.0, 'float', False)),
+    ('MACH_SCALE', ('马赫数倍率', 'model', 1.0, 'float', False)),
+    ('ZF_SCALE', ('带状流倍率', 'model', 1.0, 'float', False)),
+    ('SBETA_CONST_FLAG', ('径向 beta 系数选项', 'model', 0, 'int', False)),
+    ('SBETA_H', ('径向 beta 系数 H', 'model', 0.0, 'float', False)),
+])
+
+for _name, _label, _default in (
+        ('TEMP', '温度', 1.0),
+        ('DLNTDR', '温度梯度', 1.0),
+        ('SDLNNDR', '有效密度曲率', 0.0),
+        ('SDLNTDR', '有效温度曲率', 0.0),
+        ('DLNNDR_SCALE', '密度梯度倍率', 1.0),
+        ('DLNTDR_SCALE', '温度梯度倍率', 1.0),
+):
+    for _index in range(1, 12):
+        FIELDS[_name + '_' + str(_index)] = (_label + ' · 粒子 ' + str(_index),
+            'species', _default, 'float', False)
 
 
 def managed_parameter(name):
@@ -197,6 +301,8 @@ def parameter_value(name, raw):
         raise ValueError('{} 必须为有限数值。'.format(name))
     if spec['kind'] == 'int' and not value.is_integer():
         raise ValueError('{} 必须为整数。'.format(name))
+    if name == 'HIPREC_FLAG' and value not in (0, 1):
+        raise ValueError('HIPREC_FLAG 请填写 0（单精度输出）或 1（双精度输出）。')
     if name == 'DELTA_T_METHOD' and value not in (0, 1, 2, 3):
         raise ValueError('DELTA_T_METHOD 请选择 0（固定 RK4）或 1–3（自适应积分）。')
     if name == 'Z_EFF_METHOD' and value not in (1, 2):

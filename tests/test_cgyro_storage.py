@@ -1380,12 +1380,14 @@ class StorageCases(unittest.TestCase):
         (self.base / 'existing').write_bytes(b'x' * 90)
         report = scratch.space_report(self.base, tmp_root=self.base)
         self.assertEqual(report['used_bytes'], 90)
-        with patch.object(scratch, 'space_report', return_value=report), patch.object(scratch, 'LIMIT_BYTES', 100):
+        with patch.object(scratch, 'space_report', return_value=report):
+            self.assertEqual(scratch.LIMIT_BYTES, 200 * 1024 ** 3)
+            report['used_bytes'] = 200 * 1024 ** 3
             scratch.check_start_capacity(self.base)
             # This run may temporarily pass its initial usage limit.
             scratch.ensure_capacity(self.base, 11)
-            report['used_bytes'] = 101
-            with self.assertRaisesRegex(RuntimeError, '100 GiB'):
+            report['used_bytes'] += 1
+            with self.assertRaisesRegex(RuntimeError, '200 GiB'):
                 scratch.check_start_capacity(self.base)
         self.assertEqual((self.base / 'existing').read_bytes(), b'x' * 90)
 

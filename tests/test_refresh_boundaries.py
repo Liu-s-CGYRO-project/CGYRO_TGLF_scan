@@ -429,12 +429,15 @@ class RefreshBoundaryTests(unittest.TestCase):
         self.assert_external_survives(header, action)
 
     def test_cgyro_scan_specification_commits_without_repainting_project_tree(self):
+        from OMFITlib_project import ProjectActions
         from OMFITlib_workbench_scan_ui import ScanControls
         class Page(cgyro_ui.CgyroPage, ScanControls):
             pass
         view = Page()
         view.root, view.settings = self.host.tree, self.host.tree['SETTINGS']['WORKBENCH']
-        view.actions = SimpleNamespace(factory=dict)
+        view.prefix = "root['SETTINGS']['WORKBENCH']"
+        view.actions = ProjectActions.__new__(ProjectActions)
+        view.actions.root, view.actions.settings, view.actions.factory = view.root, view.settings, dict
         node = dict(SETTINGS=dict(EXPERIMENT={'runid': 'Jet'}, SETUP={'idimrun': 0}, PHYSICS={'kyarr': [.1]}))
         self.host.tree['CGYRO_scan'] = node
         fields = {}

@@ -327,7 +327,7 @@ class NativeTabsTests(unittest.TestCase):
         self.assertIsNone(table.pending)
         self.host.drain(SEARCH_DELAY_MS + 20)
 
-    def test_cgyro_parameter_search_and_commit_use_local_native_controls(self):
+    def build_cgyro_parameter_table(self):
         from test_tglf_parameters import UnreadResults
         from OMFITlib_project import ProjectActions
         from OMFITlib_workbench_cgyro_ui import CgyroPage
@@ -365,6 +365,10 @@ class NativeTabsTests(unittest.TestCase):
             ui.Tab('')
             finish_gui_layout(self.header, ui)
         self.host.render(render)
+        return view, node
+
+    def test_cgyro_parameter_search_and_commit_use_local_native_controls(self):
+        view, node = self.build_cgyro_parameter_table()
         table, header, events = view.cgyro_parameter_list, self.header, []
         self.host.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
         self.assertNotIn('CUSTOM_NUMBER', table.names)
@@ -396,6 +400,94 @@ class NativeTabsTests(unittest.TestCase):
         self.assertEqual(self.counts, dict(edit=1, run=2))
         self.assertIs(self.header, header)
         self.assertEqual(events, [])
+        self.assertEqual(self.host.updates, [])
+
+    def test_cgyro_clearing_search_restores_mapped_parameter_rows(self):
+        view, _ = self.build_cgyro_parameter_table()
+        table, header = view.cgyro_parameter_list, self.header
+        table.group.set('全部参数')
+        table.filter()
+        initial = list(table.names)
+        prefix = "root['CGYRO_scan']['SETTINGS']['PHYSICS']['fixed_parameters']"
+        with patch('OMFITlib_workbench_cgyro_ui.parameter_catalog', side_effect=AssertionError('catalog reread')):
+            for query in ('N_THETA', '', 'NO_SUCH_PARAMETER', '', 'FIELD', ''):
+                table.query.set(query)
+                table.flush()
+                self.host.drain()
+                if not query:
+                    self.assertEqual(table.names, initial)
+                for name in table.visible_names():
+                    entry = self.fields[prefix + '[' + repr(name) + "][" + repr('value') + ']']
+                    with self.subTest(query=query, name=name):
+                        self.assertTrue(entry.winfo_exists())
+                        self.assertEqual(entry.master.master.winfo_manager(), 'grid')
+                if table.visible_names():
+                    first = self.fields[prefix + '[' + repr(table.visible_names()[0]) + "][" + repr('value') + ']']
+                    self.assertTrue(first.winfo_ismapped())
+        self.assertIs(self.header, header)
+        self.assertEqual(self.counts, dict(edit=1))
+        self.assertEqual(self.host.updates, [])
+
+    def test_tglf_clear_search_restores_group_and_paging_without_redrawing_tabs(self):
+        self.build_parameter_table()
+        table, header, toolbar, notebook = self.table, self.header, self.table.toolbar, self.pages.notebook
+        initial = list(table.names)
+        table.move(1)
+        self.assertEqual(table.page, 1)
+        with patch('OMFITlib_tglf_workbench_ui.parameter_catalog', side_effect=AssertionError('catalog reread')):
+            table.query.set('NO_SUCH_PARAMETER')
+            table.flush()
+            self.assertEqual(table.names, [])
+            table.query.set('')
+            table.flush()
+            self.host.drain()
+            self.assertEqual(table.names, initial)
+            self.assertEqual(table.page, 0)
+            path = "root['SETTINGS']['WORKBENCH']['tglf']['parameters']['SAT_RULE']['value']"
+            self.assertTrue(self.fields[path].winfo_ismapped())
+        self.assertIs(self.header, header)
+        self.assertIs(table.toolbar, toolbar)
+        self.assertIs(self.pages.notebook, notebook)
+        self.assertEqual(self.counts, dict(edit=1))
+        self.assertEqual(self.tree_events, [])
+        self.assertEqual(self.host.updates, [])
+
+    def test_clear_search_deferred_by_save_finishes_when_returning_to_parameter_tab(self):
+        view, _ = self.build_cgyro_parameter_table()
+        table = view.cgyro_parameter_list
+        table.query.set('NO_SUCH_PARAMETER')
+        table.flush()
+        self.host.api.OMFITaux['GUI'].lockSave = True
+        table.query.set('')
+        table.flush()
+        self.assertIsNotNone(table.section.pending)
+        self.select('run')
+        self.host.api.OMFITaux['GUI'].lockSave = False
+        self.host.drain(120)
+        self.assertFalse(table.section.built)
+        self.select('edit')
+        self.assertTrue(table.section.built)
+        path = "root['CGYRO_scan']['SETTINGS']['PHYSICS']['fixed_parameters']['DELTA_T']['value']"
+        self.assertTrue(self.fields[path].winfo_ismapped())
+        self.assertEqual(self.counts, dict(edit=1, run=1))
+        self.assertEqual(self.host.updates, [])
+
+    def test_clearing_search_during_local_row_build_uses_latest_selection(self):
+        """Native widget construction may service another queued Tk callback."""
+        view, _ = self.build_cgyro_parameter_table()
+        table = view.cgyro_parameter_list
+        original, drawn = table.render, []
+        def render(names):
+            drawn[:] = names
+            if not names:
+                table.query.set('')
+                table.filter()
+            original(names)
+        table.render = render
+        table.query.set('NO_SUCH_PARAMETER')
+        table.flush()
+        self.host.drain(60)
+        self.assertEqual(drawn, table.visible_names())
         self.assertEqual(self.host.updates, [])
 
     def test_action_still_rebuilds_owner_header_and_remembers_selected_tab(self):

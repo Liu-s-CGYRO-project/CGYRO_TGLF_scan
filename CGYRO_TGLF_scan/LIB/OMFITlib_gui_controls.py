@@ -58,7 +58,17 @@ class ParameterList:
         self.following.pack(side=tk.LEFT)
         for widget in (self.group, self.search, self.count, self.previous, self.following):
             style_widget(widget)
-        self.section = deferred_section(ui, lambda: render(self.visible_names()), local=True, container=True)
+        self.section = deferred_section(ui, lambda: self.render(self.visible_names()), local=True, container=True)
+        self.tabs = []
+        if self.section is not None:
+            self.section.parent.bind('<Map>', self.restore, add='+')
+            child = self.toolbar
+            while isinstance(child.master, tk.Misc):
+                parent = child.master
+                if isinstance(parent, ttk.Notebook):
+                    binding = parent.bind('<<NotebookTabChanged>>', self.restore, add='+')
+                    self.tabs.append((parent, str(child), binding))
+                child = parent
         self.group.bind('<<ComboboxSelected>>', lambda event: self.filter())
         self.search.bind('<Return>', self.flush)
         self.search.bind('<KP_Enter>', self.flush)
@@ -69,6 +79,13 @@ class ParameterList:
     def visible_names(self):
         start = self.page * PARAMETER_PAGE_SIZE
         return self.names[start:start + PARAMETER_PAGE_SIZE]
+
+    def restore(self, event):
+        # A save-delayed filter may have been hidden before its timer fired.
+        # A clipped, empty panel may not receive Map until it has rows again.
+        # Check only its ancestor tab selections, then resume just this body.
+        if not self.section.built and all(tab.select() == pane for tab, pane, _ in self.tabs):
+            self.section.show()
 
     def schedule(self, *args):
         self.state[self.search_key] = self.query.get()
@@ -113,13 +130,15 @@ class ParameterList:
             else:
                 # A view filter must not invalidate sibling tabs or rebuild
                 # its search field. Only native parameter commits do that.
-                self.section.built = False
-                self.section.show()
+                self.section.rebuild()
 
     def close(self, event):
         if event.widget is self.toolbar:
             self.cancel()
             self.query.trace_remove('write', self.trace)
+            for tab, _, binding in self.tabs:
+                if tab.winfo_exists():
+                    tab.unbind('<<NotebookTabChanged>>', binding)
 
 
 def boolean_value(value):

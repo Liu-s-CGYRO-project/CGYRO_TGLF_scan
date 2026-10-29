@@ -50,6 +50,7 @@ class DeferredSection:
         self.context = dict(ui._aux)
         self.python_file = gui.pythonFile
         self.built = self.running = False
+        self.rebuild_requested = False
         self.pending = None
         self.frame = None
         self.revision = getattr(gui, '_cgyro_view_revision', 0)
@@ -79,6 +80,14 @@ class DeferredSection:
         self.invalidate()
         self.built = False
         if self.parent.winfo_ismapped():
+            self.show()
+
+    def rebuild(self):
+        """Replace only this body, retaining requests made during construction."""
+        self.built = False
+        if self.running:
+            self.rebuild_requested = True
+        else:
             self.show()
 
     def show(self):
@@ -121,6 +130,11 @@ class DeferredSection:
             self.running = False
             if not self.built:
                 frame.destroy()
+            if self.rebuild_requested:
+                self.rebuild_requested = False
+                self.built = False
+                if self.pending is None and alive(self.parent):
+                    self.pending = self.parent.after(0, self._retry)
 
     def _retry(self):
         self.pending = None

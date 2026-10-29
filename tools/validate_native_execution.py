@@ -166,6 +166,22 @@ class NativeExecutionTests(unittest.TestCase):
                                     self.host.modules[('CGYRO_TGLF_scan',)])
         self.assertIn('ProjectUI', out)
 
+    def test_cgyro_full_catalog_and_precision_override_survive_native_import_cleanup(self):
+        for keys in (('CGYRO_TGLF_scan',), ('CGYRO_TGLF_scan', 'CGYRO_scan')):
+            with self.subTest(module=keys):
+                out = self.host.execute('''from OMFITlib_cgyro_parameters import parameter_catalog, initialize_parameters, apply_parameters
+catalog = parameter_catalog([{}])
+physics = {'fixed_parameters': {'HIPREC_FLAG': {'enabled': True, 'value': 1}}}
+source = {}
+initialize_parameters(physics, source)
+''', self.host.modules[keys])
+                self.assertEqual(len(out['catalog']), 199)
+                self.assertEqual(out['catalog']['TEMP_11']['reference'], 1.)
+                self.assertEqual(out['catalog']['HIPREC_FLAG']['reference'], 0)
+                self.assertNotIn('OMFITlib_cgyro_parameters', sys.modules)
+                out['apply_parameters'](out['source'], out['physics'], 0)
+                self.assertEqual(out['source'], {'HIPREC_FLAG': 1})
+
     def test_constant_grouping_survives_native_import_cleanup(self):
         out = self.host.execute('''from OMFITlib_cgyro_parameters import initialize_parameters, apply_parameters
 from OMFITlib_cgyro_plan import _cgyro_case_id

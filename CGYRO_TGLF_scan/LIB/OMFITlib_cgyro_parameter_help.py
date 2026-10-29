@@ -108,6 +108,10 @@ PARAMETER_HELP = {
         '频率以 c_s/a 归一化。', '与 GAMMA_E 物理作用不同；两者若来自同一旋转剖面，应保持相互关系一致。'),
     'MACH': ('有限实数；0 表示无该平衡旋转。', '旋转马赫数 M=ω_0 R_0/c_s，衡量平衡环向流速相对于声速的大小。',
         '无量纲。', 'ROTATION_MODEL=1 为弱旋转；模型 2 包含声速量级旋转及离心效应。'),
+    'HIPREC_FLAG': ('整数 0 或 1。', '控制二进制结果数组的写出精度。',
+        '0：float32 / complex64；1：float64 / complex128。',
+        '原生默认 0。需要双精度场数据时设为 1，并按需开启 FIELD_PRINT_FLAG、MOMENT_PRINT_FLAG；'
+        '本项不代替时间积分的 ERROR_TOL，也不等同于 H_PRINT_FLAG。'),
     'FIELD_PRINT_FLAG': ('整数 0 或 1。', '控制电磁扰动场 A∥、B∥ 的大数组输出。', '0 不额外输出，1 输出。',
         '静电势 φ 的基本输出仍会保留；本开关不决定是否演化电磁场，场由 N_FIELD 决定。'),
     'MOMENT_PRINT_FLAG': ('整数 0 或 1。', '控制密度、能量等粒子扰动矩的大数组输出。', '0 关闭，1 开启。', '输出量可能显著增加；不改变物理方程。'),
@@ -190,7 +194,8 @@ def parameter_help(name, spec=None):
     if entry is None:
         kind = '整数' if spec.get('kind', 'float') == 'int' else '实数'
         allowed = ('正' if spec.get('positive', False) else '有限') + kind + '；只填写单个数值。'
-        entry = (allowed, '当前输入中的扩展参数；本版未收录经核对的物理释义，不根据名称猜测。',
+        origin = 'CGYRO 原生输入参数' if spec.get('reference', None) is not None else '当前输入中的扩展参数'
+        entry = (allowed, origin + '；本版未收录经核对的物理释义，不根据名称猜测。',
                  '请核对所用 CGYRO 版本。', '枚举值、归一化和启用条件以该版本原生输入定义为准。')
     allowed, meaning, units, conditions = entry
     return '\n'.join((name, '可输入：' + allowed, '含义：' + meaning, '单位 / 归一化：' + units,

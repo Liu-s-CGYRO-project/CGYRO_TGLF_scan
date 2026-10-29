@@ -95,7 +95,7 @@ def _metadata_revision(root):
 
 def _import_inputs(ui, endpoint, manifest, local, factory, path_reader, ascii_reader):
     inventory = parse_inventory(remote_text(ui, endpoint, input_inventory_command(manifest)), manifest)
-    # Recovery needs real free space; the 100 GiB start limit applies only to
+    # Recovery needs real free space; the 200 GiB start limit applies only to
     # starting new computation and must not prevent recovering finished work.
     ensure_capacity(local, 2 * sum(inventory.values()))
     base = manifest.get('source_workDir', manifest['workDir'])

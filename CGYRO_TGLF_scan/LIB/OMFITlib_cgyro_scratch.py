@@ -1,6 +1,6 @@
 """Bound CGYRO temporary copies and remove only verified staging directories.
 
-The 100 GiB limit applies once at the start of a run/batch, not to its peak.
+The 200 GiB limit applies once at the start of a run/batch, not to its peak.
 Every subsequent copy checks actual free space. Never sweep
 /tmp by age/name, remove another session, or delete a RUN_DB physical owner.
 """
@@ -14,7 +14,7 @@ import shutil
 import tempfile
 import zipfile
 
-LIMIT_BYTES = 100 * 1024 ** 3
+LIMIT_BYTES = 200 * 1024 ** 3
 START_LIMIT_POLICY_VERSION = 1
 
 
@@ -78,7 +78,7 @@ def check_start_capacity(path):
     """
     report = space_report(path)
     if report['scope'] and report['used_bytes'] > LIMIT_BYTES:
-        raise RuntimeError('CGYRO cannot start above 100 GiB of existing temporary data: {} '
+        raise RuntimeError('CGYRO cannot start above 200 GiB of existing temporary data: {} '
                            '({:.2f} GiB used). Compact or save existing data first; '
                            'RUN_DB and remote jobs are unchanged.'.format(
                                report['scope'], report['used_bytes'] / 1024**3))

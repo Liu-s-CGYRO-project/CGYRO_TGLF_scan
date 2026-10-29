@@ -12,7 +12,7 @@ from OMFITlib_workbench_catalog import SCAN_TABS as CGYRO_SCAN_TABS
 from OMFITlib_cgyro_results import ResultBrowser
 from OMFITlib_cgyro_present import run_caption, collection_caption
 from OMFITlib_cgyro_queue import queue_records, queue_summary
-from OMFITlib_cgyro_parameters import FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS, RUN_CONTROL_PARAMETERS, initialize_parameters, managed_parameter, numeric_source, parameter_catalog, scan_parameter_names
+from OMFITlib_cgyro_parameters import COMMON as CGYRO_COMMON, FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS, RUN_CONTROL_PARAMETERS, initialize_parameters, managed_parameter, numeric_source, parameter_catalog, scan_parameter_names
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, KY_MODES, VALUE_MODES, ky_values
 from OMFITlib_cgyro_parameter_help import parameter_help
 from OMFITlib_project import ION_CASES, MODULES, cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, location, read, runtime_issues, sync_cgyro_choices, sync_cgyro_ion_cases, sync_run_issues
@@ -497,7 +497,7 @@ class CgyroPage:
             scan_parameter_names(physics, int(node['SETTINGS']['SETUP']['idimrun']))
         self.ui.Button('全部沿用输入值', self.actions.inherit_cgyro_parameters,
                        updateGUI=True, refresh_scope='section', refresh_tree=False)
-        filter_rows = [(name, spec['label'], spec['group'], name in CGYRO_FIELDS)
+        filter_rows = [(name, spec['label'], spec['group'], name in CGYRO_COMMON)
                        for name, spec in catalog.items()]
         self.cgyro_parameter_list = ParameterList(self.ui, self.settings, 'cgyro_parameter_group',
             'cgyro_parameter_search', CGYRO_GROUPS, filter_rows,

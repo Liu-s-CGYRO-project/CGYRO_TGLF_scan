@@ -266,9 +266,9 @@ if continuation:
 caseName = continuation['case_tag'] if continuation else physics['case_tag']
 base_workdir = runtime_abs_path(setup_workdir())
 if check_temp_start:
-    print('[CGYRO] Checking existing temporary usage once (100 GiB start limit).', flush=True)
+    print('[CGYRO] Checking existing temporary usage once (200 GiB start limit).', flush=True)
     space = check_start_capacity(base_workdir)
-    print('[CGYRO] Start check passed; preparing inputs. Later peaks above 100 GiB are allowed.', flush=True)
+    print('[CGYRO] Start check passed; preparing inputs. Later peaks above 200 GiB are allowed.', flush=True)
 restart_mode = 0 if continuation else int(physics['restart_mode'])
 previous_cases = result_view(root, run_cases(root)) if restart_mode else {}
 if restart_mode not in (0, 1):
