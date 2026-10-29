@@ -134,9 +134,9 @@ class NativeOpenTests(unittest.TestCase):
         self.host.drain(80)
         self.assertNotEqual(table.visible_names(), original_names)
         view.cgyro_main_pages.select('input')
-        self.host.drain(80)
+        self.settle_layout(view)
         view.cgyro_main_pages.select('parameters')
-        self.host.drain(80)
+        self.settle_layout(view)
         self.assertTrue(table.section.frame.winfo_viewable())
         self.assertEqual(self.host.updates, [])
 
@@ -187,6 +187,97 @@ class NativeOpenTests(unittest.TestCase):
                 self.assertIs(view.page_picker, header)
                 self.assertTrue(header.winfo_viewable())
                 self.assertEqual(self.host.errors, [])
+        self.assertEqual(self.host.updates, [])
+
+    def test_nested_tabs_fit_selected_body_after_local_switches(self):
+        self.actions.settings.update(cgyro_ion_mode='custom',
+            cgyro_ion_cases=dict(BASE=False, H=False, D=False, T=True))
+        view = self.open()
+        header = view.page_picker
+        header.winfo_toplevel().geometry('760x1100')
+        for selected in ('input', 'parameters', 'input', 'parameters', 'input'):
+            # Follow the native Notebook tab-click event, including first use
+            # of an unbuilt tab, instead of calling the eager TabPages helper.
+            book = view.cgyro_main_pages.notebook
+            book.select(view.cgyro_main_pages.keys.index(selected))
+            self.host.drain(150)
+            if selected == 'input':
+                for nested in ('settings', 'run', 'input'):
+                    view.cgyro_scan_pages.select(nested)
+                    self.host.root.update()
+                    self.host.drain(150)
+                    self.assert_selected_panes_fit(view)
+            self.host.root.update()
+            self.host.drain(150)
+            self.assert_selected_panes_fit(view)
+        # Interleave native tab events with pending geometry work. Only the
+        # final selection should determine the visible height.
+        for index in range(12):
+            self.host.root.after(index * 4, book.select, 1 - index % 2)
+        self.host.drain(60)
+        self.settle_layout(view)
+        self.assertEqual(book.index('current'), 0)
+        self.assert_selected_panes_fit(view)
+        self.assertIs(view.page_picker, header)
+        self.assertEqual(self.host.updates, [])
+
+    def assert_selected_panes_fit(self, view):
+        content = view.page_intro.master.master
+        layout = content._cgyro_gui_layout
+        for book in layout.notebooks:
+            if not book.winfo_viewable():
+                continue
+            pane = book.nametowidget(book.select())
+            self.assertGreaterEqual(pane.winfo_height() + 2, pane.winfo_reqheight(),
+                (view.settings.get('cgyro_main_tab'), view.settings.get('cgyro_scan_page'),
+                 str(book), book.cget('height'), pane.winfo_height(), pane.winfo_reqheight()))
+        self.assertGreaterEqual(content.winfo_height(), layout._content_height())
+
+    def settle_layout(self, view):
+        layout = view.page_intro.master.master._cgyro_gui_layout
+        previous = None
+        for _ in range(80):
+            self.host.drain(25)
+            sizes = (layout.content.winfo_height(), layout._content_height(),
+                     tuple((book.winfo_height(), book.winfo_reqheight()) for book in layout.notebooks))
+            if layout.scroll_pending is None and sizes == previous:
+                return
+            previous = sizes
+        self.fail('Local geometry did not settle: ' + repr(previous))
+
+    def test_late_tab_geometry_grows_and_shrinks_without_refresh_or_result_reads(self):
+        view = self.open()
+        view.cgyro_main_pages.select('input')
+        section = view.cgyro_scan_pages.sections['input']
+        message = native.ttk.Label(section.frame, text='Status')
+        message.pack()
+        self.settle_layout(view)
+        layout = view.page_intro.master.master._cgyro_gui_layout
+        canvas = layout.content.master
+        header, body = view.page_picker, section.frame
+        initial = layout.content.winfo_height()
+        # Late native geometry/font/message changes may alter the requested
+        # height while a fixed-height Notebook emits no Configure event.
+        message.configure(text='Updated status\n' * 40)
+        self.settle_layout(view)
+        self.assert_selected_panes_fit(view)
+        self.assertGreater(layout.content.winfo_height(), initial + 400)
+        canvas.yview_moveto(1)
+        self.host.root.update_idletasks()
+        self.assertLessEqual(message.winfo_rooty() + message.winfo_height(),
+                             canvas.winfo_rooty() + canvas.winfo_height())
+        message.configure(text='Status')
+        self.settle_layout(view)
+        self.assert_selected_panes_fit(view)
+        self.assertEqual(layout.content.winfo_height(), initial)
+        # A cached taller parameter page must not keep the short input tall.
+        for selected in ('parameters', 'input'):
+            view.cgyro_main_pages.select(selected)
+            self.settle_layout(view)
+            self.assert_selected_panes_fit(view)
+        self.assertEqual(layout.content.winfo_height(), initial)
+        self.assertIs(section.frame, body)
+        self.assertIs(view.page_picker, header)
         self.assertEqual(self.host.updates, [])
 
 

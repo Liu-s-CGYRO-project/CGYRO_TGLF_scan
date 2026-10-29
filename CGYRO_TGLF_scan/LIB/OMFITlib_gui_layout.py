@@ -349,7 +349,7 @@ class NativeLayout:
                 self.notebooks.append(child)
                 # Selection precedes deferred geometry propagation through
                 # nested panes. Measure after that event, not inside it.
-                child.bind('<<NotebookTabChanged>>', lambda event: self._queue_scroll(), add='+')
+                child.bind('<<NotebookTabChanged>>', self._tab_changed, add='+')
                 child.bind('<Configure>', lambda event: self._queue_scroll(), add='+')
         children = self._reserve_reset_help(parent, children)
         form = getattr(parent, '_cgyro_form', None)
@@ -424,25 +424,48 @@ class NativeLayout:
             field.configure(width=12)
 
     def _fit_tab(self, notebook):
-        """Hidden history pages must not determine the active form's height."""
+        """Let the selected pane propagate late geometry, excluding hidden panes.
+
+        A sampled, explicit Notebook height can cap its selected pane forever:
+        changing that pane's requested size need not change its allocated size
+        or emit Configure. Native Tab panes use pack, so constrain the hidden
+        frames instead and leave Tk to size the active frame and nested books.
+        """
         try:
             selected = notebook.select()
-            if selected:
-                height = max(1, notebook.nametowidget(selected).winfo_reqheight())
-                if notebook.winfo_pixels(notebook.cget('height')) != height:
-                    notebook.configure(height=height)
-                    return True
+            changed = False
+            if notebook.winfo_pixels(notebook.cget('height')) != 0:
+                notebook.configure(height=0)
+                changed = True
+            for name in notebook.tabs():
+                pane = notebook.nametowidget(name)
+                active = name == selected
+                if getattr(pane, '_cgyro_tab_active', None) is active:
+                    continue
+                pane._cgyro_tab_active = active
+                pane.pack_propagate(active)
+                if not active:
+                    pane.configure(width=1, height=1)
+                changed = True
+            return changed
         except tk.TclError:
             return False
-        return False
 
     def _settle_tabs(self):
         """Let changed child sizes propagate before sizing their root Canvas."""
+        changed = False
         for notebook in self.notebooks:
             if self._fit_tab(notebook):
-                self._queue_scroll()
-                return False
-        return True
+                changed = True
+        if changed:
+            self._queue_scroll()
+        return not changed
+
+    def _tab_changed(self, event):
+        # Restore this pane immediately; no size sampling or reflow occurs in
+        # the selection callback. Tk propagates its geometry before the timer.
+        self._fit_tab(event.widget)
+        self._queue_scroll()
 
     def _watch_viewport(self):
         content = self.content

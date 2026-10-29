@@ -1,9 +1,9 @@
-工程 1.24.45 / 管理器 1.10.33：修复太原 Linux/Tk 总控开窗卡死、Python 3.9 回调解绑和管理器重复排版。
+工程 1.24.46 / 管理器 1.10.33：修复“输入与扫描／计算参数”等标签切换后内容截断、下方空白的问题。
 
 
-已有工程可下载本版 [仅更新代码脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.45/omfit-update-1.24.45.py)，上传到运行 OMFIT 的服务器执行，保留输入、结果和设置。若旧会话已经无响应，先重新启动 OMFIT，打开原工程后先不要双击总控，在 Command Box 执行更新脚本，再打开总控。无需重新收集或整理全部结果。任务删除见 [任务管理说明](CGYRO_TGLF_scan/DOCS/TASK_CLEANUP.md)。按作业号恢复见 [恢复说明](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。需要额外整理旧归档时，使用 [更新与整理脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.45/omfit-maintain-1.24.45.py)，步骤见 [Command Box 整理说明](COMMAND_BOX_COMPACTION.md)。
+已有工程可下载本版 [仅更新代码脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.46/omfit-update-1.24.46.py)，上传到运行 OMFIT 的服务器执行，保留输入、结果和设置。若旧会话已经无响应，先重新启动 OMFIT，打开原工程后先不要双击总控，在 Command Box 执行更新脚本，再打开总控。无需重新收集或整理全部结果。任务删除见 [任务管理说明](CGYRO_TGLF_scan/DOCS/TASK_CLEANUP.md)。按作业号恢复见 [恢复说明](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。需要额外整理旧归档时，使用 [更新与整理脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.46/omfit-maintain-1.24.46.py)，步骤见 [Command Box 整理说明](COMMAND_BOX_COMPACTION.md)。
 
-本次冻结发生在窗口显示前：原生标签换行与自适应布局反复改变同一行的宽度。项目标签现由一个局部布局器统一处理，管理器尺寸变化合并到控件自己的短定时器。太原相同 Python/Tk 环境中，旧版复现超过 40 秒未返回；修复后同一开窗调用约 0.65 秒返回、约 1.10 秒完成显示与排版，9 项关键回归通过。测试宿主使用原生控件代码与会话适配器，完整用户工程仍需更新后确认。Python 3.9 的回调解绑现只移除自身回调；搜索、切页和结果读取边界见 [验证记录](VALIDATION.md)。
+标签页不再使用某一时刻测到的固定高度：当前页随内容自然伸展，隐藏页不撑大窗口，返回时复用已建控件。根滚动区仍由既有局部布局器更新；不重建整个 GUI、不读取结果。192 项回归以及太原 Python 3.9/Linux Tk 的 6 项交叉验证通过，包括快速切页、延迟内容增高/缩短、滚动到底部、参数搜索清空和缩放重开。更新后关闭旧总控再打开，无需重新收集结果。目标环境使用独立原生控件测试宿主，完整用户工程仍需更新后确认；详见 [验证记录](VALIDATION.md)。
 
 清空参数搜索只恢复所选分组和当前页参数行，搜索框、参考输入、外层标签及其他设置保留，不读取结果或整理归档。CGYRO 目录按原生解析器的 247 项核对，199 项可在参数页编辑；HIPREC_FLAG 同时放在常用设置和输出选项，设 1 后写入运行副本。其余 48 项仍由 ky、线性单模或离子配置流程管理。用户 tmp 启动阈值为 200 GiB，运行可超出，不增加自动清理。详见 [参数说明](CGYRO_TGLF_scan/DOCS/SCAN_VALUES.md) 和 [验证记录](VALIDATION.md)。
 
@@ -43,7 +43,7 @@ python3 omfit-deploy.py '/路径/旧工程.zip'
 
 用于 Linux 桌面的 OMFIT 工程，包含已审计、修复和整理的 CGYRO/TGLF 工具，以及项目内置的 **OMFIT GitHub 模板管理器**。
 
-当前工程版本为 **1.24.45**，管理器为 **1.10.33**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
+当前工程版本为 **1.24.46**，管理器为 **1.10.33**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
 
 运行与环境 → 选择服务器和队列 → **自动检测** → 核对“服务器能力”和资源草稿 → **应用到整个工程**。检测结果只用于原服务器和隧道；队列查询失败时保留资源设置并显示未知。内存值用于展示，不推算求解器需求；账户 / QOS 配额及实时空闲资源仍由调度器决定。v3 检查点验证通过后可调整 MPI / OpenMP 资源继续计算。
 
@@ -51,7 +51,7 @@ python3 omfit-deploy.py '/路径/旧工程.zip'
 
 ## 在 OMFIT 打开
 
-发布后可从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.24.45.zip`，在 OMFIT 中打开。
+发布后可从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.24.46.zip`，在 OMFIT 中打开。
 
 也可直接加载本仓库的工程入口：
 

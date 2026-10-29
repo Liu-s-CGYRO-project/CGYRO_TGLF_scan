@@ -1,6 +1,12 @@
 # 维护与扩展接口
 
-适用于工程 1.24.45。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.46。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+
+## 标签页的自然高度（1.24.46）
+
+原生 OMFIT Tab 的 pane 使用 pack。`NativeLayout._fit_tab` 只根据选中状态设置 pane 的尺寸传播：当前页正常传播，隐藏页固定为最小尺寸；Notebook 保留自动高度。不要把当前页的 `winfo_reqheight()` 快照写回 Notebook.height：内容稍后变高时，实际分配尺寸可能保持不变，不再触发 Configure，造成永久截断。隐藏页控件保留缓存，选中后恢复传播，不销毁重建。
+
+既有合并定时器继续负责根 Canvas 的局部高度与滚动范围，不调用原生 GUI.update、update_idletasks 或结果读取来补救。回归必须断言所选的每层 pane 容纳完整内容、最后一个控件可滚动到达，并覆盖尺寸稳定后的内容增高/缩短、首次构建、快速切换及返回缓存页；只断言窗口已显示不足以发现截断。
 
 ## 开窗、尺寸与回调所有权（1.24.45）
 
