@@ -25,13 +25,44 @@ RUN_CONTROL_PARAMETERS = frozenset(('MAX_TIME', 'PRINT_STEP', 'RESTART_STEP',
 
 
 RESULT_INFO_FIELDS = ('runid', 'case_id', 'source_nr', 'rho', 'ion_case', 'scan_axes', 'dimensions',
-                      'scan_dimensions', 'fixed_parameters', 'numeric_parameters', 'scale_time_with_ky',
+                      'scan_dimensions', 'fixed_parameters', 'constant_parameters', 'numeric_parameters', 'scale_time_with_ky',
                       'runtime', 'server', 'case_tag', 'run_token')
 
 
 def clean_run_id(value):
     """Strip only generated legacy suffixes; job state is never a directory."""
     return re.sub(r'(?: \[(?:partial [0-9a-f]+|recovered [^\]]+|legacy revision [0-9]+)\])+$', '', str(value)).strip()
+
+
+def case_constants(value, info=None):
+    """One finite scalar, retained in both the logical identity and metadata."""
+    constants = dict((info or {}).get('constant_parameters', {}))
+    text = re.sub(r'(?:__run=[0-9a-fA-F]{8})+$', '', str(value))
+    if '__constant=' in text:
+        name, raw = text.rsplit('__constant=', 1)[1].split('=', 1)
+        number = float(raw)
+        if constants and constants != {name: number}:
+            raise ValueError('Constant parameter disagrees with its case identity')
+        constants = {name: number}
+    if len(constants) > 1:
+        raise ValueError('A case supports one constant parameter')
+    result = {}
+    for name, raw in constants.items():
+        number = float(raw)
+        if re.fullmatch(r'[A-Z][A-Z0-9_]*', str(name)) is None or not math.isfinite(number):
+            raise ValueError('Invalid constant parameter identity')
+        result[str(name)] = int(number) if number.is_integer() else number
+    return result
+
+
+def grouped_case_id(value, ion='BASE'):
+    """Decode only the radius/constant header; never inspect result files."""
+    match = re.fullmatch(r'nr=(.+)_rho=([^_/]+)(?:_([A-Z][A-Z0-9_]*)=([^_/]+))?', str(value))
+    if match is None:
+        return None
+    nr, rho, name, number = match.groups()
+    info = {'constant_parameters': {name: float(number)}} if name else {}
+    return canonical_case_key('nr={}__rho={}__ion={}'.format(nr, rho, ion), info)
 
 
 def grouped_case_path(value, info=None):
@@ -57,6 +88,8 @@ def grouped_case_path(value, info=None):
     if any('/' in str(part) or str(part).startswith('__') for part in parts):
         raise ValueError('Unsafe archived radius/isotope identity')
     path = ['nr={}_rho={}'.format(nr, rho)]
+    for name, number in case_constants(value, info).items():
+        path[0] += '_{}={}'.format(name, number)
     fallback = (list(info.get('parameters', [])) or [''])[0]
     if ion != 'BASE' or scan_key(info, fallback) == 'KY_ONLY':
         path.append(ion)
@@ -84,12 +117,12 @@ def case_sources(module, runid=None, caseid=None):
             if str(key).startswith('__'):
                 continue
             if wanted:
-                radial_key = 'nr={}_rho={}'.format(wanted[0], wanted[1])
+                radial_key = grouped_case_path(caseid)[0]
                 if (str(key) != radial_key and canonical_case_key(key) != caseid
                         and str(key) not in ('nr=' + wanted[0], 'nr={}__ion={}'.format(wanted[0], wanted[2]))):
                     continue
             node = metadata_value(node)
-            radial = re.fullmatch(r'nr=(.+)_rho=([^_/]+)', str(key))
+            radial = grouped_case_id(key)
             mapping = (not any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad')
                                for base in type(node).__mro__) and hasattr(node, 'items'))
             if radial is None or not mapping:
@@ -106,11 +139,11 @@ def case_sources(module, runid=None, caseid=None):
             if records:
                 direct = OrderedDict((name, child) for name, child in node.items()
                                      if name in owned or name in ('__INFO__', '__SCANS__', '__TASKS__'))
-                cid = 'nr={}__rho={}__ion=BASE'.format(*radial.groups())
+                cid = radial
                 entries.append((cid, direct, [key]))
             for ion, case in node.items():
                 if not str(ion).startswith('__') and ion not in owned and (wanted is None or ion == wanted[2]):
-                    cid = 'nr={}__rho={}__ion={}'.format(*radial.groups(), ion)
+                    cid = grouped_case_id(key, ion)
                     entries.append((cid, case, [key, ion]))
     return runs
 
@@ -384,6 +417,11 @@ def point_values(info, row, include_input=False):
         values.update(row.get('effective_time', {}))
         values.update(row.get('input_parameters', {}))
         values = {name: value for name, value in values.items() if name not in RUN_CONTROL_PARAMETERS}
+    for name, number in case_constants(info.get('case_id', ''), info).items():
+        if name in values and not math.isclose(float(values[name]), number, rel_tol=1e-9, abs_tol=0):
+            raise ValueError('Result coordinate disagrees with constant ' + name)
+        if not include_input or name not in RUN_CONTROL_PARAMETERS:
+            values[name] = float(number)
     return values
 
 
@@ -750,6 +788,9 @@ def matching_cases(module, runid, identity):
 def canonical_case_key(value, info=None):
     """Strip only the UUID suffix formerly generated by the publisher."""
     text = re.sub(r'(?:__run=[0-9a-fA-F]{8})+$', '', str(value))
+    constants = case_constants(text, info)
+    text = text.split('__constant=', 1)[0]
+    suffix = ''.join('__constant={}={}'.format(name, number) for name, number in constants.items())
     match = re.fullmatch(r'nr=(.+?)__rho=([^_]+)__ion=([^_]+)', text)
     if match:
         nr, rho, ion = match.groups()
@@ -757,7 +798,7 @@ def canonical_case_key(value, info=None):
             rho = '{:.8g}'.format(float(rho)) if math.isfinite(float(rho)) else 'unknown'
         except ValueError:
             pass
-        return 'nr={}__rho={}__ion={}'.format(nr, rho, ion)
+        return 'nr={}__rho={}__ion={}'.format(nr, rho, ion) + suffix
     # Give old nr-only records an isotope identity when their metadata has it.
     match = re.fullmatch(r'nr=(.+?)(?:__ion=([^_]+))?', text)
     if match is not None and info is not None:
@@ -769,12 +810,12 @@ def canonical_case_key(value, info=None):
                 rho = '{:.8g}'.format(float(rho)) if math.isfinite(float(rho)) else 'unknown'
             except (TypeError, ValueError):
                 rho = 'unknown'
-            return 'nr={}__rho={}__ion={}'.format(nr, rho, ion)
-    return text
+            return 'nr={}__rho={}__ion={}'.format(nr, rho, ion) + suffix
+    return text + suffix
 
 
 def case_parts(value):
-    text = canonical_case_key(value)
+    text = canonical_case_key(value).split('__constant=', 1)[0]
     match = re.fullmatch(r'nr=(.+?)__rho=([^_]+)__ion=([^_]+)', text)
     if match is not None:
         return match.groups()
@@ -883,6 +924,9 @@ def normalized_info(info, runid='', caseid=''):
     saved = dict(metadata_value(info))
     saved.setdefault('runid', runid)
     saved.setdefault('case_id', caseid)
+    constants = case_constants(saved['case_id'], saved)
+    if constants:
+        saved['constant_parameters'] = constants
     saved.setdefault('source_nr', saved.get('nr', ''))
     saved.setdefault('ion_case', saved.get('mass', ''))
     saved.setdefault('dimensions', max(1, len(saved.get('scan_axes', []))))

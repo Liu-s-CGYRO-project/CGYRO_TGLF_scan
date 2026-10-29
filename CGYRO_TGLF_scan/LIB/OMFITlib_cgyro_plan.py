@@ -12,6 +12,7 @@ from OMFITlib_project_inputs import read, text_value, input_digest, pending_inpu
 from OMFITlib_transfer_particles import particle_options
 from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters,
     initialize_parameters, scan_parameter_names, validated_overrides, validate_zeff)
+from OMFITlib_cgyro_archive import canonical_case_key
 from OMFITlib_cgyro_scan_values import ky_values, scan_axes as configured_scan_axes
 from OMFITlib_cgyro_isotopes import isotope_input, remap_physics
 from OMFITlib_transfer_schemes import scheme_sources
@@ -78,9 +79,10 @@ def cgyro_plan_summary(root):
                 points_per_case=points_per_case, total_points=cases * points_per_case)
 
 
-def _cgyro_case_id(row, ion_case):
+def _cgyro_case_id(row, ion_case, constants=None):
     rho = 'unknown' if row.get('rho', None) is None else '{:.8g}'.format(float(row['rho']))
-    return 'nr={}__rho={}__ion={}'.format(row['nr'], rho, ion_case)
+    return canonical_case_key('nr={}__rho={}__ion={}'.format(row['nr'], rho, ion_case),
+                              {'constant_parameters': constants or {}})
 
 
 def _cgyro_radius_number(name, fallback):

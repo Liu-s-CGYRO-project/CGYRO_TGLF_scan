@@ -12,7 +12,7 @@ import math
 import re
 from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, case_sources, clean_run_id, coordinate_path,
                                    normalized_info, result_identity, identity_key,
-                                   grouped_case_path, install_case, output_final_time, point_values, scan_branch, store_scan)
+                                   grouped_case_id, grouped_case_path, install_case, output_final_time, point_values, scan_branch, store_scan)
 from OMFITlib_cgyro_db import PENDING, STATE, ensure_layout, metadata_value, rollback_actions, run_records
 
 
@@ -129,7 +129,7 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
         source = metadata_value(db[rid])
         if not any(base.__name__ in ('OMFITobject', 'OMFITlazyLoad') for base in type(source).__mro__) and hasattr(source, 'items'):
             for key, value in source.items():
-                if re.fullmatch(r'nr=.+_rho=[^_/]+', str(key)):
+                if grouped_case_id(key) is not None:
                     _retain_private(pending, str(rid) + ' / ' + str(key), value,
                                     ('__INFO__', '__SCANS__', '__TASKS__'))
         for cid, case, path in sources:

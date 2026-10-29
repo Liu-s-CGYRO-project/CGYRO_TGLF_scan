@@ -12,7 +12,7 @@ from OMFITlib_workbench_catalog import SCAN_TABS as CGYRO_SCAN_TABS
 from OMFITlib_cgyro_results import ResultBrowser
 from OMFITlib_cgyro_present import run_caption, collection_caption
 from OMFITlib_cgyro_queue import queue_records, queue_summary
-from OMFITlib_cgyro_parameters import FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS, initialize_parameters, numeric_source, parameter_catalog, scan_parameter_names
+from OMFITlib_cgyro_parameters import FIELDS as CGYRO_FIELDS, GROUPS as CGYRO_GROUPS, RUN_CONTROL_PARAMETERS, initialize_parameters, managed_parameter, numeric_source, parameter_catalog, scan_parameter_names
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, KY_MODES, VALUE_MODES, ky_values
 from OMFITlib_cgyro_parameter_help import parameter_help
 from OMFITlib_project import ION_CASES, MODULES, cgyro_ion_mode, cgyro_plan_issues, cgyro_plan_summary, collect_issues, location, read, runtime_issues, sync_cgyro_choices, sync_cgyro_ion_cases, sync_run_issues
@@ -302,6 +302,21 @@ class CgyroPage:
                     options[str(name)] = str(name)
             except (TypeError, ValueError):
                 continue
+        self.ui.Separator('constant 固定参数（可选）')
+        physics.setdefault('constant_parameter', '')
+        constants = OrderedDict([('不启用', '')])
+        constants.update((name, name) for name in options if not managed_parameter(name) and name not in RUN_CONTROL_PARAMETERS)
+        self.scan_field(self.ui.ComboBox(location(base + ('PHYSICS', 'constant_parameter')), constants,
+            '固定参数', state='search', width=18, updateGUI=True, refresh_tree=False,
+            help='每次扫描固定一个值。该值写入计算输入，并加入半径归档名称；'
+                 '例如 nr=1_rho=0.33_BETAE_UNIT=0.0001。不能同时扫描这个参数。'), 18)
+        constant = physics['constant_parameter']
+        if constant:
+            parameters = initialize_parameters(physics, source, self.actions.factory)
+            if constant in parameters:
+                self.scan_field(self.ui.Entry(location(base + ('PHYSICS', 'fixed_parameters', constant, 'value')),
+                    constant + ' 固定值', width=18, updateGUI=False, refresh_tree=False,
+                    help=parameter_help(constant)), 18)
         group = str(dim) + 'd'
         if keys:
             node['SETTINGS']['PHYSICS'].setdefault(group, {})
@@ -437,6 +452,9 @@ class CgyroPage:
     def cgyro_parameter_row(self, base, name, spec, item, source_values, scanned, source_key):
         if name in scanned:
             self.label(name + ' · 由扫描轴设置')
+            return
+        if name == read(self.root, MODULES['cgyro'] + ('SETTINGS', 'PHYSICS', 'constant_parameter'), ''):
+            self.label('{} · constant 固定值：{}（在扫描设置中修改）'.format(name, item['value']))
             return
         path = base + ('fixed_parameters', name)
         reference = ('输入值：{}'.format(source_values[name]) if name in source_values else

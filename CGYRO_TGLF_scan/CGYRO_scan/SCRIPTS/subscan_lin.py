@@ -17,7 +17,8 @@ import uuid
 import zipfile
 from OMFITlib_cgyro_read import num2str_xj
 from OMFITlib_cgyro_parameters import (FIELDS as CALCULATION_FIELDS, apply_parameters, initialize_parameters,
-                                      parameter_value, validate_zeff)
+                                      constant_parameters as configured_constants, parameter_value, validate_zeff)
+from OMFITlib_cgyro_archive import canonical_case_key
 from OMFITlib_cgyro_scan_values import AXIS_KEYS, ky_values, scan_axes as resolved_scan_axes
 from OMFITlib_cgyro_run_state import (quote as shell_quote, refresh_run_state, submission_pending,
                                     text_output as output_to_text, uncollected_job)
@@ -336,13 +337,17 @@ if 'rho' in base_input:
     del base_input['rho']  # Old projects may still carry this non-solver metadata.
 if continuation:
     fixed_parameters = copy.deepcopy(continuation['info'].get('fixed_parameters', {}))
+    constant_parameters = copy.deepcopy(continuation['info'].get('constant_parameters', {}))
     scan_axes = copy.deepcopy(continuation['info']['scan_axes'])
     points = [(point, {}, copy.deepcopy(continuation['rows'][point])) for point in continuation['points']]
 else:
     initialize_parameters(physics, base_input, OMFITtree)
     fixed_parameters = apply_parameters(base_input, physics, scan_dimensions)
+    constant_parameters = configured_constants(physics)
     base_input['NONLINEAR_FLAG'] = 0
     points, scan_axes = scan_points(physics, scan_dimensions, setup['effnum'], base_input)
+case_id = canonical_case_key(case_id, dict(rho=source_rho, ion_case=physics['mass'],
+                                         constant_parameters=constant_parameters))
 input_names = ['input.cgyro']
 if base_input.get('PROFILE_MODEL', 1) == 2:
     input_names += ['input.profiles', 'input.profiles.geo']
@@ -393,6 +398,7 @@ for point_number, (new_dir, overrides, point_metadata) in enumerate(points, 1):
         validate_checkpoint_runtime(previous_manifest.get('runtime', {}), runtime,
                                     checkpoint=verified['candidates']['bin.cgyro.restart'])
     os.makedirs(stage, exist_ok=True)
+    point_metadata.setdefault('values', {}).update(constant_parameters)
     size_inputs = [current_input] + ([] if continuation else [inputs_node[name] for name in input_names[1:]])
     ensure_capacity(stage, sum(os.path.getsize(node.filename) for node in size_inputs if os.path.isfile(node.filename)))
     current_input.deploy(os.path.join(stage, 'input.cgyro'))
@@ -440,6 +446,7 @@ manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': max(1, s
             'rho': source_rho, 'mass': physics['mass'], 'case_id': case_id,
             'scan_axes': scan_axes, 'point_table': point_table,
             'fixed_parameters': fixed_parameters,
+            'constant_parameters': constant_parameters,
             'numeric_parameters': {name: json_scalar(base_input[name]) for name in CALCULATION_FIELDS if name in base_input},
             'scale_time_with_ky': bool(physics['scale_time_with_ky']),
             'input_sha256': input_checksums, 'status': 'prepared', 'batch_id': batch_id}

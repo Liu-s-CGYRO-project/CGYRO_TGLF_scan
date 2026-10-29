@@ -10,11 +10,10 @@ from builtins import (BaseException, KeyError, TypeError, ValueError, all, any, 
 from collections import OrderedDict
 from copy import deepcopy
 import json
-import re
 
 from OMFITlib_cgyro_archive import (RESULT_INFO_FIELDS, canonical_case_key, case_destination,
                                    case_parts, case_scans, catalog_runs, clean_run_id,
-                                   grouped_case_path, identity_key, normalized_info, result_identity, scan_key)
+                                   grouped_case_id, grouped_case_path, identity_key, normalized_info, result_identity, scan_key)
 from OMFITlib_cgyro_db import metadata_value, run_records, rollback_actions
 from OMFITlib_cgyro_reference import make_reference, is_native_file
 from OMFITlib_cgyro_storage import is_result, reference_id, resolve_result
@@ -50,14 +49,14 @@ def _public_headers(module):
         for key, case in metadata_value(run).items():
             if str(key).startswith('__') or is_native_file(case):
                 continue
-            radial = re.fullmatch(r'nr=(.+)_rho=([^_/]+)', str(key))
+            radial = grouped_case_id(key)
             sources = [(key, case, [runid, key])]
             if radial:
                 case = metadata_value(case)
                 direct = _headers(case)
                 owned = {name for scan, info in direct for name in list(info.get('parameters', [])) + [scan]}
-                sources = [('nr={}__rho={}__ion=BASE'.format(*radial.groups()), case, [runid, key])]
-                sources += [('nr={}__rho={}__ion={}'.format(*radial.groups(), ion), child, [runid, key, ion])
+                sources = [(radial, case, [runid, key])]
+                sources += [(grouped_case_id(key, ion), child, [runid, key, ion])
                             for ion, child in case.items() if not str(ion).startswith('__') and ion not in owned]
             for caseid, source, location in sources:
                 for scan, info in _headers(source):

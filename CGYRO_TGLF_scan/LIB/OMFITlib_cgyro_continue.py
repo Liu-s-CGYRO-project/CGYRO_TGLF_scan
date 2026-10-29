@@ -14,7 +14,7 @@ import os
 import re
 import shutil
 import zipfile
-from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, clean_run_id, coordinate_path,
+from OMFITlib_cgyro_archive import (canonical_case_key, case_constants, case_scans, clean_run_id, coordinate_path,
                                    output_final_time, point_coordinate, result_file, scan_branch, scan_key, solver_state)
 from OMFITlib_cgyro_storage import submission_file, store_result, reference_id, storage_state
 from OMFITlib_cgyro_result_index import (at as index_at, find_record, select_result,
@@ -137,6 +137,7 @@ def validate_selected_input(result, info, row):
     expected.update(info.get('fixed_parameters', {}))
     expected.update(row.get('values', {}))
     expected.update(row.get('effective_time', {}))
+    expected.update(case_constants(info.get('case_id', ''), info))
     for name, value in expected.items():
         if name not in effective or not math.isclose(effective[name],
                                                    float(value), rel_tol=1e-9, abs_tol=1e-12):

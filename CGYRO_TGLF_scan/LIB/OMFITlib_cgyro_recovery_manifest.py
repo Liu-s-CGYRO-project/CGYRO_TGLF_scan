@@ -15,7 +15,7 @@ import os
 import posixpath
 import re
 import zipfile
-from OMFITlib_cgyro_archive import full_point_coordinate
+from OMFITlib_cgyro_archive import case_constants, full_point_coordinate
 
 SIDECAR = '.cgyro_recovery.json'
 SCHEMA = 1
@@ -150,6 +150,9 @@ def validate_manifest(manifest, workdir, script):
             raise ValueError('Missing or invalid original ' + field)
     if 'nr' not in manifest or 'rho' not in manifest:
         raise ValueError('The original radius identity is missing.')
+    for name, number in case_constants(manifest['case_id'], manifest).items():
+        if manifest.get('fixed_parameters', {}).get(name, None) != number:
+            raise ValueError('Frozen constant parameter disagrees with input settings: ' + name)
     points = _point_index(manifest)
     if len(script.encode('utf-8')) > MAX_SCRIPT_BYTES:
         raise ValueError('Submission script is too large.')

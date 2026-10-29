@@ -165,6 +165,24 @@ class NativeExecutionTests(unittest.TestCase):
                                     self.host.modules[('CGYRO_TGLF_scan',)])
         self.assertIn('ProjectUI', out)
 
+    def test_constant_grouping_survives_native_import_cleanup(self):
+        out = self.host.execute('''from OMFITlib_cgyro_parameters import initialize_parameters, apply_parameters
+from OMFITlib_cgyro_plan import _cgyro_case_id
+from OMFITlib_cgyro_archive import grouped_case_id, grouped_case_path
+physics = {'1d': {'Para': 'N_THETA'}, 'constant_parameter': 'BETAE_UNIT',
+           'fixed_parameters': {'BETAE_UNIT': {'enabled': False, 'value': 0.0001}}}
+source = {'BETAE_UNIT': 0.002, 'N_THETA': 32}
+initialize_parameters(physics, source)
+fixed = apply_parameters(source, physics, 1)
+case = _cgyro_case_id({'nr': 1, 'rho': 0.33}, 'BASE', {'BETAE_UNIT': source['BETAE_UNIT']})
+''', self.host.modules[('CGYRO_TGLF_scan',)])
+        self.assertNotIn('OMFITlib_cgyro_archive', sys.modules)
+        self.assertEqual(out['source']['BETAE_UNIT'], .0001)
+        self.assertEqual(out['fixed'], {'BETAE_UNIT': .0001})
+        path = out['grouped_case_path'](out['case'])
+        self.assertEqual(path, ['nr=1_rho=0.33_BETAE_UNIT=0.0001'])
+        self.assertEqual(out['grouped_case_id'](path[0]), out['case'])
+
     def test_zeff_interpolation_remains_callable_after_native_import_cleanup(self):
         out = self.host.execute('from OMFITlib_transfer_zeff import prescribe_local_zeff, ZEFF_RULE',
                                 self.host.modules[('CGYRO_TGLF_scan', 'Transfer_tool')])

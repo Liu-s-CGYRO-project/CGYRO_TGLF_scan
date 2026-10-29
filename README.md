@@ -1,7 +1,7 @@
-工程 1.24.37 / 管理器 1.10.31：根据太原实测去掉总控开窗的两次无条件工程树刷新；CGYRO / TGLF 对比默认按相同半径自动配对。
+工程 1.24.38 / 管理器 1.10.31：CGYRO 扫描可选 constant 固定参数，实际写入输入，并按固定值分别归档、选择和续算。
 
 
-已有工程可下载本版 [仅更新代码脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.37/omfit-update-1.24.37.py)，上传到运行 OMFIT 的服务器执行，保留输入、结果和设置。任务删除见 [任务管理说明](CGYRO_TGLF_scan/DOCS/TASK_CLEANUP.md)。按作业号恢复见 [恢复说明](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。需要额外整理旧归档时，使用 [更新与整理脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.37/omfit-maintain-1.24.37.py)，步骤见 [Command Box 整理说明](COMMAND_BOX_COMPACTION.md)。
+已有工程可下载本版 [仅更新代码脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.38/omfit-update-1.24.38.py)，上传到运行 OMFIT 的服务器执行，保留输入、结果和设置。任务删除见 [任务管理说明](CGYRO_TGLF_scan/DOCS/TASK_CLEANUP.md)。按作业号恢复见 [恢复说明](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。需要额外整理旧归档时，使用 [更新与整理脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.38/omfit-maintain-1.24.38.py)，步骤见 [Command Box 整理说明](COMMAND_BOX_COMPACTION.md)。
 
 操作与 .old 风险见 [归档去重说明](CGYRO_TGLF_scan/DOCS/RESULT_STORAGE.md)，取消与续算见 [操作说明](CGYRO_TGLF_scan/DOCS/CANCEL_RESUME.md)。历史修订见 [完整版本记录](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/blob/main/RELEASE_HISTORY.md)。
 
@@ -35,7 +35,7 @@ python3 omfit-deploy.py '/路径/旧工程.zip'
 
 用于 Linux 桌面的 OMFIT 工程，包含已审计、修复和整理的 CGYRO/TGLF 工具，以及项目内置的 **OMFIT GitHub 模板管理器**。
 
-当前工程版本为 **1.24.37**，管理器为 **1.10.31**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
+当前工程版本为 **1.24.38**，管理器为 **1.10.31**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
 
 运行与环境 → 选择服务器和队列 → **自动检测** → 核对“服务器能力”和资源草稿 → **应用到整个工程**。检测结果只用于原服务器和隧道；队列查询失败时保留资源设置并显示未知。内存值用于展示，不推算求解器需求；账户 / QOS 配额及实时空闲资源仍由调度器决定。v3 检查点验证通过后可调整 MPI / OpenMP 资源继续计算。
 
@@ -43,7 +43,7 @@ python3 omfit-deploy.py '/路径/旧工程.zip'
 
 ## 在 OMFIT 打开
 
-发布后可从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.24.37.zip`，在 OMFIT 中打开。
+发布后可从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.24.38.zip`，在 OMFIT 中打开。
 
 也可直接加载本仓库的工程入口：
 
@@ -83,6 +83,7 @@ OMFIT['CGYRO_TGLF_scan']['GUIS']['main'].run()
 3. **Transfer 内部生成**：在“Transfer_tool 运行”载入剖面，设置 rho 或 r/a、起止半径和点数，点击“运行 Transfer_tool”。程序按原 command box 1 同步离子数量、质量与电荷，随后调用 main.py 连续完成 TGYRO 和局部输入生成。无需分别点击 TGYRO 与 profiles_gen。已有 input.tglf / input.tgyro 沿用；缺少时从内置种子复制。“高级设置”只编辑或更换 Transfer_tool 自己的种子，不再跳转到 TGLF_scan 的另一套 TGYRO 参数。显式导入不同的 TGLF 种子会保存旧种子及其 TGYRO 结果，然后清除当前旧输出，等待用户再次运行。生成结果按本次半径重建，旧输出归档，失败时恢复原输出。
    “局部输入互转”为独立页，选择 TGLF → CGYRO、CGYRO → TGLF 或 localdump → CGYRO，只载入该方向需要的源文件；目标输入自动创建。
 4. **计算与收集**：可以仅生成 CGYRO 扫描输入，也可以运行。每个点使用 `p000001` 形式的任务编号；参数、半径、离子方案、任务表及实际结果统一记录在 `RUN_DB/结果名/案例`，服务器目录固定为 `runs/<运行标识>/<任务编号>`。同一结果名、输入、半径与离子下，不同参数扫描并存；相同有序参数轴（含联动参数）按全部参数坐标和 ky 合并，新增坐标追加，仅同坐标点更新。失败或未完整收集时保留旧结果，其他扫描与案例不变。只有已提交或执行过的运行才允许收集。多剖面 TGLF 必须先生成匹配当前输入和参数的局部输入，之后才能运行。
+   CGYRO 的“扫描设置”可选一个 **constant 固定参数**，每次填写一个数值，并与“计算参数”共用同一项设置。例如扫描 `N_THETA`，固定 `BETAE_UNIT=0.0001`，原始离子结果保存到 `RUN_DB/结果名/nr=1_rho=0.33_BETAE_UNIT=0.0001/N_THETA`；H/D/T 保留相应离子子分支。不同固定值分开保存，列表和绘图图例显示该值；续算沿用所选结果的固定值。选择“不启用”使用原归档布局，同一参数不能同时作为 constant 和扫描轴或联动参数。
 5. **运行配置**：选择模块与 OMFIT 服务器，使用“同步 OMFIT 连接配置”填入服务器、隧道和工作目录，再设置命令。CGYRO 直接显示当前提交器读取的配置。检查仅确认本地设置和输入依赖，不代表已验证目标机器上的求解器或资源。
 6. **结果与历史**：在“绘图与对比 → CGYRO 扫描结果浏览”选择结果记录并点击“查看当前数值表”。表格列出任务、全部扫描参数、ky、末段平均 omega/gamma、相对波动，并标记当前筛选范围的最大 gamma；二维参数先选择 ky，三维参数再选择第三轴切片。也可直接在数据树展开 `RUN_DB/结果名/案例/__SCANS__/扫描键/tasks` 查看各组坐标，实际输出保存在同一案例的公开扫描分支；顶部 `__TASKS__` 仅是最近扫描的兼容视图。跨案例或 CGYRO/TGLF 对比继续使用原对比页。
 

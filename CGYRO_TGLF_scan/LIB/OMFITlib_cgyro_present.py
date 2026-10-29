@@ -6,7 +6,7 @@ Keep complete identifiers in record_details and persistent keys unchanged.
 from builtins import len, str
 from collections import Counter, OrderedDict
 import re
-from OMFITlib_cgyro_archive import canonical_case_key, case_parts, clean_run_id, scan_key
+from OMFITlib_cgyro_archive import canonical_case_key, case_constants, case_parts, clean_run_id, scan_key
 from OMFITlib_workbench_catalog import STATUS
 
 
@@ -17,7 +17,10 @@ def case_caption(value):
         return canonical_case_key(value)
     nr, rho, ion = parts
     radius = 'nr=' + nr if rho == 'unknown' else 'ρ=' + rho
-    return '{} · {}'.format(radius, '原始' if ion == 'BASE' else ion)
+    caption = '{} · {}'.format(radius, '原始' if ion == 'BASE' else ion)
+    for name, number in case_constants(value).items():
+        caption += ' · {}={}'.format(name, number)
+    return caption
 
 
 def short_text(value, limit=24):

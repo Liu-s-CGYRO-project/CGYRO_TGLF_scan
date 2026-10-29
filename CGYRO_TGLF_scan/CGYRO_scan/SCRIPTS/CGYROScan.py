@@ -104,7 +104,7 @@ def publish_loaded_run(root):
     manifest.pop('partial_runid', None)
     legacy = 'case_id' not in manifest
     base_case_key = ('nr=' + str(manifest['nr']) if legacy else str(manifest['case_id']))
-    case_key = canonical_case_key(base_case_key, {'rho': manifest.get('rho', None), 'ion_case': manifest['mass']})
+    case_key = canonical_case_key(base_case_key, manifest)
     previous = catalog_runs(root, run_id, case_key).get(run_id, {})
     replaced = []
     old_keys = matching_cases(root, run_id, case_key)
@@ -156,6 +156,7 @@ def publish_loaded_run(root):
                      scan_dimensions=manifest.get('scan_dimensions', manifest['dimensions']),
                      scan_axes=copy.deepcopy(manifest.get('scan_axes', [])),
                      fixed_parameters=copy.deepcopy(manifest.get('fixed_parameters', {})),
+                     constant_parameters=copy.deepcopy(manifest.get('constant_parameters', {})),
                      numeric_parameters=copy.deepcopy(manifest.get('numeric_parameters', {})),
                      scale_time_with_ky=manifest.get('scale_time_with_ky', False),
                      parameters=list(fresh_output.keys()), points=len(task_rows),

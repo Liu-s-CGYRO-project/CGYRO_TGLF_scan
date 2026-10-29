@@ -142,10 +142,12 @@ def remap_physics(physics, dimensions, mapping):
     value[group_name] = group
     parameters, originals = {}, {}
     scanned = scan_parameter_names(physics, dimensions)
+    constant = str(physics.get('constant_parameter', '') or '')
+    value['constant_parameter'] = renamed(constant)
     for name, item in physics.get('fixed_parameters', {}).items():
         if not hasattr(item, 'keys'):
             raise ValueError('固定参数 {} 的配置无效。'.format(name))
-        if species_parameter(str(name)) and (not item.get('enabled', False) or name in scanned):
+        if species_parameter(str(name)) and ((not item.get('enabled', False) and name != constant) or name in scanned):
             continue
         new_name = renamed(name)
         if new_name in parameters and parameter_value(new_name, item.get('value', None)) != parameter_value(

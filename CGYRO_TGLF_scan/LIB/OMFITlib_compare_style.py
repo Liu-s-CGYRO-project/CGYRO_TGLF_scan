@@ -3,7 +3,7 @@
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
 from matplotlib import rcParams
-from OMFITlib_cgyro_archive import canonical_case_key, case_parts
+from OMFITlib_cgyro_archive import canonical_case_key, case_constants, case_parts
 from OMFITlib_plot_window import fit_figure_window
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
@@ -231,6 +231,8 @@ def cgyro_case_caption(case, peers=None, include_radius=False):
     if any(part is not None and part[0] != nr and part[1:] == (rho, ion) for part in related):
         if not (show_radius and rho == 'unknown'):
             caption += ' [nr=' + nr + ']'
+    for name, number in case_constants(case).items():
+        caption += ', {}={}'.format(name, number)
     return caption
 
 

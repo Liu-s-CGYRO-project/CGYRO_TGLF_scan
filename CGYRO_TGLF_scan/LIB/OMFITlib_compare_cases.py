@@ -1,5 +1,5 @@
 """Case and scan-value selection for the four comparison workflows."""
-from OMFITlib_cgyro_archive import catalog_runs
+from OMFITlib_cgyro_archive import case_constants, catalog_runs
 from builtins import next, iter
 from OMFITlib_plot_sources import run_choices, source_dimension, selected_tglf_source, tglf_results
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
@@ -124,6 +124,8 @@ class CaseSelection(ComparisonWidgets):
                 elif rho == 'unknown' and nr.startswith('legacy-output-'):
                     caption = '未标识旧结果 ' + nr.rsplit('-', 1)[-1]
                 ion = '原始' if ion == 'BASE' else '未标识' if ion == 'UNKNOWN' else ion
+                for name, number in case_constants(case).items():
+                    ion += ' · {}={}'.format(name, number)
             group = groups.setdefault(key, dict(caption=caption, nr=nr, cases=[]))
             group['cases'].append(dict(index=index, key=case, ion=ion))
         counts = Counter(group['caption'] for group in groups.values())

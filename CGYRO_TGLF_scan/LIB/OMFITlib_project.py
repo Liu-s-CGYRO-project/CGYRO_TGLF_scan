@@ -39,7 +39,7 @@ from OMFITlib_tglf_multi_data import profile_digest, profile_info, tgyro_input
 from OMFITlib_tglf_records import run_records, restore_native_results
 from OMFITlib_transfer_particles import particle_options
 from OMFITlib_transfer_schemes import generate_schemes, scheme_runid
-from OMFITlib_cgyro_parameters import (initialize_parameters,
+from OMFITlib_cgyro_parameters import (constant_parameters, initialize_parameters,
     numeric_source, parameter_catalog)
 from OMFITlib_cgyro_scan_values import scan_axes as configured_scan_axes
 from OMFITlib_cgyro_isotopes import remap_physics
@@ -531,14 +531,17 @@ class ProjectActions:
             for ion_case in ion_cases:
                 value, case_physics, provenance, fixed = _cgyro_case_input(
                     self.root, row, source, ion_case, physics, dimensions)
+                constants = constant_parameters(case_physics)
                 radial[ion_case] = value
                 case_records[ion_case] = dict(isotope_preparation=provenance, fixed_parameters=dict(fixed),
+                    constant_parameters=constants,
                     scan_axes=configured_scan_axes(case_physics, dimensions, value))
                 plan.append(dict(nr=row['nr'], rho=row['rho'], ion_case=ion_case, batch_key=nr_key,
                                  runid=scheme_runid(module(self.root, 'cgyro')['SETTINGS']['EXPERIMENT']['runid'],
                                                    row.get('scheme', '')),
                                  ion_label=source_ion_label if ion_case == 'BASE' else ion_case,
-                                 case_id=_cgyro_case_id(row, ion_case), source_key=row['key'],
+                                 case_id=_cgyro_case_id(row, ion_case, constants), constant_parameters=constants,
+                                 source_key=row['key'],
                                  source=list(row['path']),
                                  changed_main_species=provenance['source_main_species'] if provenance else [],
                                  isotope_preparation=provenance,
@@ -584,6 +587,7 @@ class ProjectActions:
 
     def inherit_cgyro_parameters(self):
         physics = module(self.root, 'cgyro')['SETTINGS']['PHYSICS']
+        physics['constant_parameter'] = ''
         for item in physics.get('fixed_parameters', {}).values():
             item['enabled'] = False
         self.settings['message'] = '固定参数已改为沿用各输入。'
@@ -912,7 +916,7 @@ class ProjectActions:
         original_case = {key: physics[key] for key in case_keys if key in physics}
         dimensions = int(setup['idimrun'])
         group_name = str(dimensions) + 'd'
-        original_controls = {key: physics.get(key, None) for key in ('fixed_parameters', group_name)}
+        original_controls = {key: physics.get(key, None) for key in ('fixed_parameters', 'constant_parameter', group_name)}
         original_physics = {key: physics[key] for key in physics.keys()}
         record = self._record('CGYRO 批量扫描', status='running', combinations=copy.deepcopy(plan))
         completed = []

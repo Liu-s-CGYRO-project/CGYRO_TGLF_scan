@@ -3,6 +3,7 @@ from builtins import any, bool, dict, float, hasattr, int, len, list, set, sorte
 from collections import OrderedDict
 import math
 import re
+from OMFITlib_cgyro_archive import RUN_CONTROL_PARAMETERS
 
 GROUPS = OrderedDict([('常用设置', 'common'), ('时间与收敛', 'time'),
                       ('网格与速度空间', 'grid'), ('场与碰撞', 'model'),
@@ -145,14 +146,29 @@ def initialize_parameters(physics, source, factory=dict):
     return parameters
 
 
+def constant_parameters(physics):
+    """Optional archive grouping reuses the existing fixed-parameter value."""
+    name = str(physics.get('constant_parameter', '') or '')
+    if not name:
+        return {}
+    if (not re.fullmatch(r'[A-Z][A-Z0-9_]*', name) or managed_parameter(name)
+            or name in RUN_CONTROL_PARAMETERS):
+        raise ValueError('constant 请选择一个可设置的计算参数。')
+    item = physics.get('fixed_parameters', {}).get(name, {})
+    return {name: parameter_value(name, item.get('value', None))}
+
+
 def validated_overrides(physics, sources, scan_names=()):
     parameters = physics.get('fixed_parameters', {})
     catalog = parameter_catalog(sources)
+    constant = constant_parameters(physics)
+    if set(constant) & set(scan_names):
+        raise ValueError('constant 参数不能同时作为扫描轴或联动参数：' + ', '.join(constant))
     overrides = {}
     for name, item in parameters.items():
         if not hasattr(item, 'keys'):
             raise ValueError('固定参数 {} 的配置无效。'.format(name))
-        if not bool(item.get('enabled', False)) or name in scan_names:
+        if (not bool(item.get('enabled', False)) and name not in constant) or name in scan_names:
             continue
         if name not in catalog or managed_parameter(name):
             raise ValueError('当前输入不支持固定参数 {}，请恢复该参数的输入值。'.format(name))
@@ -160,6 +176,8 @@ def validated_overrides(physics, sources, scan_names=()):
             raise ValueError('部分所选输入没有参数 {}，请恢复输入值或分别编辑源输入。'.format(name))
         overrides[name] = parameter_value(name, item.get('value', None))
     if bool(physics.get('scale_time_with_ky', False)):
+        if 'DELTA_T' in constant:
+            raise ValueError('固定 constant DELTA_T 时，请关闭“按 ky 缩放时间”。')
         if set(scan_names) & {'DELTA_T', 'MAX_TIME'}:
             raise ValueError('扫描时间步长或时长时，请关闭“按 ky 缩放时间”。')
         for source in sources:
