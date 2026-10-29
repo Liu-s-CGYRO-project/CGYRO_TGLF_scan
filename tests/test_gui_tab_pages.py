@@ -1,6 +1,7 @@
 """Native Tk editing, invalidation and lifetime contracts for lazy tab pages."""
 from collections import Counter
 import gc
+import numpy as np
 import sys
 from types import ModuleType, SimpleNamespace
 import unittest
@@ -423,6 +424,88 @@ class NativeTabsTests(unittest.TestCase):
         self.assertIsNot(content._cgyro_gui_layout, legacy)
         self.assertIs(content._cgyro_gui_layout.anchor, self.header)
         self.assertTrue(self.entry.winfo_exists())
+
+    def test_nested_cgyro_scan_opens_without_configure_column_oscillation(self):
+        """Opening a saved scan must leave native update_idletasks promptly.
+
+        The row's own requested width changes when its column count changes.
+        A Configure handler that regrids synchronously can therefore alternate
+        forever before the native launcher has even shown the window.
+        """
+        import test_cgyro_storage  # Isolated file-reader host, no solver or OMFIT startup.
+        import test_project as project_fixture
+        from OMFITlib_project import ProjectActions
+        from OMFITlib_project_ui import ProjectUI
+
+        class UnreadResults(dict):
+            def __getitem__(self, key):
+                raise AssertionError('Opening a scan inspected result data')
+            def __iter__(self):
+                raise AssertionError('Opening a scan traversed result data')
+            keys = values = items = __iter__
+
+        root = project_fixture.fixture()
+        root['SETTINGS'].setdefault('WORKBENCH', {}).update(dict(
+            page='cgyro', cgyro_main_tab='input', cgyro_scan_page='settings',
+            cgyro_source_mode='generated', cgyro_ion_mode='custom',
+            cgyro_ion_cases=dict(BASE=False, H=False, D=False, T=True)))
+        root['Transfer_tool']['OUTPUTS']['Profiles_gen'] = {
+            'input.cgyro_' + str(i): project_fixture.cgyro() for i in range(1, 4)}
+        node = root['CGYRO_scan']
+        node['RUN_DB'] = UnreadResults()
+        node['SETTINGS']['SETUP']['idimrun'] = 2
+        node['SETTINGS']['PHYSICS']['2d'].update(dict(
+            Para_x='BETAE_UNIT', Para_y='N_XI', Range_x=[.0001],
+            Range_y=np.linspace(2., 11., 20)))
+        self.host.tree.clear()
+        self.host.tree.update(root)
+        native.native_definitions(SOURCE / 'omfit_classes/OMFITx.py',
+                                  {'Separator', 'TitleGUI'}, self.host.api.__dict__)
+
+        class ChildGUI:
+            def __run__(self, workbench, **kwargs):
+                return workbench.render_cgyro_scan_tabs()
+        self.host.tree['GUIS']['CGYRO_controls'] = ChildGUI()
+        python_host = ModuleType('omfit_classes.omfit_python')
+        python_host.OMFITpythonGUI = ChildGUI
+        font_host = ModuleType('utils_widgets')
+        font_host.OMFITfont = lambda *args: 'TkDefaultFont'
+        actions = ProjectActions(self.host.tree)
+        column_changes, views = Counter(), []
+        original = layout_module.NativeLayout._row
+
+        def bounded_reflow(layout, frame, items):
+            # A regression must fail rather than hang the test process in Tk.
+            if column_changes[frame] < 12:
+                previous = getattr(frame, '_cgyro_columns', None)
+                result = original(layout, frame, items)
+                if previous != getattr(frame, '_cgyro_columns', None):
+                    column_changes[frame] += 1
+                return result
+
+        def build(api):
+            widgets.begin_view_open(api)
+            view = ProjectUI(actions, widgets.adapt(api))
+            view.render()
+            views.append(view)
+
+        with patch.dict(sys.modules, {'omfit_classes.omfit_python': python_host,
+                                      'utils_widgets': font_host}):
+            with patch.object(layout_module.NativeLayout, '_row', bounded_reflow):
+                script = self.host.raw_view(build)
+                script()
+                self.host.root.update()
+                self.host.drain(300)
+        self.assertLess(max(column_changes.values()), 12, 'Row columns oscillated during window opening')
+        view = views[0]
+        top = view.page_picker.winfo_toplevel()
+        self.assertTrue(top.winfo_viewable())
+        content = view.page_intro.master.master
+        layout = content._cgyro_gui_layout
+        self.assertIsNone(layout.scroll_pending)
+        self.assertEqual(view.cgyro_scan_notebook.index('current'), 1)
+        self.assertFalse(view.cgyro_main_pages.sections['results'].built)
+        self.assertEqual(self.host.errors, [])
 
     def test_mounted_legacy_layout_accepts_subtree_without_new_instance_methods(self):
         self.build()

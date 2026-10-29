@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.24.40",
-  "parent_release": "1.24.39",
+  "version": "1.24.41",
+  "parent_release": "1.24.40",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -324,7 +324,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_deferred.py": "dd1a737434a7b49f183c59ebee13102b8e5e4ac0a54bdc3fd54a4a50808db192",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_font_data.py": "012452fc4ba53d52d43f539097cec5c9c558d521e7f328eb31b14268ed1a541e",
     "CGYRO_TGLF_scan/LIB/OMFITlib_gui_fonts.py": "9c2542115623e674805e20efb840ae5c0046f5707ae03926527ddc417b31a360",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "afeb946fbb24403253d2093897fa185857ab83c3a343a2af214bf47381254363",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_gui_layout.py": "46541a52b80db3d581a20127c4513920246f9151430673cb5763a4a63b81359a",
     "CGYRO_TGLF_scan/LIB/OMFITlib_plot_font_assets.py": "034b620178b6bf062f6f1a3e9c3dd71ee127a38e77bdcfeceb02cd618fb65b6f",
     "CGYRO_TGLF_scan/LIB/OMFITlib_plot_font_data.py": "181bec8cbdd1635d1e1f6111acb99e8a03f1055cf029f4574b5fda0e61a0e093",
     "CGYRO_TGLF_scan/LIB/OMFITlib_plot_fonts.py": "b4efc0f4d7db0af96fe369930d7d58d84015eb6afbe4f917077e662c20b5b760",

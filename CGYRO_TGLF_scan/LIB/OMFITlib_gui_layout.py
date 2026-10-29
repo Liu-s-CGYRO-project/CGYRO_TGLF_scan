@@ -363,11 +363,10 @@ class NativeLayout:
                 # Long parameter names must not squeeze out value/reset/help.
                 # Reflow the native row frames, keeping their callbacks intact.
                 self.inline_rows.append((parent, children))
-                parent.bind('<Configure>', lambda event, frame=parent, items=children:
-                            self._inline_row(frame, items), add='+')
+                parent.bind('<Configure>', lambda event: self._queue_scroll(), add='+')
             else:
                 self.rows.append((parent, children))
-                parent.bind('<Configure>', lambda event, frame=parent, items=children: self._row(frame, items), add='+')
+                parent.bind('<Configure>', lambda event: self._queue_scroll(), add='+')
 
     def _reserve_reset_help(self, frame, children):
         """Keep a help slot after native resets, including within same_row."""
@@ -532,6 +531,11 @@ class NativeLayout:
         self.scroll_pending = None
         if getattr(self.content, '_cgyro_gui_layout', None) is not self or not self.anchor.winfo_exists():
             return
+        # Native GUI.update waits for all idle geometry work before showing
+        # its window. Regridding from Configure can alternate between one
+        # and two columns forever during that wait. Reflow in this coalesced
+        # timer, after the native pass, rather than inside the size event.
+        self.reflow()
         canvas = self.content.master
         if not isinstance(canvas, tk.Canvas):
             self._settle_tabs()
