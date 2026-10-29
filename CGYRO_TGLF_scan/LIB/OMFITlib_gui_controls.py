@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 from OMFITlib_gui_api import set_checkbox_value, style_checkbox
 from OMFITlib_gui_deferred import deferred_section
-from OMFITlib_gui_fonts import style_widget
+from OMFITlib_gui_fonts import style_widget, unbind_callback
 
 PARAMETER_PAGE_SIZE = 24
 SEARCH_DELAY_MS = 180
@@ -138,7 +138,7 @@ class ParameterList:
             self.query.trace_remove('write', self.trace)
             for tab, _, binding in self.tabs:
                 if tab.winfo_exists():
-                    tab.unbind('<<NotebookTabChanged>>', binding)
+                    unbind_callback(tab, '<<NotebookTabChanged>>', binding)
 
 
 def boolean_value(value):

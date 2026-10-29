@@ -9,7 +9,7 @@ import traceback
 import webbrowser
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
-from OMFITlib_gui_fonts import FONT_FILENAME, configure_window_fonts, font_family, font_size, gui_font, style_checkbox, style_widget
+from OMFITlib_gui_fonts import FONT_FILENAME, configure_window_fonts, font_family, font_size, gui_font, style_checkbox, style_widget, unbind_callback
 from OMFITlib_font_cache import cached_fonts
 from OMFITlib_font_ui import open_font_manager, set_proxy
 
@@ -29,6 +29,34 @@ from OMFITlib_template_service import (
 
 DATA_OPTIONS = {'保留当前案例与结果': 'keep', '切换到模板示例': 'examples'}
 SETTING_OPTIONS = {'保留当前设置，补全新增项': 'keep', '使用模板设置': 'template'}
+
+
+def _on_resize(widget, callback, owner=None):
+    """Coalesce local layout changes outside Tk's synchronous idle sizing."""
+    owner = widget if owner is None else owner
+    pending = None
+
+    def apply():
+        nonlocal pending
+        pending = None
+        callback()
+
+    def queue_resize(event):
+        nonlocal pending
+        if event.widget is widget and pending is None:
+            pending = owner.after(10, apply)
+
+    binding = widget.bind('<Configure>', queue_resize, add='+')
+
+    def dispose(event):
+        nonlocal pending
+        if event.widget is owner:
+            if pending is not None:
+                owner.after_cancel(pending)
+                pending = None
+            unbind_callback(widget, '<Configure>', binding)
+
+    owner.bind('<Destroy>', dispose, add='+')
 
 
 class _Notice(ttk.Frame):
@@ -55,7 +83,7 @@ class _Notice(ttk.Frame):
 
     def _queue(self, *args):
         if self._pending is None:
-            self._pending = self.after_idle(self._render)
+            self._pending = self.after(10, self._render)
 
     def _wrap(self, paragraph, width):
         lines = []
@@ -318,8 +346,15 @@ class TemplateManager(ManagerUpdateUI):
             kwargs['width'] = max(kwargs['width'], self._text_width(text) + 2)
         label = ttk.Label(parent, text=text, textvariable=variable, style='TM.Muted.TLabel' if muted else 'TM.TLabel', **kwargs)
         if 'wraplength' in kwargs:
-            parent.bind('<Configure>', lambda event: label.configure(wraplength=max(180, event.width - 32)), add='+')
+            self._wrap_label(label, lambda: max(180, parent.winfo_width() - 32))
         return label
+
+    def _wrap_label(self, label, width):
+        def apply():
+            limit = width()
+            if label.winfo_pixels(label.cget('wraplength')) != limit:
+                label.configure(wraplength=limit)
+        _on_resize(label.master, apply, owner=label)
 
     def _text_width(self, text):
         unit = max(1, self._metrics_font.measure('0'))
@@ -409,7 +444,8 @@ class TemplateManager(ManagerUpdateUI):
         footer = self._frame(main)
         footer.pack(side='bottom', fill='x', before=self.tabs)
         footer.columnconfigure(0, weight=1)
-        status_label = self._label(footer, variable=self.status, wraplength=750)
+        status_label = self._label(footer, variable=self.status)
+        status_label.configure(wraplength=750)
         status_label.grid(row=0, column=0, sticky='w')
         self.progress = ttk.Progressbar(footer, length=180, mode='determinate', maximum=100,
                                         style='TM.Horizontal.TProgressbar')
@@ -417,8 +453,8 @@ class TemplateManager(ManagerUpdateUI):
         self.cancel_button = ttk.Button(footer, text='取消操作', command=lambda: self.cancel.set(), state='disabled',
                                         style='TM.TButton', width=0)
         self.cancel_button.grid(row=0, column=2)
-        footer.bind('<Configure>', lambda event: status_label.configure(wraplength=max(100,
-            event.width - self.progress.winfo_reqwidth() - self.cancel_button.winfo_reqwidth() - 20)))
+        self._wrap_label(status_label, lambda: max(100,
+            footer.winfo_width() - self.progress.winfo_reqwidth() - self.cancel_button.winfo_reqwidth() - 20))
 
     def _table(self, parent, columns, height=2):
         frame = self._frame(parent)
@@ -440,12 +476,12 @@ class TemplateManager(ManagerUpdateUI):
             table.column(key, width=max(width, minimum), minwidth=minimum, stretch=(key in ('name', 'path')))
         flexible = next((key for key, _, _ in columns if key in ('name', 'path')), None)
         if flexible is not None:
-            def fit_columns(event):
+            def fit_columns():
                 fixed = sum(int(table.column(key, 'width')) for key, _, _ in columns if key != flexible)
-                width = max(int(table.column(flexible, 'minwidth')), event.width - fixed - 4)
+                width = max(int(table.column(flexible, 'minwidth')), table.winfo_width() - fixed - 4)
                 if int(table.column(flexible, 'width')) != width:
                     table.column(flexible, width=width)
-            table.bind('<Configure>', fit_columns, add='+')
+            _on_resize(table, fit_columns)
         return table
 
     def _render_library(self, page):
@@ -487,7 +523,7 @@ class TemplateManager(ManagerUpdateUI):
         self.library_table.bind('<Double-1>', lambda event: self._use_selected())
         self.empty_hint = ttk.Frame(self.library_table, style='TM.Empty.TFrame')
         self._set_empty_hint('连接 GitHub 仓库，浏览团队模板版本。\n也可选择本地模板库使用已下载的版本。')
-        self.library_table.bind('<Configure>', self._layout_empty_hint, add='+')
+        _on_resize(self.library_table, self._layout_empty_hint)
         info = self._notice(page, variable=self.release_info, muted=True)
         actions = self._frame(page)
         actions.pack(side='bottom', fill='x', pady=(6, 0), before=self.library_table.master)
@@ -519,15 +555,20 @@ class TemplateManager(ManagerUpdateUI):
         data_choice = self._combo(row, self.data_policy, list(DATA_OPTIONS))
         settings_label = self._label(row, '设置')
         settings_choice = self._combo(row, self.settings_policy, list(SETTING_OPTIONS))
-        def layout_policies(event=None):
+        layout_state = [None]
+        def layout_policies():
             needed = sum(widget.winfo_reqwidth() for widget in (data_label, data_choice, settings_label, settings_choice)) + 48
             stacked = row.winfo_width() < needed
+            if layout_state[0] == stacked:
+                return
+            layout_state[0] = stacked
             data_label.grid(row=0, column=0, sticky='w', padx=(0, 8), pady=3)
             data_choice.grid(row=0, column=1, sticky='w', pady=3)
             settings_label.grid(row=1 if stacked else 0, column=0 if stacked else 2,
                                 sticky='w', padx=(0 if stacked else 24, 8), pady=3)
             settings_choice.grid(row=1 if stacked else 0, column=1 if stacked else 3, sticky='w', pady=3)
-        row.bind('<Configure>', layout_policies)
+        layout_policies()
+        _on_resize(row, layout_policies)
         self._notice(page, ('直接更新内存中的工程，保留选中的案例与结果；照常保存工程即可持久保存。'
                           '\n“切换到示例”会替换模板模块内的全部案例与结果。') if self.session is not None else
                     '“切换到示例”替换模板模块内的全部案例与结果；未保存的修改需先在 OMFIT 保存。',

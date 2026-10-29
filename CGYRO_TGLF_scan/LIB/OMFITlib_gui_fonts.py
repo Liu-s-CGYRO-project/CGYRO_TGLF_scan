@@ -515,6 +515,14 @@ def style_widgets(parent):
             style_widgets(child)
 
 
+def unbind_callback(widget, sequence, binding):
+    """Remove one callback; Python 3.9's unbind also erases its neighbours."""
+    prefix = 'if {"[' + binding + ' '
+    script = '\n'.join(line for line in widget.bind(sequence).split('\n') if not line.startswith(prefix))
+    widget.bind(sequence, script)
+    widget.deletecommand(binding)
+
+
 def configure_window_fonts(window, refresh=False):
     """Register once per appearance; Map handles controls added on later pages.
 
@@ -539,7 +547,7 @@ def configure_window_fonts(window, refresh=False):
     binding = getattr(window, '_project_cjk_map_binding', None)
     if binding and getattr(window, '_project_cjk_binding_profile', None) != FONT_PROFILE:
         try:
-            window.unbind('<Map>', binding)
+            unbind_callback(window, '<Map>', binding)
         except tk.TclError:
             pass
         window._project_cjk_map_binding = None

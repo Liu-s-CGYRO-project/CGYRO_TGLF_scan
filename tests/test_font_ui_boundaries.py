@@ -62,6 +62,22 @@ class FontCacheBoundaryTests(unittest.TestCase):
         self.addCleanup(root.destroy)
         return root
 
+    def test_unbind_removes_only_selected_callback_on_legacy_tk(self):
+        from OMFITlib_gui_fonts import unbind_callback
+        root = self.tk_root()
+        root.deiconify()
+        root.update()
+        calls = []
+        first = root.bind('<<BoundaryTest>>', lambda event: calls.append('first'), add='+')
+        second = root.bind('<<BoundaryTest>>', lambda event: calls.append('second'), add='+')
+        root.bind('<<BoundaryTest>>', lambda event: calls.append('third'), add='+')
+        with patch.object(root, 'unbind', side_effect=AssertionError('legacy unbind clears all handlers')):
+            unbind_callback(root, '<<BoundaryTest>>', second)
+        root.event_generate('<<BoundaryTest>>')
+        self.assertEqual(calls, ['first', 'third'])
+        self.assertIn(first, root.bind('<<BoundaryTest>>'))
+        self.assertNotIn(second, root.tk.call('info', 'commands'))
+
     def test_open_settings_neither_hashes_nor_walks_other_windows(self):
         root = self.tk_root()
         with patch.object(cache, '_hash_file', side_effect=AssertionError('UI hashed font')), \

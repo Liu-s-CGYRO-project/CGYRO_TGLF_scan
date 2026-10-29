@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'LIB'))
-from OMFITlib_template_ui import TemplateManager, open_manager
+from OMFITlib_template_ui import TemplateManager, open_manager, _Notice, _on_resize
 from OMFITlib_template_service import Cancelled, publish
 from test_templates import add_module, fixture
 
@@ -41,6 +41,60 @@ def omfit_variable_interceptors():
 
     with patch.object(tk, 'StringVar', _tkStringVar), patch.object(tk, 'BooleanVar', _tkBooleanVar):
         yield created
+
+
+class ResizeBoundaryTest(unittest.TestCase):
+    def setUp(self):
+        self.root = tk.Tk()
+        self.addCleanup(self.root.destroy)
+        self.root.geometry('600x300')
+        self.root.update()
+
+    def settle(self):
+        done = tk.BooleanVar(master=self.root, value=False)
+        self.root.after(40, lambda: done.set(True))
+        self.root.wait_variable(done)
+        self.root.update_idletasks()
+
+    def test_resize_burst_is_coalesced_outside_native_idle_sizing(self):
+        calls = []
+        _on_resize(self.root, lambda: calls.append(self.root.winfo_width()))
+        for _ in range(12):
+            self.root.event_generate('<Configure>')
+        self.root.update_idletasks()
+        self.assertEqual(calls, [])
+        self.settle()
+        self.assertEqual(calls, [600])
+
+    def test_label_destruction_cancels_its_timer_and_preserves_other_bindings(self):
+        label = tk.Label(self.root, text='Temporary status')
+        calls, other = [], []
+        self.root.bind('<Configure>', lambda event: other.append(event.width), add='+')
+        _on_resize(self.root, lambda: calls.append('wrap'), owner=label)
+        self.root.event_generate('<Configure>')
+        label.destroy()
+        self.root.event_generate('<Configure>')
+        self.settle()
+        self.assertEqual(calls, [])
+        self.assertGreaterEqual(len(other), 2)
+
+    def test_notice_variable_and_geometry_changes_settle_without_idle_recursion(self):
+        text = tk.StringVar(master=self.root, value='Initial notice')
+        notice = _Notice(self.root, tkfont.Font(root=self.root, family='DejaVu Sans', size=12), variable=text)
+        notice.pack(fill='x')
+        self.settle()
+        with patch.object(notice, '_render', wraps=notice._render) as render:
+            render.__name__ = '_render'  # Python 3.9 Tk.after reads this attribute.
+            text.set('Status message ' * 30)
+            self.root.update_idletasks()
+            self.assertEqual(render.call_count, 0)
+            self.settle()
+            self.assertEqual(render.call_count, 1)
+            self.assertIsNone(notice._pending)
+            text.set('Closing')
+            notice.destroy()
+            self.settle()
+            self.assertEqual(render.call_count, 1)
 
 
 class UITest(unittest.TestCase):

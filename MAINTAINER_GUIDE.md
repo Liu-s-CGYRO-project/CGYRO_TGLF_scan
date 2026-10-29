@@ -1,6 +1,16 @@
 # 维护与扩展接口
 
-适用于工程 1.24.44。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.45。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+
+## 开窗、尺寸与回调所有权（1.24.45）
+
+项目标签通过 `ProjectWidgets.Label` 创建：保留原生构造行为，只从待安装列表移除该标签独占行的原生换行钩子，由既有 `NativeLayout` 合并处理换行。不要同时安装同步换行和局部布局两个尺寸控制者。原生 `GUI.update()` 在显示窗口前调用 `update_idletasks()`；此时 `<Configure>` 或 `after_idle` 内改变请求宽度，可能持续触发新的尺寸事件，让窗口始终无法显示。项目布局使用可取消的短定时器，按真实变化更新；不要给所有回调套全局锁或任意次数截断。
+
+管理器的 `_on_resize` 同样只处理绑定控件的排版，销毁时取消自己的定时器。Python 3.9 的 `unbind(sequence, funcid)` 会清掉同一事件的其他绑定；需使用共享 `unbind_callback` 精确移除自己注册的 Tcl 回调。项目与管理器的字体库副本必须一致，不修改全局 Tk 行为。
+
+涉及开窗、标签、字体或参数列表的修改，发布前必须运行 `test_gui_open_native`、`test_gui_tab_pages`、`test_gui_refresh_native`、`test_gui_font_performance`、`test_font_ui_boundaries`、`manager_test_ui` 和 `manager_test_manager_startup`。除本地测试外，必须在目标 Python 3.9/Linux/Tk 或等价环境验证开窗、缩放、关闭重开和清空搜索；Windows 字体度量不能代替 Linux 的排版回归。缺少现场环境时明确标注未验证，不把测试宿主称作完整 OMFIT 会话。
+
+`test_gui_open_native` 使用原生 GUI/Label/帮助按钮代码，保留记忆中的计算参数页，覆盖所有总控工作页外壳；测试哨兵禁止参数页遍历结果库。结果、作业和远程动作仍由各自边界套件验证，不由开窗测试代跑。
 
 ## 完整 CGYRO 目录与搜索刷新（1.24.44）
 

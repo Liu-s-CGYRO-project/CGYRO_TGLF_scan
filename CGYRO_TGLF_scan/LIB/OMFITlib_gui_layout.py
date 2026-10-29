@@ -553,8 +553,8 @@ class NativeLayout:
                     if not label.winfo_exists() or label.winfo_pixels(label.cget('wraplength')) <= 0:
                         continue
                     parent_width = label.master.winfo_width()
-                    # Native Label's row binding uses this same width. Keep
-                    # both handlers in agreement so wrapping cannot oscillate.
+                    # ProjectWidgets removes the native synchronous wrap hook;
+                    # this timer is the sole owner of project-label wrapping.
                     limit = max(1, min(width, parent_width if parent_width > 1 else width))
                     if label.winfo_pixels(label.cget('wraplength')) != limit:
                         label.configure(wraplength=limit)

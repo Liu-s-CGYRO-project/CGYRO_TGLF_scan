@@ -525,6 +525,22 @@ class ProjectWidgets:
             return refresh.request
         return lambda: self.UpdateGUI(top=parent, refresh_scope=scope)
 
+    def Label(self, *args, **kwargs):
+        """Let the local layout own wrapping, outside native idle sizing.
+
+        Native Label rewraps synchronously on its row's Configure event.
+        In an adaptive grid that changes the requested width, which changes
+        the row again; Linux Tk can loop before GUI.update shows the window.
+        Remove only this label's pending native size hook. NativeLayout
+        already wraps labels in its coalesced timer, including after resize.
+        Other native controls and windows retain their own hooks.
+        """
+        label = self._api.Label(*args, **kwargs)
+        if isinstance(label, tk.Misc):
+            pending = getattr(self._api, '_aux', {}).get('configure_size', [])
+            pending[:] = [(widget, action) for widget, action in pending if widget is not label.master]
+        return label
+
     def __getattr__(self, name):
         if name in self._constructors:
             return self._constructors[name]

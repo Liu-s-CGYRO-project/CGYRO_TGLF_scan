@@ -89,7 +89,7 @@ class NativeTkRefreshTests(unittest.TestCase):
         self.tree = {'mode': 'spectra', 'number': 12.0, 'text': 'old\ntext'}
         self.special = object()
         namespace = self.api.__dict__
-        namespace.update(tk=tk, ttk=ttk, np=np, copy=copy, OrderedDict=OrderedDict,
+        namespace.update(tk=tk, ttk=ttk, sys=sys, np=np, copy=copy, OrderedDict=OrderedDict,
                          SortedDict=dict, Combobox=tk_namespace['Combobox'],
                          special1=self.special, root=self.tree, rightClick='Button-3',
                          OMFITexception=ValueError, _GUIs={},
@@ -121,6 +121,10 @@ class NativeTkRefreshTests(unittest.TestCase):
 
     def tearDown(self):
         if hasattr(self, 'errors'):
+            # Native task completion queues root.update_idletasks at 100 ms.
+            # In OMFIT this root remains alive; let it run before destroying
+            # this per-test interpreter, and include its errors in assertions.
+            self.drain(120)
             self.assertEqual(self.errors, [])
 
     def make_gui(self, name):
