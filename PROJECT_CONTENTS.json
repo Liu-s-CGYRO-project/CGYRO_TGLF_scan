@@ -1,7 +1,7 @@
 {
   "format": "omfit-code-project-v1",
-  "version": "1.24.39",
-  "parent_release": "1.24.38",
+  "version": "1.24.40",
+  "parent_release": "1.24.39",
   "source_project": "CGYRO_99949_compare_refactored.zip",
   "modules": [
     "CGYRO_TGLF_scan",
@@ -236,7 +236,7 @@
     "CGYRO_TGLF_scan/CGYRO_scan/SettingsNamelist.txt": "ea639e8e105899f230ec4b365ed365f29702623b892c1f2e9f45176eb48ce236",
     "CGYRO_TGLF_scan/CGYRO_scan/help.rst": "422f96834b12182ea05db88a29dd9199f2479dc8617bbbaee9d36294de54ba55",
     "CGYRO_TGLF_scan/CGYRO_scan/tmp.py.py": "e581975f6a6c479481fa21ad453bda4cb42b8ad0f5a04499fe7e85e53cb4bfd1",
-    "CGYRO_TGLF_scan/DOCS/CANCEL_RESUME.md": "2e6f7c48a8d642fc09bc1b3922ad7c791b134cd6698dad9fb573c9a9b734568a",
+    "CGYRO_TGLF_scan/DOCS/CANCEL_RESUME.md": "d4ea1e489c9470a9dac2a3ad2ce7cdc3fcbc6f86622cdefbc414275b7fc548ac",
     "CGYRO_TGLF_scan/DOCS/FIRST_DEPLOY.md": "c091061d3c12c2cbeadbf26c0fac367e95797a5b9c3444712555a221bfa125b8",
     "CGYRO_TGLF_scan/DOCS/FONT_LICENSE.txt": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2",
     "CGYRO_TGLF_scan/DOCS/GUI_FONTS.md": "a56411a2455e5204fe71d0daa28c35678757104f9bbb7a9c463e36162a6fcf89",
@@ -283,7 +283,7 @@
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_results.py": "1f6ec88c91d142353c750f7bec8eb693c12f157a5e5ae99f570e8096cfa3e465",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_retention.py": "930cbebdd81cf4a9ad5ac8c70614f222fb6f637a175980ff6289e9a33dc9a8f8",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_retry.py": "41ebfa925519c70aa9e7b35921d63ac95374fa70b7a86e73213d7ea856d25c55",
-    "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_run_state.py": "e0eb91cff1a47c61e6f1f95e0c649f38c67a513d696e9d29c00f485276be645f",
+    "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_run_state.py": "449098a695e6f9e46b21d506e812c7f7c199eb38c3e50651bf6557b455a1436f",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_scan_values.py": "acf24376045f1418663244b1602b882abe6f1a0905db8cae259c81cfe9f50707",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_scan_view.py": "8eff75d1c86717a23f61e15db4bf822da7639f324c6ca4230800f6222a83151a",
     "CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_scratch.py": "84f389aea53199475dd3449710f06a67f4c7a18ed2ae9d761ec71336da9f980d",

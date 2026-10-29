@@ -28,6 +28,92 @@ def collection_functions():
     return namespace
 
 
+class CompressedSchedulerTests(unittest.TestCase):
+    def points(self, count):
+        return ['p{:06d}'.format(index + 1) for index in range(count)]
+
+    def report(self, rows, job='123', points=None, indices=None, queue_rows=''):
+        output = 'CGYRO_QUEUE_OK\nCGYRO_ACCOUNT_OK\n' + queue_rows
+        output += ''.join('CGYRO_STATE|' + row + '\n' for row in rows)
+        return state.parse_probe(output, job, self.points(135) if points is None else points, indices)
+
+    def test_reported_first_array_keeps_completed_and_cancelled_points_distinct(self):
+        cancelled = {45, 51, 60, 65, 66, 67, 75, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90}
+        rows = ['123_{}|{}|0:0'.format(index, 'CANCELLED by 1000' if index in cancelled else 'COMPLETED')
+                for index in range(91)] + ['123_[91-134%40]|CANCELLED by 1000|0:0']
+        result = self.report(rows)
+        self.assertTrue(result['terminal'])
+        self.assertEqual(result['outcome'], 'cancelled')
+        self.assertEqual(list(result['point_states'].values()).count('COMPLETED'), 71)
+        self.assertEqual(list(result['point_states'].values()).count('CANCELLED'), 64)
+        self.assertIn('123_[91-134%40]', result['scheduler_status'])
+
+    def test_four_reported_pending_arrays_cancelled_as_one_group(self):
+        for job in ('124', '125', '126', '127'):
+            with self.subTest(job=job):
+                result = self.report([job + '_[0-134%40]|CANCELLED by 1000|0:0'], job)
+                self.assertTrue(result['terminal'])
+                self.assertEqual(set(result['point_states'].values()), {'CANCELLED'})
+                self.assertEqual(len(result['point_states']), 135)
+
+    def test_retry_subset_uses_original_task_indices_for_groups_lists_and_steps(self):
+        result = self.report(['123_[1,5-9:2%40]|COMPLETED|0:0'],
+                             points=['first', 'second', 'third'], indices=[1, 5, 9])
+        self.assertTrue(result['terminal'])
+        self.assertEqual(result['point_states'], dict(first='COMPLETED', second='COMPLETED', third='COMPLETED'))
+
+    def test_large_group_matches_only_requested_indices(self):
+        result = self.report(['123_[0-999999999%40]|CANCELLED by 1000|0:0'],
+                             points=['one', 'two'], indices=[0, 999999999])
+        self.assertTrue(result['terminal'])
+        self.assertEqual(len(result['point_states']), 2)
+
+    def test_missing_task_prevents_terminal_confirmation(self):
+        result = self.report(['123_[0-133%40]|CANCELLED by 1000|0:0'])
+        self.assertFalse(result['terminal'])
+        self.assertEqual(result['outcome'], 'unknown')
+        self.assertEqual(result['point_states']['p000135'], '')
+
+    def test_live_requeued_task_overrides_finished_accounting(self):
+        result = self.report(['123_[0-134%40]|CANCELLED by 1000|0:0'],
+                             queue_rows='CGYRO_QUEUE|123_2|RUNNING\n')
+        self.assertTrue(result['active'])
+        self.assertFalse(result['terminal'])
+
+    def test_other_job_and_steps_cannot_complete_missing_tasks(self):
+        result = self.report(['124_[0-134%40]|CANCELLED|0:0', '123_0.batch|COMPLETED|0:0'])
+        self.assertFalse(result['terminal'])
+        self.assertEqual(set(result['point_states'].values()), {''})
+
+    def test_malformed_or_conflicting_groups_remain_unconfirmed(self):
+        for selector in ('[134-0%40]', '[0-134:0%40]', '[0-134,]', '[bad]'):
+            with self.subTest(selector=selector):
+                result = self.report(['123|COMPLETED|0:0', '123_' + selector + '|CANCELLED|0:0'])
+                self.assertFalse(result['terminal'])
+        result = self.report(['123_[0-134%40]|CANCELLED|0:0', '123_0|COMPLETED|0:0'])
+        self.assertFalse(result['terminal'])
+
+    def test_queue_or_account_failure_still_prevents_terminal_confirmation(self):
+        output = 'CGYRO_QUEUE_OK\nCGYRO_ACCOUNT_OK\nCGYRO_STATE|123_[0-134%40]|CANCELLED|0:0\n'
+        for marker in ('CGYRO_QUEUE_OK', 'CGYRO_ACCOUNT_OK'):
+            with self.subTest(marker=marker):
+                result = state.parse_probe(output.replace(marker, marker + '_ERROR'), '123', self.points(135))
+                self.assertFalse(result['terminal'])
+
+    def test_actual_shell_probe_requests_uncompressed_accounting(self):
+        script = '''squeue() { return 0; }
+sacct() {
+  case " $* " in *" --array "*) printf '123_0|COMPLETED|0:0\\n123_1|CANCELLED by 1000|0:0\\n';;
+    *) printf 'array expansion was not requested\\n' >&2; return 7;; esac
+}
+''' + state.slurm_probe('123')
+        done = subprocess.run(['bash', '-c', script], capture_output=True, text=True, timeout=15)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        result = state.parse_probe(done.stdout, '123', self.points(2))
+        self.assertTrue(result['terminal'])
+        self.assertEqual(result['point_states'], dict(p000001='COMPLETED', p000002='CANCELLED'))
+
+
 class OutputProbeTests(unittest.TestCase):
     def setUp(self):
         self.functions = collection_functions()
@@ -132,18 +218,19 @@ printf 'Linear converged\\nERROR: Integration error exceeded limit\\n' > p000004
 
 
 class NativeCollectionEntryTests(unittest.TestCase):
-    def collect(self, output, reader_calls):
+    def collect(self, output, reader_calls, scheduler_output=None, stopped=False):
         points = ['p000001', 'p000002']
         manifest = dict(run_token='token', points=points, workDir='/runs/frozen', local_workDir='/tmp/test',
                         server='recorded-server', tunnel='recorded-tunnel', scheduler='slurm',
-                        case_tag='linear', job_id='123', point_table={p: {'values': {'KY': 0.0}} for p in points})
+                        case_tag='linear', job_id='123', stop_requested=stopped,
+                        point_table={p: {'values': {'KY': 0.0}} for p in points})
         root = dict(RUN_MANIFEST=manifest, SETTINGS=dict(SETUP=dict(icgyro=1), REMOTE_SETUP={}))
         stored = {}
         class UI:
             def remote_execute(self, server, command, directory, tunnel, **kwargs):
                 if (server, directory, tunnel) != ('recorded-server', '/runs/frozen', 'recorded-tunnel'):
                     raise AssertionError('collection used a different endpoint')
-                kwargs['std_out'].append(output)
+                kwargs['std_out'].append(scheduler_output if scheduler_output is not None and 'cgyro_queue_rows()' in command else output)
                 return 0
         def reader(location, **kwargs):
             reader_calls.append(location)
@@ -154,11 +241,58 @@ class NativeCollectionEntryTests(unittest.TestCase):
             stack.enter_context(patch.object(fixtures.db_api, 'run_cases', return_value=stored))
             stack.enter_context(patch.object(fixtures.storage, 'store_result', side_effect=lambda node, candidate, factory, **kwargs: candidate))
             stack.enter_context(patch.object(fixtures.scratch, 'ensure_capacity', return_value={}))
-            stack.enter_context(patch.object(state, 'refresh_run_state', return_value=dict(
-                active=False, terminal=True, outcome='completed', queue_verified=True)))
+            if scheduler_output is None:
+                stack.enter_context(patch.object(state, 'refresh_run_state', return_value=dict(
+                    active=False, terminal=True, outcome='completed', queue_verified=True)))
             exec(compile(path.read_text(encoding='utf-8'), str(path), 'exec'), dict(
                 root=root, OMFITtree=dict, OMFITx=UI(), OMFITcgyro=reader))
         return manifest, stored
+
+    def test_stopped_array_collects_readable_points_with_real_grouped_state_parser(self):
+        output = ''.join('CGYRO_BYTES|{}|20\nCGYRO_POINT|{}|\n'.format(p, p) for p in ('p000001', 'p000002'))
+        scheduler = ('CGYRO_QUEUE_OK\nCGYRO_ACCOUNT_OK\nCGYRO_STATE|123_0|COMPLETED|0:0\n'
+                     'CGYRO_STATE|123_[1-1%40]|CANCELLED by 1000|0:0\n')
+        calls = []
+        manifest, stored = self.collect(output, calls, scheduler_output=scheduler, stopped=True)
+        self.assertEqual(manifest['scheduler_sync']['outcome'], 'cancelled')
+        self.assertEqual(manifest['loaded_points'], ['p000001'])
+        self.assertEqual(manifest['partial_points'], ['p000002'])
+        self.assertEqual(set(stored), {'p000001', 'p000002'})
+        self.assertEqual(len(calls), 2)
+
+    def test_stopped_pending_array_with_no_outputs_skips_without_reading_results(self):
+        output = ''.join('CGYRO_POINT|{}|out.cgyro.grids out.cgyro.time frequency no_exit_record\n'.format(p)
+                         for p in ('p000001', 'p000002'))
+        scheduler = 'CGYRO_QUEUE_OK\nCGYRO_ACCOUNT_OK\nCGYRO_STATE|123_[0-1%40]|CANCELLED by 1000|0:0\n'
+        calls = []
+        manifest, stored = self.collect(output, calls, scheduler_output=scheduler, stopped=True)
+        self.assertEqual(manifest['collection_status'], 'ready')
+        self.assertEqual(manifest['status'], 'cancelled')
+        self.assertEqual(manifest['skipped_points'], ['p000001', 'p000002'])
+        self.assertEqual(calls, [])
+        self.assertEqual(stored, {})
+        path = fixtures.REPO / 'CGYRO_TGLF_scan/CGYRO_scan/SCRIPTS/CGYROScan.py'
+        publish = next(node for node in ast.parse(path.read_text(encoding='utf-8')).body
+                       if isinstance(node, ast.FunctionDef) and node.name == 'publish_loaded_run')
+        namespace = dict(OMFITtree=dict, compact_storage=lambda *args, **kwargs: None,
+                         remember_collection=lambda *args: None, print=lambda *args: None)
+        exec(compile(ast.Module(body=[publish], type_ignores=[]), str(path), 'exec'), namespace)
+        manifest['dimensions'] = 1
+        previous = object()
+        root = dict(RUN_MANIFEST=manifest, RUN_DB={'previous': previous})
+        namespace['publish_loaded_run'](root)
+        self.assertEqual(manifest['collection_status'], 'empty')
+        self.assertFalse(manifest['submission_complete'])
+        self.assertFalse(manifest['scan_complete'])
+        self.assertIs(root['RUN_DB']['previous'], previous)
+
+    def test_stopped_array_with_live_task_does_not_read_any_result(self):
+        scheduler = ('CGYRO_QUEUE_OK\nCGYRO_ACCOUNT_OK\nCGYRO_QUEUE|123_1|RUNNING\n'
+                     'CGYRO_STATE|123_[0-1%40]|CANCELLED by 1000|0:0\n')
+        calls = []
+        with self.assertRaisesRegex(RuntimeError, 'still queued/running'):
+            self.collect('', calls, scheduler_output=scheduler, stopped=True)
+        self.assertEqual(calls, [])
 
     def test_native_entry_collects_zero_time_samples_from_saved_endpoint(self):
         output = ''.join('CGYRO_BYTES|{}|20\nCGYRO_POINT|{}|\n'.format(p, p)
@@ -216,6 +350,46 @@ class QueueMetadataTests(unittest.TestCase):
         self.assertEqual(frozen['job_id'], '99')
         self.assertFalse(frozen['submission_uncertain'])
         self.assertNotIn('submission_parent', frozen)
+
+    def test_grouped_cancel_sync_commits_all_five_jobs_without_reading_payloads(self):
+        manifests, points = {}, ['p{:06d}'.format(index + 1) for index in range(135)]
+        for index, job in enumerate(('11', '12', '13', '14', '15')):
+            token = '{:032x}'.format(index + 1)
+            manifests[token] = dict(run_token=token, batch_id='batch', case_id='case-' + job,
+                status='cancel_requested', job_id=job, scheduler='slurm', points=points,
+                server='user@cluster', workDir='/runs/' + token, stop_requested=True,
+                cancellation=dict(accepted=True, wake_sent=True))
+        tokens = list(manifests)
+        root = dict(SETTINGS={'REMOTE_SETUP': {}}, RUN_MANIFEST=copy.deepcopy(manifests[tokens[-1]]),
+            RUN_HISTORY={token: dict(manifest=copy.deepcopy(manifest)) for token, manifest in manifests.items()},
+            RUN_BATCH=dict(tokens=tokens, case_ids=[m['case_id'] for m in manifests.values()],
+                           batch_id='batch', stop_requested=True),
+            RUN_DB={'__STORAGE__': {'version': fixtures.db_api.STORAGE_SCHEMA_VERSION},
+                    '__RUNS__': {token: dict(manifest=copy.deepcopy(m)) for token, m in manifests.items()}})
+        queried = []
+        class UI:
+            def remote_execute(self, server, command, directory, tunnel, **kwargs):
+                if 'scancel ' in command or 'sbatch ' in command:
+                    raise AssertionError('Status synchronization changed a job')
+                job = re.search(r'sacct --array -X -n -P -j ([0-9]+)', command).group(1)
+                queried.append(job)
+                kwargs['std_out'].append('CGYRO_QUEUE_OK\nCGYRO_ACCOUNT_OK\n'
+                    'CGYRO_STATE|' + job + '_[0-134%40]|CANCELLED by 1000|0:0\n')
+                return 0
+        with patch.object(queue, 'compact_storage', side_effect=AssertionError('Result files inspected')), \
+                patch.object(queue, 'freeze_run_inputs', side_effect=AssertionError('Inputs copied')):
+            queue.refresh_queue(root, UI())
+        self.assertEqual(queried, ['11', '12', '13', '14', '15'])
+        for token in tokens:
+            for manifest in (root['RUN_HISTORY'][token]['manifest'], root['RUN_DB']['__RUNS__'][token]['manifest']):
+                self.assertEqual(manifest['status'], 'cancelled')
+                self.assertTrue(manifest['scheduler_sync']['terminal'])
+                self.assertEqual(set(manifest['scheduler_sync']['point_states'].values()), {'CANCELLED'})
+        self.assertEqual(root['RUN_MANIFEST']['status'], 'cancelled')
+        with patch.object(queue, 'ensure_layout'):
+            queue.activate_run(root, tokens[0])
+        self.assertEqual(root['RUN_MANIFEST']['job_id'], '11')
+        self.assertTrue(root['RUN_MANIFEST']['scheduler_sync']['terminal'])
 
     def test_sync_never_compacts_freezes_or_migrates_results_and_uses_live_metadata(self):
         root = self.root()

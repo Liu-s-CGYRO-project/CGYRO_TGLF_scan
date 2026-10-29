@@ -460,6 +460,18 @@ case = _cgyro_case_id({'nr': 1, 'rho': 0.33}, 'BASE', {'BETAE_UNIT': source['BET
             installed = out['install_incremental'](client, plan, folder / 'updates')
             self.assertEqual(out['verify_installation'](installed, folder / 'updates'), Path(installed))
 
+    def test_grouped_slurm_states_after_native_import_cleanup(self):
+        out = self.host.execute('from OMFITlib_cgyro_run_state import parse_probe, slurm_probe')
+        self.assertFalse(any(name.startswith('OMFITlib_') for name in sys.modules))
+        points = ['p{:06d}'.format(index + 1) for index in range(135)]
+        output = 'CGYRO_QUEUE_OK\nCGYRO_ACCOUNT_OK\nCGYRO_STATE|123_[0-134%40]|CANCELLED by 1000|0:0\n'
+        result = out['parse_probe'](output, '123', points)
+        self.assertTrue(result['terminal'])
+        self.assertEqual(result['outcome'], 'cancelled')
+        self.assertEqual(len(result['point_states']), 135)
+        self.assertEqual(set(result['point_states'].values()), {'CANCELLED'})
+        self.assertIn('sacct --array ', out['slurm_probe']('123'))
+
     def test_browser_link_repair_after_native_import_cleanup(self):
         root = self.host.modules[('OMFITtemplates',)]
         out = self.host.execute('from OMFITlib_template_migration import ArchiveIndex\n'

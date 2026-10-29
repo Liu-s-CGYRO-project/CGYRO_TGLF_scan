@@ -180,7 +180,7 @@ if command -v squeue >/dev/null 2>&1; then
   else printf 'CGYRO_QUEUE_ERROR\n'; fi
 else printf 'CGYRO_QUEUE_MISSING\n'; fi
 if command -v sacct >/dev/null 2>&1; then
-  if rows=$(sacct -X -n -P -j JOB_ID --format=JobID%128,State%64,ExitCode); then
+  if rows=$(sacct --array -X -n -P -j JOB_ID --format=JobID%128,State%64,ExitCode); then
     printf 'CGYRO_ACCOUNT_OK\n'
     if [ -n "$rows" ]; then printf '%s\n' "$rows" | while IFS= read -r row; do printf 'CGYRO_STATE|%s\n' "$row"; done; fi
   else printf 'CGYRO_ACCOUNT_ERROR\n'; fi
@@ -188,11 +188,29 @@ else printf 'CGYRO_ACCOUNT_MISSING\n'; fi
 '''.replace('JOB_ID', str(job_id))
 
 
+def array_task_ranges(selector):
+    """Parse sacct's grouped task IDs without expanding a potentially huge range."""
+    match = re.fullmatch(r'\[([0-9,:-]+)(?:%[0-9]+)?\](?:%[0-9]+)?', selector)
+    if match is None:
+        return None
+    ranges = []
+    for item in match.group(1).split(','):
+        part = re.fullmatch(r'([0-9]+)(?:-([0-9]+)(?::([0-9]+))?)?', item)
+        if part is None:
+            return None
+        first = int(part.group(1))
+        last, step = int(part.group(2) or first), int(part.group(3) or 1)
+        if last < first or step < 1:
+            return None
+        ranges.append((first, last, step))
+    return ranges
+
+
 def parse_probe(output, job_id, points, task_indices=None):
     """Map a retry subset using original array indices, not subset positions."""
     markers, queued, accounts, raw_states = set(), {}, {}, []
-    unknown_queue_row = False
-    identity = re.compile(re.escape(str(job_id)) + r'(?:_([0-9]+))?')
+    unknown_queue_row, unknown_account_row, grouped = False, False, []
+    identity = re.compile(re.escape(str(job_id)) + r'(?:_([0-9]+|\[[^\]]+\](?:%[0-9]+)?))?')
     for line in output.splitlines():
         fields = [field.strip() for field in line.split('|')]
         if len(fields) == 1:
@@ -200,9 +218,14 @@ def parse_probe(output, job_id, points, task_indices=None):
             continue
         if fields[0] not in ('CGYRO_QUEUE', 'CGYRO_STATE') or len(fields) < 3:
             continue
-        if identity.fullmatch(fields[1]) is None:
+        match = identity.fullmatch(fields[1])
+        selector = match.group(1) if match is not None else None
+        ranges = array_task_ranges(selector) if selector and selector.startswith('[') else None
+        if match is None or (selector and selector.startswith('[') and ranges is None):
             if fields[0] == 'CGYRO_QUEUE':
                 unknown_queue_row = True
+            elif fields[1].startswith(str(job_id) + '_') and '.' not in fields[1]:
+                unknown_account_row = True
             continue  # Exclude .batch/.extern steps and unrelated allocations.
         state = fields[2].split()[0].rstrip('+') if fields[2].split() else ''
         if not state:
@@ -212,17 +235,29 @@ def parse_probe(output, job_id, points, task_indices=None):
         else:
             accounts[fields[1]] = state
             raw_states.append(line)
+            if ranges is not None:
+                grouped.append((ranges, state))
     active = unknown_queue_row or any(state not in TERMINAL for state in queued.values())
     root_state = accounts.get(str(job_id), '')
     indices = list(range(len(points))) if task_indices is None else list(task_indices)
     if len(indices) != len(points) or len(set(indices)) != len(indices):
         raise ValueError('Scheduler task indices must match the distinct active points.')
     child_states = {str(index): accounts.get(str(job_id) + '_' + str(index), '') for index in indices}
+    # Older servers and saved responses can still contain e.g. [0-134%40].
+    # Match only the manifest's indices, retaining the original IDs/diagnostic.
+    for ranges, state in grouped:
+        for index in indices:
+            if any(first <= index <= last and (index - first) % step == 0 for first, last, step in ranges):
+                previous = child_states[str(index)]
+                if previous and previous != state:
+                    unknown_account_row = True
+                else:
+                    child_states[str(index)] = state
     all_children_done = bool(points) and all_terminal(child_states.values())
     # Accounting can lag a requeue. A failed queue query is not proof that the
     # allocation stopped, even when an older accounting row says COMPLETED.
     terminal = ('CGYRO_QUEUE_OK' in markers and 'CGYRO_ACCOUNT_OK' in markers and bool(accounts)
-                and not any(state not in TERMINAL for state in accounts.values())
+                and not unknown_account_row and not any(state not in TERMINAL for state in accounts.values())
                 and (root_state in TERMINAL or all_children_done) and not active)
     states = list(accounts.values())
     outcome = ('active' if active else 'cancelled' if terminal and 'CANCELLED' in states else
