@@ -7,7 +7,8 @@ from builtins import RuntimeError, ValueError, any, dict, int, len, list, set, s
 import base64
 import posixpath
 import re
-from OMFITlib_cgyro_run_state import native_remote_execute, quote, slurm_queue_query, text_output
+from OMFITlib_cgyro_run_state import (array_task_ranges, native_remote_execute, quote,
+                                     slurm_account_query, slurm_queue_query, text_output)
 from OMFITlib_cgyro_recovery_manifest import (MAX_MANIFEST_BYTES, MAX_SCRIPT_BYTES, SIDECAR,
                                              absolute_remote_path, job_number)
 
@@ -36,12 +37,10 @@ def section(text, name):
 def identity_command(job_id):
     job_id = job_number(job_id)
     return ('set -e\nfor name in ${!SQUEUE_@} ${!SACCT_@}; do unset "$name"; done\nunset SLURM_CLUSTERS\n'
-        + slurm_queue_query(job_id) + '\n' + frame('USER', 'id -un')
+        + slurm_queue_query(job_id) + slurm_account_query(job_id) + '\n' + frame('USER', 'id -un')
         + frame('QUEUE', 'cgyro_queue_rows ' + quote('%i|%u|%T|%Z'))
-        # Pending arrays can be compacted to 123_[0-6] by accounting even
-        # though squeue -r expands them. Request exact child IDs from both.
-        + frame('ACCOUNT', 'LC_ALL=C sacct --array -X -n -P -j ' + job_id
-                + ' --format=JobID%128,User%128,State%64,WorkDir%4096'))
+        # Prefer expanded accounting; old clients may retain grouped IDs.
+        + frame('ACCOUNT', "cgyro_account_rows 'JobID%128,User%128,State%64,WorkDir%4096'"))
 
 
 def parse_identity(text, job_id):
@@ -56,7 +55,10 @@ def parse_identity(text, job_id):
             if not line.strip():
                 continue
             fields = [field.strip() for field in line.split('|')]
-            if len(fields) != 4 or not re.fullmatch(re.escape(job_id) + r'(?:_[0-9]+)?', fields[0]):
+            match = re.fullmatch(re.escape(job_id) + r'(?:_([0-9]+|\[[^\]]+\](?:%[0-9]+)?))?', fields[0])
+            selector = match.group(1) if match is not None else None
+            if (len(fields) != 4 or match is None
+                    or (selector and selector.startswith('[') and array_task_ranges(selector) is None)):
                 raise ValueError('Unexpected or truncated scheduler recovery row: ' + line)
             if fields[1] != user:
                 raise ValueError('该作业不属于当前连接用户；未恢复任何记录。')

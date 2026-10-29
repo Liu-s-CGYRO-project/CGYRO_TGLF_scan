@@ -130,6 +130,31 @@ def queue_summary(root):
     return (caption + '：完整 {} / {}；部分结果 {}；无结果跳过 {}。').format(done, total, partial, empty)
 
 
+def queue_sync_summary(root):
+    """Describe scheduler evidence separately from result collection counts."""
+    rows = [entry['manifest'] for _, entry in queue_records(root)]
+    if not rows and root.get('RUN_MANIFEST', None):
+        rows = [root['RUN_MANIFEST']]
+    ended, active, unknown, lines = 0, 0, 0, []
+    for manifest in rows:
+        sync = manifest.get('scheduler_sync', {})
+        outcome = sync.get('outcome', '')
+        if manifest.get('status', '') == 'published':
+            ended += 1
+            state = '已归档'
+        elif sync.get('terminal', False) and outcome in ('completed', 'cancelled', 'failed'):
+            ended += 1
+            state = {'completed': 'Slurm 已完成', 'cancelled': 'Slurm 已取消', 'failed': 'Slurm 已失败'}[outcome]
+        elif sync.get('active', False):
+            active += 1
+            state = '仍有活动或未识别的队列记录'
+        else:
+            unknown += 1
+            state = '未确认终态：' + str(manifest.get('sync_error', '') or sync.get('reason', '') or '缺少有效查询结果')
+        lines.append('作业 {}：{}'.format(manifest.get('job_id', '') or '未确认', state))
+    return '作业状态核对：已结束 {}，活动 {}，未确认 {}。\n'.format(ended, active, unknown) + '\n'.join(lines)
+
+
 def _commit_synced_manifest(root, token, manifest, factory):
     """Commit one queried status to both metadata views, preserving payloads.
 
@@ -225,6 +250,12 @@ def refresh_queue(root, ui, factory=dict, recover=None):
         manifest = deepcopy(before)
         try:
             _refresh_manifest(manifest, root['SETTINGS'], root.get('RUN_BATCH', {}), ui, factory, recover)
+            sync = manifest.get('scheduler_sync', {})
+            if sync.get('outcome', '') == 'unknown':
+                detail = str(sync.get('errors', '')).strip()
+                raise RuntimeError('作业 {} 未确认终态：{}{}'.format(
+                    manifest.get('job_id', ''), sync.get('reason', '') or '请检查保存的调度查询输出。',
+                    '\n' + detail[:1200] if detail else ''))
             manifest.pop('sync_error', None)
         except Exception as exc:
             manifest['sync_error'] = str(exc)
@@ -241,7 +272,7 @@ def refresh_queue(root, ui, factory=dict, recover=None):
                 _commit_synced_manifest(root, token, manifest, factory)
     if errors:
         raise RuntimeError('\n'.join(errors))
-    return queue_summary(root)
+    return queue_sync_summary(root)
 
 
 def stop_queue(root, ui, job_id, run_token, factory=dict):

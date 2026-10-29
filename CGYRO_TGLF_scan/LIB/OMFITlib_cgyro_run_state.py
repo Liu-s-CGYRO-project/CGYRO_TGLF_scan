@@ -170,8 +170,33 @@ def slurm_queue_query(job_id):
 '''.replace('JOB_ID', str(job_id))
 
 
+def slurm_account_query(job_id):
+    """Prefer expanded IDs; retry only when sacct rejects the array option.
+
+    Older Slurm clients return grouped IDs without --array. The consumers
+    validate these groups against the saved job/point identities. Connection,
+    accounting and other option failures must remain failed queries.
+    """
+    if not re.fullmatch(r'[0-9]+', str(job_id)):
+        raise ValueError('A numeric Slurm job ID is required to query accounting.')
+    return r'''cgyro_account_rows() {
+  local job_id=JOB_ID format="$1" rows
+  if rows=$(LC_ALL=C sacct --array -X -n -P -j "$job_id" --format="$format" 2>&1); then
+    [ -z "$rows" ] || printf '%s\n' "$rows"
+    return 0
+  fi
+  case "$rows" in
+    *"sacct: unrecognized option '--array'"*|*"sacct: unrecognized option \`--array'"*)
+      LC_ALL=C sacct -X -n -P -j "$job_id" --format="$format"
+      return "$?" ;;
+    *) printf '%s\n' "$rows" >&2; return 1 ;;
+  esac
+}
+'''.replace('JOB_ID', str(job_id))
+
+
 def slurm_probe(job_id):
-    return slurm_queue_query(job_id) + '''for name in ${!SQUEUE_@} ${!SACCT_@}; do unset "$name"; done
+    return slurm_queue_query(job_id) + slurm_account_query(job_id) + '''for name in ${!SQUEUE_@} ${!SACCT_@}; do unset "$name"; done
 unset SLURM_CLUSTERS
 if command -v squeue >/dev/null 2>&1; then
   if rows=$(cgyro_queue_rows '%i|%T'); then
@@ -180,7 +205,7 @@ if command -v squeue >/dev/null 2>&1; then
   else printf 'CGYRO_QUEUE_ERROR\n'; fi
 else printf 'CGYRO_QUEUE_MISSING\n'; fi
 if command -v sacct >/dev/null 2>&1; then
-  if rows=$(sacct --array -X -n -P -j JOB_ID --format=JobID%128,State%64,ExitCode); then
+  if rows=$(cgyro_account_rows 'JobID%128,State%64,ExitCode'); then
     printf 'CGYRO_ACCOUNT_OK\n'
     if [ -n "$rows" ]; then printf '%s\n' "$rows" | while IFS= read -r row; do printf 'CGYRO_STATE|%s\n' "$row"; done; fi
   else printf 'CGYRO_ACCOUNT_ERROR\n'; fi
@@ -263,7 +288,30 @@ def parse_probe(output, job_id, points, task_indices=None):
     outcome = ('active' if active else 'cancelled' if terminal and 'CANCELLED' in states else
                'failed' if terminal and any(state != 'COMPLETED' for state in states) else
                'completed' if terminal else 'unknown')
+    missing = [point for point, index in zip(points, indices) if not child_states[str(index)]]
+    reason = ''
+    if not terminal:
+        if 'CGYRO_QUEUE_OK' not in markers:
+            reason = 'squeue 查询失败或没有返回成功标记；不能确认任务已离开队列。'
+        elif 'CGYRO_ACCOUNT_OK' not in markers:
+            reason = 'sacct 查询失败或没有返回成功标记；不能确认作业终态。'
+        elif unknown_queue_row:
+            reason = '队列响应含无法识别的作业记录。'
+        elif active:
+            reason = 'squeue 仍报告活动任务。'
+        elif not accounts:
+            reason = 'sacct 没有返回作业 ' + str(job_id) + ' 的记录。'
+        elif unknown_account_row:
+            reason = 'sacct 响应含格式错误或相互冲突的任务状态。'
+        elif any(state not in TERMINAL for state in accounts.values()):
+            reason = 'sacct 仍有非终态记录。'
+        elif missing and root_state not in TERMINAL:
+            reason = 'sacct 缺少 {} / {} 个任务状态，例如 {}。'.format(
+                len(missing), len(points), ', '.join(missing[:5]))
+        else:
+            reason = '调度器响应不足以确认终态。'
     return dict(outcome=outcome, terminal=terminal, active=active,
+                reason=reason,
                 queue_verified='CGYRO_QUEUE_OK' in markers, accounting_verified='CGYRO_ACCOUNT_OK' in markers,
                 point_states={point: child_states[str(index)] or root_state for point, index in zip(points, indices)},
                 scheduler_status='\n'.join(raw_states), raw=output)

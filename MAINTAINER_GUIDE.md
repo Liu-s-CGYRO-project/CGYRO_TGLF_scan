@@ -1,6 +1,12 @@
 # 维护与扩展接口
 
-适用于工程 1.24.42。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.43。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+
+## 旧版 Slurm 与同步诊断（1.24.43）
+
+`slurm_account_query` 与既有 `slurm_queue_query` 都只生成只读 Bash 查询。状态同步和按作业号恢复共用记账查询：优先 `sacct --array`，仅在 C locale 的明确“不认识 --array”错误时去除此选项重查。连接、数据库、权限和其他选项失败保持失败；空响应不是完成。不要通过忽略返回码、替换本地状态或扩大作业筛选范围来解除收集保护。
+
+旧客户端的合并数组由 `array_task_ranges` 验证语法，状态解析只匹配原清单索引，不展开任意大范围。恢复允许精确主号下的合法合并 ID，继续要求当前用户、唯一工作目录、冻结提交脚本与 sidecar。`queue_sync_summary` 仅读所选任务元数据，分别报告终态、活动及未确认数量；查询失败保留完整原始输出，界面最多展示 1200 字符错误。`queue_summary` 仍专门表示结果收集数量。同步不触发结果解析、ZIP 复制、哈希或全库整理。
 
 ## CGYRO 单变量收敛扫描（1.24.42）
 

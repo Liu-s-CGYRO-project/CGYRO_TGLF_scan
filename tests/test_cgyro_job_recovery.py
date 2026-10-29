@@ -216,6 +216,50 @@ sacct() {
     def test_empty_live_queue_with_accounting_finds_old_job(self):
         self.assertEqual(probe.parse_identity(identity_text(), '123')['workdir'], WORKDIR)
 
+    @unittest.skipIf(sys.platform == 'win32', 'The recovery probe executes on a Bash server')
+    def test_old_sacct_without_array_support_recovers_grouped_job_identity(self):
+        fake_scheduler = '''id() { printf 'user\\n'; }
+squeue() { return 0; }
+sacct() {
+  case " $* " in *" --array "*) printf "%s\\n" "sacct: unrecognized option '--array'" >&2; return 1;; esac
+  printf '123_[0-134%%40]|user|CANCELLED by 1000|WORKDIR\\n'
+}
+'''.replace('WORKDIR', WORKDIR)
+        result = subprocess.run(['bash', '-c', fake_scheduler + probe.identity_command('123')],
+                                capture_output=True, text=True, timeout=15, check=True)
+        identity = probe.parse_identity(result.stdout, '123')
+        self.assertEqual(identity['workdir'], WORKDIR)
+        self.assertEqual(identity['token'], TOKEN)
+        self.assertEqual([row['job_id'] for row in identity['rows']], ['123_[0-134%40]'])
+        self.assertEqual(result.stderr, '')
+
+    def test_grouped_identity_still_requires_exact_job_owner_directory_and_valid_range(self):
+        for job in ('124_[0-134%40]', '123_[134-0]', '123_[0-134:0]', '123_[0-134,]', '123_[bad]', '123_0.batch'):
+            text = framed('USER', 'user') + framed('QUEUE', '') + framed('ACCOUNT', job + '|user|CANCELLED|' + WORKDIR)
+            with self.subTest(job=job), self.assertRaises(ValueError):
+                probe.parse_identity(text, '123')
+        for user, workdir in (('someone_else', WORKDIR), ('user', '/')):
+            text = framed('USER', 'user') + framed('QUEUE', '') + framed('ACCOUNT',
+                '123_[0-134%40]|' + user + '|CANCELLED|' + workdir)
+            with self.subTest(user=user, workdir=workdir), self.assertRaises(ValueError):
+                probe.parse_identity(text, '123')
+
+    @unittest.skipIf(sys.platform == 'win32', 'The recovery probe executes on a Bash server')
+    def test_failed_legacy_accounting_fallback_cannot_complete_identity_frame(self):
+        fake_scheduler = '''id() { printf 'user\\n'; }
+squeue() { return 0; }
+sacct() {
+  case " $* " in *" --array "*) printf "%s\\n" "sacct: unrecognized option '--array'" >&2; return 1;; esac
+  printf 'sacct: database connection failed\\n' >&2; return 1
+}
+'''
+        result = subprocess.run(['bash', '-c', fake_scheduler + probe.identity_command('123')],
+                                capture_output=True, text=True, timeout=15)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('database connection failed', result.stderr)
+        with self.assertRaises(ValueError):
+            probe.parse_identity(result.stdout, '123')
+
     def test_wrong_owner_missing_accounting_and_conflicting_workdirs(self):
         replies = [identity_text(user='someone_else'), identity_text(directory='/'),
             identity_text(queue='123_0|user|RUNNING|/work/user/' + 'b' * 32 + '\n'),

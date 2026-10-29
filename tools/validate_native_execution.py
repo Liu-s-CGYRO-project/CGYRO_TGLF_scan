@@ -16,6 +16,7 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 from types import ModuleType, SimpleNamespace
@@ -491,7 +492,8 @@ physics = dict(scan_mode='convergence', kyarr=[.1, .2, .3, .4, .5, .6, .7], fixe
             self.assertEqual(out['verify_installation'](installed, folder / 'updates'), Path(installed))
 
     def test_grouped_slurm_states_after_native_import_cleanup(self):
-        out = self.host.execute('from OMFITlib_cgyro_run_state import parse_probe, slurm_probe')
+        out = self.host.execute('from OMFITlib_cgyro_run_state import parse_probe, slurm_probe\n'
+                                'from OMFITlib_cgyro_job_probe import identity_command, parse_identity')
         self.assertFalse(any(name.startswith('OMFITlib_') for name in sys.modules))
         points = ['p{:06d}'.format(index + 1) for index in range(135)]
         output = 'CGYRO_QUEUE_OK\nCGYRO_ACCOUNT_OK\nCGYRO_STATE|123_[0-134%40]|CANCELLED by 1000|0:0\n'
@@ -501,6 +503,25 @@ physics = dict(scan_mode='convergence', kyarr=[.1, .2, .3, .4, .5, .6, .7], fixe
         self.assertEqual(len(result['point_states']), 135)
         self.assertEqual(set(result['point_states'].values()), {'CANCELLED'})
         self.assertIn('sacct --array ', out['slurm_probe']('123'))
+        workdir = '/work/user/runs/' + 'a' * 32
+        legacy = '''id() { printf 'user\\n'; }
+squeue() { return 0; }
+sacct() {
+  case " $* " in *" --array "*) printf "%s\\n" "sacct: unrecognized option '--array'" >&2; return 1;; esac
+  case " $* " in
+    *User*) printf '123_[0-134%%40]|user|CANCELLED|WORKDIR\\n';;
+    *) printf '123_[0-134%%40]|CANCELLED|0:0\\n';;
+  esac
+}
+'''.replace('WORKDIR', workdir)
+        for query in ('slurm_probe', 'identity_command'):
+            done = subprocess.run(['bash', '-c', legacy + out[query]('123')],
+                                  capture_output=True, text=True, timeout=15, check=True)
+            self.assertEqual(done.stderr, '')
+            if query == 'slurm_probe':
+                self.assertTrue(out['parse_probe'](done.stdout, '123', points)['terminal'])
+            else:
+                self.assertEqual(out['parse_identity'](done.stdout, '123')['workdir'], workdir)
 
     def test_browser_link_repair_after_native_import_cleanup(self):
         root = self.host.modules[('OMFITtemplates',)]

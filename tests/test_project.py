@@ -691,6 +691,17 @@ class ProjectTest(unittest.TestCase):
                     self.assertEqual(scan['input.tglf'][.5]['SAT_RULE'], 0)
                     self.assertEqual(existing['result'], [42])
 
+    def test_batch_sync_does_not_claim_success_when_native_task_returns_with_unknown_status(self):
+        manifest = dict(run_token='record', job_id='123', case_id='nr=1__rho=.5__ion=BASE',
+            status='cancel_requested', scheduler_sync=dict(outcome='unknown', terminal=False, active=False,
+                                                          reason='squeue 查询失败'))
+        self.cg['RUN_HISTORY'] = {'record': {'manifest': manifest}}
+        self.cg['RUN_BATCH'] = dict(tokens=['record'], case_ids=[manifest['case_id']])
+        with patch.object(project, 'sync_run_issues', return_value=[]):
+            self.actions.sync_cgyro_run()
+        self.assertIn('作业 123：未确认终态：squeue 查询失败', self.actions.settings['message'])
+        self.assertNotIn('服务器状态已同步', self.actions.settings['message'])
+
     def test_growth_scan_restores_single_file_after_success_or_failure(self):
         from unittest.mock import patch
         scan = self.root['TGLF_scan']

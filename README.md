@@ -1,7 +1,9 @@
-工程 1.24.42 / 管理器 1.10.32：新增单变量收敛扫描，修复整数扫描参数的取值默认值。
+工程 1.24.43 / 管理器 1.10.32：修复旧版 Slurm 不支持 sacct --array 时，取消状态无法确认及结果收集受阻的问题。
 
 
-已有工程可下载本版 [仅更新代码脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.42/omfit-update-1.24.42.py)，上传到运行 OMFIT 的服务器执行，保留输入、结果和设置。任务删除见 [任务管理说明](CGYRO_TGLF_scan/DOCS/TASK_CLEANUP.md)。按作业号恢复见 [恢复说明](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。需要额外整理旧归档时，使用 [更新与整理脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.42/omfit-maintain-1.24.42.py)，步骤见 [Command Box 整理说明](COMMAND_BOX_COMPACTION.md)。
+已有工程可下载本版 [仅更新代码脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.43/omfit-update-1.24.43.py)，上传到运行 OMFIT 的服务器执行，保留输入、结果和设置。任务删除见 [任务管理说明](CGYRO_TGLF_scan/DOCS/TASK_CLEANUP.md)。按作业号恢复见 [恢复说明](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。需要额外整理旧归档时，使用 [更新与整理脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.43/omfit-maintain-1.24.43.py)，步骤见 [Command Box 整理说明](COMMAND_BOX_COMPACTION.md)。
+
+若同步后仍显示“取消中，待 Slurm 确认”，并保存了 `sacct: unrecognized option '--array'`，更新到本版、重开总控后先同步再收集即可继续核验原作业。状态查询只在明确拒绝此选项时回退，兼容合并数组记录；连接、权限与记账失败继续保留原状态并显示原因。同步不读取或整理计算结果，也不提交作业。199 项相关回归及 2 项原生导入边界验证通过，现场集群仍需更新后验证；详见 [取消与收集说明](CGYRO_TGLF_scan/DOCS/CANCEL_RESUME.md) 和 [验证记录](VALIDATION.md)。
 
 在“CGYRO → 输入与扫描 → 扫描设置 → 扫描内容”选择 **单变量收敛扫描**，填写公共基准及各检查方向的取值，预览后使用原有按钮批量提交。共享配置只计算一次，结果仍按完整坐标归档到 RUN_DB，每份作业保留按作业号恢复入口。已有结果的复用仅读匹配分支的轻量摘要。整数参数不再继承上一参数的小数，切换方式保留手填列表，默认范围使用整数间隔；操作只刷新当前区域。用法见 [扫描设置说明](CGYRO_TGLF_scan/DOCS/SCAN_VALUES.md)。406 项相关回归及 3 项原生边界验证通过，并完成 Linux/Tk 交叉验证；未运行真实集群求解器，详细边界见 [验证记录](VALIDATION.md)。
 
@@ -37,7 +39,7 @@ python3 omfit-deploy.py '/路径/旧工程.zip'
 
 用于 Linux 桌面的 OMFIT 工程，包含已审计、修复和整理的 CGYRO/TGLF 工具，以及项目内置的 **OMFIT GitHub 模板管理器**。
 
-当前工程版本为 **1.24.42**，管理器为 **1.10.32**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
+当前工程版本为 **1.24.43**，管理器为 **1.10.32**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
 
 运行与环境 → 选择服务器和队列 → **自动检测** → 核对“服务器能力”和资源草稿 → **应用到整个工程**。检测结果只用于原服务器和隧道；队列查询失败时保留资源设置并显示未知。内存值用于展示，不推算求解器需求；账户 / QOS 配额及实时空闲资源仍由调度器决定。v3 检查点验证通过后可调整 MPI / OpenMP 资源继续计算。
 
@@ -45,7 +47,7 @@ python3 omfit-deploy.py '/路径/旧工程.zip'
 
 ## 在 OMFIT 打开
 
-发布后可从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.24.42.zip`，在 OMFIT 中打开。
+发布后可从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.24.43.zip`，在 OMFIT 中打开。
 
 也可直接加载本仓库的工程入口：
 

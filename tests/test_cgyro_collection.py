@@ -5,7 +5,9 @@ from contextlib import ExitStack
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -100,6 +102,17 @@ class CompressedSchedulerTests(unittest.TestCase):
                 result = state.parse_probe(output.replace(marker, marker + '_ERROR'), '123', self.points(135))
                 self.assertFalse(result['terminal'])
 
+    def test_unconfirmed_query_explains_queue_accounting_and_missing_task_failures(self):
+        complete = 'CGYRO_QUEUE_OK\nCGYRO_ACCOUNT_OK\nCGYRO_STATE|123_[0-134]|CANCELLED|0:0\n'
+        self.assertIn('squeue 查询失败', state.parse_probe(complete.replace('CGYRO_QUEUE_OK',
+            'CGYRO_QUEUE_ERROR'), '123', self.points(135))['reason'])
+        self.assertIn('sacct 查询失败', state.parse_probe(complete.replace('CGYRO_ACCOUNT_OK',
+            'CGYRO_ACCOUNT_MISSING'), '123', self.points(135))['reason'])
+        self.assertIn('没有返回作业 123', self.report([])['reason'])
+        self.assertIn('缺少 1 / 135', self.report(['123_[0-133]|CANCELLED|0:0'])['reason'])
+        self.assertIn('p000135', self.report(['123_[0-133]|CANCELLED|0:0'])['reason'])
+        self.assertEqual(self.report(['123_[0-134]|CANCELLED|0:0'])['reason'], '')
+
     def test_actual_shell_probe_requests_uncompressed_accounting(self):
         script = '''squeue() { return 0; }
 sacct() {
@@ -112,6 +125,72 @@ sacct() {
         result = state.parse_probe(done.stdout, '123', self.points(2))
         self.assertTrue(result['terminal'])
         self.assertEqual(result['point_states'], dict(p000001='COMPLETED', p000002='CANCELLED'))
+
+    def shell_report(self, body, points=135, queue_rows=''):
+        with tempfile.TemporaryDirectory() as directory:
+            calls = Path(directory) / 'calls'
+            script = ('squeue() { printf %s ' + state.quote(queue_rows) + '; }\n'
+                      'sacct() { printf "%s\\n" "$*" >> ' + state.quote(str(calls)) + '\n'
+                      + body + '\n}\n' + state.slurm_probe('123'))
+            done = subprocess.run(['bash', '-c', script], capture_output=True, text=True, timeout=15)
+            arguments = calls.read_text().splitlines()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return done, arguments, state.parse_probe(done.stdout, '123', self.points(points))
+
+    def test_old_sacct_rejects_array_option_then_confirms_all_grouped_tasks(self):
+        for error in ("sacct: unrecognized option '--array'", "sacct: unrecognized option `--array'"):
+            body = ('case " $* " in *" --array "*) printf "%s\\n" ' + state.quote(error)
+                    + ' >&2; return 1;; esac\n'
+                    "printf '123_[0-134%%40]|CANCELLED by 1000|0:0\\n'")
+            with self.subTest(error=error):
+                done, arguments, result = self.shell_report(body)
+                self.assertEqual(len(arguments), 2)
+                self.assertIn('--array', arguments[0])
+                self.assertNotIn('--array', arguments[1])
+                self.assertIn('-j 123', arguments[1])
+                self.assertIn('--format=JobID%128,State%64,ExitCode', arguments[1])
+                self.assertTrue(result['terminal'])
+                self.assertEqual(result['outcome'], 'cancelled')
+                self.assertEqual(len(result['point_states']), 135)
+                self.assertEqual(set(result['point_states'].values()), {'CANCELLED'})
+                self.assertEqual(done.stderr, '')
+
+    def test_accounting_connection_owner_and_other_option_errors_do_not_retry(self):
+        for error in ('sacct: database connection failed', 'sacct: access denied',
+                      "sacct: unrecognized option '-X'", 'sacct: --array requires an argument'):
+            with self.subTest(error=error):
+                done, arguments, result = self.shell_report('printf "%s\\n" ' + state.quote(error) + ' >&2; return 1')
+                self.assertEqual(len(arguments), 1)
+                self.assertFalse(result['terminal'])
+                self.assertFalse(result['accounting_verified'])
+                self.assertIn('CGYRO_ACCOUNT_ERROR', done.stdout)
+                self.assertIn(error, done.stderr)
+
+    def test_old_sacct_failed_fallback_still_reports_accounting_error(self):
+        body = '''case " $* " in *" --array "*) printf "%s\\n" "sacct: unrecognized option '--array'" >&2; return 1;; esac
+printf 'sacct: database connection failed\\n' >&2; return 1'''
+        done, arguments, result = self.shell_report(body)
+        self.assertEqual(len(arguments), 2)
+        self.assertFalse(result['terminal'])
+        self.assertFalse(result['accounting_verified'])
+        self.assertIn('database connection failed', done.stderr)
+
+    def test_supported_empty_accounting_is_unknown_without_retry(self):
+        done, arguments, result = self.shell_report('return 0')
+        self.assertEqual(len(arguments), 1)
+        self.assertTrue(result['accounting_verified'])
+        self.assertFalse(result['terminal'])
+        self.assertEqual(result['outcome'], 'unknown')
+
+    def test_legacy_option_fallback_does_not_bypass_missing_or_active_task_checks(self):
+        for coverage, queue_rows in ((133, ''), (134, '123_2|RUNNING\n')):
+            body = ('''case " $* " in *" --array "*) printf "%s\\n" "sacct: unrecognized option '--array'" >&2; return 1;; esac
+printf '%s\\n' ''' + state.quote('123_[0-' + str(coverage) + '%40]|CANCELLED|0:0'))
+            with self.subTest(coverage=coverage, queue_rows=queue_rows):
+                done, arguments, result = self.shell_report(body, queue_rows=queue_rows)
+                self.assertEqual(len(arguments), 2)
+                self.assertTrue(result['accounting_verified'])
+                self.assertFalse(result['terminal'])
 
 
 class OutputProbeTests(unittest.TestCase):
@@ -371,20 +450,37 @@ class QueueMetadataTests(unittest.TestCase):
             def remote_execute(self, server, command, directory, tunnel, **kwargs):
                 if 'scancel ' in command or 'sbatch ' in command:
                     raise AssertionError('Status synchronization changed a job')
-                job = re.search(r'sacct --array -X -n -P -j ([0-9]+)', command).group(1)
+                job = re.search(r'job_id=([0-9]+)', command).group(1)
                 queried.append(job)
-                kwargs['std_out'].append('CGYRO_QUEUE_OK\nCGYRO_ACCOUNT_OK\n'
-                    'CGYRO_STATE|' + job + '_[0-134%40]|CANCELLED by 1000|0:0\n')
-                return 0
+                cancelled = {45, 51, 60, 65, 66, 67, 75, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90}
+                rows = ([job + '_{}|{}|0:0'.format(i, 'CANCELLED' if i in cancelled else 'COMPLETED')
+                         for i in range(91)] + [job + '_[91-134%40]|CANCELLED by 1000|0:0'] if job == '11'
+                        else [job + '_[0-134%40]|CANCELLED by 1000|0:0'])
+                fake_scheduler = '''squeue() { return 0; }
+sacct() {
+  case " $* " in *" --array "*) printf "%s\\n" "sacct: unrecognized option '--array'" >&2; return 1;; esac
+  printf '%s\\n' ROWS
+}
+'''.replace('ROWS', ' '.join(state.quote(row) for row in rows))
+                done = subprocess.run(['bash', '-c', fake_scheduler + shlex.split(command)[2]],
+                                      capture_output=True, text=True, timeout=15)
+                kwargs['std_out'].append(done.stdout)
+                kwargs['std_err'].append(done.stderr)
+                return done.returncode
         with patch.object(queue, 'compact_storage', side_effect=AssertionError('Result files inspected')), \
                 patch.object(queue, 'freeze_run_inputs', side_effect=AssertionError('Inputs copied')):
-            queue.refresh_queue(root, UI())
+            summary = queue.refresh_queue(root, UI())
+        self.assertIn('已结束 5，活动 0，未确认 0', summary)
+        self.assertIn('作业 11：Slurm 已取消', summary)
+        self.assertIn('完整 0 / 5', queue.queue_summary(root))
         self.assertEqual(queried, ['11', '12', '13', '14', '15'])
         for token in tokens:
             for manifest in (root['RUN_HISTORY'][token]['manifest'], root['RUN_DB']['__RUNS__'][token]['manifest']):
                 self.assertEqual(manifest['status'], 'cancelled')
                 self.assertTrue(manifest['scheduler_sync']['terminal'])
-                self.assertEqual(set(manifest['scheduler_sync']['point_states'].values()), {'CANCELLED'})
+                states = list(manifest['scheduler_sync']['point_states'].values())
+                self.assertEqual(states.count('COMPLETED'), 71 if manifest['job_id'] == '11' else 0)
+                self.assertEqual(states.count('CANCELLED'), 64 if manifest['job_id'] == '11' else 135)
         self.assertEqual(root['RUN_MANIFEST']['status'], 'cancelled')
         with patch.object(queue, 'ensure_layout'):
             queue.activate_run(root, tokens[0])
@@ -477,6 +573,40 @@ class QueueMetadataTests(unittest.TestCase):
         self.assertEqual(root['RUN_MANIFEST']['status'], 'submitted')
         self.assertEqual(root['RUN_MANIFEST']['sync_error'], 'network unavailable')
         self.assertEqual(root['RUN_MANIFEST'], root['RUN_HISTORY']['second']['manifest'])
+
+    def test_successful_process_with_failed_squeue_is_not_silently_reported_as_synced(self):
+        root = self.root()
+        root['SETTINGS'] = {'REMOTE_SETUP': {}}
+        for token, entry in root['RUN_HISTORY'].items():
+            entry['manifest'].update(scheduler='slurm', status='cancel_requested', stop_requested=True,
+                                     server='user@cluster', workDir='/runs/' + token)
+        root['RUN_MANIFEST'] = copy.deepcopy(root['RUN_HISTORY']['second']['manifest'])
+        seen = []
+        class UI:
+            def remote_execute(self, server, command, directory, tunnel, **kwargs):
+                job = '1' if directory.endswith('first') else '2'
+                seen.append(job)
+                kwargs['std_out'].append('CGYRO_QUEUE_ERROR\nCGYRO_ACCOUNT_OK\n'
+                    'CGYRO_STATE|' + job + '_0|CANCELLED by 1000|0:0\n')
+                kwargs['std_err'].append('squeue: query failed')
+                return 0
+        with patch.object(queue, 'compact_storage', side_effect=AssertionError('result files read')), \
+                patch.object(queue, 'freeze_run_inputs', side_effect=AssertionError('inputs copied')), \
+                self.assertRaisesRegex(RuntimeError, 'squeue 查询失败'):
+            queue.refresh_queue(root, UI())
+        self.assertEqual(seen, ['1', '2'])
+        for token, entry in root['RUN_HISTORY'].items():
+            record = entry['manifest']
+            self.assertEqual(record['status'], 'cancel_requested')
+            self.assertFalse(record['scheduler_sync']['terminal'])
+            self.assertIn('CGYRO_QUEUE_ERROR', record['scheduler_sync']['raw'])
+            self.assertIn('squeue 查询失败', record['sync_error'])
+            self.assertIn('squeue: query failed', record['sync_error'])
+            self.assertEqual(record, root['RUN_DB']['__RUNS__'][token]['manifest'])
+        summary = queue.queue_sync_summary(root)
+        self.assertIn('已结束 0，活动 0，未确认 2', summary)
+        self.assertIn('作业 1：未确认终态', summary)
+        self.assertNotIn('已同步', summary)
 
     def test_abort_after_recovering_receipt_keeps_job_identity_in_all_views(self):
         root = self.root()

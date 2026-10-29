@@ -46,7 +46,7 @@ from OMFITlib_cgyro_convergence import (active as convergence_active, jobs as cg
     load_baseline as load_convergence_baseline, reusable_points as convergence_reuse)
 from OMFITlib_cgyro_isotopes import remap_physics
 from OMFITlib_cgyro_run_state import stop_message, submission_pending
-from OMFITlib_cgyro_queue import activate_run, collection_done, pending_runs, queue_records, queue_summary, save_current
+from OMFITlib_cgyro_queue import activate_run, collection_done, pending_runs, queue_records, queue_summary, queue_sync_summary, save_current
 from OMFITlib_cgyro_retry import retry_limit
 from OMFITlib_cgyro_workflow import collect_batch, collect_run
 from OMFITlib_cgyro_continue import continuation_plan
@@ -1233,7 +1233,7 @@ class ProjectActions:
         self.call('同步 CGYRO 作业状态', MODULES['cgyro'] + ('SCRIPTS', 'refresh_run_status.py'))
         node = module(self.root, 'cgyro')
         if queue_records(node):
-            self.settings['message'] = queue_summary(node) + ' 各案例的服务器状态已同步。'
+            self.settings['message'] = queue_sync_summary(node)
             return
         state = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST', 'status'), '')
         outcome = read(self.root, ('CGYRO_scan', 'RUN_MANIFEST', 'scheduler_sync', 'outcome'), '')
