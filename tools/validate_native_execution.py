@@ -413,6 +413,7 @@ case = _cgyro_case_id({'nr': 1, 'rho': 0.33}, 'BASE', {'BETAE_UNIT': source['BET
             try:
                 with patch.dict(sys.modules, {'omfit_classes': native_package,
                                               'omfit_classes.omfit_path': path_module}), \
+                        patch.object(self.host.path_module, 'OMFITpath', OMFITpath), \
                         patch.object(self.host.gacode, 'OMFITcgyro', OMFITcgyro):
                     source = folder / 'solver'
                     source.mkdir()
@@ -458,6 +459,33 @@ case = _cgyro_case_id({'nr': 1, 'rho': 0.33}, 'BASE', {'BETAE_UNIT': source['BET
             self.assertEqual(plan['changed'], ['OMFITtemplates/GUIS/main.py'])
             installed = out['install_incremental'](client, plan, folder / 'updates')
             self.assertEqual(out['verify_installation'](installed, folder / 'updates'), Path(installed))
+
+    def test_browser_link_repair_after_native_import_cleanup(self):
+        root = self.host.modules[('OMFITtemplates',)]
+        out = self.host.execute('from OMFITlib_template_migration import ArchiveIndex\n'
+                                'from OMFITlib_template_live import LivePlan, MISSING', root)
+        self.assertFalse(any(name.startswith('OMFITlib_') for name in sys.modules))
+        class OMFITexpression:
+            expression = "root['RUN_DB']['__STORE__']['" + 'a' * 64 + "']"
+            lastEval = None
+            def __bool__(self):
+                raise AssertionError('Browser expression evaluated during update')
+        original = OMFITexpression()
+        ref = {'__RESULT_REF__': 'a' * 64, 'data': original}
+        data = {'RUN_DB': {'__STORAGE__': {'version': 4}, '__STORE__': {}, 'Jet': {'point': ref}}}
+        plan = object.__new__(out['LivePlan'])
+        plan.omfit = {'CGYRO_TGLF_scan': {'CGYRO_scan': data}}
+        plan.prepared = SimpleNamespace(release=dict(roots=['CGYRO_TGLF_scan'],
+            id='cgyro-tglf', author='tdxy-liu', version='1.24.38'))
+        plan.operations, plan.guards, plan.relocations = [], [], {}
+        plan.scaffold, plan.bare_output_source, plan.applied = None, out['MISSING'], False
+        plan.archive_index = out['ArchiveIndex']()
+        plan._archives()
+        self.assertEqual(len(plan.operations), 1)
+        plan.apply(lambda *args: None)
+        self.assertIn('.resolve_browser(root, ', ref['data'].expression)
+        plan.undo(lambda *args: None)
+        self.assertIs(ref['data'], original)
 
     def test_collectors_define_all_four_classes_inside_omfit(self):
         root = self.host.cg_fixture()

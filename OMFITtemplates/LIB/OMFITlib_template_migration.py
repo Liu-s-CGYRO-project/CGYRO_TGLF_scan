@@ -23,7 +23,9 @@ def kind(value, name):
 
 
 def branch(value):
-    return isinstance(value, dict) and not kind(value, 'OMFITobject')
+    # OMFIT's namespace can supply an isinstance that evaluates expressions.
+    # Classify opaque leaves before asking whether a value is a metadata mapping.
+    return not (kind(value, 'OMFITobject') or kind(value, 'OMFITexpression')) and isinstance(value, dict)
 
 
 def rebind(value):
@@ -38,12 +40,12 @@ def rebind(value):
 
 def structure(value):
     """Track metadata edits for undo, stopping at arrays and solver objects."""
+    if kind(value, 'OMFITexpression'):
+        return (id(value), value.expression)
     if branch(value):
         return (id(value), tuple((key, structure(dict.__getitem__(value, key))) for key in dict.keys(value)))
     if isinstance(value, (tuple, list)):
         return (id(value), tuple(structure(child) for child in value))
-    if kind(value, 'OMFITexpression'):
-        return (id(value), value.expression)
     return (id(value),)
 
 
@@ -187,6 +189,43 @@ class ArchiveIndex:
         if not self.cgyro_object(owner):
             self.packed_inventory(owner, key)
         return True
+
+    def deferred_browser_links(self, module):
+        """Plan a text-only repair of old RUN_DB browser conveniences.
+
+        Native project loading evaluates saved expressions and calls iter() on
+        their values. A direct link to an OMFITcgyro therefore loads its arrays
+        before any result is selected. Code-only updates otherwise retain that
+        expression unchanged, even after installing the deferred reader.
+        Stop at references and file owners; never inspect the physical store.
+        """
+        changes, seen = [], set()
+
+        def visit(node, path):
+            node = self.materialize(node)
+            if kind(node, 'OMFITlazyLoad') or not branch(node) or id(node) in seen:
+                return
+            seen.add(id(node))
+            contents = self.read(node)
+            if '__RESULT_REF__' in contents:
+                key, data = self.materialize(contents['__RESULT_REF__']), contents.get('data', None)
+                if (set(contents) == {'__RESULT_REF__', 'data'} and isinstance(key, str)
+                        and re.fullmatch(r'[0-9a-f]{64}', key) is not None and kind(data, 'OMFITexpression')
+                        and object.__getattribute__(data, 'expression') ==
+                        "root['RUN_DB']['__STORE__']['" + key + "']"):
+                    replacement = object.__new__(type(data))
+                    replacement.expression = (
+                        "root['LIB']['OMFITlib_cgyro_payload'].importCode(_relLoc={'root': root})"
+                        ".resolve_browser(root, '" + key + "')")
+                    replacement.lastEval = None
+                    changes.append((path + ('data',), data, replacement))
+                return
+            for key, child in contents.items():
+                if key not in ('__STORE__', '__STORAGE__', '__INFO__', '__TASKS__', '__SCANS__'):
+                    visit(child, path + (key,))
+
+        visit(self.get(module, 'RUN_DB', None), ('RUN_DB',))
+        return changes
 
     def packed_inventory(self, owner, key):
         """Validate the saved format without importing/evaluating project code.

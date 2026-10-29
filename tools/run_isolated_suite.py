@@ -20,7 +20,7 @@ FAKE_NATIVE = {'test_cgyro', 'test_compare', 'test_native_mapping', 'test_projec
                'test_gui_tab_pages'}
 NATIVE_SOURCE = {'test_gui_refresh', 'test_gui_refresh_controls', 'test_gui_refresh_native', 'test_cgyro_callback_imports',
                  'test_cgyro_remote_environment', 'test_cgyro_archive_reference',
-                 'test_cgyro_file_dedup', 'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_runtime_persistence',
+                 'test_cgyro_file_dedup', 'test_cgyro_browser_update', 'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_runtime_persistence',
                  'test_workbench_navigation', 'test_refresh_boundaries', 'test_runtime_boundaries',
                  'test_transfer_refresh_native'}
 TK_SUITES = {'test_gui_refresh_native', 'test_gui_font_performance', 'test_plot_window', 'test_cgyro_task_manager', 'test_manager_startup',

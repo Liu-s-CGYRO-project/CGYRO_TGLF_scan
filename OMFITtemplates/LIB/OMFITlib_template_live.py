@@ -315,6 +315,13 @@ class LivePlan:
                 raise TemplateError('无法安全识别旧扫描归档，当前工程未修改：' + str(exc)) from exc
             for key, value in (replacements or {}).items():
                 self._operation(path + (key,), raw(node, key), value, data=True)
+            # Current RUN_DB layouts need no archive migration, but a code-only
+            # update must also retire pre-deferred browser expression text.
+            # Older target releases do not provide this lazy browser contract.
+            version = tuple(int(part) for part in self.prepared.release['version'].split('.'))
+            if name == 'CGYRO_scan' and replacements is None and version >= (1, 24, 20):
+                for relative, old, new in self.archive_index.deferred_browser_links(node):
+                    self._operation(path + relative, old, new, data=True)
             for row in self.archive_index.sources[sources:] + self.archive_index.issues[issues:]:
                 row['module'] = name
         if (self.relocations or self.bare_output_source is not MISSING or self.archive_index.sources or
