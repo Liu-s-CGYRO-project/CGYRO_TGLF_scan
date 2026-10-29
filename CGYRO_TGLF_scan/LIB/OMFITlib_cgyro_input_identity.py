@@ -76,7 +76,7 @@ def verified_parameters(result, expected_hash=''):
 
 def cache_parameters(row, info, result):
     """Attach verified effective parameters to this existing point row only."""
-    _, values, source, digest = verified_parameters(result, row.get('input_sha256', ''))
+    requested, values, source, digest = verified_parameters(result, row.get('input_sha256', ''))
     expected = dict(point_values(info, row))
     expected.update(row.get('effective_time', {}))
     for name, value in expected.items():
@@ -89,6 +89,7 @@ def cache_parameters(row, info, result):
     row['input_parameters'] = {name: value for name, value in values.items() if name not in RUN_CONTROL_PARAMETERS}
     row['input_parameter_source'] = source
     row['input_parameter_sha256'] = digest
+    row['input_requested_parameters'] = requested
     return values
 
 

@@ -125,7 +125,8 @@ def runtime_abs_path(path):
     return os.path.abspath(path)
 
 
-defaultVars(scan_dimensions=1, wait_for_completion=True, batch_id='', continuation=None, check_temp_start=True)
+defaultVars(scan_dimensions=1, wait_for_completion=True, batch_id='', continuation=None, check_temp_start=True,
+            convergence_group=None)
 
 
 def json_scalar(value):
@@ -145,10 +146,14 @@ def configured_axes(physics, dimensions, source):
     return conf, axes
 
 
-def scan_points(physics, dimensions, effnum, source):
+def scan_points(physics, dimensions, effnum, source, selected=None):
     """Return flat point IDs, overrides, result paths and an axis manifest."""
     conf, axes = configured_axes(physics, dimensions, source)
     scan_ky = ky_values(physics)
+    selection = None if selected is None else {tuple(float(value) for value in pair) for pair in selected}
+    if selection is not None and (dimensions != 1 or any(len(pair) != 2 for pair in selection)):
+        raise ValueError('Selected convergence coordinates require one parameter and ky')
+    matched = set()
     points, axis_manifest, result_keys = [], [], set()
     fixed = {}
     if dimensions == 0:
@@ -209,6 +214,11 @@ def scan_points(physics, dimensions, effnum, source):
         for ky in scan_ky:
             if not np.isfinite(ky) or ky <= 0:
                 raise ValueError('Linear scan ky must be finite and positive')
+            if selection is not None:
+                coordinate = (float(overrides[axes[0][0]]), float(ky))
+                if coordinate not in selection:
+                    continue
+                matched.add(coordinate)
             point = dict(overrides, KY=ky)
             point_id = 'p{:06d}'.format(len(points) + 1)
             stored_path = result_path + ['lin', num2str_xj(ky, effnum)]
@@ -219,6 +229,8 @@ def scan_points(physics, dimensions, effnum, source):
             metadata = dict(values=dict(fixed, **{str(key): json_scalar(value) for key, value in point.items()}),
                             result_path=stored_path)
             points.append((point_id, point, metadata))
+    if selection is not None and matched != selection:
+        raise ValueError('Selected convergence coordinates disagree with the scan axes')
     if not points:
         raise ValueError('Empty scan')
     return points, axis_manifest
@@ -345,7 +357,8 @@ else:
     fixed_parameters = apply_parameters(base_input, physics, scan_dimensions)
     constant_parameters = configured_constants(physics)
     base_input['NONLINEAR_FLAG'] = 0
-    points, scan_axes = scan_points(physics, scan_dimensions, setup['effnum'], base_input)
+    points, scan_axes = scan_points(physics, scan_dimensions, setup['effnum'], base_input,
+        selected=convergence_group.get('submit_coordinates', None) if convergence_group else None)
 case_id = canonical_case_key(case_id, dict(rho=source_rho, ion_case=physics['mass'],
                                          constant_parameters=constant_parameters))
 input_names = ['input.cgyro']
@@ -451,6 +464,8 @@ manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': max(1, s
             'scale_time_with_ky': bool(physics['scale_time_with_ky']),
             'input_sha256': input_checksums, 'status': 'prepared', 'batch_id': batch_id}
 manifest['runtime'] = runtime
+if convergence_group:
+    manifest['convergence_group'] = copy.deepcopy(convergence_group)
 if execution is not None:
     manifest['launch'] = {key: execution[key] for key in
                           ('nodes', 'mpi_per_node', 'mpi_ranks', 'threads', 'total_cpus', 'executable')}

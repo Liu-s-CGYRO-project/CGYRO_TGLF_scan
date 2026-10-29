@@ -21,6 +21,8 @@ from OMFITlib_cgyro_radius_cleanup import preview_radius, radius_choices
 from OMFITlib_cgyro_task_manager import TaskManager, confirm_scope
 from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_gui_controls import ParameterList, checkbox
+from OMFITlib_cgyro_convergence import (BASELINE, DIRECTIONS, CONTENTS as SCAN_CONTENTS,
+    active as convergence_active, initialize as initialize_convergence)
 
 CGYRO_MAIN_TABS = ('input', 'parameters', 'results')
 
@@ -270,12 +272,13 @@ class CgyroPage:
         physics = node['SETTINGS']['PHYSICS']
         if self.settings.get('cgyro_source_mode', '') == 'schemes':
             self.label('结果分别保存为“结果名称__transfer_方案”。所有方案共用下方扫描设置和计算参数。')
+        self.settings['cgyro_scan_content'] = 'convergence' if convergence_active(physics) else int(node['SETTINGS']['SETUP']['idimrun'])
         with self.ui.same_row():
             self.scan_field(self.ui.Entry(location(base + ('EXPERIMENT', 'runid')), '结果名称',
                                           width=14, updateGUI=False, refresh_tree=False), 14)
-            self.scan_field(self.ui.ComboBox(location(base + ('SETUP', 'idimrun')), OrderedDict([
-                ('只扫 ky', 0), ('ky + 1 个参数', 1), ('ky + 2 个参数', 2), ('ky + 3 个参数', 3)]),
-                '扫描内容', state='readonly', width=16, updateGUI=True, refresh_tree=False), 16)
+            self.scan_field(self.ui.ComboBox(self.prefix + "['cgyro_scan_content']", SCAN_CONTENTS,
+                '扫描内容', state='readonly', width=18, updateGUI=True, refresh_tree=False,
+                postcommand=self.actions.select_cgyro_scan_content), 18)
         self.ui.Separator('ky 取值')
         ky_spec = self.scan_value_spec(physics, 'ky_spec', physics.get('kyarr', []))
         ky_prefix = location(base + ('PHYSICS', 'ky_spec'))
@@ -317,6 +320,9 @@ class CgyroPage:
                 self.scan_field(self.ui.Entry(location(base + ('PHYSICS', 'fixed_parameters', constant, 'value')),
                     constant + ' 固定值', width=18, updateGUI=False, refresh_tree=False,
                     help=parameter_help(constant)), 18)
+        if convergence_active(physics):
+            self.render_cgyro_convergence(node, rows, source)
+            return
         group = str(dim) + 'd'
         if keys:
             node['SETTINGS']['PHYSICS'].setdefault(group, {})
@@ -326,17 +332,23 @@ class CgyroPage:
             cfg.setdefault(pkey, defaults[index - 1])
             cfg.setdefault(rkey, [source.get(cfg[pkey], 0.0)])
             specs = cfg.setdefault('value_specs', self.actions.factory())
-            spec = self.scan_value_spec(specs, rkey, cfg[rkey])
+            spec = self.scan_value_spec(specs, rkey, cfg[rkey], str(cfg[pkey]), source)
             prefix = location(base + ('PHYSICS', group, 'value_specs', rkey))
             self.ui.Separator('参数轴 ' + str(index))
             with self.ui.same_row():
                 self.scan_field(self.ui.ComboBox(location(base + ('PHYSICS', group, pkey)), options,
                     '参数', state='search', width=16, updateGUI=True, refresh_tree=False,
+                    postcommand=lambda location=None, cfg=cfg, pkey=pkey, rkey=rkey, source=source:
+                        self.cgyro_axis_parameter_changed(cfg, pkey, rkey, source),
                     help=parameter_help(str(cfg[pkey]))), 16)
                 self.scan_field(self.ui.ComboBox(prefix + "['mode']", VALUE_MODES, '方式',
                     state='readonly', width=14, updateGUI=True, refresh_tree=False,
+                    postcommand=lambda location=None, cfg=cfg, pkey=pkey, rkey=rkey, source=source:
+                        self.cgyro_axis_mode_changed(cfg, pkey, rkey, source),
                     help='实际值范围直接生成数值；原值倍数分别乘以每个输入的原值；沿用输入只计算原值。'), 14)
-            self.scan_value_fields(spec, prefix, location(base + ('PHYSICS', group, rkey)))
+            self.scan_value_fields(spec, prefix, location(base + ('PHYSICS', group, rkey)),
+                postcommand=lambda location=None, cfg=cfg, pkey=pkey, rkey=rkey:
+                    self.cgyro_axis_list_changed(cfg, pkey, rkey))
             linked = 2
             while pkey + str(linked) in cfg or rkey + str(linked) in cfg:
                 self.scan_field(self.ui.ComboBox(location(base + ('PHYSICS', group, pkey + str(linked))), options,
@@ -347,12 +359,81 @@ class CgyroPage:
                     help='与参数 ' + str(index) + ' 的取值逐项对应。独立组合请使用多个参数轴。'), 28)
                 linked += 1
 
+    def render_cgyro_convergence(self, node, rows, source):
+        physics = node['SETTINGS']['PHYSICS']
+        config = initialize_convergence(physics, source, self.actions.factory)
+        prefix = location(MODULES['cgyro'] + ('SETTINGS', 'PHYSICS', 'convergence'))
+        self.ui.Separator('基准网格')
+        self.label('每组只改变一个参数；其余参数沿用此基准和“计算参数”。修改后回车生效。')
+        if rows:
+            choices = OrderedDict(('nr={} · {}'.format(row['nr'], row['key']), row['key']) for row in rows)
+            if self.settings.get('cgyro_parameter_reference', '') not in choices.values():
+                self.settings['cgyro_parameter_reference'] = rows[0]['key']
+            self.ui.ComboBox(self.prefix + "['cgyro_parameter_reference']", choices, '参考输入',
+                             state='readonly', updateGUI=False, refresh_tree=False)
+            self.ui.Button('从参考输入载入基准与取值', self.actions.load_cgyro_convergence_baseline,
+                           updateGUI=True, refresh_scope='section', refresh_tree=False,
+                           help='重新载入基准网格，并重新生成各检查方向的默认取值。其他计算参数保持当前设置。')
+        names = list(BASELINE)
+        for offset in range(0, len(names), 2):
+            with self.ui.same_row():
+                for name in names[offset:offset + 2]:
+                    self.scan_field(self.ui.Entry(prefix + "['baseline'][{!r}]".format(name), name,
+                        width=10, updateGUI=False, refresh_tree=False, help=parameter_help(name)), 10)
+        self.ui.Separator('单变量检查方向')
+        self.label('取值列表会包含本组基准；额外固定项可填字典，例如 E_MAX 组的 {\'N_ENERGY\': 64}。')
+        for name, caption in DIRECTIONS.items():
+            group = config['groups'][name]
+            path = prefix + "['groups'][{!r}]".format(name)
+            checkbox(self.ui, path + "['enabled']", group, 'enabled', name + ' · ' + caption,
+                     updateGUI=False, refresh_tree=False)
+            with self.ui.same_row():
+                self.scan_field(self.ui.Entry(path + "['values']", '取值', width=24,
+                    updateGUI=False, refresh_tree=False), 24)
+                self.scan_field(self.ui.Entry(path + "['fixed']", '额外固定项', width=24,
+                    updateGUI=False, refresh_tree=False), 24)
+        self.label('时间上限、输出精度、节点和核数沿用现有配置。结果仍按参数坐标写入 RUN_DB。')
+        checkbox(self.ui, prefix + "['reuse_results']", config, 'reuse_results',
+                 '复用当前结果集内完整匹配的已完成结果', updateGUI=False, refresh_tree=False)
+        self.label('复用只查所选半径/参数的轻量摘要；旧结果元数据不足时安排新计算，不自动读取文件补齐。')
+        self.label('修改参数后重新预览；预览不提交作业。')
+        self.ui.Button('预览收敛扫描计划', self.preview_cgyro_convergence,
+                       updateGUI=False, refresh_tree=False)
+        parent = getattr(self.ui, '_aux', {}).get('parentGUI', None)
+        self.cgyro_convergence_preview = ttk.Frame(parent) if isinstance(parent, tk.Misc) else None
+        if self.cgyro_convergence_preview is not None:
+            self.cgyro_convergence_preview.pack(fill=tk.X)
+
+    def preview_cgyro_convergence(self):
+        """Explicit preview uses selected inputs and cached result summaries."""
+        plan = self.actions.preview_cgyro_convergence()
+        summary = '{} 个候选点：新提交 {}，复用 {}；{} 份扫描作业。'.format(
+            plan['total_points'], plan['submit_points'], plan['reused_points'], plan['jobs'])
+        lines = [summary]
+        for group in plan['groups'][:24]:
+            lines.append('nr={} · {} · {} {}：新 {}，复用 {}，共享基准/重复配置 {}；额外固定项 {}'.format(
+                group['nr'], group['ion'], group['parameter'], group['values'], group['new_points'],
+                group['reused_points'], group['shared'], group['fixed']))
+        if len(plan['groups']) > 24:
+            lines.append('其余 {} 份分组计入上方总数。'.format(len(plan['groups']) - 24))
+        frame = getattr(self, 'cgyro_convergence_preview', None)
+        if frame is None:
+            self.label('\n'.join(lines))
+            return plan
+        for child in frame.winfo_children():
+            child.destroy()
+        for line in lines:
+            ttk.Label(frame, text=line, wraplength=600, justify=tk.LEFT).pack(anchor=tk.W, pady=3)
+        return plan
+
     def render_cgyro_run(self, node):
         problems = cgyro_plan_issues(self.root)
         if not problems:
             plan = cgyro_plan_summary(self.root)
-            self.label('{} 个输入组合 × 每组 {} 点 = {} 个任务'.format(
-                plan['cases'], plan['points_per_case'], plan['total_points']))
+            self.label(('{} 个半径/离子组合，至多 {} 份作业，共 {} 个候选点；复用后数量见“预览收敛扫描计划”。'.format(
+                plan['cases'], plan['jobs'], plan['total_points'])) if plan.get('convergence', False) else
+                '{} 个输入组合 × 每组 {} 点 = {} 个任务'.format(
+                    plan['cases'], plan['points_per_case'], plan['total_points']))
         remote = node['SETTINGS'].get('REMOTE_SETUP', {})
         config = remote.get(str(remote.get('serverPicker', '') or ''), {})
         self.label('服务器：{}\n队列：{} · 每任务 {} 节点 × {} MPI/节点 × {} 线程/MPI'.format(
@@ -411,7 +492,9 @@ class CgyroPage:
             self.settings['cgyro_parameter_group'] = 'common'
             self.settings['cgyro_parameter_search'] = ''
             self.settings['cgyro_parameter_catalog_revision'] = 1
-        scanned = scan_parameter_names(physics, int(node['SETTINGS']['SETUP']['idimrun']))
+        scanned = (set(BASELINE) | {name for name, item in physics.get('convergence', {}).get('groups', {}).items()
+                                    if item.get('enabled', False)}) if convergence_active(physics) else \
+            scan_parameter_names(physics, int(node['SETTINGS']['SETUP']['idimrun']))
         self.ui.Button('全部沿用输入值', self.actions.inherit_cgyro_parameters,
                        updateGUI=True, refresh_scope='section', refresh_tree=False)
         filter_rows = [(name, spec['label'], spec['group'], name in CGYRO_FIELDS)
@@ -451,7 +534,8 @@ class CgyroPage:
 
     def cgyro_parameter_row(self, base, name, spec, item, source_values, scanned, source_key):
         if name in scanned:
-            self.label(name + ' · 由扫描轴设置')
+            self.label(name + (' · 由收敛扫描基准/取值设置' if convergence_active(
+                read(self.root, MODULES['cgyro'] + ('SETTINGS', 'PHYSICS'), {})) else ' · 由扫描轴设置'))
             return
         if name == read(self.root, MODULES['cgyro'] + ('SETTINGS', 'PHYSICS', 'constant_parameter'), ''):
             self.label('{} · constant 固定值：{}（在扫描设置中修改）'.format(name, item['value']))

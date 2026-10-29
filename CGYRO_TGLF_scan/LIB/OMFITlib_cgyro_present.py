@@ -49,6 +49,8 @@ def run_caption(record):
                                         job, STATUS.get(status, status or '尚无记录'))
     if record.get('retry_count', 0):
         caption += ' · 重试{}'.format(record['retry_count'])
+    if record.get('convergence_group', None):
+        caption += ' · ' + str(record['convergence_group']['parameter'])
     return caption
 
 

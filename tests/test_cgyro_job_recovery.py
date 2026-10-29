@@ -170,6 +170,22 @@ class ManifestTests(unittest.TestCase):
             self.assertFalse(Path(path + '.tmp').exists())
         self.assertEqual(frozen, before)
 
+    def test_convergence_subset_and_reuse_metadata_survive_frozen_job_recovery(self):
+        frozen = manifest()
+        frozen['scan_axes'][0]['values'] = [16, 32, 48]
+        frozen['point_table']['p000002']['values']['N_THETA'] = 48
+        frozen['point_table']['p000002']['result_path'][1] = '48.00000'
+        frozen['convergence_group'] = dict(parameter='N_THETA', baseline={'N_THETA': 32},
+            requested=[16, 32, 48], shared=[dict(value=32, group='N_ENERGY')], fixed={},
+            submit_coordinates=[[16, .1], [48, .2]], reused_points=4,
+            reused_scope=dict(coordinates=[], unknown=[], issues=[]))
+        with tempfile.TemporaryDirectory() as directory:
+            path = schema.write_sidecar(directory, frozen)
+            recovered = schema.validate_manifest(schema.read_manifest(Path(path).read_text()), WORKDIR, SCRIPT)
+        self.assertEqual(recovered['point_table'], frozen['point_table'])
+        self.assertEqual(recovered['convergence_group'], frozen['convergence_group'])
+        self.assertEqual(recovered['points'], ['p000001', 'p000002'])
+
     def test_base64_preserves_newlines_despite_transport_chunking(self):
         text = base64.b64encode(SCRIPT.encode()).decode()
         self.assertEqual(probe.script_content(framed('SCRIPT', '\n\n'.join(text[i:i+8] for i in range(0,len(text),8)))), SCRIPT)

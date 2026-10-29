@@ -15,7 +15,7 @@ from OMFITlib_cgyro_db import run_cases
 from OMFITlib_cgyro_reference import copy_result_tree
 from OMFITlib_cgyro_input_identity import cache_parameters, cache_competing_parameters
 defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False, continuation=None,
-            allow_solver_retries=None, check_temp_start=True)
+            allow_solver_retries=None, check_temp_start=True, convergence_group=None)
 
 setup = root['SETTINGS']['SETUP']
 # Direct legacy run entries inherit their run intent. A collection-only entry
@@ -30,7 +30,7 @@ if dimensions not in (0, 1, 2, 3):
 if setup['irun'] == 1:
     task_action(root['SCRIPTS']['subscan_lin.py'], scan_dimensions=dimensions,
         wait_for_completion=wait_for_completion, batch_id=batch_id, continuation=continuation,
-        check_temp_start=check_temp_start)
+        check_temp_start=check_temp_start, convergence_group=convergence_group)
 if (wait_for_completion and (setup['idownsync'] == 1 or root.get('RUN_MANIFEST', {}).get('auto_collect_requested', False))
         and (collect_stopped or root.get('RUN_MANIFEST', {}).get('auto_collect_requested', False)
              or not root.get('RUN_MANIFEST', {}).get('stop_requested', False))):
@@ -174,6 +174,9 @@ def publish_loaded_run(root):
                                            if row.get('continuation_pending', '')},
                      status='published'))
     info['case_path'] = grouped_case_path(case_key, info)
+    if manifest.get('convergence_group', None):
+        info['convergence_group'] = {name: copy.deepcopy(manifest['convergence_group'][name])
+            for name in ('parameter', 'baseline', 'requested', 'shared', 'fixed')}
     if continuation:
         # Provenance is diagnostic metadata only. The result merge does not
         # load or require any source token's point table.
@@ -199,7 +202,8 @@ def publish_loaded_run(root):
             scope['unknown'] = sorted(set(continuation['source_points']) - set(expected))
     prior_scopes = [scan_scope(dict(old_info, tasks=old_tasks)) for case in prior_cases
                     for key, old_info, old_tasks in case_scans(case) if key == scan_key(info)]
-    scope = merge_scopes(scope, *prior_scopes)
+    reused_scope = manifest.get('convergence_group', {}).get('reused_scope', None)
+    scope = merge_scopes(scope, *prior_scopes, *([reused_scope] if reused_scope else []))
     scan = destination['__SCANS__'][scan_key(info)]
     if continuation:
         winners = {full_point_coordinate(scan['info'], row): reference_id(index_at(destination, row['result_path']))

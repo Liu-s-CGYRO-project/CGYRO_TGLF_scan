@@ -42,6 +42,8 @@ from OMFITlib_transfer_schemes import generate_schemes, scheme_runid
 from OMFITlib_cgyro_parameters import (constant_parameters, initialize_parameters,
     numeric_source, parameter_catalog)
 from OMFITlib_cgyro_scan_values import scan_axes as configured_scan_axes
+from OMFITlib_cgyro_convergence import (active as convergence_active, jobs as cgyro_scan_jobs,
+    load_baseline as load_convergence_baseline, reusable_points as convergence_reuse)
 from OMFITlib_cgyro_isotopes import remap_physics
 from OMFITlib_cgyro_run_state import stop_message, submission_pending
 from OMFITlib_cgyro_queue import activate_run, collection_done, pending_runs, queue_records, queue_summary, save_current
@@ -517,25 +519,31 @@ class ProjectActions:
         ion_cases = [key for key in ION_CASES
                      if bool(sync_cgyro_ion_cases(self.settings, self.factory).get(key, False))]
         batch, records, plan = self.factory(), self.factory(), []
+        reused_points = 0
         physics = module(self.root, 'cgyro')['SETTINGS']['PHYSICS']
         dimensions = int(module(self.root, 'cgyro')['SETTINGS']['SETUP']['idimrun'])
+        work = []
         for row in rows:
             if not bool(self.settings['cgyro_radii'].get(row['key'], False)):
                 continue
             source = read(self.root, row['path'])
+            work.extend((row, source, job) for job in cgyro_scan_jobs(
+                physics, source, dimensions, row.get('batch_key', str(row['nr']))))
+        for row, source, job in work:
+            size, job_physics = job['dimensions'], job['physics']
             mains = _cgyro_main_indices(self.root, source, row['path'], row.get('particle_record', None))
-            nr_key = row.get('batch_key', str(row['nr']))
+            nr_key = job['batch_key']
             radial = self.factory()
             case_records = self.factory()
             source_ion_label = _original_ion_label(source, mains)
             for ion_case in ion_cases:
                 value, case_physics, provenance, fixed = _cgyro_case_input(
-                    self.root, row, source, ion_case, physics, dimensions)
+                    self.root, row, source, ion_case, job_physics, size)
                 constants = constant_parameters(case_physics)
                 radial[ion_case] = value
                 case_records[ion_case] = dict(isotope_preparation=provenance, fixed_parameters=dict(fixed),
                     constant_parameters=constants,
-                    scan_axes=configured_scan_axes(case_physics, dimensions, value))
+                    scan_axes=configured_scan_axes(case_physics, size, value))
                 plan.append(dict(nr=row['nr'], rho=row['rho'], ion_case=ion_case, batch_key=nr_key,
                                  runid=scheme_runid(module(self.root, 'cgyro')['SETTINGS']['EXPERIMENT']['runid'],
                                                    row.get('scheme', '')),
@@ -545,7 +553,18 @@ class ProjectActions:
                                  source=list(row['path']),
                                  changed_main_species=provenance['source_main_species'] if provenance else [],
                                  isotope_preparation=provenance,
-                                 scan_axes=configured_scan_axes(case_physics, dimensions, value)))
+                                 scan_axes=configured_scan_axes(case_physics, size, value)))
+                if 'convergence_group' in job:
+                    plan[-1].update(dict(scan_dimensions=size, convergence_group=copy.deepcopy(job['convergence_group']),
+                        scan_controls={key: copy.deepcopy(case_physics[key]) for key in
+                                       ('fixed_parameters', 'constant_parameter', '1d') if key in case_physics}))
+                    reuse = convergence_reuse(module(self.root, 'cgyro'), plan[-1]['runid'], plan[-1]['case_id'],
+                        value, case_physics, job['convergence_group']['parameter'],
+                        enabled=physics['convergence'].get('reuse_results', True))
+                    plan[-1]['convergence_group'].update(reuse)
+                    reused_points += reuse['reused_points']
+                    if not reuse['submit_coordinates']:
+                        plan.pop()
             batch[nr_key] = radial
             record = self.factory()
             record.update(dict(source=list(row['path']), source_digest=input_digest(source),
@@ -554,11 +573,11 @@ class ProjectActions:
                                case_preparation=case_records,
                                original_ion_label=source_ion_label))
             records[nr_key] = record
-        if not plan:
+        if not plan and not reused_points:
             raise ValueError('没有可运行的 CGYRO 组合。')
         node = module(self.root, 'cgyro')
-        first = plan[0]
-        active = batch[first['batch_key']][first['ion_case']]
+        first = plan[0] if plan else None
+        active = batch[first['batch_key']][first['ion_case']] if first else None
         marker = self.factory()
         # Resolve metadata against the original sources before installing the
         # first isotope copy (especially when source_mode is 'current').
@@ -567,17 +586,71 @@ class ProjectActions:
                            upstream_digest=transfer_upstream_digest(self.root),
                            batch_digest=input_digest(batch), combinations=len(plan),
                            scan_axes=copy.deepcopy(scan['axes']),
-                           points_per_case=scan['points_per_case'], total_points=scan['total_points']))
-        active_copy = (active.duplicate() if hasattr(active, 'duplicate') else copy.deepcopy(active)) if install_first else None
+                           points_per_case=scan['points_per_case'], total_points=scan['total_points'],
+                           reused_points=reused_points, submit_points=scan['total_points'] - reused_points))
+        active_copy = (active.duplicate() if hasattr(active, 'duplicate') else copy.deepcopy(active)) if install_first and first else None
         node['BATCH_INPUTS'] = batch
-        if install_first:
+        if install_first and first:
             node['INPUTS']['input.cgyro'] = active_copy
         self._record('准备 CGYRO 批量输入', status='ready', combinations=len(plan),
                      batch_digest=marker['batch_digest'])
         pipeline = self.root.setdefault('PROJECT_STATE', self.factory()).setdefault('pipeline', self.factory())
         pipeline['cgyro'] = marker
-        self.settings['message'] = 'CGYRO 已准备 {} 个组合。'.format(len(plan))
+        self.settings['message'] = 'CGYRO 已准备 {} 份扫描；复用 {} 个已归档点。'.format(len(plan), reused_points)
         return plan
+
+    def load_cgyro_convergence_baseline(self):
+        rows = sync_cgyro_choices(self.root, self.settings, self.factory)
+        available = [row for row in rows if self.settings['cgyro_radii'].get(row['key'], False)] or rows
+        if not available:
+            raise ValueError('请先选择参考输入。')
+        selected = self.settings.get('cgyro_parameter_reference', '')
+        row = next((row for row in available if row['key'] == selected), available[0])
+        physics = module(self.root, 'cgyro')['SETTINGS']['PHYSICS']
+        load_convergence_baseline(physics, read(self.root, row['path']), self.factory)
+
+    def select_cgyro_scan_content(self, location=None):
+        node = module(self.root, 'cgyro')
+        selected = self.settings['cgyro_scan_content']
+        if selected == 'convergence':
+            node['SETTINGS']['PHYSICS']['scan_mode'] = 'convergence'
+        else:
+            dimension = int(selected)
+            if dimension not in (0, 1, 2, 3):
+                raise ValueError('扫描内容无效。')
+            node['SETTINGS']['SETUP']['idimrun'] = dimension
+            node['SETTINGS']['PHYSICS']['scan_mode'] = 'regular'
+
+    def preview_cgyro_convergence(self):
+        """No native input duplicate, file hashes, scheduler query or result read."""
+        node = module(self.root, 'cgyro')
+        physics = node['SETTINGS']['PHYSICS']
+        summary = cgyro_plan_summary(self.root)
+        rows = sync_cgyro_choices(self.root, self.settings, self.factory)
+        items, reused, pending_jobs = [], 0, 0
+        for row in rows:
+            if not self.settings['cgyro_radii'].get(row['key'], False):
+                continue
+            native_source = read(self.root, row['path'])
+            source = {name: copy.deepcopy(native_source[name]) for name in native_source.keys()}
+            for job in cgyro_scan_jobs(physics, source, 1, row.get('batch_key', str(row['nr']))):
+                for ion in ION_CASES:
+                    if not self.settings['cgyro_ion_cases'].get(ion, False):
+                        continue
+                    value, controls, _, _ = _cgyro_case_input(self.root, row, source, ion, job['physics'], 1)
+                    caseid = _cgyro_case_id(row, ion, constant_parameters(controls))
+                    runid = scheme_runid(node['SETTINGS']['EXPERIMENT']['runid'], row.get('scheme', ''))
+                    reuse = convergence_reuse(node, runid, caseid, value, controls,
+                        job['convergence_group']['parameter'], physics['convergence'].get('reuse_results', True))
+                    reused += reuse['reused_points']
+                    pending_jobs += bool(reuse['submit_coordinates'])
+                    items.append(dict(nr=row['nr'], ion=ion, parameter=job['convergence_group']['parameter'],
+                        values=list(controls['1d']['Range']), new_points=len(reuse['submit_coordinates']),
+                        reused_points=reuse['reused_points'], shared=len(job['convergence_group']['shared']),
+                        fixed=job['convergence_group']['fixed']))
+        summary.update(dict(groups=items, reused_points=reused, submit_points=summary['total_points'] - reused,
+                            jobs=pending_jobs))
+        return summary
 
     def edit_cgyro_parameter(self, name):
         """A committed native Entry edit applies directly, without a checkbox."""
@@ -890,6 +963,9 @@ class ProjectActions:
         plan = self.prepare_cgyro_batch(install_first=prepare)
         if prepare:
             return plan
+        if not plan:
+            self.settings['message'] = '全部所选收敛点已有完整匹配的 RUN_DB 结果，无需提交。'
+            return []
         setup = node['SETTINGS']['SETUP']
         physics = node['SETTINGS']['PHYSICS']
         if int(physics.get('restart_mode', 0)) == 1 and len(plan) != 1:
@@ -906,7 +982,7 @@ class ProjectActions:
             node['RUN_BATCH'] = batch
         else:
             node['RUN_BATCH'] = self.factory()
-        previous = dict(irun=setup.get('irun', None), idownsync=setup.get('idownsync', None))
+        previous = dict(irun=setup.get('irun', None), idownsync=setup.get('idownsync', None), idimrun=setup['idimrun'])
         original_input = node['INPUTS'].get('input.cgyro', None)
         experiment = node['SETTINGS']['EXPERIMENT']
         original_runid = experiment['runid']
@@ -916,7 +992,7 @@ class ProjectActions:
         original_case = {key: physics[key] for key in case_keys if key in physics}
         dimensions = int(setup['idimrun'])
         group_name = str(dimensions) + 'd'
-        original_controls = {key: physics.get(key, None) for key in ('fixed_parameters', 'constant_parameter', group_name)}
+        original_controls = {key: physics.get(key, None) for key in ('fixed_parameters', 'constant_parameter', group_name, '1d')}
         original_physics = {key: physics[key] for key in physics.keys()}
         record = self._record('CGYRO 批量扫描', status='running', combinations=copy.deepcopy(plan))
         completed = []
@@ -928,6 +1004,7 @@ class ProjectActions:
                 provenance = item.get('isotope_preparation', None)
                 case_physics = (remap_physics(original_physics, dimensions, provenance['index_map'])
                                 if provenance else original_physics)
+                case_physics = item.get('scan_controls', case_physics)
                 for key in original_controls:
                     if key in case_physics:
                         physics[key] = case_physics[key]
@@ -937,10 +1014,12 @@ class ProjectActions:
                 experiment['runid'] = item['runid']
                 physics['nr'], physics['rho'], physics['mass'] = nr, item['rho'], ion_case
                 physics['case_id'] = item['case_id']
+                setup['idimrun'] = item.get('scan_dimensions', dimensions)
                 print('[CGYRO] Starting case {}: initializing native task context.'.format(item['case_id']), flush=True)
                 self.call('CGYRO {}'.format(item['case_id']),
                            MODULES['cgyro'] + ('SCRIPTS', 'runCGYRO.py'),
-                           wait_for_completion=not queued, batch_id=batch_id, check_temp_start=case_number == 0)
+                           wait_for_completion=not queued, batch_id=batch_id, check_temp_start=case_number == 0,
+                           **({'convergence_group': item['convergence_group']} if 'convergence_group' in item else {}))
                 manifest = node.get('RUN_MANIFEST', {})
                 if manifest.get('stop_requested', False):
                     if queued:
@@ -999,6 +1078,7 @@ class ProjectActions:
         finally:
             experiment['runid'] = original_runid
             setup['irun'], setup['idownsync'] = previous['irun'], previous['idownsync']
+            setup['idimrun'] = previous['idimrun']
             for key in case_keys:
                 if key in original_case:
                     physics[key] = original_case[key]

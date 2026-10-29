@@ -1,6 +1,16 @@
 # 维护与扩展接口
 
-适用于工程 1.24.41。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.42。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+
+## CGYRO 单变量收敛扫描（1.24.42）
+
+`OMFITlib_cgyro_convergence` 将公共基准、各方向取值及额外固定项转换成普通一维扫描计划。完整配置在所选输入内去重，重复基准归属首次请求它的方向，其他方向只保存共享来源。`PHYSICS.scan_mode` 区分普通与 convergence；原生 SETUP.idimrun 仍只接受 0–3，GUI 的 cgyro_scan_content 负责映射。切换模式保留两种设置，不把新模式编码为非法的第四维。
+
+准备和提交共用 cgyro_plan / ProjectActions 的输入变换。批量键追加 convergence:参数，准确的作业身份仍由独立 token、冻结输入、点表及 sidecar 持有。每份提交只临时安装自己的输入、扫描轴和维度，finally 恢复编辑器。选择性提交的坐标必须出现在该组原始参数 × ky 中；恢复使用冻结点表，不重建未提交的笛卡尔点。
+
+复用查询只检查当前 runid、半径/离子及对应轴的现有索引。新点收集时在原任务行缓存已验证的显式 input_requested_parameters，配合现有生成参数、result_summary 和文件 owner 判断输入、输出选项、精度与完成时间。旧元数据不足、引用失效或 PROFILE_MODEL=2 的额外文件无法证明匹配时不复用，也不在查询时补读文件。复用坐标合并进既有覆盖 scope；若相应结果后来被移除，本次有效输出仍归档，但不能宣称整分支完整。未建立新的结果库、历史链或整批快照。
+
+整数取值默认值由 `parameter_range_defaults` 生成，非等步长列表使用公约数间隔初始化范围。更换参数从新参数自身的输入值开始；切换方式和普通重绘保留手填列表与有效自定义范围。字段回调只刷新所属 section，基准数字和方向勾选不立即重绘，复用预览是显式动作。增加检查方向时同步更新 DIRECTIONS、参数校验和去重/提交/恢复回归，不能在开窗时解析结果文件。
 
 ## TGLF 扫描控制与参数预设（1.24.31）
 

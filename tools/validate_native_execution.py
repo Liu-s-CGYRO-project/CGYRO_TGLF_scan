@@ -195,6 +195,36 @@ case = _cgyro_case_id({'nr': 1, 'rho': 0.33}, 'BASE', {'BETAE_UNIT': source['BET
         self.assertEqual(value['Z_EFF_METHOD'], 1)
         self.assertEqual(value['COLLISION_MODEL'], 1)
 
+    def test_convergence_plans_remain_callable_after_native_import_cleanup(self):
+        code = '''from OMFITlib_cgyro_convergence import groups, jobs
+source = dict(N_ENERGY=32, N_XI=48, N_RADIAL=32, N_THETA=32, E_MAX=8,
+              ERROR_TOL=1e-4, KY=.1, N_SPECIES=2, Z_1=1, Z_2=-1)
+physics = dict(scan_mode='convergence', kyarr=[.1, .2, .3, .4, .5, .6, .7], fixed_parameters={})
+'''
+        for path in (('CGYRO_TGLF_scan',), ('CGYRO_TGLF_scan', 'CGYRO_scan')):
+            out = self.host.execute(code, self.host.modules[path])
+            self.assertNotIn('OMFITlib_cgyro_convergence', sys.modules)
+            groups = out['groups'](out['physics'], out['source'])
+            self.assertEqual(sum(len(group['values']) for group in groups) * 7, 77)
+            self.assertEqual(len(out['jobs'](out['physics'], out['source'], 2, '1')), 5)
+
+    def test_integer_scan_defaults_remain_callable_after_native_import_cleanup(self):
+        out = self.host.execute('from OMFITlib_workbench_scan_ui import ScanControls\n'
+                                'from OMFITlib_cgyro_scan_values import range_values',
+                                self.host.modules[('CGYRO_TGLF_scan',)])
+        controls = out['ScanControls']()
+        controls.actions = SimpleNamespace(factory=self.host.factory)
+        cfg = treeify(dict(Para='N_THETA', Range=[16., 24., 32., 48.]), self.host.factory)
+        cfg['value_specs'] = self.host.factory()
+        spec = controls.scan_value_spec(cfg['value_specs'], 'Range', cfg['Range'], 'N_THETA', {'N_THETA': 32})
+        spec['mode'] = 'range'
+        controls.cgyro_axis_mode_changed(cfg, 'Para', 'Range', {'N_THETA': 32})
+        self.assertEqual(out['range_values'](spec, 'N_THETA'), [16, 24, 32, 40, 48])
+        spec['mode'] = 'list'
+        controls.cgyro_axis_mode_changed(cfg, 'Para', 'Range', {'N_THETA': 32})
+        self.assertEqual(cfg['Range'], [16, 24, 32, 48])
+        self.assertNotIn('OMFITlib_workbench_scan_ui', sys.modules)
+
     def test_tglf_native_three_dimensional_reference_after_import_cleanup(self):
         host = self.host
         source = {'group': 'radial', 'rho': .3}

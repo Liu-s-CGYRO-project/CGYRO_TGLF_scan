@@ -507,6 +507,96 @@ class NativeTabsTests(unittest.TestCase):
         self.assertFalse(view.cgyro_main_pages.sections['results'].built)
         self.assertEqual(self.host.errors, [])
 
+    def test_convergence_content_selection_and_edits_keep_refresh_local(self):
+        import test_cgyro_storage
+        import test_project as fixture
+        from OMFITlib_project import ProjectActions
+        from OMFITlib_project_ui import ProjectUI
+        from OMFITlib_cgyro_plan import sync_cgyro_choices
+
+        class UnreadResults(dict):
+            def __getitem__(self, key):
+                raise AssertionError('A convergence GUI edit inspected results')
+            def __iter__(self):
+                raise AssertionError('A convergence GUI edit traversed results')
+            keys = values = items = __iter__
+
+        root = fixture.fixture()
+        source = fixture.cgyro()
+        source.update(N_ENERGY=32, N_XI=48, N_THETA=32, N_RADIAL=32, E_MAX=8, ERROR_TOL=1e-4)
+        root['Transfer_tool']['Transfer_file']['input.cgyro'] = source
+        node = root['CGYRO_scan']
+        node['RUN_DB'] = UnreadResults()
+        node['SETTINGS']['SETUP']['idimrun'] = 2
+        node['SETTINGS']['PHYSICS']['kyarr'] = [.1, .2]
+        root['SETTINGS'].setdefault('WORKBENCH', {}).update(cgyro_source_mode='imported',
+            cgyro_ion_cases=dict(BASE=True, H=False, D=False, T=False))
+        self.host.tree.clear()
+        self.host.tree.update(root)
+        native.native_definitions(SOURCE / 'omfit_classes/OMFITx.py',
+                                  {'Separator', 'TitleGUI'}, self.host.api.__dict__)
+        actions = ProjectActions(self.host.tree)
+        fields, combos = {}, {}
+        def render(ui):
+            self.ui = ui
+            for kind, controls in (('Entry', fields), ('ComboBox', combos)):
+                constructor = getattr(ui, kind)
+                def capture(path, *args, constructor=constructor, controls=controls, **kwargs):
+                    value = constructor(path, *args, **kwargs)
+                    controls[path] = value
+                    return value
+                setattr(ui, kind, capture)
+            self.header = ui.Label('Convergence scan')
+            self.view = ProjectUI(actions, ui)
+            self.pages = TabPages(ui, dict(edit='扫描设置', run='运行'), self.state, 'page',
+                lambda key: self.view.render_cgyro_scan_settings(node,
+                    sync_cgyro_choices(self.host.tree, actions.settings)) if key == 'edit' else ui.Label('Run'))
+            finish_gui_layout(self.header, ui)
+        self.host.render(render)
+        header = self.header
+        picker = next(value for path, value in combos.items() if path.endswith("['cgyro_scan_content']"))
+        picker.set('单变量收敛扫描')
+        picker.event_generate('<<ComboboxSelected>>')
+        self.host.drain(200)
+        physics = node['SETTINGS']['PHYSICS']
+        self.assertEqual(physics['scan_mode'], 'convergence')
+        self.assertEqual(node['SETTINGS']['SETUP']['idimrun'], 2)
+        self.entry = next(value for path, value in fields.items()
+                          if path.endswith("['baseline']['N_ENERGY']"))
+        saved_entry = self.entry
+        self.commit('48')
+        self.assertEqual(physics['convergence']['baseline']['N_ENERGY'], 48)
+        self.assertTrue(saved_entry.winfo_exists())
+        self.assertIs(self.header, header)
+        picker = next(value for path, value in combos.items() if path.endswith("['cgyro_scan_content']"))
+        picker.set('ky + 2 个参数')
+        picker.event_generate('<<ComboboxSelected>>')
+        self.host.drain(200)
+        self.assertEqual(physics['scan_mode'], 'regular')
+        self.assertEqual(physics['convergence']['baseline']['N_ENERGY'], 48)
+        self.assertEqual(node['SETTINGS']['SETUP']['idimrun'], 2)
+        parameter = next(value for path, value in combos.items() if path.endswith("['2d']['Para_y']"))
+        parameter.set('N_THETA')
+        parameter.event_generate('<<ComboboxSelected>>')
+        self.host.drain(100)
+        self.assertEqual(physics['2d']['Range_y'], [32])
+        self.entry = next(value for path, value in fields.items() if path.endswith("['2d']['Range_y']"))
+        self.commit('[16, 24, 32, 48]')
+        self.host.drain(100)
+        mode = next(value for path, value in combos.items() if path.endswith("['value_specs']['Range_y']['mode']"))
+        mode.set('实际值范围')
+        mode.event_generate('<<ComboboxSelected>>')
+        self.host.drain(100)
+        self.assertEqual(physics['2d']['value_specs']['Range_y']['count'], 5)
+        mode = next(value for path, value in combos.items() if path.endswith("['value_specs']['Range_y']['mode']"))
+        mode.set('列表 / 表达式')
+        mode.event_generate('<<ComboboxSelected>>')
+        self.host.drain(100)
+        self.assertEqual(physics['2d']['Range_y'], [16, 24, 32, 48])
+        self.assertIs(self.header, header)
+        self.assertEqual(self.host.updates, [])
+        self.assertEqual(self.host.errors, [])
+
     def test_mounted_legacy_layout_accepts_subtree_without_new_instance_methods(self):
         self.build()
         content, anchor = self.header.master.master, self.header

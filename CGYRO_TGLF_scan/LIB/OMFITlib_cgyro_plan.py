@@ -16,6 +16,7 @@ from OMFITlib_cgyro_archive import canonical_case_key
 from OMFITlib_cgyro_scan_values import ky_values, scan_axes as configured_scan_axes
 from OMFITlib_cgyro_isotopes import isotope_input, remap_physics
 from OMFITlib_transfer_schemes import scheme_sources
+from OMFITlib_cgyro_convergence import active as convergence_active, jobs as scan_jobs
 
 CGYRO_PATH = ('CGYRO_scan',)
 ISOTOPE_MASSES = OrderedDict([('H', 0.5), ('D', 1.0), ('T', 1.5)])
@@ -70,6 +71,18 @@ def cgyro_plan_summary(root):
     selected = [row for row in rows if bool(settings.get('cgyro_radii', {}).get(row['key'], False))]
     ion_cases = sum(1 for key in ION_CASES
                     if bool(sync_cgyro_ion_cases(settings).get(key, False)))
+    physics = read(root, CGYRO_PATH + ('SETTINGS', 'PHYSICS'), {})
+    if convergence_active(physics):
+        ky = ky_values(physics)
+        counts, job_count = [], 0
+        for row in selected:
+            jobs = scan_jobs(physics, read(root, row['path']), 1, row.get('batch_key', str(row['nr'])))
+            counts.append(sum(len(job['physics']['1d']['Range']) for job in jobs) * len(ky))
+            job_count += len(jobs) * ion_cases
+        return dict(convergence=True, dimensions=1, axes=[], ky=len(ky),
+                    cases=len(selected) * ion_cases, jobs=job_count,
+                    points_per_case=counts[0] if counts and len(set(counts)) == 1 else None,
+                    total_points=sum(counts) * ion_cases)
     dimensions, axes, ky = cgyro_scan_axes(root)
     points_per_case = len(ky)
     for axis in axes:
@@ -275,26 +288,30 @@ def cgyro_plan_issues(root):
                    for source in (read(root, row['path']) for row in selected)]
         physics = read(root, CGYRO_PATH + ('SETTINGS', 'PHYSICS'))
         initialize_parameters(physics, sources[0])
-        validated_overrides(physics, sources, scan_parameter_names(physics, dimensions))
+        if not convergence_active(physics):
+            validated_overrides(physics, sources, scan_parameter_names(physics, dimensions))
         if rows[0]['path'][:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
             chosen, previous = _generated_particle_record(root)
             if previous is None or input_digest(chosen) != input_digest(previous):
                 raise ValueError('粒子方案或半径设置已变化，请重新运行 Transfer_tool。')
         for row, source in zip(selected, sources):
-            for ion_case in ION_CASES:
-                if not ion_cases.get(ion_case, False):
-                    continue
-                effective, case_physics, _, fixed = _cgyro_case_input(root, row, source, ion_case, physics, dimensions)
-                case_axes = configured_scan_axes(case_physics, dimensions, effective)
-                scan_names = scan_parameter_names(case_physics, dimensions)
-                for axis in case_axes:
-                    for parameter in [axis] + axis.get('linked', []):
-                        if parameter['name'] not in effective and parameter['name'] not in CGYRO_FIELDS:
-                            raise ValueError('nr={} 的 {} 输入没有参数 {}。'.format(row['nr'], ion_case, parameter['name']))
-                        effective[parameter['name']] = parameter['values'][0]
-                validate_input(effective, 'cgyro')
-                validate_zeff(effective, set(fixed) | scan_names,
-                              prescribed=float(source.get('Z_EFF_METHOD', 2)) == 1)
+            for job in scan_jobs(physics, source, dimensions, row.get('batch_key', str(row['nr']))):
+                size = job['dimensions']
+                for ion_case in ION_CASES:
+                    if not ion_cases.get(ion_case, False):
+                        continue
+                    effective, case_physics, _, fixed = _cgyro_case_input(
+                        root, row, source, ion_case, job['physics'], size)
+                    case_axes = configured_scan_axes(case_physics, size, effective)
+                    scan_names = scan_parameter_names(case_physics, size)
+                    for axis in case_axes:
+                        for parameter in [axis] + axis.get('linked', []):
+                            if parameter['name'] not in effective and parameter['name'] not in CGYRO_FIELDS:
+                                raise ValueError('nr={} 的 {} 输入没有参数 {}。'.format(row['nr'], ion_case, parameter['name']))
+                            effective[parameter['name']] = parameter['values'][0]
+                    validate_input(effective, 'cgyro')
+                    validate_zeff(effective, set(fixed) | scan_names,
+                                  prescribed=float(source.get('Z_EFF_METHOD', 2)) == 1)
         ky_values(physics)
     except (KeyError, TypeError, ValueError, OverflowError) as exc:
         return [str(exc)]

@@ -1,9 +1,9 @@
 """Resolve the same CGYRO value definitions for previews and submitted inputs."""
-from builtins import bool, dict, float, int, isinstance, len, list, range, set, str
+from builtins import abs, any, bool, dict, float, int, isinstance, len, list, min, range, set, str
 from collections import OrderedDict
 import math
 import re
-from OMFITlib_cgyro_parameters import FIELDS, parameter_value
+from OMFITlib_cgyro_parameters import FIELDS, field_spec, parameter_value
 
 AXIS_KEYS = {0: (), 1: (('Para', 'Range'),),
              2: (('Para_x', 'Range_x'), ('Para_y', 'Range_y')),
@@ -12,6 +12,23 @@ VALUE_MODES = OrderedDict([('列表 / 表达式', 'list'), ('实际值范围', '
                            ('原值倍数', 'factor'), ('沿用输入', 'original')])
 KY_MODES = OrderedDict([('列表 / 表达式', 'list'), ('线性范围', 'range'), ('对数范围', 'log')])
 MAX_VALUES = 10000
+
+
+def parameter_range_defaults(name, values):
+    """Seed equal-step ranges from a list without fractional grid sizes."""
+    raw = value_list(values, name)
+    if any(isinstance(value, bool) for value in raw):
+        raise ValueError(name + ' 请填写数值。')
+    current = [parameter_value(name, value) for value in raw]
+    start, end, count = current[0], current[-1], len(current)
+    if field_spec(name)['kind'] == 'int':
+        step = 0
+        for value in current:
+            step = math.gcd(step, abs(value - start))
+        count = min(MAX_VALUES, abs(end - start) // step + 1) if step else 1
+        if count > 1 and (end - start) % (count - 1):
+            count = 2  # Bounded integer endpoints, never rounded solver values.
+    return dict(start=start, end=end, count=count)
 
 
 def value_list(raw, caption):
