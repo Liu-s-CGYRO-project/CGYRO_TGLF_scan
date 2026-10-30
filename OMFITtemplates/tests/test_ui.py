@@ -380,6 +380,7 @@ class UITest(unittest.TestCase):
         self.app.session = SimpleNamespace()
         with patch('OMFITlib_template_manager_ui.GitHub') as client, \
                 patch('OMFITlib_template_manager_ui.install_incremental', return_value='/fixture/new') as install, \
+                patch('OMFITlib_template_manager_ui.verify_installation', return_value=Path('/fixture/new')) as verify, \
                 patch.object(self.app, '_manager_installed') as installed:
             self.app.manager_install_button.invoke()
             self.wait_idle()
@@ -388,6 +389,7 @@ class UITest(unittest.TestCase):
         self.assertEqual(client.call_args.kwargs['proxy'], 'http://47.102.120.146:18889')
         self.assertEqual(install.call_args.args[1], report['plan'])
         installed.assert_called_once_with('/fixture/new')
+        verify.assert_called_once_with('/fixture/new')
 
     def test_incremental_failure_keeps_existing_gui_open(self):
         from OMFITlib_template_archive import TemplateError
@@ -411,7 +413,8 @@ class UITest(unittest.TestCase):
             session.project_path.return_value = str(self.old)
             session.reopen_manager.side_effect = [RuntimeError('new GUI failed'), None] if fail else None
             manager = TemplateManager(child, preferences=self.base / 'in-omfit.json', session=session)
-            manager._manager_installed('/fixture/installed')
+            with patch('OMFITlib_template_manager_ui.verify_installation', return_value=Path('/fixture/installed')):
+                manager._manager_installed('/fixture/installed')
             self.pump(.2)
             self.assertFalse(manager.alive)
             self.assertTrue(self.root.winfo_exists())
@@ -426,6 +429,7 @@ class UITest(unittest.TestCase):
 
     def test_standalone_launch_failure_restores_previous_active_version(self):
         with patch('OMFITlib_template_manager_ui.activate_installation', return_value=b'previous') as activate, \
+                patch('OMFITlib_template_manager_ui.verify_installation', return_value=Path('/fixture/new')), \
                 patch('OMFITlib_template_manager_ui.restore_activation') as restore, \
                 patch('OMFITlib_template_manager_ui.subprocess.Popen', side_effect=OSError('start failed')):
             with self.assertRaises(OSError):
@@ -433,6 +437,21 @@ class UITest(unittest.TestCase):
         restore.assert_called_once_with(b'previous')
         activate.assert_called_once_with(Path('/fixture/new'), receipt=True)
         self.assertTrue(self.app.alive)
+
+    def test_unanchored_update_never_replaces_manager_or_launches_code(self):
+        from unittest.mock import Mock
+        from OMFITlib_template_archive import TemplateError
+        for session in (None, Mock()):
+            self.app.session = session
+            with patch('OMFITlib_template_manager_ui.verify_installation', side_effect=TemplateError('missing anchor')), \
+                    patch('OMFITlib_template_manager_ui.subprocess.Popen') as launch:
+                with self.assertRaisesRegex(TemplateError, 'missing anchor'):
+                    self.app._manager_installed('/fixture/untrusted')
+                launch.assert_not_called()
+                if session is not None:
+                    session.replace_manager.assert_not_called()
+            self.assertTrue(self.app.alive)
+        self.app.session = None
 
     def test_omfit_window_reuses_existing_tk(self):
         manager = open_manager(str(self.old), self.library, self.base / 'preferences.json')

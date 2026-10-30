@@ -325,7 +325,53 @@ class NativeTabsTests(unittest.TestCase):
         self.assertIsNotNone(table.pending)
         self.host.owner.top.destroy()
         self.assertIsNone(table.pending)
+        self.assertEqual(self.settings['search'], 'WIDTH')
         self.host.drain(SEARCH_DELAY_MS + 20)
+
+    def test_search_state_writes_are_coalesced_and_hidden_page_remembers_pending_text(self):
+        self.build_parameter_table()
+        writes = []
+        class State(dict):
+            def __setitem__(self, key, value):
+                if key == 'search':
+                    writes.append(value)
+                super().__setitem__(key, value)
+        table = self.table
+        table.state = State(self.settings)
+        for text in ('W', 'WI', 'WID', 'WIDTH'):
+            table.query.set(text)
+        self.assertEqual(writes, [])
+        table.flush()
+        table.flush()
+        self.assertEqual(writes, ['WIDTH'])
+        table.query.set('Q_LOC')
+        self.pages.select('run')
+        self.host.root.update()
+        self.assertEqual(table.state['search'], 'Q_LOC')
+        self.assertEqual(writes, ['WIDTH', 'Q_LOC'])
+        self.assertEqual(self.tree_events, [])
+        self.assertEqual(self.host.updates, [])
+
+    def test_error_details_capture_only_the_named_record_without_tree_refresh(self):
+        import OMFITlib_project_ui as project_ui
+        from OMFITlib_project import ERROR_NOTICE_SUFFIX
+        class Records(dict):
+            def __iter__(self):
+                raise AssertionError('history scanned')
+            def values(self):
+                raise AssertionError('history scanned')
+        records = Records(chosen=dict(title='Chosen action', error='First line\nComplete diagnostic'),
+                          unrelated=object())
+        state = dict(message='Operation failed' + ERROR_NOTICE_SUFFIX, message_record_id='chosen')
+        actions = SimpleNamespace(root={'PROJECT_STATE': {'activity': records}}, settings=state)
+        self.host.render(lambda ui: project_ui.ProjectUI(actions, ui).show_message())
+        self.assertEqual(state['message'], '')
+        self.assertNotIn('message_record_id', state)
+        records['chosen']['error'] = 'Later error'
+        with patch.object(project_ui, 'show_help') as details:
+            self.host.button(self.host.owner.top, '查看详情').invoke()
+        self.assertEqual(details.call_args.args[1], 'Chosen action\n\nFirst line\nComplete diagnostic')
+        self.assertEqual(self.host.updates, [])
 
     def build_cgyro_parameter_table(self):
         from test_tglf_parameters import UnreadResults

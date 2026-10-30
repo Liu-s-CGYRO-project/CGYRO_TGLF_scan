@@ -42,6 +42,7 @@ def _dialog(parent, kind, import_path=None):
         events.put(('progress', message, done, total))
 
     def worker(path):
+        outcome = ('error', 'Font worker stopped before completing the operation.')
         try:
             if path is None:
                 result = ensure_cached_fonts(kind, progress=report, cancel=cancel)
@@ -49,9 +50,14 @@ def _dialog(parent, kind, import_path=None):
                 imported, result = import_font_pack(path, progress=report, cancel=cancel)
                 if kind is not None and imported != kind:
                     raise FontError('This ZIP contains {} fonts; please import the {} font ZIP.'.format(imported, kind))
-            events.put(('done', result))
+            outcome = ('done', result)
+        except (KeyboardInterrupt, SystemExit) as exc:
+            outcome = ('error', 'Font operation stopped: {}: {}'.format(type(exc).__name__, exc))
         except Exception as exc:
-            events.put(('error', str(exc)))
+            outcome = ('error', str(exc))
+        finally:
+            # Every worker termination releases Retry/Import in the Tk poller.
+            events.put(outcome)
 
     def start(path=None):
         if state['busy']:

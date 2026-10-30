@@ -28,6 +28,35 @@ URL = 'http://omfit:proxy-test-only%3A%2B%40@127.0.0.1:32123'
 
 
 class ProxyTest(unittest.TestCase):
+    def test_cli_explicit_network_overrides_even_invalid_deployment_default(self):
+        from contextlib import redirect_stdout
+        import io
+        import runpy
+        launch = Path(__file__).resolve().parents[1] / 'launch.py'
+        with patch.dict(os.environ, {'OMFIT_TEMPLATE_PROXY': 'invalid'}), \
+                patch.object(github, 'GitHub') as client, \
+                patch.object(sys, 'argv', [str(launch), 'github-probe', '--network', 'direct']), \
+                redirect_stdout(io.StringIO()):
+            client.return_value.probe.return_value = {}
+            namespace = runpy.run_path(str(launch), run_name='test_launch')
+            namespace['main']()
+        self.assertEqual(client.call_args.kwargs['proxy'], '')
+
+    def test_deployment_override_precedes_saved_preferences_without_credentials(self):
+        saved = dict(mode='manual', host='old.example', port='1234', username='old')
+        for value, mode in (('direct', 'direct'), ('system', 'system'), ('http://proxy.example:4321', 'manual')):
+            with self.subTest(value=value), patch.dict(os.environ, {'OMFIT_TEMPLATE_PROXY': value}):
+                result = proxy.network_preferences(saved)
+                self.assertEqual(result['mode'], mode)
+                self.assertEqual(result['username'], '')
+                if mode == 'manual':
+                    self.assertEqual((result['host'], result['port']), ('proxy.example', '4321'))
+        for value in ('', 'socks5://host:12', 'http://user:secret@host:12'):
+            with self.subTest(value=value), patch.dict(os.environ, {'OMFIT_TEMPLATE_PROXY': value}):
+                with self.assertRaises(TemplateError) as caught:
+                    proxy.network_preferences(saved)
+                self.assertNotIn('secret', str(caught.exception))
+
     def test_new_and_retired_preferences_use_public_proxy_without_credentials(self):
         for saved in (None, {}, [], {'mode': 'relay', 'host': '127.0.0.1', 'port': '12345',
                                     'username': 'omfit', 'script': '/old/script.sh', 'password': SECRET}):

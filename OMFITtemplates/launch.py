@@ -15,7 +15,7 @@ from OMFITlib_template_archive import TemplateError, json_bytes, parse_json
 from OMFITlib_template_paths import default_library
 from OMFITlib_template_service import apply_update, inspect_project, list_library, plan_update, publish
 from OMFITlib_template_github import DEFAULT_REPOSITORY, GitHub
-from OMFITlib_template_proxy import DEFAULT_PROXY_HOST, DEFAULT_PROXY_PORT, manual_proxy
+from OMFITlib_template_proxy import DEFAULT_PROXY_HOST, DEFAULT_PROXY_PORT, manual_proxy, network_preferences
 
 
 def gui_environment(check_only=False, project='', library=None):
@@ -58,10 +58,10 @@ def main():
         command = commands.add_parser(name, help=description)
         command.add_argument('--repository', default=DEFAULT_REPOSITORY)
         command.add_argument('--anonymous', action='store_true', help='公开仓库检查，不读取本地凭据')
-        command.add_argument('--network', choices=['manual', 'system', 'direct'], default='manual',
-                             help='默认使用公共 HTTP 代理 47.102.120.146:18889')
-        command.add_argument('--proxy-host', default=DEFAULT_PROXY_HOST)
-        command.add_argument('--proxy-port', default=DEFAULT_PROXY_PORT)
+        command.add_argument('--network', choices=['manual', 'system', 'direct'],
+                             help='覆盖 OMFIT_TEMPLATE_PROXY；未配置时使用公共 HTTP 代理 47.102.120.146:18889')
+        command.add_argument('--proxy-host')
+        command.add_argument('--proxy-port')
     release = commands.add_parser('publish', help='发布不可覆盖的新版本')
     release.add_argument('source')
     for key in ('id', 'name', 'author', 'version'):
@@ -118,9 +118,13 @@ def main():
             releases, errors = list_library(args.library)
             result = {'releases': [{k: r[k] for k in ('id', 'name', 'author', 'version', 'examples', 'path')} for r in releases], 'errors': errors}
         elif args.command in ('github-probe', 'github-check', 'github-list'):
-            proxy = None if args.network == 'system' else ''
-            if args.network == 'manual':
-                proxy = manual_proxy(args.proxy_host, args.proxy_port)
+            explicit = args.network or args.proxy_host or args.proxy_port
+            network = (dict(mode='manual', host=DEFAULT_PROXY_HOST, port=DEFAULT_PROXY_PORT)
+                       if explicit else network_preferences())
+            mode = args.network or ('manual' if args.proxy_host or args.proxy_port else network['mode'])
+            proxy = None if mode == 'system' else ''
+            if mode == 'manual':
+                proxy = manual_proxy(args.proxy_host or network['host'], args.proxy_port or network['port'])
             client = GitHub(args.repository, token='' if args.anonymous or args.command == 'github-probe' else None, proxy=proxy)
             result = client.probe() if args.command == 'github-probe' else (
                 client.connect() if args.command == 'github-check' else client.list_releases())

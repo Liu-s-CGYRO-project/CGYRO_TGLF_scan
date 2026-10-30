@@ -131,6 +131,9 @@ python3 tools/validate_native_callbacks.py /path/to/omfit --output native_callba
 python3 tools/validate_compare_layout.py /path/to/omfit --output gui_preview
 python3 tools/validate_project_mapping.py /path/to/omfit/omfit_classes/sortedDict.py
 python3 tools/validate_template_tk.py /path/to/omfit/utils_tk.py
-python3 -m unittest discover -s tests
-python3 -m unittest discover -s OMFITtemplates/tests
+python3 -B tools/run_regressions.py --omfit-source /path/to/omfit \
+  --font-file /path/to/NotoSansCJKsc-Regular.otf --adapters \
+  --log-dir /path/to/regression-logs
 ```
+
+发布回归以 `tools/run_regressions.py` 为统一入口：各套件独立进程运行，自动补齐本工程的 LIB 路径。`--omfit-source` 提供原生回调源码，不代表已经安装完整 OMFIT；`--adapters` 是明确启用的原生读取器测试替身。Tk 套件需要可用桌面或 Xvfb，shell 套件需要其实际调用的 bash（Windows 下部分套件还使用 WSL Ubuntu）。环境不满足、所有测试被跳过及零测试均不能计为通过；环境问题单独记为 `environment_error`。具体准备步骤见 `MAINTAINER_GUIDE.md` 的回归运行说明。

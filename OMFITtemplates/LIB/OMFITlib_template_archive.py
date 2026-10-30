@@ -24,7 +24,11 @@ class TemplateError(ValueError):
 
 
 def safe_name(name):
-    """Validate a relative POSIX member path without rewriting Linux names."""
+    """Validate a POSIX member name, not a host filesystem destination.
+
+    Literal backslashes are valid Linux names. Disk writers must contain the
+    resolved path using host rules (see template_live._staging_path).
+    """
     if not isinstance(name, str) or not name or any(ord(c) < 32 for c in name):
         raise TemplateError('无效的归档路径：' + repr(name))
     parts = (name[:-1] if name.endswith('/') else name).split('/')

@@ -17,7 +17,7 @@ from tkinter import font as tkfont, ttk
 from OMFITlib_gui_font_data import FONT_FILENAME, FONT_SHA256, FONT_FAMILY
 from OMFITlib_font_download_ui import ensure_fonts
 from OMFITlib_font_cache import cache_directory, cached_fonts
-from OMFITlib_tk_callbacks import unbind_callback  # Compatibility export for saved GUIs.
+from OMFITlib_tk_callbacks import unbind_callback  # noqa: F401 - compatibility export for saved GUIs.
 
 
 _lock = threading.RLock()
@@ -126,6 +126,9 @@ def font_status(widget):
     result.setdefault('active', False)
     result.setdefault('actual', {})
     result.setdefault('error', '')
+    cache_error = getattr(widget._root(), '_project_cjk_cache_error', '')
+    if cache_error:
+        result['error'] = '\n'.join(text for text in (result['error'], 'Cache verification: ' + cache_error) if text)
     result['backend'] = _backend(widget)
     result['size'] = font_size(widget)
     return result
@@ -178,6 +181,7 @@ def font_family(widget, retry=False, verified_path=None):
         if any(value.casefold() != FONT_FAMILY.casefold() for value in actual.values()):
             raise RuntimeError('Tk selected a fallback font: ' + str(actual))
         family = FONT_FAMILY
+        owner._project_cjk_cache_error = ''
         _update_retained_fonts(owner, family)
     except (AttributeError, ImportError, OSError, RuntimeError, ValueError, tk.TclError) as exc:
         error = str(exc)

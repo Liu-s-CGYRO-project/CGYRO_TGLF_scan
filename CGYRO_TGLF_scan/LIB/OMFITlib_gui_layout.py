@@ -47,13 +47,13 @@ def prepare_gui_fonts(ui):
     if getattr(top, '_cgyro_font_startup', None) is not None:
         return
     top._project_cjk_defer_load = True
-    state = top._cgyro_font_startup = dict(ready=threading.Event(), fonts=None, timer=None, closed=False)
+    state = top._cgyro_font_startup = dict(ready=threading.Event(), fonts=None, error='', timer=None, closed=False)
 
     def verify():
         try:
             state['fonts'] = cached_fonts('gui')
-        except (FontError, OSError, ValueError):
-            pass  # System fonts remain usable; Font Resources supports retry/import.
+        except (FontError, OSError, ValueError, KeyboardInterrupt, SystemExit) as exc:
+            state['error'] = '{}: {}'.format(type(exc).__name__, exc)
         finally:
             state['ready'].set()
 
@@ -64,6 +64,9 @@ def prepare_gui_fonts(ui):
         if not state['ready'].is_set():
             state['timer'] = top.after(FONT_POLL_MS, complete)
             return
+        # Font Resources displays this process-local diagnostic on demand.
+        # Opening the workbench still uses system fonts without a modal alert.
+        top._root()._project_cjk_cache_error = state['error']
         if not state['fonts']:
             return
         top._project_cjk_defer_load = False

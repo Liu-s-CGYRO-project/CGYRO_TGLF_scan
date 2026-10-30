@@ -1,9 +1,11 @@
-工程 1.24.48 / 管理器 1.10.34：修复 constant 固定参数在切页、修改网格后恢复成原输入值的问题。
+工程 1.24.49 / 管理器 1.10.35：相同输入保留 TGLF 结果；模板下载与自更新使用独立摘要校验。
+
+输入内容未改变时保留结果和缓存，实际变化先备份再替换；搜索合并写入并保留切页记忆，错误详情直接定位对应记录，字体后台失败可见。模板附件缺少 GitHub 摘要时拒绝使用，自更新锚点与安装数据目录分开，开窗不增加联网校验。21 套件、451 项定向回归通过；未在太原当前 OMFIT 会话实测，详见 [验证记录](VALIDATION.md)。
 
 constant 固定值独立保存；计算参数页和“本页沿用输入值”保留该值，提交副本使用同一固定值。保持局部刷新，不读取结果库。223 项相关回归通过，新增 constant 用例另在本地 Linux/Tk 通过；完整 Linux 开窗验证仍受本机显示环境限制。更新后保存工程、关闭旧总控再重开；此前已被覆盖的值需重新填写并回车。详见 [验证记录](VALIDATION.md)。
 重试等待支持退出并保持界面响应，保留原作业身份；纯操作日志与输入备份分别清理，不触碰结果文件和未完成任务。Tk 解绑只移除确认归属的回调，保留其他事件处理。16 套件、278 项相关回归通过，9 项 Tk 用例另在本地 Ubuntu 复测通过。未在太原当前 OMFIT 会话实测，单次远程查询仍受现有超时控制。更新后保存工程，关闭旧总控再打开。详见 [验证记录](VALIDATION.md)。
 
-已有工程可下载本版 [仅更新代码脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.48/omfit-update-1.24.48.py)，上传到运行 OMFIT 的服务器执行，保留输入、结果和设置。若旧会话已经无响应，先重新启动 OMFIT，打开原工程后先不要双击总控，在 Command Box 执行更新脚本，再打开总控。无需重新收集或整理全部结果。任务删除见 [任务管理说明](CGYRO_TGLF_scan/DOCS/TASK_CLEANUP.md)。按作业号恢复见 [恢复说明](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。需要额外整理旧归档时，使用 [更新与整理脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.48/omfit-maintain-1.24.48.py)，步骤见 [Command Box 整理说明](COMMAND_BOX_COMPACTION.md)。
+已有工程可下载本版 [仅更新代码脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.49/omfit-update-1.24.49.py)，上传到运行 OMFIT 的服务器执行，保留输入、结果和设置。若旧会话已经无响应，先重新启动 OMFIT，打开原工程后先不要双击总控，在 Command Box 执行更新脚本，再打开总控。无需重新收集或整理全部结果。任务删除见 [任务管理说明](CGYRO_TGLF_scan/DOCS/TASK_CLEANUP.md)。按作业号恢复见 [恢复说明](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。需要额外整理旧归档时，使用 [更新与整理脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.49/omfit-maintain-1.24.49.py)，步骤见 [Command Box 整理说明](COMMAND_BOX_COMPACTION.md)。
 
 标签页不再使用某一时刻测到的固定高度：当前页随内容自然伸展，隐藏页不撑大窗口，返回时复用已建控件。根滚动区仍由既有局部布局器更新；不重建整个 GUI、不读取结果。192 项回归以及太原 Python 3.9/Linux Tk 的 6 项交叉验证通过，包括快速切页、延迟内容增高/缩短、滚动到底部、参数搜索清空和缩放重开。更新后关闭旧总控再打开，无需重新收集结果。目标环境使用独立原生控件测试宿主，完整用户工程仍需更新后确认；详见 [验证记录](VALIDATION.md)。
 
@@ -26,7 +28,7 @@ b = p.open('https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/late
 exec(compile(b, 'omfit-manager-bootstrap.py', 'exec'), {'OMFIT': OMFIT})
 ```
 
-先将管理器升级至 1.10.34 并重新打开，再选择最新 CGYRO / TGLF 工程版本 → 拉取并使用 → 保留当前案例和设置 → 预览变更 → 更新当前工程。预览会列出模块迁入、归档重新分类及待核对的节点；完成后照常保存 OMFIT 工程。管理器脚本只安装管理模块，工程替换在预览后由用户执行。
+先将管理器升级至 1.10.35 并重新打开，再选择最新 CGYRO / TGLF 工程版本 → 拉取并使用 → 保留当前案例和设置 → 预览变更 → 更新当前工程。预览会列出模块迁入、归档重新分类及待核对的节点；完成后照常保存 OMFIT 工程。管理器脚本只安装管理模块，工程替换在预览后由用户执行。
 
 完整说明见 [首次部署与迁移](CGYRO_TGLF_scan/DOCS/FIRST_DEPLOY.md)。正在运行或尚未收集的旧 CGYRO 作业需要先完成收集，之后再迁移模块。下面保留已保存 ZIP 的终端部署方式。
 
@@ -119,9 +121,13 @@ OMFIT['CGYRO_TGLF_scan']['GUIS']['main'].run()
 
 在“GitHub 版本 → 代理设置”编辑网络配置，点击“测试连接”验证 HTTPS。版本检查、拉取、发布、管理器更新及 gh 安装使用当前代理。手动代理密码仅留在当前窗口，不写入偏好或工程；外部浏览器使用自身网络设置。
 
+部署时可设置 `OMFIT_TEMPLATE_PROXY=direct`、`system` 或 `http://HOST:PORT`。它在每个窗口启动时优先于已保存的网络偏好，窗口打开后仍可手动修改当前连接；未设置时沿用已保存偏好或上述公共代理。该变量不接受账号密码；认证代理可选 `system`，并使用标准代理环境变量。终端显式 `--network` / `--proxy-host` / `--proxy-port` 优先于此变量。
+
 点击“登录 GitHub”会自动检测 gh：已有命令直接使用，缺少时按当前 Linux 架构下载 [GitHub CLI 官方稳定版](https://github.com/cli/cli/releases/latest)，核对大小和 SHA-256，安装到 `${XDG_DATA_HOME:-$HOME/.local/share}/omfit-template-manager/tools/bin/gh`。无需 sudo、pip 或更改 PATH。界面显示进度，可取消；失败时清理临时文件，重新点击登录即可重试。安装后自动打开官方 gh 登录流程，用户完成浏览器授权后，管理器自动读取 GitHub 当前账号并启用发布页；已有登录时点击“连接仓库”也会同步账号。授权流程见 [gh auth login](https://cli.github.com/manual/gh_auth_login)。公开模板的浏览和下载无需安装 gh 或登录。发布页（包括准备本地模板包）在未登录时禁用，作者 ID 使用 GitHub 验证返回的登录名并设为只读；账号变化或凭据失效后清除原发布计划。
 
 终端诊断可运行 `python3 OMFITtemplates/launch.py github-probe`，默认使用公共代理且不读取 GitHub 凭据。可用 `--network system` / `--network direct` 切换网络方式，或 `--network manual --proxy-host HOST --proxy-port PORT` 指定 HTTP 代理。
+
+已有 `gh` 和登录终端按用户 PATH 查找，属于用户信任的本机配置；自动安装的摘要验证仅覆盖下载包，不认证任意 PATH 中的可执行文件，也不防御同用户权限的本地进程篡改。请使用可信 PATH。GitHub 模板拉取必须取得附件 `asset.digest` 中的 SHA-256，正文摘要仅附加核对；缺失时拒绝下载或使用缓存，请发布者重新发布带摘要的附件。
 
 
 私有库读取和发布分别需要 Contents 读、写权限；公开库可匿名读取，但可能遇到 API 限流。
@@ -158,6 +164,10 @@ python3 tools/build_project.py
 右上角“检查管理器更新”会显示需下载的文件、压缩后体积和复用文件数。点击“安装增量更新并重新打开”即可，无需手动解压或 Import module。公开更新无需 GitHub 登录，使用当前代理。
 
 文件清单和每个压缩附件都校验 GitHub 提供的 SHA-256，解压后再校验文件内容。未改变的文件按校验值复用，支持跨版本更新。所有文件在独立版本目录组装，校验完成后才切换；取消、校验失败或本地文件在预览后变化时保留当前版本。
+
+安装时把 API 已验证的原始清单保存在该版本目录，并把其 SHA-256、预期版本和来源身份原子记录到 `${XDG_CONFIG_HOME:-$HOME/.config}/omfit-template-manager/update-anchors`，按更新目录分开保存。锚点必须在 `XDG_DATA_HOME` 和安装目录之外；配置重叠时拒绝安装或激活。激活、导入 OMFIT 管理模块及下次启动重定向均按此锚点核验，不把安装目录里的收据当作权威，也不在开窗时访问 API。
+
+没有锚点的旧安装不能自动获得信任：从可信原目录启动新版管理器（必要时用完整包），重新“检查管理器更新 → 安装增量更新”即可建立锚点；旧目录和工程结果保留。此校验可发现数据目录内的文件、收据和清单被一起替换；不能防御同时拥有配置目录和启动器写权限的同用户进程。部署时应将配置与数据的写入权限分开。
 
 在 OMFIT 内只替换 OMFITtemplates，保留原设置并补全新增项，然后重新打开管理器。其他模块和内存中的计算结果不动，不调用整个工程的保存或加载。请正常保存 OMFIT 工程以持久保留更新；新版界面打开失败会恢复原管理模块。
 

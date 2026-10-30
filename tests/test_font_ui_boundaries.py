@@ -107,6 +107,29 @@ class FontCacheBoundaryTests(unittest.TestCase):
             self.assertEqual((REPO / 'CGYRO_TGLF_scan/LIB' / filename).read_bytes(),
                              (REPO / 'OMFITtemplates/LIB' / filename).read_bytes(), filename)
 
+    def test_worker_exit_reenables_retry_and_reports_reason(self):
+        root = self.tk_root()
+        def children(parent):
+            for widget in parent.winfo_children():
+                yield widget
+                yield from children(widget)
+        for failure in (SystemExit('worker exit'), KeyboardInterrupt('worker interrupted')):
+            observed = {}
+            def inspect_and_close():
+                widgets = list(children(root))
+                retry = next(w for w in widgets if isinstance(w, download.ttk.Button) and w.cget('text') == 'Retry download')
+                status = next(w for w in widgets if isinstance(w, download.ttk.Label) and w.cget('textvariable'))
+                observed.update(retry_enabled=not retry.instate(['disabled']), message=root.getvar(status.cget('textvariable')))
+                next(w for w in widgets if isinstance(w, download.ttk.Button) and w.cget('text') == 'Cancel').invoke()
+            with self.subTest(failure=type(failure).__name__), \
+                    patch.object(download, 'ensure_cached_fonts', side_effect=failure):
+                root.after(350, inspect_and_close)
+                with self.assertRaises(cache.FontCancelled):
+                    download._dialog(root, 'gui')
+                self.assertTrue(observed['retry_enabled'])
+                self.assertIn(type(failure).__name__, observed['message'])
+                self.assertIn(str(failure), observed['message'])
+
 
 if __name__ == '__main__':
     unittest.main()

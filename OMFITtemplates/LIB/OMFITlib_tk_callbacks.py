@@ -52,7 +52,7 @@ class RetryWait:
     def __init__(self, ui, title):
         self.parent = getattr(ui, 'OMFITaux', {}).get('rootGUI', None)
         self.title = title
-        self.dialog = self.timer = None
+        self.dialog = self.timer = self.done = None
         self.cancelled = False
 
     def __enter__(self):
@@ -68,13 +68,16 @@ class RetryWait:
 
     def cancel(self):
         self.cancelled = True
-        self.done.set(True)
+        if self.done is not None:
+            self.done.set(True)
 
     def _destroyed(self, event):
         if event.widget is self.dialog:
             self.cancel()
 
     def wait(self, seconds, message):
+        if self.cancelled:
+            raise KeyboardInterrupt('Waiting stopped; the job and collected files are preserved.')
         if threading.current_thread() is not threading.main_thread() or not isinstance(self.parent, tk.Misc):
             time.sleep(seconds)
             return

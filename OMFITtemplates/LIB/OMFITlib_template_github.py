@@ -242,7 +242,9 @@ class GitHub:
         self.base = '/repos/' + self.repo
         proxy = normalize_proxy(proxy)
         self.connection = connection_label(proxy)
-        self.opener = request.build_opener(proxy_handler(proxy), ClosingTunnelHTTPSHandler(), SafeRedirect())
+        self.tls_context = ssl._create_default_https_context()
+        self.opener = request.build_opener(proxy_handler(proxy),
+            ClosingTunnelHTTPSHandler(context=self.tls_context), SafeRedirect())
 
     def _connection_error(self, exc):
         reason = getattr(exc, 'reason', exc)
@@ -359,7 +361,8 @@ class GitHub:
 
     def probe(self):
         self._json('/rate_limit')
-        return {'connection': self.connection, 'https_verified': True}
+        return {'connection': self.connection, 'https_verified':
+                self.tls_context.verify_mode == ssl.CERT_REQUIRED and self.tls_context.check_hostname}
 
     def current_login(self):
         """Read the authenticated account, without depending on repository access."""
@@ -448,9 +451,9 @@ class GitHub:
             raise TemplateError('下载大小不一致，请重新拉取此版本')
         digest = file_hash(path, self.cancel)
         expected = release.get('asset_digest', '')
-        if expected and not re.fullmatch(r'sha256:[a-f0-9]{64}', expected):
-            raise TemplateError('GitHub 返回了不支持的附件校验值')
-        if (expected and expected != 'sha256:' + digest) or (release.get('sha256') and release['sha256'] != digest):
+        if not re.fullmatch(r'sha256:[a-f0-9]{64}', expected):
+            raise TemplateError('GitHub 模板附件缺少有效的 asset.digest SHA-256，不能验证此版本；请重新发布附件')
+        if expected != 'sha256:' + digest or (release.get('sha256') and release['sha256'] != digest):
             raise TemplateError('GitHub 模板包 SHA-256 校验失败')
         with Template(path) as template:
             template.verify(self.cancel)
@@ -467,6 +470,9 @@ class GitHub:
         identity = int(release['asset_id'])
         if identity <= 0 or not 0 < release['archive_bytes'] < MAX_ASSET:
             raise TemplateError('GitHub 附件信息无效')
+        expected = release.get('asset_digest', '')
+        if not re.fullmatch(r'sha256:[a-f0-9]{64}', expected):
+            raise TemplateError('GitHub 模板附件缺少有效的 asset.digest SHA-256，不能验证此版本；请重新发布附件')
         # Repository and asset ID isolate different teams' identically named versions.
         target = Path(library).expanduser().resolve() / 'github' / self.repo.lower() / str(identity) / name
         check_cancel(self.cancel)
@@ -477,33 +483,9 @@ class GitHub:
             return str(target)
         if self.progress:
             self.progress('正在连接 GitHub 下载模板…', 0, 0)
-        with new_file(target) as temporary:
-            with self._open(self.base + '/releases/assets/' + str(identity), accept='application/octet-stream') as response:
-                # HTTPResponse.read(CHUNK) waits for 4 MiB or EOF. Most templates
-                # are smaller, so use available network blocks and throttle only
-                # UI events, not reads or cancellation checks.
-                read_block = getattr(response, 'read1', response.read)
-                next_progress = 0.0
-                if self.progress:
-                    self.progress('正在从 GitHub 拉取', 0, release['archive_bytes'])
-                with open(temporary, 'wb') as stream:
-                    done = 0
-                    while True:
-                        check_cancel(self.cancel)
-                        chunk = read_block(DOWNLOAD_CHUNK)
-                        if not chunk:
-                            break
-                        done += len(chunk)
-                        if done > release['archive_bytes']:
-                            raise TemplateError('下载超过声明大小，已停止')
-                        stream.write(chunk)
-                        now = monotonic()
-                        if self.progress and (now >= next_progress or done == release['archive_bytes']):
-                            self.progress('正在从 GitHub 拉取', done, release['archive_bytes'])
-                            next_progress = now + 0.1
-            if self.progress:
-                self.progress('下载完成，正在校验模板…', 0, 0)
-            self._verify_download(temporary, release)
+        with new_file(target, verify=lambda path: self._verify_download(path, release)) as temporary:
+            with open(temporary, 'w+b') as stream:
+                download_asset(self, identity, release['archive_bytes'], expected[7:], stream, name)
         return str(target)
 
     def prepare_publish(self, path):

@@ -200,14 +200,62 @@ class GitHubTest(unittest.TestCase):
         self.assertFalse(list((self.directory / 'cache').rglob('*.partial')))
         release['sha256'] = ''
         self.state.assets[17] = self.state.assets[17][:-50]
-        with self.assertRaisesRegex(TemplateError, '大小'):
+        before = len(self.state.calls)
+        with patch.object(github, 'sleep'), self.assertRaisesRegex(TemplateError, '下载中断'):
             self.client.pull(release, self.directory / 'cache')
+        self.assertEqual(len(self.state.calls) - before, github.READ_ATTEMPTS)
+        self.assertFalse(list((self.directory / 'cache').rglob('*.zip')))
+        self.assertFalse(list((self.directory / 'cache').rglob('*.partial')))
 
     def test_changed_repository_rejects_old_selection(self):
         release = self.seed_release()
         release['repository'] = 'other/demo'
         with self.assertRaisesRegex(TemplateError, '仓库已经改变'):
             self.client.pull(release, self.directory / 'cache')
+
+    def test_asset_digest_is_required_even_when_body_or_cached_zip_is_valid(self):
+        release = self.seed_release()
+        cache = self.directory / 'cache'
+        self.client.pull(release, cache)
+        before = len(self.state.calls)
+        for expected in ('', 'md5:' + '0' * 32):
+            for body in ('', release['sha256']):
+                item = dict(release, asset_digest=expected, sha256=body)
+                with self.subTest(asset=expected, body=bool(body)):
+                    for target in (cache, self.directory / 'new-cache'):
+                        with self.assertRaisesRegex(TemplateError, 'asset.digest'):
+                            self.client.pull(item, target)
+                    with self.assertRaisesRegex(TemplateError, 'asset.digest'):
+                        self.client._verify_download(self.template, item)
+        self.assertEqual(len(self.state.calls), before)
+        self.assertFalse((self.directory / 'new-cache').exists())
+
+    def test_pull_uses_shared_verified_downloader(self):
+        release = self.seed_release()
+        with patch.object(github, 'download_asset', wraps=github.download_asset) as download:
+            self.client.pull(release, self.directory / 'cache')
+        self.assertEqual(download.call_count, 1)
+        self.assertEqual(download.call_args.args[1:4], (17, release['archive_bytes'], release['asset_digest'][7:]))
+
+    def test_publication_rechecks_linked_file_before_returning_cache(self):
+        release = self.seed_release()
+        real_link = os.link
+        def replaced_partial(source, destination):
+            Path(source).write_bytes(b'replaced after verification')
+            real_link(source, destination)
+        with patch('OMFITlib_template_service.os.link', side_effect=replaced_partial):
+            with self.assertRaisesRegex(TemplateError, '大小'):
+                self.client.pull(release, self.directory / 'cache')
+        self.assertFalse(list((self.directory / 'cache').rglob('*.zip')))
+        self.assertFalse(list((self.directory / 'cache').rglob('*.partial')))
+
+    def test_probe_reports_actual_certificate_policy(self):
+        import ssl
+        with patch.object(self.client, '_json', return_value={}):
+            self.assertTrue(self.client.probe()['https_verified'])
+            self.client.tls_context.check_hostname = False
+            self.client.tls_context.verify_mode = ssl.CERT_NONE
+            self.assertFalse(self.client.probe()['https_verified'])
 
     def test_drafts_hidden_and_manual_packages_identified(self):
         self.seed_release()

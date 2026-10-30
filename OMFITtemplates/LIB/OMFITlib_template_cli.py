@@ -24,7 +24,12 @@ def cli_path():
 
 
 def find_cli():
-    """Share discovery between login and token lookup without editing PATH."""
+    """Use the user's trusted PATH, then the manager's own installation.
+
+    Existing executables are user configuration, not authenticated downloads.
+    ensure_cli verifies downloads only; it does not certify arbitrary PATH
+    entries or protect against another process with the same user's rights.
+    """
     executable = shutil.which('gh')
     if executable:
         return executable

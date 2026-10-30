@@ -75,6 +75,7 @@ class ParameterList:
         self.search.bind('<KP_Enter>', self.flush)
         self.trace = self.query.trace_add('write', self.schedule)
         self.toolbar.bind('<Destroy>', self.close, add='+')
+        self.toolbar.bind('<Unmap>', self.remember_search, add='+')
         self.show()
 
     def visible_names(self):
@@ -85,13 +86,20 @@ class ParameterList:
         # A save-delayed filter may have been hidden before its timer fired.
         # A clipped, empty panel may not receive Map until it has rows again.
         # Check only its ancestor tab selections, then resume just this body.
-        if not self.section.built and all(tab.select() == pane for tab, pane, _ in self.tabs):
+        selected = all(tab.select() == pane for tab, pane, _ in self.tabs)
+        if not selected:
+            self.remember_search()
+        elif not self.section.built:
             self.section.show()
 
     def schedule(self, *args):
-        self.state[self.search_key] = self.query.get()
         self.cancel()
         self.pending = self.toolbar.after(SEARCH_DELAY_MS, self.filter)
+
+    def remember_search(self, event=None):
+        value = self.query.get()
+        if self.state[self.search_key] != value:
+            self.state[self.search_key] = value
 
     def cancel(self):
         if self.pending is not None:
@@ -105,7 +113,7 @@ class ParameterList:
     def filter(self):
         self.cancel()
         self.state[self.group_key] = self.groups[self.group.get()]
-        self.state[self.search_key] = self.query.get()
+        self.remember_search()
         names = parameter_matches(self.rows, self.state[self.group_key], self.query.get())
         if names != self.names:
             self.names, self.page = names, 0
@@ -135,6 +143,7 @@ class ParameterList:
 
     def close(self, event):
         if event.widget is self.toolbar:
+            self.remember_search()
             self.cancel()
             self.query.trace_remove('write', self.trace)
             for tab, _, binding in self.tabs:

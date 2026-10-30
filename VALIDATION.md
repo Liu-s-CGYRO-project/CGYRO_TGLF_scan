@@ -1,3 +1,16 @@
+# 工程 1.24.49 / 管理器 1.10.35：重复输入、更新完整性与轻量交互（2026-10-30）
+
+**21 套件、451 项定向回归通过，无失败、错误、跳过或超时。** 发行证据位于 `_deliverables/audit_integrity_1.24.49`，逐套件原始日志路径见该目录 tests.json。先前修复验证 435 项，本次发布补充管理器启动 10、版本 4、源码转义 2 项，不重复累计。
+
+- 输入及历史：`test_project` 45、`test_project_history` 10、`test_native_mapping` 79。相同输入保留结果对象、不触及不可读结果哨兵；实际变化保存各维度结果；备份失败不安装输入或清缓存；显式排序的历史仍按记录时间保留。
+- 下载及更新：`manager_test_github` 29、`manager_test_incremental` 21、`manager_test_proxy` 10、`manager_test_templates` 53、`manager_test_ui` 46。覆盖缺/错外部摘要、文件与收据及 raw manifest 同改、缺锚点离线回退、锚点位于独立配置目录、数据/配置重叠拒绝、最终路径验证与本地真实 TLS 代理。
+- GUI：`test_gui_open_native` 6、`test_gui_refresh_native` 34、`test_gui_tab_pages` 25、`test_font_ui_boundaries` 7、`test_gui_font_performance` 12、`test_tk_callbacks` 10。验证搜索合并写入及隐藏/关闭记忆、局部刷新、单记录错误详情、后台终止事件和提前取消。
+- 运行与发布：`test_cgyro_launch` 23、`test_cgyro_callback_imports` 7、`test_regression_runner` 11、`test_build_project` 7、`manager_test_manager_startup` 10、`manager_test_versions` 4、`test_source_escapes` 2。
+
+Windows Python 3.12/Tk 使用太原原生控件快照及明确的读取器适配器；本地 Bash 用例通过 WSL 运行，TLS 用例只使用本机临时服务。沙箱阻止硬链接/WSL 的运行已单独记录为环境失败，正式权限下重跑相应套件通过，未放宽生产校验。最终清单只统计每套件最新成功运行。未连接太原当前 OMFIT，也未进行完整 Linux GUI、用户工程保存重开或实际集群计算验收；此前版本的 Linux 验证不计入本版覆盖。
+
+发行包检查源码字节、Python 3.9 语法、模块注册、ZIP CRC、增量清单逐文件摘要及保留数据/设置的更新准备。I-4 当前标签宽度计算已包含实际 caption，未增加遍历；I-5 未仅因函数长度进行大规模拆分。I-10/I-11 保留既有兼容行为并明确本地 PATH 与 POSIX 解析边界。
+
 # 工程 1.24.48：constant 值在切页与局部刷新中保留（2026-10-30）
 
 **12 套件、223 项回归通过，无失败、错误、跳过或超时。** 证据目录为 `_deliverables/constant_fix_1.24.48`；原始日志为 `_diagnose_constant_reset_20261030`。修复前原生控件用例稳定复现 0.0001 被覆盖为 0.00848771，修复后通过。

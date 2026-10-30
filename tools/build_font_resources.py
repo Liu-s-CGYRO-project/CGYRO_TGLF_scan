@@ -71,7 +71,7 @@ def build(gui_source, gui_license, plot_source, output):
     packs = dict(gui=gui_pack, plot=plot_pack)
     module = ('"""Pinned original fonts downloaded once into the shared user cache.\n\n'
               'Licenses: DOCS/FONT_LICENSE.txt and DOCS/PLOT_FONTS_LICENSE.txt.\n'
-              'Rebuild offline with tools/build_font_resources.py.\n"""\n'
+              'Rebuild source: https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/blob/main/tools/build_font_resources.py\n"""\n'
               'FONT_BUNDLES = ' + repr(packs) + '\nFONT_FILES = ' + repr(fonts) + '\n')
     gui_module = ('"""GUI font identity; font bytes live in the independent font pack."""\n'
                   'FONT_FAMILY = \'Noto Sans CJK SC\'\nFONT_FILENAME = ' + repr(gui_name) +

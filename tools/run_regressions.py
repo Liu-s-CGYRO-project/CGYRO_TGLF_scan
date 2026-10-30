@@ -93,7 +93,10 @@ def run_suite(path, repo, logs, env, timeout, adapters, omfit_source):
     totals = re.findall(r'^(?:OK|FAILED)(?: \(([^\n]*)\))?$', output, flags=re.MULTILINE)
     details = dict(re.findall(r'(failures|errors|skipped|expected failures|unexpected successes)=(\d+)',
                               totals[-1] if totals else ''))
+    environment_errors = re.findall(r'^ENVIRONMENT ERROR: (.*)$', output, flags=re.MULTILINE)
     return dict(suite=name, exit_code=code, tests=tests,
+                status=('environment_error' if environment_errors else 'timeout' if timed_out else 'failed' if code else 'passed'),
+                environment_errors=environment_errors,
                 failures=int(details.get('failures', 0)), errors=int(details.get('errors', 0)),
                 skipped=int(details.get('skipped', 0)), timed_out=timed_out,
                 seconds=round(time.perf_counter() - start, 3),
@@ -153,6 +156,7 @@ def main():
     write_json(logs / 'summary.json', results)
     total = dict(suites=len(results), tests=sum(row['tests'] for row in results),
                  failed_suites=sum(row['exit_code'] != 0 for row in results),
+                 environment_failures=sum(bool(row['environment_errors']) for row in results),
                  failures=sum(row['failures'] for row in results), errors=sum(row['errors'] for row in results),
                  skipped=sum(row['skipped'] for row in results), timeouts=sum(row['timed_out'] for row in results))
     write_json(logs / 'totals.json', total)

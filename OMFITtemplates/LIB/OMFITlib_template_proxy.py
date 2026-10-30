@@ -15,8 +15,24 @@ PROXY_ENV_KEYS = ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
 
 
 def network_preferences(saved=None):
-    """Migrate the retired relay mode without carrying over its authentication."""
+    """Environment deployment override, then saved choice, then public proxy.
+
+    OMFIT_TEMPLATE_PROXY accepts system, direct, or an HTTP URL without
+    credentials. Authenticated deployments can select system and use the
+    standard proxy environment without persisting passwords in preferences.
+    """
     defaults = dict(mode='manual', host=DEFAULT_PROXY_HOST, port=DEFAULT_PROXY_PORT, username='')
+    override = os.environ.get('OMFIT_TEMPLATE_PROXY')
+    if override is not None:
+        if override in ('system', 'direct'):
+            return dict(defaults, mode=override)
+        proxy = normalize_proxy(override)
+        if not proxy:
+            raise TemplateError('OMFIT_TEMPLATE_PROXY 请使用 system、direct 或不含认证信息的 HTTP 代理 URL')
+        parts = parse.urlsplit(proxy)
+        if parts.username is not None:
+            raise TemplateError('OMFIT_TEMPLATE_PROXY 不保存认证信息；认证代理请使用 system 和系统代理环境变量')
+        return dict(defaults, host=parts.hostname, port=str(parts.port))
     if not isinstance(saved, dict) or saved.get('mode', '') not in PROXY_MODES.values():
         return defaults
     return {key: saved.get(key, value) for key, value in defaults.items()}

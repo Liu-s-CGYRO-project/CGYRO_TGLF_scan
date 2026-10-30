@@ -4,7 +4,7 @@ Only known final metadata records are disposable. Legacy/unknown payloads,
 pending operations and backups may be the only retained copy; never traverse
 their values or remove them as part of automatic log retention.
 """
-from builtins import ValueError, dict, len, max, set
+from builtins import ValueError, dict, len, max, set, str
 
 LOG_LIMIT = 100
 ERROR_LOG_LIMIT = 20
@@ -37,6 +37,10 @@ def trim_logs(records, normal_limit=LOG_LIMIT, error_limit=ERROR_LOG_LIMIT):
     for key, record in records.items():
         if record_kind(record) == 'log':
             (errors if record.get('status', '') in ('failed', 'cancelled') else normal).append(key)
+    # The browser may explicitly sort a tree. UUID suffix order is not time
+    # order; use the recorded UTC microseconds, with stable ordering for ties.
+    for keys in (normal, errors):
+        keys.sort(key=lambda key: str(records[key].get('created', key)))
     removed = normal[:max(0, len(normal) - normal_limit)] + errors[:max(0, len(errors) - error_limit)]
     for key in removed:
         del records[key]

@@ -267,6 +267,18 @@ class WorkbenchFontStartupTests(unittest.TestCase):
             fonts.gui_font(self.window)
         self.assertTrue(self.window._project_cjk_defer_load)
 
+    def test_cache_failure_is_retained_for_font_settings_without_interrupting_open(self):
+        with patch.object(layout, 'cached_fonts', side_effect=OSError('font cache unreadable')), \
+                patch.object(layout, 'configure_window_fonts') as configure:
+            layout.prepare_gui_fonts(self.ui)
+            self.assertTrue(self.window._cgyro_font_startup['ready'].wait(1))
+            self.drain()
+            configure.assert_not_called()
+        diagnostic = fonts.font_status(self.window)
+        self.assertIn('OSError: font cache unreadable', diagnostic['error'])
+        self.assertTrue(self.window.winfo_exists())
+        self.assertEqual(self.errors, [])
+
     def test_close_during_verification_drops_poll_without_touching_tk(self):
         release = threading.Event()
         self.addCleanup(release.set)

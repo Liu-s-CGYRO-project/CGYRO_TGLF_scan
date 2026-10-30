@@ -4,6 +4,10 @@ Resource fields own MPI/OpenMP counts. A command copied from an older project
 must not freeze ``-n 16`` when the user selects 32 MPI tasks. NUMA placement is
 left to the selected GACODE platform rather than carrying stale placement flags
 alongside a changed allocation. No solver, scheduler or filesystem is accessed.
+
+This validates the layout of one direct cgyro invocation, not shell safety.
+The command is trusted user configuration: its preamble, variable expansion
+and command substitutions retain their shell meaning.
 """
 from builtins import ValueError, any, dict, enumerate, int, len, list, next, str, tuple
 import re
@@ -18,11 +22,12 @@ _MANAGED = ('-n', '-nomp', '-numa', '-mpinuma')
 
 
 def _has_inline_control(raw):
-    """Recognize shell operators even when adjacent to a path/argument.
+    """Recognize unquoted separators that make solver-line parsing ambiguous.
 
     Decoded shlex words lose the distinction between a quoted semicolon in a
     filename and a shell separator. Inspect raw quoting instead; redirections
     such as ``2>&1`` remain valid and belong to the single solver invocation.
+    This does not restrict shell substitutions inside arguments.
     """
     text, quote, escaped = ' '.join(raw), '', False
     for index, char in enumerate(text):

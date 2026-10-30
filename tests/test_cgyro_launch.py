@@ -57,6 +57,17 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual(command_template(command),
                          'export MY_SETTING=1\ncgyro -e . -n {mpi} -nomp {threads}')
 
+    def test_trusted_shell_substitutions_are_preserved_without_execution(self):
+        for value in ('"$(printf chosen)"', '`hostname`', '"${GACODE_ROOT}/runs"'):
+            with self.subTest(value=value):
+                self.assertEqual(command_template('cgyro -e ' + value),
+                                 'cgyro -e ' + value + ' -n {mpi} -nomp {threads}')
+
+    def test_top_level_shell_control_is_not_a_single_solver_invocation(self):
+        for tail in ('; echo extra', '| tee extra', '&& echo extra', '&'):
+            with self.subTest(tail=tail), self.assertRaisesRegex(ValueError, 'inline shell control'):
+                command_template('cgyro -e . ' + tail)
+
     def test_ambiguous_parallel_arguments_fail_before_submission(self):
         for command in ['cgyro -e . -n 16 -n 32', 'cgyro -e . -nomp 0',
                         'cgyro -e . -n "$CUSTOM_MPI"', 'mpirun -np 16 ./cgyro 0']:

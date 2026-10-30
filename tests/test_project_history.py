@@ -73,6 +73,67 @@ class ProjectHistoryTests(unittest.TestCase):
         history.trim_logs(reopened, 0, 0)
         self.assertEqual(reopened, self.records)
 
+    def profile_source(self):
+        source = CgyroInput(rho=[0., .5, 1.])
+        self.root['Transfer_tool']['Transfer_file']['input.gacode'] = source
+        self.actions.settings['transfer_source'] = json.dumps(['Transfer_tool', 'Transfer_file', 'input.gacode'])
+        profiles = self.root['TGLF_scan']['TGYRO']['PROFILES_GEN']
+        for group in ('INPUTS', 'OUTPUTS'):
+            for name in ('input.gacode', 'input.gacode_base'):
+                profiles[group][name] = CgyroInput(copy.deepcopy(source))
+        return source, profiles
+
+    def test_identical_profile_handoff_preserves_all_result_and_cache_references(self):
+        source, profiles = self.profile_source()
+        scan = self.root['TGLF_scan']
+        keys = ('input.tglf', 'scanResults', 'scanResults_spectra', 'scanResults2D',
+                'scanResults2D_spectra', 'scanResults3D', 'scanResults3D_spectra', '_workbench_index')
+        saved = {key: Unreadable() for key in keys}
+        scan.update(saved)
+        before = copy.deepcopy(profiles['SETTINGS'])
+        with patch.object(CgyroInput, 'duplicate', side_effect=AssertionError('same profile copied')):
+            self.actions.handoff('profiles')
+            self.actions.handoff('profiles')
+        self.assertEqual(self.records, {})
+        self.assertEqual(profiles['SETTINGS'], before)
+        for key in keys:
+            self.assertIs(scan[key], saved[key])
+
+    def test_changed_profile_backup_failure_keeps_inputs_and_active_results(self):
+        source, profiles = self.profile_source()
+        previous = copy.deepcopy(profiles['INPUTS'])
+        source['rho'] = [0., .6, 1.]
+        payload = Unreadable()
+        self.root['TGLF_scan']['scanResults'] = payload
+        with self.assertRaisesRegex(AssertionError, 'payload was copied'):
+            self.actions.handoff('profiles')
+        self.assertEqual(profiles['INPUTS'], previous)
+        self.assertIs(self.root['TGLF_scan']['scanResults'], payload)
+        self.assertEqual(self.records, {})
+
+    def test_changed_profile_preserves_spectra_and_multidimensional_results(self):
+        source, profiles = self.profile_source()
+        source['rho'] = [0., .6, 1.]
+        scan = self.root['TGLF_scan']
+        saved = {key: {'point': [1, 2]} for key in ('scanResults', 'scanResults_spectra',
+                    'scanResults2D', 'scanResults2D_spectra', 'scanResults3D', 'scanResults3D_spectra')}
+        scan.update(copy.deepcopy(saved))
+        self.actions.handoff('profiles')
+        self.assertEqual(len(self.records), 1)
+        record = next(iter(self.records.values()))
+        self.assertEqual({key: record['tglf_data'][key] for key in saved}, saved)
+        self.assertEqual(len(record['previous_inputs']), 4)
+        self.assertTrue(all(key not in scan for key in saved))
+        self.assertEqual(profiles['INPUTS']['input.gacode']['rho'], [0., .6, 1.])
+
+    def test_log_retention_uses_creation_time_after_tree_is_sorted(self):
+        records = {
+            '20261030T010000_00000000': dict(status='returned', created='2026-10-30T01:00:00.900000+00:00', title='newer'),
+            '20261030T010000_ffffffff': dict(status='returned', created='2026-10-30T01:00:00.100000+00:00', title='older'),
+        }
+        history.trim_logs(records, normal_limit=1)
+        self.assertEqual([row['title'] for row in records.values()], ['newer'])
+
     def test_failed_copy_leaves_all_current_inputs_intact(self):
         inputs = self.root['CGYRO_scan']['INPUTS']
         inputs.update(one=CgyroInput(N_THETA=32), two=CgyroInput(N_THETA=48))

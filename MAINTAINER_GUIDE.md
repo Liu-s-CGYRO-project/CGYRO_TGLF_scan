@@ -1,6 +1,12 @@
 # 维护与扩展接口
 
-适用于工程 1.24.48。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.49。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+
+## 输入传递和更新完整性（1.24.49 / 管理器 1.10.35）
+
+`ProjectActions.replace` 返回是否实际改变输入。剖面传递的结果备份通过其 backup 回调准备，仅在改变时执行；输入副本、结果备份均成功后才安装输入并清除失效缓存。备份与 previous_inputs 在同一活动记录保留，不能在 replace 返回 False 后继续归档或清缓存。
+
+模板 pull 必须具备 GitHub asset.digest；正文摘要只追加验证，缓存也不能跳过。管理器原始 manifest 的摘要和预期版本在 API 验证后写入独立 XDG_CONFIG_HOME；不能从安装收据重建信任，也不能在普通开窗访问 API。锚点目录必须位于 XDG_DATA_HOME 和安装目录之外。缺锚点安装不启用，可信原启动器可继续运行并提示重新下载。
 
 ## constant 与普通参数覆盖（1.24.48）
 
@@ -508,7 +514,7 @@ python -B tools/run_regressions.py \
 
 字体文件必须提前离线准备；运行器不会下载字体，并根据本仓库 `OMFITlib_gui_font_data.py` 中的 SHA-256 校验后复制到本次日志的独立缓存。可另传 `--font-sha256` 核对已知摘要，它仍须与仓库固定身份一致。每个测试文件使用独立子进程，避免原生模块替身互相污染。`--adapters` 复用存储测试的原生读取器替身，并把管理器自动启动发现限定到本地测试库；显式安装、更新、取消等操作仍调用生产处理函数。它不能代替真实 OMFIT 工程保存重开或集群作业验证。
 
-日志包含 `environment.json`、每套测试输出及执行命令、`summary.json` 和 `totals.json`；超时、环境不满足及零测试都导致非零退出码。可重复指定 `--suite` 只跑相关套件，管理器套件可用 `manager_test_ui` 等带前缀名称消除歧义。无 GUI 的构建冒烟不需要字体或 OMFIT 源码：
+日志包含 `environment.json`、每套测试输出及执行命令、`summary.json` 和 `totals.json`；超时、环境不满足、全部跳过及零测试都导致非零退出码。环境前置失败使用退出码 3，在汇总中单列 `status=environment_error`、`environment_errors` 和 `environment_failures`，仍然阻止把本轮称为通过。shell 套件检查其实际使用的 bash / WSL Ubuntu；没有安装 `omfit_classes` 时，需要明确选择 `--adapters`，提供源码路径本身不会安装该包。缺失本仓库模块仍作为代码错误，不能归因于环境。可重复指定 `--suite` 只跑相关套件，管理器套件可用 `manager_test_ui` 等带前缀名称消除歧义。无 GUI 的构建冒烟不需要字体或 OMFIT 源码：
 
 ```bash
 python -B tools/run_regressions.py --suite test_build_project --suite test_maintenance_tools --log-dir /path/to/build-test-logs

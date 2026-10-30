@@ -16,14 +16,16 @@ import uuid
 from OMFITlib_template_archive import TemplateError, json_bytes, parse_json, parse_tree, safe_name
 from OMFITlib_template_github import download_asset
 from OMFITlib_template_paths import xdg_path
-from OMFITlib_template_service import check_cancel
+from OMFITlib_template_service import check_cancel, new_file
 from OMFITlib_template_versions import semantic_version
 
 FORMAT = 'omfit-manager-files-v1'
 MAX_MANIFEST = 512 * 1024
+MAX_ANCHOR = 4096
 MAX_FILE = 8 * 1024 ** 2
 MAX_TOTAL = 128 * 1024 ** 2
 RECEIPT = '.omfit-manager-install.json'
+MANIFEST = '.omfit-manager-manifest.json'
 Activation = namedtuple('Activation', 'previous installed')
 
 
@@ -33,6 +35,20 @@ def manifest_name(version):
 
 def update_directory():
     return xdg_path('XDG_DATA_HOME', '.local/share') / 'omfit-template-manager' / 'updates'
+
+
+def anchor_directory(directory):
+    """Keep trusted API identities outside the writable installation/data tree."""
+    directory = Path(directory).resolve()
+    identity = hashlib.sha256(str(directory).encode('utf-8')).hexdigest()
+    anchors = (xdg_path('XDG_CONFIG_HOME', '.config') / 'omfit-template-manager' / 'update-anchors' / identity).resolve()
+    for untrusted in (directory, xdg_path('XDG_DATA_HOME', '.local/share').resolve()):
+        try:
+            anchors.relative_to(untrusted)
+        except ValueError:
+            continue
+        raise TemplateError('XDG_CONFIG_HOME 的更新锚点不能位于 XDG_DATA_HOME 或安装目录内；请分别配置后重新检查更新')
+    return anchors
 
 
 def verified_asset(asset, repo):
@@ -112,7 +128,9 @@ def plan_incremental(client, release, module_dir, source_overrides=None):
                 raise TemplateError('增量附件不完整：' + name)
             assets[spec['asset']] = asset
             changed.append(name)
-    return dict(version=release['latest'], manifest=manifest, manifest_sha256=hashlib.sha256(raw).hexdigest(),
+    return dict(version=release['latest'], manifest=manifest, manifest_raw=raw,
+                manifest_sha256=descriptor['manifest']['sha256'],
+                manifest_source=dict(repository=client.repo, asset_id=descriptor['manifest']['asset_id']),
                 sources=sources, changed=sorted(changed), reused=sorted(reused), assets=assets,
                 download_bytes=sum(item['size'] for item in assets.values()), total_files=len(manifest['files']))
 
@@ -161,7 +179,12 @@ def _verify_tree(directory, manifest):
 def install_incremental(client, plan, directory=None):
     """Build a complete new version using local bytes plus downloaded changes."""
     manifest = validate_manifest(plan['manifest'], plan['version'])
+    raw = plan['manifest_raw']
+    if (hashlib.sha256(raw).hexdigest() != plan['manifest_sha256']
+            or parse_json(raw) != manifest or plan['manifest_source']['repository'] != client.repo):
+        raise TemplateError('更新清单与已验证的 GitHub 附件不一致，请重新检查更新')
     directory = Path(directory) if directory is not None else update_directory()
+    anchors = anchor_directory(directory)
     versions = directory / 'versions'
     versions.mkdir(parents=True, exist_ok=True, mode=0o700)
     # A fresh directory avoids modifying running scripts, custom files or an
@@ -203,8 +226,18 @@ def install_incremental(client, plan, directory=None):
         check_cancel(client.cancel)
         receipt = dict(manifest=manifest, manifest_sha256=plan['manifest_sha256'])
         (stage / RECEIPT).write_bytes(json_bytes(receipt))
+        (stage / MANIFEST).write_bytes(raw)
         destination = versions / (plan['version'] + '-' + uuid.uuid4().hex[:12])
         os.rename(stage, destination)
+    # A receipt inside the installation is not a trust anchor. Pin the API-
+    # verified manifest independently before permitting activation. This local
+    # pin protects against data-tree changes, not an attacker who can also
+    # rewrite the trusted configuration or launcher under the same account.
+    anchors.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with new_file(anchors / (destination.name + '.json')) as temporary:
+        temporary.write_bytes(json_bytes(dict(version=plan['version'], sha256=plan['manifest_sha256'],
+                                             **plan['manifest_source'])))
+        temporary.chmod(0o600)
     return str(destination)
 
 
@@ -213,9 +246,26 @@ def verify_installation(path, directory=None):
     path = Path(path)
     if path.is_symlink() or path.resolve().parent != directory / 'versions':
         raise TemplateError('管理器安装位置无效')
-    receipt = parse_json((path / RECEIPT).read_bytes())
-    manifest = receipt['manifest']
-    validate_manifest(manifest, manifest['version'])
+    anchors = anchor_directory(directory)
+    anchor_path = anchors / (path.name + '.json')
+    if (not anchor_path.is_file() or anchor_path.is_symlink()
+            or anchor_path.resolve().parent != anchors):
+        raise TemplateError('更新缺少独立摘要锚点，请从可信原目录启动并重新检查、下载管理器更新；未启用该目录')
+    with anchor_path.open('rb') as stream:
+        anchor_raw = stream.read(MAX_ANCHOR + 1)
+    if len(anchor_raw) > MAX_ANCHOR:
+        raise TemplateError('管理器独立摘要锚点超过大小限制')
+    anchor = parse_json(anchor_raw)
+    if (not isinstance(anchor, dict) or not isinstance(anchor.get('sha256'), str)
+            or not isinstance(anchor.get('version'), str)):
+        raise TemplateError('管理器独立摘要锚点格式无效')
+    expected = anchor['sha256']
+    with (path / MANIFEST).open('rb') as stream:
+        raw = stream.read(MAX_MANIFEST + 1)
+    if (len(raw) > MAX_MANIFEST or not re.fullmatch(r'[a-f0-9]{64}', expected)
+            or hashlib.sha256(raw).hexdigest() != expected):
+        raise TemplateError('管理器清单与独立摘要锚点不匹配，未启用该目录')
+    manifest = validate_manifest(parse_json(raw), anchor.get('version', ''))
     _verify_tree(path, manifest)
     return path
 

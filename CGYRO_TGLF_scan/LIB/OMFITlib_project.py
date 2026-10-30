@@ -326,6 +326,7 @@ class ProjectActions:
             title, error = str(record.get('title', '')), str(record.get('error', ''))
             if error and message == title + '：' + error:
                 self.settings['message'] = error_notice(title, record['status'] == 'cancelled')
+                self.settings['message_record_id'] = record['id']
                 return
         if 'Traceback (most recent call last):' in message:
             title, separator, error = message.partition('：')
@@ -349,6 +350,7 @@ class ProjectActions:
         record.update(dict(status='cancelled' if cancelled else 'failed', error=str(exc)))
         trim_logs(read(self.root, ('PROJECT_STATE', 'activity'), {}))
         self.settings['message'] = error_notice(title, cancelled)
+        self.settings['message_record_id'] = record['id']
         return record
 
     def clear_failed_tglf_records(self):
@@ -390,8 +392,12 @@ class ProjectActions:
         self.settings['message'] = '' if 'GUIS' in path else title + '：脚本已返回。计算状态请查看对应运行记录。'
         return result
 
-    def replace(self, title, replacements):
-        """Prepare independent copies before changing any destination input."""
+    def replace(self, title, replacements, backup=None):
+        """Copy changed inputs, then prepare optional backups before installing.
+
+        Return whether inputs changed. The backup callback runs only for a
+        change, while all current inputs and result references are still intact.
+        """
         prepared, previous, destinations = [], self.factory(), []
         for path, value in replacements:
             parent = read(self.root, path[:-1])
@@ -412,12 +418,16 @@ class ProjectActions:
             destinations.append(location(path))
         if not prepared:
             self.settings['message'] = title + '：输入内容未变化。'
-            return
-        record = self._record(title, status='inputs_copied', **({'previous_inputs': previous} if previous else {}))
+            return False
+        preserved = backup() if backup is not None else {}
+        if previous:
+            preserved['previous_inputs'] = previous
+        record = self._record(title, status='inputs_copied', **preserved)
         for parent, key, value in prepared:
             parent[key] = value
         record['destinations'] = destinations
         self.settings['message'] = title + '。原输入已保存在 Project 的输入历史中。'
+        return True
 
     def save_transfer_input(self, path, edits, expected_digest):
         path = tuple(path)
@@ -508,17 +518,18 @@ class ProjectActions:
             scan = self.root['TGLF_scan']
             # Explicitly changing the upstream profile invalidates old local inputs.
             # Preserve their associated results before the existing setup regenerates them.
-            old = self.factory()
             cache_keys = ('input.tglf', 'tgyro_output', 'scanResults', 'scanResults_spectra',
                           'scanResults2D', 'scanResults2D_spectra', 'scanResults3D', 'scanResults3D_spectra', 'UQResults', 'UQResults_spectra',
                           'Experimental_fluxes', 'Experimental_spectra', '_scan_cache_provenance', '_workbench_index',
                           '_radial_cache_provenance', '_input_cache_provenance')
-            for key in cache_keys:
-                if key in scan:
-                    old[key] = copy.deepcopy(scan[key])
-            self.replace('送入 TGLF 剖面准备流程', paths)
-            if old:
-                self._record('切换剖面前的 TGLF 数据', status='archived', tglf_data=old)
+            def backup_results():
+                old = self.factory()
+                for key in cache_keys:
+                    if key in scan:
+                        old[key] = copy.deepcopy(scan[key])
+                return {'tglf_data': old} if old else {}
+            if not self.replace('送入 TGLF 剖面准备流程', paths, backup=backup_results):
+                return
             for key in cache_keys:
                 scan.pop(key, None)
             pg = module(self.root, 'profiles')['SETTINGS']

@@ -115,6 +115,16 @@ class TkCallbacksTests(unittest.TestCase):
             sleep.assert_called_once_with(2)
             self.assertIsNone(retry.dialog)
 
+    def test_cancel_before_first_wait_is_safe_and_does_not_sleep_or_open_dialog(self):
+        for retry in (self.waiter(), RetryWait(SimpleNamespace(), 'headless')):
+            with retry, patch('OMFITlib_tk_callbacks.time.sleep') as sleep:
+                retry.cancel()
+                retry.cancel()
+                with self.assertRaises(KeyboardInterrupt):
+                    retry.wait(60, 'already cancelled')
+                sleep.assert_not_called()
+                self.assertIsNone(retry.dialog)
+
 
 if __name__ == '__main__':
     unittest.main()

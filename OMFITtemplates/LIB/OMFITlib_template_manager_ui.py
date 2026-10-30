@@ -13,7 +13,7 @@ from OMFITlib_template_archive import TemplateError, human_size
 from OMFITlib_template_github import DEFAULT_REPOSITORY, GitHub
 from OMFITlib_template_manager_update import check_manager_update, download_manager_package
 from OMFITlib_template_versions import MANAGER_VERSION
-from OMFITlib_template_incremental import plan_incremental, install_incremental, activate_installation, restore_activation
+from OMFITlib_template_incremental import plan_incremental, install_incremental, activate_installation, restore_activation, verify_installation
 from OMFITlib_template_service import Cancelled
 
 
@@ -190,6 +190,7 @@ class ManagerUpdateUI:
         def install():
             path = install_incremental(GitHub(DEFAULT_REPOSITORY, proxy=proxy,
                 cancel=self.cancel, progress=self._progress), plan)
+            verify_installation(path)
             if self.session is None:
                 result = subprocess.run([sys.executable, str(Path(path) / 'OMFITtemplates/launch.py'), '--check-ui'],
                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
@@ -203,7 +204,7 @@ class ManagerUpdateUI:
         if self.cancel.is_set():
             self.status.set('管理器文件已安装：' + str(path) + '；版本切换已取消，当前管理器继续运行。')
             return
-        path = Path(path)
+        path = verify_installation(path)
         self._save_preferences()
         if self.session is not None:
             session = self.session

@@ -1,7 +1,8 @@
 """Workbench facade. Page mixins render controls; ProjectActions owns effects.
 
 Keep this class and inherited method names stable for native/saved GUIs.
-New pages enter through workbench_catalog; see MAINTAINER_GUIDE.md.
+New pages enter through workbench_catalog; see
+https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/blob/main/MAINTAINER_GUIDE.md.
 """
 from OMFITlib_result_cleanup import active_jobs, clear_results
 from builtins import dict, isinstance, list, str
@@ -39,6 +40,7 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
 
     def show_message(self, first_line=False):
         value = str(self.settings['message'] or '')
+        record_id = self.settings.pop('message_record_id', '')
         if not value:
             return
         error = value.endswith(ERROR_NOTICE_SUFFIX)
@@ -51,6 +53,12 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
         if not isinstance(label, tk.Misc):
             return
         row, top = label.master, label.winfo_toplevel()
+        if error and record_id:
+            record = read(self.root, ('PROJECT_STATE', 'activity'), {}).get(record_id, {})
+            details = str(record.get('error', ''))
+            if details:
+                details = str(record.get('title', '')) + '\n\n' + details
+                ttk.Button(row, text='查看详情', command=lambda: show_help(label, details)).pack(side=tk.RIGHT, padx=6)
         timer = [None]
         def dismiss():
             timer[0] = None

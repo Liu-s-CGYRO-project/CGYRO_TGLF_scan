@@ -18,7 +18,8 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'LIB'))
 from OMFITlib_template_archive import TemplateError, json_bytes
 from OMFITlib_template_incremental import (FORMAT, activate_installation, active_launch, install_incremental,
-    plan_incremental, restore_activation, validate_manifest, verified_asset, verify_installation)
+    plan_incremental, restore_activation, validate_manifest, verified_asset, verify_installation, RECEIPT, MANIFEST,
+    anchor_directory)
 from OMFITlib_template_service import Cancelled
 from OMFITlib_template_session import OMFITSession
 
@@ -70,6 +71,10 @@ class IncrementalTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.base = Path(self.tmp.name)
+        environment = patch.dict(os.environ, {'XDG_CONFIG_HOME': str(self.base / 'config'),
+                                              'XDG_DATA_HOME': str(self.base / 'data')})
+        environment.start()
+        self.addCleanup(environment.stop)
         self.old = self.base / 'old'
         self.updates = self.base / 'updates'
         self.payload = fixture_payload()
@@ -182,6 +187,104 @@ class IncrementalTest(unittest.TestCase):
         self.assertEqual((self.updates / 'active.json').read_bytes(), first.installed)
         restore_activation(first, self.updates)
         self.assertIsNone(active_launch(self.updates))
+
+    def test_receipt_and_file_rewrite_cannot_replace_external_manifest_anchor(self):
+        installed = Path(install_incremental(self.client, self.plan(), self.updates))
+        activate_installation(installed, self.updates)
+        active = (self.updates / 'active.json').read_bytes()
+        receipt_path = installed / RECEIPT
+        receipt = json.loads(receipt_path.read_bytes())
+        content = b'print("ALTERED, NEVER EXECUTED")\n'
+        (installed / 'OMFITtemplates/launch.py').write_bytes(content)
+        digest = hashlib.sha256(content).hexdigest()
+        receipt['manifest']['files']['OMFITtemplates/launch.py'].update(
+            size=len(content), sha256=digest, asset='omfit-file-' + digest + '.gz')
+        altered_manifest = json_bytes(receipt['manifest'])
+        for rewrite_raw, rewrite_receipt_digest in ((False, False), (False, True), (True, True)):
+            if rewrite_raw:
+                (installed / MANIFEST).write_bytes(altered_manifest)
+            if rewrite_receipt_digest:
+                receipt['manifest_sha256'] = hashlib.sha256(altered_manifest).hexdigest()
+            receipt_path.write_bytes(json_bytes(receipt))
+            with self.subTest(raw=rewrite_raw, receipt_digest=rewrite_receipt_digest):
+                with self.assertRaises(TemplateError):
+                    activate_installation(installed, self.updates)
+                with self.assertRaises(TemplateError):
+                    active_launch(self.updates)
+                self.assertEqual((self.updates / 'active.json').read_bytes(), active)
+
+    def test_missing_anchor_is_not_reconstructed_from_legacy_receipt(self):
+        installed = Path(install_incremental(self.client, self.plan(), self.updates))
+        activate_installation(installed, self.updates)
+        (anchor_directory(self.updates) / (installed.name + '.json')).unlink()
+        with patch.object(self.client, '_open', side_effect=AssertionError('startup must remain offline')):
+            with self.assertRaisesRegex(TemplateError, '重新检查'):
+                active_launch(self.updates)
+            with self.assertRaisesRegex(TemplateError, '独立摘要'):
+                activate_installation(installed, self.updates)
+        self.assertTrue((installed / 'OMFITtemplates/launch.py').is_file())
+
+    def test_anchor_version_and_raw_asset_digest_are_both_checked(self):
+        installed = Path(install_incremental(self.client, self.plan(), self.updates))
+        anchor_path = anchor_directory(self.updates) / (installed.name + '.json')
+        anchor = json.loads(anchor_path.read_bytes())
+        self.assertEqual(anchor['sha256'], self.client.release['incremental']['manifest']['sha256'])
+        self.assertEqual(anchor['repository'], self.client.repo)
+        anchor['version'] = '1.8.0'
+        anchor_path.write_bytes(json_bytes(anchor))
+        with self.assertRaisesRegex(TemplateError, '版本不匹配'):
+            verify_installation(installed, self.updates)
+
+    def test_malformed_anchor_fails_as_a_recoverable_validation_error(self):
+        installed = Path(install_incremental(self.client, self.plan(), self.updates))
+        anchor_path = anchor_directory(self.updates) / (installed.name + '.json')
+        for invalid in (b'[]', b'{"sha256": 123, "version": "1.8.0"}', b'{}' + b' ' * 4096):
+            with self.subTest(invalid=invalid[:70]):
+                anchor_path.write_bytes(invalid)
+                with self.assertRaisesRegex(TemplateError, '独立摘要锚点'):
+                    verify_installation(installed, self.updates)
+
+    def test_unanchored_redirect_keeps_trusted_original_launcher_offline(self):
+        from contextlib import redirect_stderr
+        import runpy
+        from unittest.mock import Mock
+        installed = Path(install_incremental(self.client, self.plan(), self.updates))
+        activate_installation(installed, self.updates)
+        (anchor_directory(self.updates) / (installed.name + '.json')).unlink()
+        launcher = Path(__file__).resolve().parents[1] / 'launch.py'
+        namespace = runpy.run_path(str(launcher), run_name='test_original_launcher')
+        gui = Mock()
+        errors = io.StringIO()
+        with patch('OMFITlib_template_incremental.update_directory', return_value=self.updates), \
+                patch.dict(namespace['main'].__globals__, {'gui_environment': gui}), \
+                patch.object(sys, 'argv', [str(launcher)]), patch.object(os, 'execv') as execute, \
+                redirect_stderr(errors):
+            namespace['main']()
+        execute.assert_not_called()
+        gui.assert_called_once()
+        self.assertIn('继续运行当前目录版本', errors.getvalue())
+        self.assertIn('独立摘要', errors.getvalue())
+
+    def test_manifest_plan_mutation_does_not_create_installation(self):
+        plan = self.plan()
+        plan['manifest']['files']['OMFITtemplates/help.rst']['sha256'] = '0' * 64
+        plan['manifest']['files']['OMFITtemplates/help.rst']['asset'] = 'omfit-file-' + '0' * 64 + '.gz'
+        with self.assertRaisesRegex(TemplateError, '附件不一致'):
+            install_incremental(self.client, plan, self.updates)
+        self.assertFalse(self.updates.exists())
+
+    def test_default_anchor_is_outside_data_home_and_overlap_is_rejected(self):
+        from OMFITlib_template_incremental import update_directory
+        installed = Path(install_incremental(self.client, self.plan()))
+        anchors = anchor_directory(update_directory())
+        self.assertTrue((anchors / (installed.name + '.json')).is_file())
+        self.assertTrue(anchors.is_relative_to(self.base / 'config'))
+        self.assertFalse(anchors.is_relative_to(self.base / 'data'))
+        with patch.dict(os.environ, {'XDG_CONFIG_HOME': str(self.base / 'data' / 'config')}):
+            with self.assertRaisesRegex(TemplateError, '不能位于'):
+                activate_installation(installed)
+            with self.assertRaisesRegex(TemplateError, '不能位于'):
+                install_incremental(self.client, self.plan())
 
     def test_activation_lock_is_shared_between_processes(self):
         from OMFITlib_template_incremental import _activation_lock

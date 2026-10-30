@@ -47,8 +47,8 @@ def release_name(metadata):
 
 
 @contextmanager
-def new_file(destination):
-    """Commit a completed sibling file without replacing an existing file."""
+def new_file(destination, verify=None):
+    """Publish without replacement, optionally verifying both names before use."""
     destination = Path(destination).expanduser().resolve()
     if destination.exists():
         raise TemplateError('目标已存在，请使用新的文件名或版本号：' + str(destination))
@@ -56,9 +56,20 @@ def new_file(destination):
     temporary = destination.with_name('.' + destination.name + '.' + uuid.uuid4().hex + '.partial')
     try:
         yield temporary
+        if verify is not None:
+            verify(temporary)
         # Atomic, no-replace publication on Linux, including shared filesystems
         # that support hard links. Never fall back to a clobbering rename.
         os.link(temporary, destination)
+        try:
+            if verify is not None:
+                verify(destination)
+        except BaseException:
+            # Remove only the link this transaction owns, never a concurrently
+            # replaced destination. The temporary name survives until finally.
+            if destination.exists() and os.path.samefile(temporary, destination):
+                destination.unlink()
+            raise
         temporary.unlink()
     finally:
         if temporary.exists():
