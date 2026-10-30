@@ -1,6 +1,10 @@
 # 维护与扩展接口
 
-适用于工程 1.24.47。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.48。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+
+## constant 与普通参数覆盖（1.24.48）
+
+constant 重用 `PHYSICS.fixed_parameters[name].value`，是否生效由 `constant_parameter` 指定，不能仅按 `enabled` 判断。计算参数页刷新只同步未启用且非 constant 的值；本页沿用输入跳过 constant，全部沿用输入明确清空选择。不要通过强制设置普通 enabled 标志修复，以免取消 constant 后残留覆盖。回归须提交真实 Entry、切页修改其他参数并返回，同时断言最终提交副本、原输入保留与局部刷新边界。
 
 ## 标签页的自然高度（1.24.46）
 

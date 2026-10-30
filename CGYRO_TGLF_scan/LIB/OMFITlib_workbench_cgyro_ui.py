@@ -475,15 +475,17 @@ class CgyroPage:
         sources = [read(self.root, item['path']) for item in available]
         catalog = parameter_catalog(sources)
         source_values = numeric_source(source)
+        constant = physics.get('constant_parameter', '')
         for name, spec in catalog.items():
             item = parameters.setdefault(name, self.actions.factory())
             item.setdefault('enabled', False)
             item.setdefault('value', source_values.get(name, spec['reference']))
-            if not item['enabled']:
+            # A constant is active independently of the ordinary override flag.
+            if not item['enabled'] and name != constant:
                 item['value'] = source_values.get(name, spec['reference'])
         # Keep active, unavailable saved values visible until they are restored.
         for name, item in parameters.items():
-            if name not in catalog and item.get('enabled', False):
+            if name not in catalog and (item.get('enabled', False) or name == constant):
                 catalog[name] = dict(label='当前输入不支持', group='other', reference=None,
                                      kind='float', supported=False)
         # A one-time view migration clears old filters, without changing any
@@ -528,7 +530,8 @@ class CgyroPage:
 
     def cgyro_parameter_rows(self, names, base, catalog, parameters, source_values, scanned, source_key):
         self.ui.Button('本页沿用输入值', lambda: self.actions.reset_cgyro_parameters(names, source_key),
-                       updateGUI=True, refresh_scope='section', refresh_tree=False)
+                       updateGUI=True, refresh_scope='section', refresh_tree=False,
+                       help='恢复本页可编辑参数；constant 固定值仍由扫描设置控制。')
         for name in names:
             self.cgyro_parameter_row(base, name, catalog[name], parameters[name], source_values, scanned, source_key)
 

@@ -1,3 +1,15 @@
+# 工程 1.24.48：constant 值在切页与局部刷新中保留（2026-10-30）
+
+**12 套件、223 项回归通过，无失败、错误、跳过或超时。** 证据目录为 `_deliverables/constant_fix_1.24.48`；原始日志为 `_diagnose_constant_reset_20261030`。修复前原生控件用例稳定复现 0.0001 被覆盖为 0.00848771，修复后通过。
+
+- 固定参数与提交：`test_cgyro_constant` 17、`test_cgyro_parameters` 7、`test_project` 45；覆盖 0.0001 / 0、局部/全部沿用输入、设置序列化重载、提交副本与归档身份。
+- 原生 GUI 与读取边界：`test_gui_tab_pages` 23、`test_cgyro_scan_refresh` 12、`test_gui_open_native` 6、`test_gui_refresh_native` 34、`test_gui_font_performance` 11、`test_font_ui_boundaries` 6。新增用例实际提交原生 Entry，再切页修改网格并返回，结果库哨兵阻止读取，外层控件及整窗刷新计数保持不变。
+- 安装与管理器：`test_build_project` 7、`manager_test_ui` 45、`manager_test_manager_startup` 10。管理器夹具的原子写入硬链接被 Windows 沙箱阻止，按原实现使用正式权限重跑通过，未放宽安装保护。
+
+Windows Python 3.12/Tk 使用太原原生控件快照与显式读取器适配器。新增 constant 原生控件用例另在本地 Ubuntu Python 3.10/Tk 单独通过，重复用例不累加。完整 Linux 开窗套件出现 5 项窗口不可见断言失败，标签套件超时，未计为通过：不加载项目代码的最小 Tk 窗口同样在 withdraw/deiconify 后保持 iconic、mapped=0、viewable=0（等待 1.5 秒不变），说明本机 WSLg 无法完成这条新窗口显示路径。首次准备还因夹具默认路径层级不足未执行测试，已修正独立测试目录层级；生产代码未为绕过测试而修改。未连接太原当前 OMFIT、未验证完整用户工程保存重开或实际集群计算。设置序列化测试不等同于完整工程保存验收。
+
+发行包核验源码字节、Python 3.9 语法、模块注册、ZIP CRC 与文件摘要；模板按保留数据和设置策略完成更新准备。发行附件仅含代码、默认设置及必要许可。
+
 # 工程 1.24.47 / 管理器 1.10.34：等待、历史边界与解绑（2026-10-30）
 
 **16 套件、278 项相关回归通过，无失败、错误、跳过或超时。** 本次发布证据位于 `_deliverables/audit_fixes_1.24.47`，原始测试记录位于 `_review_fixes_20261030`。

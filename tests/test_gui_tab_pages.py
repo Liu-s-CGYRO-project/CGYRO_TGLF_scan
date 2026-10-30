@@ -599,6 +599,75 @@ class NativeTabsTests(unittest.TestCase):
         self.assertFalse(view.cgyro_main_pages.sections['results'].built)
         self.assertEqual(self.host.errors, [])
 
+    def test_cgyro_constant_survives_native_tab_switch_and_grid_commit(self):
+        import test_cgyro_storage
+        import test_project as fixture
+        from test_tglf_parameters import UnreadResults
+        from OMFITlib_project import ProjectActions
+        from OMFITlib_project_ui import ProjectUI
+        from OMFITlib_cgyro_plan import sync_cgyro_choices
+
+        root = fixture.fixture()
+        source = fixture.cgyro()
+        source.update(BETAE_UNIT=.00848771, N_ENERGY=32, N_XI=48, rho=.33)
+        root['Transfer_tool']['Transfer_file']['input.cgyro'] = source
+        node = root['CGYRO_scan']
+        node['RUN_DB'] = UnreadResults(old=UnreadResults())
+        node['SETTINGS']['SETUP']['idimrun'] = 1
+        physics = node['SETTINGS']['PHYSICS']
+        physics.update(kyarr=[.1], constant_parameter='BETAE_UNIT',
+            fixed_parameters={'BETAE_UNIT': dict(enabled=False, value=.00848771)},
+            **{'1d': dict(Para='N_THETA', Range=[24, 32])})
+        root['SETTINGS'].setdefault('WORKBENCH', {}).update(cgyro_source_mode='imported',
+            cgyro_ion_cases=dict(BASE=True, H=False, D=False, T=False))
+        self.host.tree.clear()
+        self.host.tree.update(root)
+        native.native_definitions(SOURCE / 'omfit_classes/OMFITx.py',
+                                  {'Separator', 'TitleGUI'}, self.host.api.__dict__)
+        actions = ProjectActions(self.host.tree)
+        fields, events = {}, []
+        def render(ui):
+            constructor = ui.Entry
+            def capture(path, *args, **kwargs):
+                value = constructor(path, *args, **kwargs)
+                fields[path] = value
+                return value
+            ui.Entry = capture
+            self.header = ui.Label('CGYRO scan')
+            view = ProjectUI(actions, ui)
+            def page(key):
+                self.counts[key] += 1
+                rows = sync_cgyro_choices(self.host.tree, actions.settings)
+                if key == 'edit':
+                    view.render_cgyro_scan_settings(node, rows)
+                else:
+                    view.render_cgyro_parameters(node, rows)
+            self.pages = TabPages(ui, dict(edit='扫描设置', run='计算参数'), self.state, 'page', page)
+            finish_gui_layout(self.header, ui)
+        self.host.render(render)
+        self.host.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        header, notebook = self.header, self.pages.notebook
+        prefix = "root['CGYRO_scan']['SETTINGS']['PHYSICS']['fixed_parameters']"
+        beta_path, grid_path = (prefix + "['{}']['value']".format(name) for name in ('BETAE_UNIT', 'N_ENERGY'))
+        self.entry = fields[beta_path]
+        self.commit('0.0001')
+        self.assertEqual(physics['fixed_parameters']['BETAE_UNIT']['value'], .0001)
+        self.select('run')
+        self.assertEqual(physics['fixed_parameters']['BETAE_UNIT']['value'], .0001)
+        self.entry = fields[grid_path]
+        grid_entry = self.entry
+        self.commit('48')
+        self.assertTrue(grid_entry.winfo_exists())
+        self.select('edit')
+        self.assertEqual(float(fields[beta_path].get()), .0001)
+        self.assertEqual(physics['fixed_parameters']['BETAE_UNIT'], dict(enabled=False, value=.0001))
+        self.assertEqual(physics['fixed_parameters']['N_ENERGY'], dict(enabled=True, value=48))
+        self.assertEqual(source['BETAE_UNIT'], .00848771)
+        self.assertIs(self.header, header)
+        self.assertIs(self.pages.notebook, notebook)
+        self.assertEqual(self.host.updates, [])
+        self.assertEqual(events, [])
+
     def test_convergence_content_selection_and_edits_keep_refresh_local(self):
         import test_cgyro_storage
         import test_project as fixture

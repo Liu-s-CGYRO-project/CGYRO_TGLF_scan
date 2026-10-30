@@ -91,6 +91,52 @@ class ConstantWorkbenchTests(unittest.TestCase):
     setUp = project_tests.ProjectTest.setUp
     send = project_tests.ProjectTest.send
 
+    def test_constant_survives_parameter_refresh_save_reload_and_input_preparation(self):
+        self.send()
+        physics = self.cg['SETTINGS']['PHYSICS']
+        source = self.transfer['Transfer_file']['input.cgyro']
+        source.update(BETAE_UNIT=.00848771, N_ENERGY=32, rho=.33)
+        physics['1d'] = dict(Para='N_THETA', Range=[24, 32])
+        ui = project_tests.UI(self.root)
+        view = project_tests.ProjectUI(self.actions, ui)
+        rows = project_tests.project.sync_cgyro_choices(self.root, self.actions.settings)
+        for beta in (.0001, 0):
+            with self.subTest(beta=beta):
+                configure(physics, value=beta)
+                view.render_cgyro_scan_settings(self.cg, rows)
+                view.render_cgyro_parameters(self.cg, rows)
+                self.assertEqual(physics['fixed_parameters']['BETAE_UNIT'], dict(enabled=False, value=beta))
+                physics['fixed_parameters']['N_ENERGY']['value'] = 48
+                self.actions.edit_cgyro_parameter('N_ENERGY')
+                view.render_cgyro_parameters(self.cg, rows)
+                view.render_cgyro_scan_settings(self.cg, rows)
+                # Use persisted settings, with none of the original UI objects.
+                physics = json.loads(json.dumps(physics))
+                self.cg['SETTINGS']['PHYSICS'] = physics
+                project_tests.ProjectUI(self.actions, project_tests.UI(self.root)).render_cgyro_parameters(self.cg, rows)
+                plan = self.actions.prepare_cgyro_batch()
+                self.assertEqual(plan[0]['constant_parameters'], {'BETAE_UNIT': beta})
+                self.assertEqual(self.cg['BATCH_INPUTS']['1']['BASE']['BETAE_UNIT'], beta)
+                self.assertEqual(self.cg['BATCH_INPUTS']['1']['BASE']['N_ENERGY'], 48)
+                self.assertEqual(source['BETAE_UNIT'], .00848771)
+
+    def test_page_inherit_does_not_reset_constant_but_explicit_all_inherit_does(self):
+        self.send()
+        physics = self.cg['SETTINGS']['PHYSICS']
+        self.transfer['Transfer_file']['input.cgyro'].update(BETAE_UNIT=.00848771, N_ENERGY=32)
+        configure(physics)
+        rows = project_tests.project.sync_cgyro_choices(self.root, self.actions.settings)
+        source = project_tests.project.read(self.root, rows[0]['path'])
+        initialize_parameters(physics, source)
+        physics['fixed_parameters']['N_ENERGY'].update(enabled=True, value=48)
+        self.actions.reset_cgyro_parameters(['BETAE_UNIT', 'N_ENERGY'], rows[0]['key'])
+        self.assertEqual(physics['fixed_parameters']['BETAE_UNIT'], dict(enabled=False, value=.0001))
+        self.assertEqual(physics['fixed_parameters']['N_ENERGY'], dict(enabled=False, value=32))
+        self.actions.inherit_cgyro_parameters()
+        project_tests.ProjectUI(self.actions, project_tests.UI(self.root)).render_cgyro_parameters(self.cg, rows)
+        self.assertEqual(physics['constant_parameter'], '')
+        self.assertEqual(physics['fixed_parameters']['BETAE_UNIT'], dict(enabled=False, value=.00848771))
+
     def test_prepared_case_and_local_controls_share_the_fixed_parameter_value(self):
         self.send()
         physics = self.cg['SETTINGS']['PHYSICS']

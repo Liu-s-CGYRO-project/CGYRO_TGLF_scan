@@ -692,7 +692,7 @@ class ProjectActions:
         values = numeric_source(source)
         catalog = parameter_catalog([source])
         for name in names:
-            if name not in parameters:
+            if name not in parameters or name == physics.get('constant_parameter', ''):
                 continue
             parameters[name]['enabled'] = False
             if name in catalog:
