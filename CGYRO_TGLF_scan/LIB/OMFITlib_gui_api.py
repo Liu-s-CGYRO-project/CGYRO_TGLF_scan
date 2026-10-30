@@ -5,6 +5,7 @@ import inspect
 from collections import ChainMap
 from functools import update_wrapper
 from types import FunctionType
+from OMFITlib_tk_callbacks import SAVE_RETRY_MS
 import tkinter as tk
 from tkinter import ttk
 
@@ -51,7 +52,7 @@ class _DeferredGUIRefresh:
         # finishes instead of nesting another module redraw in its wait loop.
         session = getattr(self.api, 'OMFITaux', {}).get('GUI', None)
         if getattr(session, 'lockSave', False):
-            self.pending = self.top.after(100, self.flush)
+            self.pending = self.top.after(SAVE_RETRY_MS, self.flush)
             return
         self.dirty, self.running = False, True
         try:

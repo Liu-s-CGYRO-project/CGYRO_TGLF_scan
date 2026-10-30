@@ -35,9 +35,9 @@ for i_moment in arange(n_moment):
         # xlabel('$k_y\\rho_s$',fontsize=fs1,family='serif')
         ax.set_xscale(tick_scale[root['SETTINGS']['PLOTS']['ilogx']])
         ax.set_yscale(tick_scale[root['SETTINGS']['PLOTS']['ilogy']])
-        ylabel('$\delta{'+moment_name[i_moment]+'}/\\rho_s$',fontsize=fs1,family='serif')
+        ylabel('$\\delta{'+moment_name[i_moment]+'}/\\rho_s$',fontsize=fs1,family='serif')
         if i_moment==0:
-            title('$\\theta=' + str(theta) + '\pi$', fontsize=fs1, family='serif')
+            title('$\\theta=' + str(theta) + '\\pi$', fontsize=fs1, family='serif')
         if i_moment == n_moment-1:
             xlabel('$k_y\\rho_s$', fontsize=fs1, family='serif')
 # npv over kx

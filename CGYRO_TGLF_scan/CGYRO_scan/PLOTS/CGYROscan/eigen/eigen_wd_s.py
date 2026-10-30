@@ -22,7 +22,7 @@ for dirname in root['SETTINGS']['PLOTS']['dirname']:
     case=mounttree[dirname]
     subplot(251)
     plot(case.theta_b/pi,case.phi_b,lab[ncount],linewidth=lw,label=dirname)
-    xlabel('$\\theta_b(\pi)$',fontsize=fs2,family='serif')
+    xlabel('$\\theta_b(\\pi)$',fontsize=fs2,family='serif')
     if case.n_r==1:
         xlim([-1,1])
     else:
@@ -40,7 +40,7 @@ for dirname in root['SETTINGS']['PLOTS']['dirname']:
     elif inorm==2:
         phi_p=case.phi_p/phi_p0
     plot(case.theta_p/pi,abs(phi_p),lab[ncount],linewidth=lw,label=dirname)
-    xlabel('$\\theta_p(\pi)$',fontsize=fs2,family='serif')
+    xlabel('$\\theta_p(\\pi)$',fontsize=fs2,family='serif')
     xticks(fontsize=fs2,family='serif')
     yticks(fontsize=fs2,family='serif')
     # title('$\phi$',fontsize=fs2,family='serif')
@@ -48,7 +48,7 @@ for dirname in root['SETTINGS']['PLOTS']['dirname']:
     subplot(252)
     if case.iapar==1:
         plot(case.theta_b/pi,case.apar_b,lab[ncount],linewidth=lw,label=dirname)
-    xlabel('$\\theta_b(\pi)$',fontsize=fs2,family='serif')
+    xlabel('$\\theta_b(\\pi)$',fontsize=fs2,family='serif')
     if case.n_r==1:
         xlim([-1,1])
     else:
@@ -63,7 +63,7 @@ for dirname in root['SETTINGS']['PLOTS']['dirname']:
         if inorm == 1:
             apar_p = case.apar_p / mean(abs(case.apar_p))
         plot(case.theta_p/pi,abs(case.apar_p),lab[ncount],linewidth=lw,label=dirname)
-    xlabel('$\\theta_p(\pi)$',fontsize=fs2,family='serif')
+    xlabel('$\\theta_p(\\pi)$',fontsize=fs2,family='serif')
     xticks(fontsize=fs2,family='serif')
     yticks(fontsize=fs2,family='serif')
     # title('$\phi$',fontsize=fs2,family='serif')
@@ -83,7 +83,7 @@ for dirname in root['SETTINGS']['PLOTS']['dirname']:
     # theta, q_loc, s_loc=local_s_q(inputcgyro)
     plot(case.theta_p/pi,case.s_loc,lab[ncount],linewidth=lw,label=dirname)
     plot([-1, 1], [0, 0], '--r', linewidth=lw / 2.)
-    xlabel('$\\theta_p(\pi)$',fontsize=fs2,family='serif')
+    xlabel('$\\theta_p(\\pi)$',fontsize=fs2,family='serif')
     xticks(fontsize=fs2,family='serif')
     yticks(fontsize=fs2,family='serif')
     title('$s_{loc}$',fontsize=fs2,family='serif')
@@ -101,7 +101,7 @@ for dirname in root['SETTINGS']['PLOTS']['dirname']:
     #        xlabel('$\\theta_p(\pi)$',fontsize=fs2,family='serif')
     xticks(fontsize=fs2, family='serif')
     yticks(fontsize=fs2, family='serif')
-    xlabel('$\\theta_p(\pi)$',fontsize=fs2,family='serif')
+    xlabel('$\\theta_p(\\pi)$',fontsize=fs2,family='serif')
 #    title('$|s_{loc}|$', fontsize=fs2, family='serif')
     title('$k_{perp}$', fontsize=fs2, family='serif')
     subplot(255)
@@ -124,7 +124,7 @@ for dirname in root['SETTINGS']['PLOTS']['dirname']:
     #        xlabel('$\\theta_p(\pi)$',fontsize=fs2,family='serif')
     xticks(fontsize=fs2, family='serif')
     yticks(fontsize=fs2, family='serif')
-    xlabel('$\\theta_p(\pi)$', fontsize=fs2, family='serif')
+    xlabel('$\\theta_p(\\pi)$', fontsize=fs2, family='serif')
     title('$q_{loc}$', fontsize=fs2, family='serif')
 
 

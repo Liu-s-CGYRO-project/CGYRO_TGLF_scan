@@ -10,6 +10,31 @@ from OMFITlib_gui_fonts import FONT_FILENAME, FONT_PROFILE, configure_window_fon
 from OMFITlib_font_cache import FontError, cached_fonts
 
 
+# Geometry policy in logical pixels; content widths also use the live Tk font.
+# Keep screen margins independent of font size so the window stays on-screen.
+FONT_POLL_MS = 25
+SCROLL_SETTLE_MS = 10
+CONTENT_MIN_WIDTH = 640
+CONTENT_MAX_WIDTH = 760
+CONTENT_COLUMNS = 72
+SCREEN_WIDTH_MARGIN = 64
+WINDOW_MAX_HEIGHT = 900
+SCREEN_HEIGHT_MARGIN = 100
+LABEL_WRAP_MARGIN = 80
+FORM_LABEL_PADDING = 18
+SECTION_VERTICAL_PADDING = (14, 10)
+FORM_LABEL_REFERENCES = ('每进程线程数', 'profiles_gen')
+
+
+def content_width(widget, font):
+    return min(CONTENT_MAX_WIDTH, max(CONTENT_MIN_WIDTH, font.measure('0') * CONTENT_COLUMNS),
+               widget.winfo_screenwidth() - SCREEN_WIDTH_MARGIN)
+
+
+def form_label_width(font, caption):
+    return max(font.measure(text) for text in (caption,) + FORM_LABEL_REFERENCES) + FORM_LABEL_PADDING
+
+
 def prepare_gui_fonts(ui):
     """Verify cached fonts off-thread; opening the workbench never downloads."""
     parent = getattr(ui, '_aux', {}).get('parentGUI', None)
@@ -37,7 +62,7 @@ def prepare_gui_fonts(ui):
         if state['closed']:
             return
         if not state['ready'].is_set():
-            state['timer'] = top.after(25, complete)
+            state['timer'] = top.after(FONT_POLL_MS, complete)
             return
         if not state['fonts']:
             return
@@ -64,7 +89,7 @@ def prepare_gui_fonts(ui):
 
     top.bind('<Destroy>', close, add='+')
     threading.Thread(target=verify, name='omfit-workbench-fonts', daemon=True).start()
-    state['timer'] = top.after(25, complete)
+    state['timer'] = top.after(FONT_POLL_MS, complete)
 
 
 @contextmanager
@@ -82,7 +107,7 @@ def section_group(ui, title):
     heading = ttk.Label(group, text=title)
     heading._cgyro_role = 'heading'
     group.configure(labelwidget=heading, labelanchor='nw')
-    group.pack(side=tk.TOP, expand=False, fill=tk.X, padx=6, pady=(14, 10))
+    group.pack(side=tk.TOP, expand=False, fill=tk.X, padx=6, pady=SECTION_VERTICAL_PADDING)
     # same_row restores this group after each row. Always restore its parent
     # before subsequent controls are placed, including when rendering fails.
     aux['parentGUI'] = group
@@ -208,7 +233,7 @@ class NativeLayout:
         self.bold = gui_font(content, base, weight='bold')
         self.heading = gui_font(content, base, size=font_size(content) + 1, weight='bold')
         self.gap = max(4, self.normal.metrics('linespace') // 5)
-        self.width = min(760, max(640, self.normal.measure('0') * 72), content.winfo_screenwidth() - 64)
+        self.width = content_width(content, self.normal)
         self.tag = hashlib.sha256(repr(self.normal.actual()).encode('utf-8')).hexdigest()[:12]
         background = self.style.lookup('TFrame', 'background') or '#d9d9d9'
         self.background = background
@@ -250,7 +275,7 @@ class NativeLayout:
         top = self.content.winfo_toplevel()
         if getattr(top, '_cgyro_portrait_layout', False):
             return
-        height = min(900, top.winfo_screenheight() - 100)
+        height = min(WINDOW_MAX_HEIGHT, top.winfo_screenheight() - SCREEN_HEIGHT_MARGIN)
         top.geometry('{}x{}'.format(self.width, height))
         top._cgyro_portrait_layout = True
 
@@ -304,7 +329,7 @@ class NativeLayout:
                 elif role == 'pending':
                     child.configure(foreground='#3f3f3f' if self.light_background else '#eeeeee')
                 if self.compact:
-                    child.configure(wraplength=self.width - 80)
+                    child.configure(wraplength=self.width - LABEL_WRAP_MARGIN)
             elif kind in ('TEntry', 'TCombobox'):
                 child.configure(font=self.normal)
                 columns = getattr(child, '_cgyro_field_columns', None)
@@ -413,9 +438,7 @@ class NativeLayout:
                 child.grid(row=1, column=index, sticky='ew' if child is field else 'w',
                            padx=(0, 4), pady=(0, self.gap // 2))
         else:
-            frame.columnconfigure(0, minsize=max(self.normal.measure(caption),
-                                               self.normal.measure('每进程线程数'),
-                                               self.normal.measure('profiles_gen')) + 18)
+            frame.columnconfigure(0, minsize=form_label_width(self.normal, caption))
             frame.columnconfigure(1, weight=1)
             for index, child in enumerate(children):
                 child.grid(row=0, column=index, sticky='ew' if child is field and not short else 'w',
@@ -522,7 +545,7 @@ class NativeLayout:
             # Native GUI.update drains idle handlers while sizing the window.
             # Coalesce its Configure burst after that pass, avoiding repeated
             # native/local geometry corrections inside update_idletasks().
-            self.scroll_pending = self.content.after(10, self._sync_scroll)
+            self.scroll_pending = self.content.after(SCROLL_SETTLE_MS, self._sync_scroll)
 
     def _cancel_scroll(self):
         if self.scroll_pending is not None:
@@ -659,12 +682,10 @@ class NativeLayout:
     def refresh_font_metrics(self):
         """Re-measure after a GUI font/size change without rebuilding callbacks."""
         self.gap = max(4, self.normal.metrics('linespace') // 5)
-        self.width = min(760, max(640, self.normal.measure('0') * 72), self.content.winfo_screenwidth() - 64)
+        self.width = content_width(self.content, self.normal)
         for frame, form in self.forms:
             if frame.winfo_exists() and not form[2]:
-                frame.columnconfigure(0, minsize=max(self.normal.measure(form[1]),
-                                                   self.normal.measure('每进程线程数'),
-                                                   self.normal.measure('profiles_gen')) + 18)
+                frame.columnconfigure(0, minsize=form_label_width(self.normal, form[1]))
         for frame, items in self.rows:
             frame._cgyro_columns = None
         for frame, items in self.inline_rows:

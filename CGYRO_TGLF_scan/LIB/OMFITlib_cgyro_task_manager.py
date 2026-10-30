@@ -12,7 +12,8 @@ from OMFITlib_cgyro_archive import case_parts
 from OMFITlib_cgyro_present import case_caption
 from OMFITlib_cgyro_task_catalog import task_catalog
 from OMFITlib_cgyro_task_cleanup import preview_tasks
-from OMFITlib_gui_fonts import configure_window_fonts, style_widget, unbind_callback
+from OMFITlib_gui_fonts import configure_window_fonts, style_widget
+from OMFITlib_tk_callbacks import unbind_callback
 
 
 def task_case_caption(case_id):

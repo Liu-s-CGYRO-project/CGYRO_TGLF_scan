@@ -63,7 +63,7 @@ for k_case in range(n_case):
         # xlabel('$\\theta(\pi)$', fontsize=fs1, family='serif')
         # title('$\phi^2(k_y\\rho_s=%.2f,k_x\\rho_s=%.2f)$' % (casek.ky[i_n], casek.kx[i_r]),fontsize=fs1)
         if k_field==n_field_plot-1:
-            xlabel('$\\theta(\pi)$',fontsize=fs1)
+            xlabel('$\\theta(\\pi)$',fontsize=fs1)
         if k_field==0:
             title('$k_y\\rho_s=%.2f,k_x\\rho_s=%.2f$' % (casek.ky[i_n], casek.kx[i_r]), fontsize=fs1)
         ylabel(r'$\langle |'+title_name[k_field]+r'|\rangle_t^2$',fontsize=fs2)
@@ -78,7 +78,7 @@ for k_case in range(n_case):
         yticks(fontsize=fs2)
         # xlabel('$\\theta(\pi)$', fontsize=fs1, family='serif')
         if k_field==n_field_plot-1:
-            xlabel('$\\theta(\pi)$',fontsize=fs1)
+            xlabel('$\\theta(\\pi)$',fontsize=fs1)
         if k_field==0:
             title('$k_y\\rho_s=%.2f$' % casek.ky[i_n],fontsize=fs1)
         subplot(n_field_plot,3,3+n_field_plot*k_field)
@@ -97,7 +97,7 @@ for k_case in range(n_case):
         xticks(fontsize=fs2)
         yticks(fontsize=fs2)        # legend(loc=0, fontsize=fs2).draggable(True)
         if k_field==n_field_plot-1:
-            xlabel('$\\theta(\pi)$',fontsize=fs1)
+            xlabel('$\\theta(\\pi)$',fontsize=fs1)
         if k_field==0:
             if i_rmzf==0:
                 title('sum over all n',fontsize=fs1,family='serif')

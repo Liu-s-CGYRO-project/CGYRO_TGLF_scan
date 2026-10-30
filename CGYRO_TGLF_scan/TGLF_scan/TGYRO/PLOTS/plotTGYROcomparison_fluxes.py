@@ -9,7 +9,7 @@ fn = FigureNotebook(0, 'TGYRO Flux Matching')
 
 for chkey, chtex, chname, mks in zip(
     ['eflux_e', 'eflux_i', 'pflux_e', 'pflux_i', 'mflux_e', 'mflux_i', 'p_e', 'p_i'],
-    ['Q_e', 'Q_i', '\\Gamma_e', '\\Gamma_i', '\Pi_e', '\Pi_i', 'S_e', 'S_i'],
+    ['Q_e', 'Q_i', '\\Gamma_e', '\\Gamma_i', '\\Pi_e', '\\Pi_i', 'S_e', 'S_i'],
     [
         'Electron Energy',
         'Ion Energy',

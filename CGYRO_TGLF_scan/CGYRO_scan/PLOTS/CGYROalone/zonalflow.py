@@ -26,7 +26,7 @@ for k_case in range(n_case):
     except:
         semilogy(casek.kx, casek.zf_kx[1:]/casek.rho,lab[k_case],linewidth=lw,label=casename)
     xlabel('$k_x\\rho_s$',fontsize=fs1,family='serif')
-    title('$\phi_{ZF}/\\rho_s(\\theta=%.2f)$' % ftheta_plot,fontsize=fs1)
+    title('$\\phi_{ZF}/\\rho_s(\\theta=%.2f)$' % ftheta_plot,fontsize=fs1)
     plt.show()
     # print(casek.freq_n[i_n].data)
     xticks(fontsize=fs1)
@@ -35,7 +35,7 @@ for k_case in range(n_case):
     plot(casek.kx, casek.gamma_zf,lab[k_case],linewidth=lw,label=casename)
     xlabel('$k_x\\rho_s$',fontsize=fs1,family='serif')
     # title('$\gamma_{ZF}(k_x^2*\phi_{ZF},cs/a)(\\theta=%.2f)$' % ftheta_plot,fontsize=fs1)
-    title('$\gamma_{ZF}(c_s/a, \\theta=%.2f)$' % ftheta_plot,fontsize=fs1)
+    title('$\\gamma_{ZF}(c_s/a, \\theta=%.2f)$' % ftheta_plot,fontsize=fs1)
     xticks(fontsize=fs1)
     yticks(fontsize=fs1)
     subplot(1,4,3)

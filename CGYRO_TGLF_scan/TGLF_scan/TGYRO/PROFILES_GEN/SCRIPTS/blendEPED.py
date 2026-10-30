@@ -129,7 +129,7 @@ for kk, (what, norm, name) in enumerate(merge_profiles):
         plot(rho, y, '--k', lw=2.0, label=txt + ' profile')
         ylabel('$' + whatNice + '$')
         plot_regions(True)
-        title('$\,$')
+        title('$\\,$')
 
         subplot(2, len(merge_profiles), len(merge_profiles) + 1 + kk, sharex=ax)
         if rho_nml > 0:

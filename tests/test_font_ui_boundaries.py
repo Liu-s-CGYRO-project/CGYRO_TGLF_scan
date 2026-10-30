@@ -102,7 +102,7 @@ class FontCacheBoundaryTests(unittest.TestCase):
         self.assertNotEqual(threads[0], threading.get_ident())
 
     def test_standalone_and_project_font_libraries_remain_identical(self):
-        for name in ('font_cache', 'font_download_ui', 'font_ui', 'gui_fonts'):
+        for name in ('font_cache', 'font_download_ui', 'font_ui', 'gui_fonts', 'tk_callbacks'):
             filename = 'OMFITlib_' + name + '.py'
             self.assertEqual((REPO / 'CGYRO_TGLF_scan/LIB' / filename).read_bytes(),
                              (REPO / 'OMFITtemplates/LIB' / filename).read_bytes(), filename)

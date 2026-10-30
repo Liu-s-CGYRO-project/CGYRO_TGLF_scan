@@ -119,7 +119,7 @@ plot(x_exp, ne_exp, label='expt.', ls='--', color='black')
 
 # plot Qe,conv = 1.5*Te*Ge
 sca(axs.flat[5])
-gca().set_ylabel('$Q_{e,conv} = 1.5*T_e*\Gamma_e$ (W/$cm^2$)')
+gca().set_ylabel('$Q_{e,conv} = 1.5*T_e*\\Gamma_e$ (W/$cm^2$)')
 if root['INPUTS']['input.tgyro']['LOC_PFLUX_METHOD'] == 3:
     plot(x_exp, exp_G_tot, label='PB: beam+wall', ls='--', color='black')
     plot(x_exp, exp_G_beam, label='PB: beam', ls='-.', color='grey')
@@ -136,14 +136,14 @@ legend(loc='best').draggable(True)
 # plot R*omega
 sca(axs.flat[6])
 gca().set_xlabel(xtitle)
-gca().set_ylabel('R*$\Omega_0$ (km/s)')
+gca().set_ylabel('R*$\\Omega_0$ (km/s)')
 y0 = output['M=wR/cs'][iteration, :] * output['c_s'][iteration, :]
 plot(x0, y0 / 1e3, marker='o', ls='', color='red')
 plot(x_exp, Romega_exp / 1e3, label='expt.', ls='--', color='black')
 
 # plot Pi_i
 sca(axs.flat[7])
-gca().set_ylabel('$\Pi_i$ (N/m)')
+gca().set_ylabel('$\\Pi_i$ (N/m)')
 plot(x_exp, exp_Pi_i, label='power balance', ls='--', color='black')
 plot(x0, output['mflux_target'][iteration, :] * Pi_gB, ls='-', color='black', label='target')
 plot(x0, output['mflux_tot'][iteration, :] * Pi_gB, ls='-', marker='o', color='red', label='model (tot)')

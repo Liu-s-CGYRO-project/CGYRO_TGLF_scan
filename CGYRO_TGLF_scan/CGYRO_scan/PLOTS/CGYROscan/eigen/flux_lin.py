@@ -35,7 +35,7 @@ for k in range(0,nRange_eigen):
 figure('Flux Estimated From Linear Calculation',figsize=[16,9])
 avearr=['flux_lin_arr','theta_width_arr','gamma_arr','k_perp_squal_arr']
 unitarr=[' ','(rad)','(cs/a)','']
-titlearr=['$Q=\\theta_{width}*\gamma/k_{perp}^2$','$\\theta_{width}$','$\gamma$','$k_{\perp}^2$']
+titlearr=['$Q=\\theta_{width}*\\gamma/k_{perp}^2$','$\\theta_{width}$','$\\gamma$','$k_{\\perp}^2$']
 if idimplt==0:
     for p in arange(1,5):
         axp=subplot(1,4,p)

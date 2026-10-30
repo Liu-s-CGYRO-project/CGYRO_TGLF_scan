@@ -6,7 +6,7 @@ Keep OMFITlib imports at module scope: native GUI execution clears its import ho
 from builtins import all, any, bool, callable, dict, isinstance, iter, len, list, next, str
 from collections import OrderedDict
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from OMFITlib_workbench_catalog import STATUS
 from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
@@ -14,6 +14,7 @@ from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choi
 from OMFITlib_project import MODULES, collect_issues, location, read, text_value, sync_run_issues
 from OMFITlib_cgyro_present import run_caption, collection_caption, record_details
 from OMFITlib_server_capabilities import matching_profile, resource_issues, summary as capability_summary
+from OMFITlib_project_history import DISPLAY_LIMIT, ERROR_LOG_LIMIT, LOG_LIMIT, clear_history, history_counts
 
 
 class RuntimePage:
@@ -64,16 +65,31 @@ class RuntimePage:
 
     def runtime_history(self):
         records = read(self.root, ('PROJECT_STATE', 'activity'), {})
+        counts = history_counts(records)
+        self.label('操作日志 {} 条；纯输入备份 {} 条；结果备份或其他保留记录 {} 条。'.format(
+            counts['log'], counts['input_backup'], counts['retained']))
+        self.ui.Button('清理操作日志', lambda: clear_history(records, 'log'),
+                       updateGUI=True, refresh_tree=False, refresh_scope='section')
+        self.ui.Button('清理纯输入备份…', self.clear_input_history,
+                       updateGUI=True, refresh_tree=False, refresh_scope='section')
+        self.label('自动保留最近 {} 条普通日志和 {} 条失败 / 中止日志；备份不自动删除。'.format(LOG_LIMIT, ERROR_LOG_LIMIT))
         if not records:
             self.label('尚无通过总控页执行的操作。')
-        for key in list(records)[-20:][::-1]:
+        for key in list(records)[-DISPLAY_LIMIT:][::-1]:
             record = records[key]
             self.ui.Separator(record['title'])
             self.label('{} · {}{}'.format(record['created'], STATUS.get(record['status'], record['status']),
                 '\n' + record['error'] if record.get('error', None) else ''))
-            if record.get('previous_inputs', None):
-                self.label('保留的旧输入：' + '；'.join(record['previous_inputs'].keys()))
+            if 'previous_inputs' in record:
+                self.label('此记录保留旧输入；内容可在 PROJECT_STATE/activity 中查看。')
         self.label('完整历史在 工程 → PROJECT_STATE 中；输入历史和旧结果随工程保存。')
+
+    def clear_input_history(self):
+        parent = getattr(self.ui, '_aux', {}).get('parentGUI', None)
+        if messagebox.askokcancel('清理纯输入备份',
+                '删除已完成操作中保留的旧输入备份。此操作无法撤销。\n'
+                '当前输入、含计算结果的备份、待处理记录和远程文件均保留。', parent=parent, icon='warning'):
+            clear_history(read(self.root, ('PROJECT_STATE', 'activity'), {}), 'input_backup')
 
     def runtime_section(self, caption):
         label = self.label(caption)

@@ -704,7 +704,7 @@ class StateContractTests(unittest.TestCase):
             raise RuntimeError('download failed for bad')
         root = dict(RUN_MANIFEST=manifest, SCRIPTS={'downsync.py': SimpleNamespace(run=download)})
         with patch.object(retry, 'require_retained_run'), patch.object(retry, 'save_current'), \
-                patch.object(retry, 'collected_points', return_value={'good'}), patch.object(retry.time, 'sleep'), \
+                patch.object(retry, 'collected_points', return_value={'good'}), patch.object(retry.RetryWait, 'wait'), \
                 patch.object(retry, 'submit_retry', side_effect=AssertionError('unexpected solver submission')):
             retry.collect_current(root, object(), dict, None, None)
         self.assertEqual(len(calls), 3)

@@ -1,5 +1,6 @@
 """Build a selected tab in place without rerunning its owning OMFIT GUI."""
 from builtins import dict, getattr, isinstance, list, str
+from OMFITlib_tk_callbacks import SAVE_RETRY_MS
 import tkinter as tk
 from tkinter import ttk
 from OMFITlib_gui_context import alive, bind_actions, owner
@@ -98,7 +99,7 @@ class DeferredSection:
         session = getattr(self.ui, 'OMFITaux', {}).get('GUI', None)
         if getattr(session, 'lockSave', False):
             if self.pending is None:
-                self.pending = self.parent.after(100, self._retry)
+                self.pending = self.parent.after(SAVE_RETRY_MS, self._retry)
             return
         # Build offscreen, exposing only a complete panel. Failed construction
         # leaves no partial controls; selecting the tab again can retry.

@@ -123,7 +123,7 @@ ax.set_xscale('log')
 ax.legend(numpoints=1, frameon=False, loc='best').draggable()
 ax.set_xlim([min(ky) * 0.88, max(ky) * 1.2])
 ax.set_ylim([2e-2, 2e1])
-ax.set_ylabel('$\gamma \; (a/c_s)$')
+ax.set_ylabel('$\\gamma \\; (a/c_s)$')
 ax.set_xlabel('$k_\\theta\\rho_s$')
 
 shot = root['SETTINGS']['EXPERIMENT']['shot']  # useful to have here to change the title to shot and time

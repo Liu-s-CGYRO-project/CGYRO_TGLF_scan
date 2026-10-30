@@ -3,6 +3,21 @@
 Some OMFIT controls consult the global last-rendered GUI inside a deferred
 callback (notably Entry's multiline editor and FilePicker). Scope only this
 project's widget commands; do not patch OMFITx or Tk globally.
+
+Cross-module widget protocol (window-local; never persisted in project data):
+* DeferredSection owns parent._cgyro_section and _cgyro_local_refresh. gui_api
+  walks ancestors to find the nearest field/section refresh callback.
+* DeferredSection(action=True), or ProjectUI's page host, owns
+  _cgyro_action_refresh. gui_api and workbench_cgyro_ui use that page boundary
+  for actions affecting sibling tabs; they must not broaden it to other GUIs.
+* DeferredSection alone increments gui._cgyro_view_revision. Sections compare
+  their captured revision on show; stale hidden panes rebuild only on access.
+  It is a view invalidation counter, not a result/data-cache version.
+The widget/GUI owns the lifetime: destroy cancels pending refreshes. Missing
+boundaries fall back only to the registered owning window, never rootGUI.
+Keep the attribute names for callbacks already alive during template updates.
+Pure Tk disposal/timing helpers live in OMFITlib_tk_callbacks (no GUI API import),
+so fonts, controls and scheduler waiting do not create an import cycle here.
 """
 from builtins import bool, dict, isinstance, list, set, str, tuple
 import tkinter as tk

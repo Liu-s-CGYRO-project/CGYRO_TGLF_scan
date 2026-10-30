@@ -102,8 +102,8 @@ if csda[0]==1:
     w_arr=w_arr*csda[1]
     gamma_arr=gamma_arr*csda[1]
 gamma_max=amax(gamma_arr/kyarr**powky)
-omega_dic={0:'$\omega$',1:'$\omega/ky$'}
-gamma_dic={0:'$\gamma$',1:'$\gamma/ky$'}
+omega_dic={0:'$\\omega$',1:'$\\omega/ky$'}
+gamma_dic={0:'$\\gamma$',1:'$\\gamma/ky$'}
 freqarr=['w_arr','err_w_arr','gamma_arr','err_gamma_arr']
 if icgyro==0:
     BunitOverBt=inputcgyro['KAPPA']*(1+inputcgyro['S_KAPPA']/2.-0.5*inputcgyro['SHIFT']*inputcgyro['RADIUS']/inputcgyro['ASPECT_RATIO'])
@@ -144,7 +144,7 @@ if idimplt==0:
         axp.spines['right'].set_linewidth(bwith)
 
         if unit_flag==1:
-            title(freqarr[p-1]+'$(\omega_A)$',fontsize=fs1)
+            title(freqarr[p-1]+'$(\\omega_A)$',fontsize=fs1)
         else:
             if p==2 or p==4:
                 title(freqarr[p-1]+'$(c_s/a)$'+'(relative)' , fontsize=fs1)
@@ -159,7 +159,7 @@ if idimplt==0:
             if ipltExB == 1:
                 # print(gamma_e)
                 plot(kyarr,gamma_e*ones(len(kyarr))/kyarr**powky,'--r',linewidth=lw)
-                text(kyarr[int(len(kyarr)/2.)],gamma_e*1.1/kyarr[int(len(kyarr)/2.)],'$\gamma_E$',fontsize=fs1,color='r')
+                text(kyarr[int(len(kyarr)/2.)],gamma_e*1.1/kyarr[int(len(kyarr)/2.)],'$\\gamma_E$',fontsize=fs1,color='r')
         if p==3 or p==4:
             axp.set_xlabel('$k_y$*$\\rho_s$',fontdict={'family' : 'Times New Roman', 'size':fs1},labelpad=5)
         if p==2 or p==4:
@@ -178,9 +178,9 @@ else:
 #    ylabel('$\omega/ky**$'+str(powky),fontsize=fs1)
     ylabel(omega_dic[powky],fontsize=fs1)
     if unit_flag == 1:
-        title('$\omega(omega_A)$',fontdict={'family' : 'Times New Roman', 'size':fs1})
+        title('$\\omega(omega_A)$',fontdict={'family' : 'Times New Roman', 'size':fs1})
     else:
-        title('$\omega(c_s/a)$',fontdict={'family' : 'Times New Roman', 'size':fs1})
+        title('$\\omega(c_s/a)$',fontdict={'family' : 'Times New Roman', 'size':fs1})
     ax3=subplot(2,2,3,sharex=ax1)
     C_avg=0.
     for k in range(0,num_ky):
@@ -229,9 +229,9 @@ else:
     xlabel(root['SETTINGS']['PLOTS']['Para_label'],fontdict={'family' : 'Times New Roman', 'size':fs1},labelpad=5)
     ylabel(gamma_dic[powky],fontdict={'family' : 'Times New Roman', 'size':fs1},labelpad=5)
     if unit_flag == 1:
-        title('$\gamma(omega_A)$', fontsize=fs1)
+        title('$\\gamma(omega_A)$', fontsize=fs1)
     else:
-        title('$\gamma(c_s/a)$', fontsize=fs1)
+        title('$\\gamma(c_s/a)$', fontsize=fs1)
     #plot the error of w and gamma
     ax2=subplot(2,2,2,sharex=ax1)
     for k in range(0,num_ky):
@@ -243,8 +243,8 @@ else:
     xlim([0.8*min(Range),1.2*max(Range)])
     xticks(fontsize=fs2)
     yticks(fontsize=fs2)
-    title('$\omega_{err}$', fontsize=fs1)
-    ylabel('$\omega_{err}$',fontdict={'family' : 'Times New Roman', 'size':fs1},labelpad=5)
+    title('$\\omega_{err}$', fontsize=fs1)
+    ylabel('$\\omega_{err}$',fontdict={'family' : 'Times New Roman', 'size':fs1},labelpad=5)
     ax4=subplot(2,2,4,sharex=ax1)
     for k in range(0,num_ky):
         semilogy(Range,err_gamma_arr.T[k],lab[k],linewidth=lw+1)
@@ -256,8 +256,8 @@ else:
     yticks(fontsize=fs2)
     xlim([0.8*min(Range),1.2*max(Range)])
     xlabel(root['SETTINGS']['PLOTS']['Para_label'],fontdict={'family' : 'Times New Roman', 'size':fs1},labelpad=5)
-    title('$\gamma_{err}$', fontsize=fs1)
-    ylabel('$\gamma_{err}$',fontdict={'family' : 'Times New Roman', 'size':fs1},labelpad=5)
+    title('$\\gamma_{err}$', fontsize=fs1)
+    ylabel('$\\gamma_{err}$',fontdict={'family' : 'Times New Roman', 'size':fs1},labelpad=5)
 
     plt.rc('font',family='Times New Roman')
     xticks(fontsize=fs2)

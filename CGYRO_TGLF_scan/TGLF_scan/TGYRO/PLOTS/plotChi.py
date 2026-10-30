@@ -23,7 +23,7 @@ ax.set_xlim(0, 1)
 ax.set_ylim(0.1, 20)
 ax.set_yscale('log')
 ax.set_xlabel(r'$\rho$')
-ax.set_ylabel(' $\chi_i\ \mathrm{[m^2/s]}$', fontsize=15)
+ax.set_ylabel(' $\\chi_i\\ \\mathrm{[m^2/s]}$', fontsize=15)
 ax.grid('on')
 
 
@@ -41,7 +41,7 @@ ax.set_xlim(0, 1)
 ax.set_ylim(0.1, 20)
 ax.set_yscale('log')
 ax.set_xlabel(r'$\rho$', fontsize=15)
-ax.set_ylabel(' $\chi_e\ \mathrm{[m^2/s]}$', fontsize=15)
+ax.set_ylabel(' $\\chi_e\\ \\mathrm{[m^2/s]}$', fontsize=15)
 ax.grid('on')
 
 

@@ -4,7 +4,8 @@ import tkinter as tk
 from tkinter import ttk
 from OMFITlib_gui_api import set_checkbox_value, style_checkbox
 from OMFITlib_gui_deferred import deferred_section
-from OMFITlib_gui_fonts import style_widget, unbind_callback
+from OMFITlib_gui_fonts import style_widget
+from OMFITlib_tk_callbacks import unbind_callback
 
 PARAMETER_PAGE_SIZE = 24
 SEARCH_DELAY_MS = 180

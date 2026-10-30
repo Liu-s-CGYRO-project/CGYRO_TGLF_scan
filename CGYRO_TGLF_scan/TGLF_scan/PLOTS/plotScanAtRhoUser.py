@@ -105,7 +105,7 @@ for n, scan in enumerate(scans):
         if n == 0:
 
             ax.annotate(
-                '$\gamma_{ExB} $', xy=(max(ky) * 0.6, vExB * 0.8), xycoords='data', ha='left', va='center', color=line.get_color()
+                '$\\gamma_{ExB} $', xy=(max(ky) * 0.6, vExB * 0.8), xycoords='data', ha='left', va='center', color=line.get_color()
             ).draggable()
 
     # --------------------------------------------------------------------
@@ -121,7 +121,7 @@ for n, scan in enumerate(scans):
         if n == 0:
 
             ax[1].annotate(
-                '$\gamma_{ExB} $', xy=(max(ky) * 0.6, vExB * 0.8), xycoords='data', ha='left', va='center', color=line.get_color()
+                '$\\gamma_{ExB} $', xy=(max(ky) * 0.6, vExB * 0.8), xycoords='data', ha='left', va='center', color=line.get_color()
             ).draggable()
         # --------------------------------------------------------------------------
         if plot_subdominant:

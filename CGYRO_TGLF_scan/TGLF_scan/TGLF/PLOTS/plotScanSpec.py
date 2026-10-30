@@ -40,10 +40,10 @@ if plot_settings.get('Use_y_log', False):
     ax[1, 0].set_yscale('symlog')
 ax[1, 0].axhline(0, linestyle='dashed', color='black')
 ax[1, 1].axhline(0, linestyle='dashed', color='black')
-ax[1, 0].text(0.05, 0.95, 'elec ($\omega>0$)', transform=ax[1, 0].transAxes)
-ax[1, 0].text(0.05, 0.05, 'ion ($\omega<0$)', transform=ax[1, 0].transAxes)
-ax[1, 1].text(0.05, 0.95, 'elec ($\omega>0$)', transform=ax[1, 1].transAxes)
-ax[1, 1].text(0.05, 0.05, 'ion ($\omega<0$)', transform=ax[1, 1].transAxes)
+ax[1, 0].text(0.05, 0.95, 'elec ($\\omega>0$)', transform=ax[1, 0].transAxes)
+ax[1, 0].text(0.05, 0.05, 'ion ($\\omega<0$)', transform=ax[1, 0].transAxes)
+ax[1, 1].text(0.05, 0.95, 'elec ($\\omega>0$)', transform=ax[1, 1].transAxes)
+ax[1, 1].text(0.05, 0.05, 'ion ($\\omega<0$)', transform=ax[1, 1].transAxes)
 ax[0, 0].set_title('Most Unstable')
 ax[0, 1].set_title('Sub-dominant')
 for i in range(2):
@@ -98,7 +98,7 @@ for chan in fs:
             for f in range(nf):
                 ax[s, f].plot(fs['ky'], fs[chan].isel(species=s, field=f), color=colors[i])
     for f in range(nf):
-        ax[0, f].set_title(['$\phi$', '$B_{\perp}$', '$B_{\parallel}$'][f])
+        ax[0, f].set_title(['$\\phi$', '$B_{\\perp}$', '$B_{\\parallel}$'][f])
         ax[-1, f].set_xlabel('ky')
         for s in range(ns):
             ax[s, f].axhline(0, linestyle='dashed', color='black')

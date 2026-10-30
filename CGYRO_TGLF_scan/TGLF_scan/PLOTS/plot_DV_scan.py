@@ -93,7 +93,7 @@ for idx, var_name in enumerate(variables_to_scan.keys()):
             ax[qq, idx].grid('on')
 
     #################
-    ax[-1, idx].set_xlabel('$\\rho_{\phi}$', fontsize=20)
+    ax[-1, idx].set_xlabel('$\\rho_{\\phi}$', fontsize=20)
 
     # labels for each scanned variable
     ax[0, idx].text(

@@ -1,3 +1,17 @@
+# 工程 1.24.47 / 管理器 1.10.34：等待、历史边界与解绑（2026-10-30）
+
+**16 套件、278 项相关回归通过，无失败、错误、跳过或超时。** 本次发布证据位于 `_deliverables/audit_fixes_1.24.47`，原始测试记录位于 `_review_fixes_20261030`。
+
+- 等待与收集：`test_cgyro_wait` 9、`test_cgyro_collection` 50、`test_tk_callbacks` 9，覆盖取消等待、任务切换、异常、销毁清理、重复解绑、未知 Tcl 脚本及其他回调保留。
+- 历史边界：`test_project_history` 6、`test_project` 45，覆盖纯日志限量、未完成/未知记录与数据保留、输入去重、备份复制失败和分离清理。
+- GUI 与依赖：`test_cgyro_callback_imports` 7、`test_font_ui_boundaries` 6、`test_gui_font_performance` 11、`test_gui_open_native` 6、`test_gui_refresh_native` 34、`test_gui_tab_pages` 22、`test_workbench_navigation` 9。
+- 管理器：`manager_test_ui` 45、`manager_test_manager_startup` 10，验证开窗、布局、更新与回调。
+- 构建：`test_source_escapes` 2、`test_build_project` 7。修复的 27 个文件共 97 处无效转义，消除 80 条编译告警；修改前后 AST 等价。新无效转义会使构建失败。
+
+Windows Python 3.12/Tk 结合仓库原生控件快照和显式适配器执行 GUI 用例；收集脚本在本地 Ubuntu Python 3.10 运行。Tk 等待/解绑 9 项另在本地 Ubuntu/Tk 通过，与上表重复不叠加。Windows 沙箱限制硬链接导致的夹具构建错误，已在相同本地测试路径以正式权限重跑通过；未改弱原子文件安装机制。
+
+未连接太原正在运行的 OMFIT、未验证用户完整工程的保存重开、未提交或取消集群作业。定时等待期间可响应界面，单次同步远程查询本身仍采用现有超时；不承诺所有网络等待均已后台化。
+
 # 工程 1.24.46：嵌套标签高度与滚动边界（2026-10-29）
 
 **11 套件、192 项相关回归通过，无失败、错误、跳过或超时。** 另外在太原相同 Python 3.9/Linux Tk 环境执行 6 项开窗与标签回归，全部通过，与本地重复的用例不叠加计数。证据位于 `_diagnose_gui_tab_clip_20261029/verification.json`，发行回执在 `_deliverables/gui_tab_geometry_1.24.46`。

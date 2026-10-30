@@ -88,24 +88,24 @@ for n, ids in enumerate(run_db):
 
     ax1.plot(rho_tgyro, diff_te, 'o-', label=f'{labels[n]}')
     ax1.grid(color='k', linestyle='-', linewidth=2, alpha=0.2)
-    ax1.set_ylabel('$\Delta \; T_e \; [\%]$')
+    ax1.set_ylabel('$\\Delta \\; T_e \\; [\\%]$')
     ax1.axhline(y=0, linestyle='--', color='r')
     ax1.legend()
 
     ax2.plot(rho_tgyro, diff_ti, 'o-')
     ax2.grid(color='k', linestyle='-', linewidth=2, alpha=0.2)
-    ax2.set_ylabel('$\Delta \; T_i \; [\%]$')
+    ax2.set_ylabel('$\\Delta \\; T_i \\; [\\%]$')
     ax2.axhline(y=0, linestyle='--', color='r')
 
     ax3.plot(rho_tgyro, diff_grad_te, 'o-')
     ax3.grid(color='k', linestyle='-', linewidth=2, alpha=0.2)
-    ax3.set_ylabel('$\Delta \; a/L_{T_e} \; [\%]$')
+    ax3.set_ylabel('$\\Delta \\; a/L_{T_e} \\; [\\%]$')
     ax3.set_xlabel(r'$\rho$')
     ax3.axhline(y=0, linestyle='--', color='k')
 
     ax4.plot(rho_tgyro, diff_grad_ti, 'o-')
     ax4.grid(color='k', linestyle='-', linewidth=2, alpha=0.2)
-    ax4.set_ylabel('$\Delta \; a/L_{T_i} \; [\%]$')
+    ax4.set_ylabel('$\\Delta \\; a/L_{T_i} \\; [\\%]$')
     ax4.set_xlabel(r'$\rho$')
     ax4.axhline(y=0, linestyle='--', color='k')
 

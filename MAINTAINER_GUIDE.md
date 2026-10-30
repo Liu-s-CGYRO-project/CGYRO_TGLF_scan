@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.46。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.47。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 标签页的自然高度（1.24.46）
 
@@ -529,3 +529,14 @@ CGYRO 的远程执行使用 `cgyro_run_state.native_remote_execute(ui, ...)`，�
 `cgyro_radius_cleanup.preview_radius` 和 `remove_radius` 按 runid/nr/rho 及原始 case_id 核对身份，使用 1e-12 的绝对容差区分相邻半径。GUI 按钮只展开元数据选择器；平时刷新不遍历全归档。确认预览与执行前重新规划的范围必须一致。脚本 `remove_radius.py` 默认为预览，confirm 必须是布尔值。
 
 删除先解除公共扫描与 RUN_HISTORY、RUN_DB/__RUNS__ 的指定引用，再更新当前清单/批次并调用现有可达性剪枝。暂存恢复日志只持有浅引用，不复制结果数组；Abort 和原生“删除后抛错”都按逆序恢复。剪枝保留其他半径仍引用的同一物理结果；不执行远程命令或文件系统删除。未知身份、冲突元数据和跨半径续算依赖不得猜测处理。
+
+## 局部维护边界：W6 / W4 / W3、I2 / I3 / I6
+
+- `OMFITlib_tk_callbacks.RetryWait` 在主线程用 `after` / `wait_variable` 派发 Tk 事件；只在无 Tk 或工作线程中使用 `sleep`。每个上下文拥有一个等待窗和一个计时器，结束、中止、销毁均释放。业务调用在等待前捕获作业身份、恢复时核对；取消等待不能推导调度器终态或触发重提。
+- `OMFITlib_project_history` 只分类记录的顶层字段和状态。纯日志按独立的普通/失败限额裁剪；未知字段、待处理状态、输入及结果备份均受保护。清理输入备份是独立的确认动作；不要在历史显示、开窗、保存或参数编辑中遍历结果文件或统计体积。真正不同的输入仍保留独立副本，不把可变原对象当成不可变文件引用。
+- `unbind_callback` 属于上述纯 Tk 模块，字体模块仅保留兼容导出。只在确实移除已知绑定、且剩余脚本没有该命令引用时删除 Tcl 命令。未识别的 Tcl 包装保持原状。不能回退到 Python 3.9 的 `unbind(sequence, funcid)`：它会连同邻接回调一起解绑。
+- 跨模块控件属性的所有者、生命周期和缺省行为集中记录于 `OMFITlib_gui_context` 模块文档。保留旧属性名称以兼容更新前已经存在的回调；不新增全局 GUI 注册表。纯 Tk 帮助函数与原生 API 适配层隔离，防止循环导入。
+- 布局尺寸策略使用 `gui_layout` 的命名常量；宽度和表单标签通过同一字体度量函数计算，首绘与字体更新共用。保存锁重试与滚动合并延迟有各自命名，不能与调度器轮询混用。
+- 打包检查将 `SyntaxWarning` / `DeprecationWarning` 视为错误。旧字符串仅转义无效的反斜线，修复前后 AST（不含位置）相同；不用盲目加 `r` 改变同一字符串中有效的换行或制表符。
+
+针对性回归：`test_tk_callbacks`、`test_cgyro_wait`、`test_project_history`、`test_source_escapes`。新共享库必须同时登记到顶层、独立工程与独立模板管理器的 `OMFITsave.txt`，并通过原生导入缓存清理测试；只更新磁盘文件不算完整交付。

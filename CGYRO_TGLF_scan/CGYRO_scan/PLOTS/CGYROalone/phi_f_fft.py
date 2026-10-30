@@ -92,12 +92,12 @@ for k_case in range(n_case):
         print(freqsign*casek.freq_n)
         plot(casek.ky,freqsign*casek.freq_n,'-k',linewidth=lw*2,label='mode averge(nonlin)')
     xlabel('$k_y\\rho_s$',fontsize=fs2,family='serif')
-    ylabel('$\omega(c_s/a)$', fontsize=fs2, family='serif')
+    ylabel('$\\omega(c_s/a)$', fontsize=fs2, family='serif')
     if casek.n_theta_plot==1:
         ftheta_plot=0
     else:
         ftheta_plot=casek.ftheta_plot[i_theta_plot]/3.14
-    title('$' + field_name[i_field] + '(\\theta=%.2f\pi)$' % ftheta_plot)
+    title('$' + field_name[i_field] + '(\\theta=%.2f\\pi)$' % ftheta_plot)
     xticks(fontsize=fs2)
     yticks(fontsize=fs2)
 #    plot the linear frequency
@@ -123,9 +123,9 @@ for k_case in range(n_case):
     #if icgyro==1:
         #plot(casek.ky,freqsign*casek.freq_n,'-k',linewidth=lw*2,label='mode averge(nonlin)')
     xlabel('$k_y\\rho_s$',fontsize=fs2,family='serif')
-    ylabel('$\omega(c_s/a)$', fontsize=fs2, family='serif')
+    ylabel('$\\omega(c_s/a)$', fontsize=fs2, family='serif')
 #    ftheta_plot=casek.ftheta_plot[i_theta_plot]/3.14
-    title('$'+field_name[i_field]+'(\\theta=%.2f\pi,k_x=0)$' % ftheta_plot)
+    title('$'+field_name[i_field]+'(\\theta=%.2f\\pi,k_x=0)$' % ftheta_plot)
     xticks(fontsize=fs2)
     yticks(fontsize=fs2)
     if icgyro==1:

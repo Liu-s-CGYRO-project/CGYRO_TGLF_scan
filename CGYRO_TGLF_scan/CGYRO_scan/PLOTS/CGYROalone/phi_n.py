@@ -46,9 +46,9 @@ for i_field in arange(n_field):
         # xlabel('$k_y\\rho_s$',fontsize=fs1,family='serif')
         ax.set_xscale(tick_scale[root['SETTINGS']['PLOTS']['ilogx']])
         ax.set_yscale(tick_scale[root['SETTINGS']['PLOTS']['ilogy']])
-        ylabel('$\delta{'+field_name[i_field]+'}/\\rho_s$',fontsize=fs1,family='serif')
+        ylabel('$\\delta{'+field_name[i_field]+'}/\\rho_s$',fontsize=fs1,family='serif')
         if i_field==0:
-            title('$\\theta=' + str(theta) + '\pi$', fontsize=fs1, family='serif')
+            title('$\\theta=' + str(theta) + '\\pi$', fontsize=fs1, family='serif')
         if i_field == n_field-1:
             xlabel('$k_y\\rho_s$', fontsize=fs1, family='serif')
 # phi over kx

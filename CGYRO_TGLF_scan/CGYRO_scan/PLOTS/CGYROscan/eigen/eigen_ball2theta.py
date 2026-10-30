@@ -43,8 +43,8 @@ for dirname in root['SETTINGS']['PLOTS']['dirname']:
     else:
         ax.plot(case.theta_p / pi, abs(phi_p), lab[ncount], linewidth=lw, label=dirname)
 #    print(abs(phi_theta))
-    title('$\phi$',fontsize=fs2,family='serif')
-    xlabel('$\\theta\pi$',fontsize=fs2,family='serif')
+    title('$\\phi$',fontsize=fs2,family='serif')
+    xlabel('$\\theta\\pi$',fontsize=fs2,family='serif')
     if case.iapar==1:
         ax=subplot(1,2,2)
         if iabs==0:
@@ -52,7 +52,7 @@ for dirname in root['SETTINGS']['PLOTS']['dirname']:
         else:
             ax.plot(case.theta_p / pi, abs(apar_p), lab[ncount], linewidth=lw, label=dirname)
         title('$A_{||}$',fontsize=fs2,family='serif')
-        xlabel('$\\theta\pi$',fontsize=fs2,family='serif')
+        xlabel('$\\theta\\pi$',fontsize=fs2,family='serif')
     ncount=ncount+1
 xticks(fontsize=fs2,family='serif')
 yticks(fontsize=fs2,family='serif')

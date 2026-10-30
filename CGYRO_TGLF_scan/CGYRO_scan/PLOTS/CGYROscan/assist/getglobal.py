@@ -36,7 +36,7 @@ idimplt=plots['idimplt']
 iflwphy=plots['iflwphy']
 ibelow0=plots['ibelow0']
 ilim_err=plots['ilim_err']
-Paraname_dic={'DLNTDR_1':'$a/L_{Ti}$', 'DLNTDR_'+str(ns):'$a/L_{Te}$','BETA_STAR_SCALE':'$\\alpha_{scale}$','BETAE_UNIT':'$\\beta_{E}$','GAMMA_E':'$\gamma_{E}$','S':'s','Q':'q','DLNNDR_'+str(ns):'$a/L_{ne}$'}
+Paraname_dic={'DLNTDR_1':'$a/L_{Ti}$', 'DLNTDR_'+str(ns):'$a/L_{Te}$','BETA_STAR_SCALE':'$\\alpha_{scale}$','BETAE_UNIT':'$\\beta_{E}$','GAMMA_E':'$\\gamma_{E}$','S':'s','Q':'q','DLNNDR_'+str(ns):'$a/L_{ne}$'}
 mounttree=root.setdefault('_PLOT_CACHE', OMFITtree())
 #deploypath='/home/task1/xiangjian/temp/'
 import os, tempfile

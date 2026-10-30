@@ -32,7 +32,7 @@ for i_field in arange(n_field):
         ax.set_yscale(tick_scale[root['SETTINGS']['PLOTS']['ilogy']])
         ylabel('$k_y/k_x$',fontsize=fs1,family='serif')
         if i_field==0:
-            title('$\\theta=' + str(casek.ftheta_plot[i_theta_plot]) + '\pi$', fontsize=fs1, family='serif')
+            title('$\\theta=' + str(casek.ftheta_plot[i_theta_plot]) + '\\pi$', fontsize=fs1, family='serif')
         if i_field == n_field-1:
             xlabel('$k_y\\rho_s$', fontsize=fs1, family='serif')
 # phi over kx
@@ -91,6 +91,6 @@ for i_field in arange(n_field):
         ax.set_yscale(tick_scale[root['SETTINGS']['PLOTS']['ilogy']])
         ylabel('$kx0$',fontsize=fs1,family='serif')
         if i_field==0:
-            title('$\\theta=' + str(casek.ftheta_plot[i_theta_plot]) + '\pi$', fontsize=fs1, family='serif')
+            title('$\\theta=' + str(casek.ftheta_plot[i_theta_plot]) + '\\pi$', fontsize=fs1, family='serif')
         if i_field == n_field-1:
             xlabel('$k_y\\rho_s$', fontsize=fs1, family='serif')

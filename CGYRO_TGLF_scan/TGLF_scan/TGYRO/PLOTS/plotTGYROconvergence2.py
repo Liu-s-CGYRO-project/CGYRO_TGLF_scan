@@ -17,7 +17,7 @@ cornernote('%s' % ((root['SETTINGS']['EXPERIMENT']['runid'])), '', ax=ax)
 
 for chkey, chtex, chname, mks in zip(
     ['eflux_e', 'eflux_i', 'pflux_e', 'mflux', 'p', 'p'],
-    ['Q_e', 'Q_i', '\\Gamma_e', '\Pi_i', 'S_e', 'S_i'],
+    ['Q_e', 'Q_i', '\\Gamma_e', '\\Pi_i', 'S_e', 'S_i'],
     ['Electron Energy', 'Ion Energy', 'Electron Particle', 'Ion Momentum', 'Electron Power Flow', 'Ion Power Flow'],
     ['MW/m^2', 'MW/m^2', 'e19m^2/s', 'J/m^2', 'MW', 'MW'],
 ):

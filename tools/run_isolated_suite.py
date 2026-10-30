@@ -23,7 +23,7 @@ NATIVE_SOURCE = {'test_gui_refresh', 'test_gui_refresh_controls', 'test_gui_refr
                  'test_cgyro_file_dedup', 'test_cgyro_browser_update', 'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_runtime_persistence',
                  'test_workbench_navigation', 'test_refresh_boundaries', 'test_runtime_boundaries',
                  'test_transfer_refresh_native', 'test_gui_open_native'}
-TK_SUITES = {'test_gui_refresh_native', 'test_gui_font_performance', 'test_plot_window', 'test_cgyro_task_manager', 'test_manager_startup',
+TK_SUITES = {'test_tk_callbacks', 'test_gui_refresh_native', 'test_gui_font_performance', 'test_plot_window', 'test_cgyro_task_manager', 'test_manager_startup',
              'test_cgyro_scan_refresh', 'test_gui_tab_pages', 'test_cgyro_read_boundaries',
              'test_workbench_navigation', 'test_refresh_boundaries', 'test_runtime_boundaries',
              'test_transfer_refresh_native', 'test_font_ui_boundaries', 'test_gui_open_native'}

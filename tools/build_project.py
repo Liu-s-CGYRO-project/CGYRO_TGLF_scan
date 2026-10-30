@@ -71,7 +71,7 @@ def validate_font_imports(library, names):
 def validate_gui_fonts():
     """Check cache-loader parity and pinned metadata without acquiring fonts."""
     first, second = ROOT / 'CGYRO_TGLF_scan', ROOT / 'OMFITtemplates'
-    modules = ('OMFITlib_gui_fonts', 'OMFITlib_gui_font_data', 'OMFITlib_font_cache',
+    modules = ('OMFITlib_tk_callbacks', 'OMFITlib_gui_fonts', 'OMFITlib_gui_font_data', 'OMFITlib_font_cache',
                'OMFITlib_font_download_ui', 'OMFITlib_font_ui', 'OMFITlib_font_manifest')
     names = ['LIB/' + name + '.py' for name in modules]
     names.append('DOCS/FONT_LICENSE.txt')

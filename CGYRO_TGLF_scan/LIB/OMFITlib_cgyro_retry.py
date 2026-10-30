@@ -14,10 +14,10 @@ import posixpath
 import re
 import shutil
 import tempfile
-import time
 import uuid
 import zipfile
-from OMFITlib_cgyro_queue import (collection_done, require_retained_run, save_current,
+from OMFITlib_tk_callbacks import RetryWait
+from OMFITlib_cgyro_queue import (collection_done, current_wait_guard, require_retained_run, save_current,
                                  shell_quote, stop_queue, wait_current)
 from OMFITlib_cgyro_run_state import linked_local_action, native_remote_execute, stop_run, submitted_job_id, text_output
 from OMFITlib_cgyro_submission import PROTOCOL, discover_submission, seal_unstarted, submit_command
@@ -78,29 +78,34 @@ def recover_submission(root, ui, factory=dict):
         # A missing/empty log is not evidence that the scheduler rejected the job.
         manifest.update(dict(status='submission_unconfirmed', submission_uncertain=True))
         save_current(root, factory)
-        for attempt in range(3):
-            output, errors = [], []
-            try:
-                code = native_remote_execute(ui, manifest['server'], 'cat -- ' + shell_quote(posixpath.join(manifest['workDir'], '.cgyro_submit.out')),
-                    '/', manifest.get('tunnel', ''), quiet=True, ignoreReturnCode=True,
-                    use_bang_command=False, std_out=output, std_err=errors)
-                if code == 0:
-                    manifest.pop('submission_probe_error', None)
-                    # Retain a recovered rejection too, so a known refusal does
-                    # not leave the run permanently marked "submission uncertain".
-                    recovered = text_output(output)
-                    captured = str(manifest.get('submit_output', ''))
-                    if recovered and recovered not in captured:
-                        manifest['submit_output'] = captured + '\n' + recovered
-                    job_id = submitted_job_id(output, scheduler)
-                    if job_id:
-                        break
-                else:
-                    manifest['submission_probe_error'] = text_output(errors) or 'Submission log is not available.'
-            except Exception as exc:
-                manifest['submission_probe_error'] = str(exc)
-            if attempt < 2:
-                time.sleep(1)
+        check = current_wait_guard(root)
+        with RetryWait(ui, 'CGYRO submission receipt') as retry:
+            for attempt in range(3):
+                check()
+                output, errors = [], []
+                try:
+                    code = native_remote_execute(ui, manifest['server'], 'cat -- ' + shell_quote(posixpath.join(manifest['workDir'], '.cgyro_submit.out')),
+                        '/', manifest.get('tunnel', ''), quiet=True, ignoreReturnCode=True,
+                        use_bang_command=False, std_out=output, std_err=errors)
+                    check()
+                    if code == 0:
+                        manifest.pop('submission_probe_error', None)
+                        # Retain a recovered rejection too, so a known refusal does
+                        # not leave the run permanently marked "submission uncertain".
+                        recovered = text_output(output)
+                        captured = str(manifest.get('submit_output', ''))
+                        if recovered and recovered not in captured:
+                            manifest['submit_output'] = captured + '\n' + recovered
+                        job_id = submitted_job_id(output, scheduler)
+                        if job_id:
+                            break
+                    else:
+                        manifest['submission_probe_error'] = text_output(errors) or 'Submission log is not available.'
+                except Exception as exc:
+                    check()
+                    manifest['submission_probe_error'] = str(exc)
+                if attempt < 2:
+                    retry.wait(1, 'Checking the saved submission receipt ({}/2). No job is resubmitted.'.format(attempt + 1))
     if not job_id and not re.search(r'(?mi)^(?:sbatch|qsub):.*(?:error|invalid|reject)', manifest.get('submit_output', '')):
         try:
             if seal_unstarted(manifest, ui):
@@ -432,58 +437,64 @@ def collect_current(root, ui, factory, path_reader, ascii_reader, allow_solver_r
     if not allow_solver_retries:
         print('Collecting existing CGYRO outputs only; solver retries are disabled.')
     collection_retries = 0
-    while True:
-        manifest = root['RUN_MANIFEST']
-        # The download succeeded but publication was interrupted. Return to
-        # publication with those exact verified owners, without downloading.
-        if (not allow_solver_retries and manifest.get('collection_status', '') == 'ready'
-                and not manifest.get('load_errors', {})
-                and set(manifest.get('loaded_points', []) + manifest.get('partial_points', [])) <= collected_points(root, manifest)):
-            return
-        # Re-reading a finished partial archive is transactional. An Abort or
-        # failed read must not remove its resume entry or mix old rows/new files.
-        preserved = None
-        if collection_done(manifest):
-            preserved = (deepcopy(manifest), copy_result_tree(run_cases(root, manifest), factory))
-        try:
-            task_action(root['SCRIPTS']['downsync.py'])
-        except BaseException as exc:
+    with RetryWait(ui, 'CGYRO collection retry') as retry:
+        while True:
             manifest = root['RUN_MANIFEST']
-            read_error = bool(manifest.get('load_errors', {}))
-            readable = set(manifest.get('loaded_points', []) + manifest.get('partial_points', []))
-            if isinstance(exc, Exception) and read_error and readable and readable <= collected_points(root, manifest):
-                # Each successful point already passed validation. Keep these
-                # owners across retries; one unreadable neighbor cannot block
-                # their publication or replace its own old usable result.
-                manifest['collection_error'] = str(exc)
-                save_current(root, factory)
-                if collection_retries < 2:
-                    collection_retries += 1
-                    time.sleep(collection_retries)
-                    continue
-                manifest['collection_status'] = 'ready'
-                print('Archiving verified points; unreadable points remain pending: ' + str(manifest['load_errors']))
+            check = current_wait_guard(root)
+            # The download succeeded but publication was interrupted. Return to
+            # publication with those exact verified owners, without downloading.
+            if (not allow_solver_retries and manifest.get('collection_status', '') == 'ready'
+                    and not manifest.get('load_errors', {})
+                    and set(manifest.get('loaded_points', []) + manifest.get('partial_points', [])) <= collected_points(root, manifest)):
                 return
-            rollback_errors = _restore_collection_failure(root, manifest, preserved, exc, factory)
-            # A download/query failure gets another read; it never launches a solver.
-            if (not rollback_errors and isinstance(exc, Exception) and collection_retries < 2
-                    and (network_error(exc) or read_error)):
-                collection_retries += 1
-                time.sleep(collection_retries)
-                continue
-            raise
-        root['RUN_MANIFEST'].pop('collection_error', None)
-        save_current(root, factory)
-        # Read retries above handle transport/reader failures. They do not grant
-        # permission to submit a solver, regardless of the configured retry count.
-        if not allow_solver_retries:
-            return
-        manifest = root['RUN_MANIFEST']
-        points = retryable_points(root)
-        if not points:
-            return
-        print('CGYRO retry {} / {}: {} failed points; successful points are retained.'.format(
-            int(manifest.get('retry_count', 0)) + 1, retry_limit(root), len(points)))
-        submit_retry(root, ui, factory, path_reader, ascii_reader, points)
-        wait_current(root, ui, factory)
-        collection_retries = 0
+            # Re-reading a finished partial archive is transactional. An Abort or
+            # failed read must not remove its resume entry or mix old rows/new files.
+            preserved = None
+            if collection_done(manifest):
+                preserved = (deepcopy(manifest), copy_result_tree(run_cases(root, manifest), factory))
+            try:
+                task_action(root['SCRIPTS']['downsync.py'])
+                check()
+            except BaseException as exc:
+                check()
+                manifest = root['RUN_MANIFEST']
+                read_error = bool(manifest.get('load_errors', {}))
+                readable = set(manifest.get('loaded_points', []) + manifest.get('partial_points', []))
+                if isinstance(exc, Exception) and read_error and readable and readable <= collected_points(root, manifest):
+                    # Each successful point already passed validation. Keep these
+                    # owners across retries; one unreadable neighbor cannot block
+                    # their publication or replace its own old usable result.
+                    manifest['collection_error'] = str(exc)
+                    save_current(root, factory)
+                    if collection_retries < 2:
+                        collection_retries += 1
+                        retry.wait(collection_retries, 'Retrying output collection ({}/2). Saved results are preserved.'.format(collection_retries))
+                        check()
+                        continue
+                    manifest['collection_status'] = 'ready'
+                    print('Archiving verified points; unreadable points remain pending: ' + str(manifest['load_errors']))
+                    return
+                rollback_errors = _restore_collection_failure(root, manifest, preserved, exc, factory)
+                # A download/query failure gets another read; it never launches a solver.
+                if (not rollback_errors and isinstance(exc, Exception) and collection_retries < 2
+                        and (network_error(exc) or read_error)):
+                    collection_retries += 1
+                    retry.wait(collection_retries, 'Retrying output collection ({}/2). Saved results are preserved.'.format(collection_retries))
+                    check()
+                    continue
+                raise
+            root['RUN_MANIFEST'].pop('collection_error', None)
+            save_current(root, factory)
+            # Read retries above handle transport/reader failures. They do not grant
+            # permission to submit a solver, regardless of the configured retry count.
+            if not allow_solver_retries:
+                return
+            manifest = root['RUN_MANIFEST']
+            points = retryable_points(root)
+            if not points:
+                return
+            print('CGYRO retry {} / {}: {} failed points; successful points are retained.'.format(
+                int(manifest.get('retry_count', 0)) + 1, retry_limit(root), len(points)))
+            submit_retry(root, ui, factory, path_reader, ascii_reader, points)
+            wait_current(root, ui, factory)
+            collection_retries = 0

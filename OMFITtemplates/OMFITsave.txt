@@ -24,6 +24,7 @@
 ['LIB']['OMFITlib_template_live'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_live.py <-:-:-> {}
 ['LIB']['OMFITlib_template_migration'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_template_migration.py <-:-:-> {}
 ['LIB']['OMFITlib_gui_fonts'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_fonts.py <-:-:-> {}
+['LIB']['OMFITlib_tk_callbacks'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_tk_callbacks.py <-:-:-> {}
 ['LIB']['OMFITlib_gui_font_data'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_gui_font_data.py <-:-:-> {}
 ['LIB']['OMFITlib_font_cache'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_font_cache.py <-:-:-> {}
 ['LIB']['OMFITlib_font_ui'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_font_ui.py <-:-:-> {}

@@ -217,7 +217,7 @@ fig, ax = fn.subplots(label='PVG')
 csa_ref = cs / rmin[-1]
 uprime = rmaj * gamma_p / csa_ref
 
-ax.plot(xplot, abs(uprime), label='|$u^\prime$|', color='black')
+ax.plot(xplot, abs(uprime), label='|$u^\\prime$|', color='black')
 ax.set_ylabel('')
 ax.set_xlabel(xlab)
 ax.legend(loc='best').draggable()

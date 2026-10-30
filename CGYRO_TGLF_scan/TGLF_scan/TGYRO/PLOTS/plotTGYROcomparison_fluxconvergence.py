@@ -8,7 +8,7 @@ fn = FigureNotebook(0, 'TGYRO Flux Convergence')
 # Flux convergence
 for chkey, chtex, chname, mks in zip(
     ['eflux_e', 'eflux_i', 'pflux_e', 'mflux'],
-    ['Q_e', 'Q_i', '\\Gamma_e', '\Pi_i'],
+    ['Q_e', 'Q_i', '\\Gamma_e', '\\Pi_i'],
     ['Electron Energy', 'Ion Energy', 'Electron Particle', 'Ion Momentum'],
     ['MW/m^2', 'MW/m^2', 'e19m^2/s', 'J/m^2'],
 ):

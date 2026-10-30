@@ -51,6 +51,7 @@ from OMFITlib_cgyro_retry import retry_limit
 from OMFITlib_cgyro_workflow import collect_batch, collect_run
 from OMFITlib_cgyro_continue import continuation_plan
 from OMFITlib_cgyro_storage import consolidate_storage
+from OMFITlib_project_history import trim_logs
 
 # Compatibility exports: saved scripts may still import these here.
 from OMFITlib_workbench_catalog import MODULES, LABELS, PAGES
@@ -338,6 +339,7 @@ class ProjectActions:
         record = self.factory()
         record.update(dict(id=key, title=title, created=datetime.now(timezone.utc).isoformat(), **values))
         records[key] = record
+        trim_logs(records)
         return record
 
     def report_error(self, title, exc, record=None):
@@ -345,6 +347,7 @@ class ProjectActions:
             record = self._record(title)
         cancelled = isinstance(exc, KeyboardInterrupt) or record.get('status', None) == 'cancelled'
         record.update(dict(status='cancelled' if cancelled else 'failed', error=str(exc)))
+        trim_logs(read(self.root, ('PROJECT_STATE', 'activity'), {}))
         self.settings['message'] = error_notice(title, cancelled)
         return record
 
@@ -383,24 +386,37 @@ class ProjectActions:
             self.report_error(title, exc, record)
             raise
         record['status'] = 'returned'
+        trim_logs(read(self.root, ('PROJECT_STATE', 'activity'), {}))
         self.settings['message'] = '' if 'GUIS' in path else title + '：脚本已返回。计算状态请查看对应运行记录。'
         return result
 
     def replace(self, title, replacements):
         """Prepare independent copies before changing any destination input."""
-        prepared, previous = [], self.factory()
+        prepared, previous, destinations = [], self.factory(), []
         for path, value in replacements:
             parent = read(self.root, path[:-1])
             if parent is None:
                 raise ValueError('缺少目标目录：' + '/'.join(path[:-1]))
+            if path[-1] in parent:
+                # Only these explicitly selected inputs are compared. Legacy
+                # non-JSON input objects retain the original copy behaviour.
+                try:
+                    if input_digest(parent[path[-1]]) == input_digest(value):
+                        continue
+                except (TypeError, ValueError):
+                    pass
             duplicate = value.duplicate() if hasattr(value, 'duplicate') else copy.deepcopy(value)
             if path[-1] in parent:
                 previous[location(path)] = copy.deepcopy(parent[path[-1]])
             prepared.append((parent, path[-1], duplicate))
-        record = self._record(title, status='inputs_copied', previous_inputs=previous)
+            destinations.append(location(path))
+        if not prepared:
+            self.settings['message'] = title + '：输入内容未变化。'
+            return
+        record = self._record(title, status='inputs_copied', **({'previous_inputs': previous} if previous else {}))
         for parent, key, value in prepared:
             parent[key] = value
-        record['destinations'] = [location(path) for path, _ in replacements]
+        record['destinations'] = destinations
         self.settings['message'] = title + '。原输入已保存在 Project 的输入历史中。'
 
     def save_transfer_input(self, path, edits, expected_digest):

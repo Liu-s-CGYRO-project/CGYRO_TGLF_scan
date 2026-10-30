@@ -81,17 +81,17 @@ for j, scan in enumerate(scans):
         ax.axvline(x=0, linestyle='--', color='k')
 
     # plot ExB shearing rate
-    ax.plot(rho, vExB, '--', label='$\gamma_{ExB}$', color=colors_ExB[j])
+    ax.plot(rho, vExB, '--', label='$\\gamma_{ExB}$', color=colors_ExB[j])
 
     # plot Gamma
 
-    (line,) = ax.plot(rho, gamma_max_low, '-', lw=3, label=fr'{labels[j]}' + ' $\gamma_{max}$ ' + ' low-k')
+    (line,) = ax.plot(rho, gamma_max_low, '-', lw=3, label=fr'{labels[j]}' + ' $\\gamma_{max}$ ' + ' low-k')
     if plot_high_ky:
-        ax.plot(rho, gamma_max_high, '--', lw=3, color=line.get_color(), label=fr'{labels[j]}' + ' $\gamma_{max}$ ' + ' high-k')
+        ax.plot(rho, gamma_max_high, '--', lw=3, color=line.get_color(), label=fr'{labels[j]}' + ' $\\gamma_{max}$ ' + ' high-k')
 
     if plot_subdominant:
         ax.plot(
-            rho, gamma_sub_max_low, ':', color=line.get_color(), label=fr'{labels[j]}' + ' $\gamma_{max}$ ' + ' low-k' + ' subdominant mode'
+            rho, gamma_sub_max_low, ':', color=line.get_color(), label=fr'{labels[j]}' + ' $\\gamma_{max}$ ' + ' low-k' + ' subdominant mode'
         )
         if plot_high_ky:
             ax.plot(
@@ -99,7 +99,7 @@ for j, scan in enumerate(scans):
                 gamma_sub_max_high,
                 '.',
                 color=line.get_color(),
-                label=fr'{labels[j]}' + ' $\gamma_{max}$ ' + ' high-k' + ' subdominant mode',
+                label=fr'{labels[j]}' + ' $\\gamma_{max}$ ' + ' high-k' + ' subdominant mode',
             )
 
 

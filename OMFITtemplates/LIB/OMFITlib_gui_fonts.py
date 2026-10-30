@@ -17,6 +17,7 @@ from tkinter import font as tkfont, ttk
 from OMFITlib_gui_font_data import FONT_FILENAME, FONT_SHA256, FONT_FAMILY
 from OMFITlib_font_download_ui import ensure_fonts
 from OMFITlib_font_cache import cache_directory, cached_fonts
+from OMFITlib_tk_callbacks import unbind_callback  # Compatibility export for saved GUIs.
 
 
 _lock = threading.RLock()
@@ -513,14 +514,6 @@ def style_widgets(parent):
     for child in parent.winfo_children():
         if child.winfo_class() != 'Toplevel':
             style_widgets(child)
-
-
-def unbind_callback(widget, sequence, binding):
-    """Remove one callback; Python 3.9's unbind also erases its neighbours."""
-    prefix = 'if {"[' + binding + ' '
-    script = '\n'.join(line for line in widget.bind(sequence).split('\n') if not line.startswith(prefix))
-    widget.bind(sequence, script)
-    widget.deletecommand(binding)
 
 
 def configure_window_fonts(window, refresh=False):

@@ -39,7 +39,7 @@ for dirname in root['SETTINGS']['PLOTS']['dirname']:
 #        ax1.plot(balloon[thetaname],balloon['balloon_phi'].T[-1],lab[ncount],linewidth=lw)
     xticks(fontsize=fs2,family='serif')
     yticks(fontsize=fs2,family='serif')
-    title('$\phi$',fontsize=fs2,family='serif')
+    title('$\\phi$',fontsize=fs2,family='serif')
     legend(loc=0).set_draggable(True)
 # in addition, the normalized eigenfunction will also be plotted
 #     phi_0=interp(0,balloon[thetaname],balloon['balloon_phi'].T[-1])# used for normalization
@@ -78,7 +78,7 @@ for dirname in root['SETTINGS']['PLOTS']['dirname']:
         else:
             # plot(balloon[thetaname],abs(balloon['balloon_apar'].T[-1]),lab[ncount],linewidth=lw,label=dirname)
             plot(case.theta_b/np.pi , abs(case.apar_b), lab[ncount], linewidth=lw, label=dirname)
-        xlabel('$\\theta(\pi)$',fontsize=fs1,family='serif')
+        xlabel('$\\theta(\\pi)$',fontsize=fs1,family='serif')
         xticks(fontsize=fs2,family='serif')
         yticks(fontsize=fs2,family='serif')
         title('$A_{||}$',fontsize=fs2,family='serif')
@@ -90,7 +90,7 @@ for dirname in root['SETTINGS']['PLOTS']['dirname']:
         else:
             plot(case.theta_b/np.pi, abs(case.bpar_b), lab[ncount], linewidth=lw, label=dirname)
         #            ax3.plot(balloon[thetaname],balloon['balloon_apar'].T[-1],lab[ncount],linewidth=lw,label=dirname)
-        xlabel('$\\theta(\pi)$', fontsize=fs1, family='serif')
+        xlabel('$\\theta(\\pi)$', fontsize=fs1, family='serif')
         xticks(fontsize=fs2, family='serif')
         yticks(fontsize=fs2, family='serif')
         title('$B_{||}$', fontsize=fs2, family='serif')

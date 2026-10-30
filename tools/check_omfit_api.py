@@ -73,7 +73,8 @@ def validate_project_api(project_root, extra_sources=()):
             raise ValueError('Invalid project source: ' + str(path))
         name = path.relative_to(project_root).as_posix()
         with warnings.catch_warnings():
-            warnings.simplefilter('ignore', SyntaxWarning)
+            warnings.simplefilter('error', SyntaxWarning)
+            warnings.simplefilter('error', DeprecationWarning)
             tree = ast.parse(path.read_text(encoding='utf-8-sig'), filename=name,
                              feature_version=(3, 9))
         tk_variables += validate_tk_variable_calls(tree, name)

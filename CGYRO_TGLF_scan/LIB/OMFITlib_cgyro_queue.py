@@ -3,10 +3,10 @@
 RUN_MANIFEST is the active job view. RUN_HISTORY holds metadata only; point
 payloads and frozen inputs belong to RUN_DB/__RUNS__/<token>/cases.
 """
-from builtins import BaseException, Exception, RuntimeError, ValueError, any, dict, len, list, object, print, range, str
+from builtins import BaseException, Exception, RuntimeError, ValueError, any, dict, len, list, object, print, range, str, tuple
 from contextlib import nullcontext
 from copy import deepcopy
-import time
+from OMFITlib_tk_callbacks import RetryWait
 from OMFITlib_cgyro_storage import compact_storage
 from OMFITlib_cgyro_db import ensure_layout, freeze_run_inputs, rollback_actions, run_is_deleted, run_records
 from OMFITlib_cgyro_run_state import (STOP_POLL_ATTEMPTS, STOP_POLL_SECONDS, STOP_QUERY_ERROR_LIMIT,
@@ -305,27 +305,48 @@ def stop_queue(root, ui, job_id, run_token, factory=dict):
     save_current(root, factory)
 
 
+def current_wait_guard(root):
+    """Capture job identity before a wait can dispatch other Tk callbacks."""
+    manifest = root['RUN_MANIFEST']
+    keys = ('run_token', 'job_id', 'server', 'workDir')
+    identity = tuple(manifest.get(key, '') for key in keys)
+    def check():
+        if (root.get('RUN_MANIFEST', None) is not manifest
+                or tuple(manifest.get(key, '') for key in keys) != identity):
+            raise RuntimeError('The selected CGYRO job changed during the wait. Synchronize the intended job again.')
+    return check
+
+
 def wait_for_stop(root, ui):
     """Wait briefly for Slurm cleanup/accounting; never infer a terminal state."""
     manifest = root['RUN_MANIFEST']
     manifest['auto_collect_requested'] = True
-    errors = 0
-    for attempt in range(STOP_POLL_ATTEMPTS):
-        try:
-            result = refresh_run_state(root, ui)
-            errors = 0
-            if result['terminal']:
-                manifest.pop('stop_sync_error', None)
-                return
-        except Exception as exc:
-            errors += 1
-            manifest['stop_sync_error'] = str(exc)
-            if errors >= STOP_QUERY_ERROR_LIMIT:
-                raise
-        if attempt + 1 < STOP_POLL_ATTEMPTS:
-            time.sleep(STOP_POLL_SECONDS)
+    failures, messages = 0, []
+    check = current_wait_guard(root)
+    with RetryWait(ui, 'CGYRO cancellation status') as retry:
+        for attempt in range(STOP_POLL_ATTEMPTS):
+            check()
+            try:
+                result = refresh_run_state(root, ui)
+            except Exception as exc:
+                check()
+                failures += 1
+                messages.append(str(exc))
+                manifest['stop_sync_error'] = '\n'.join(messages[-STOP_QUERY_ERROR_LIMIT:])
+                if failures >= STOP_QUERY_ERROR_LIMIT:
+                    raise RuntimeError(manifest['stop_sync_error']) from exc
+            else:
+                check()
+                failures = 0
+                if result['terminal']:
+                    manifest.pop('stop_sync_error', None)
+                    return
+            if attempt + 1 < STOP_POLL_ATTEMPTS:
+                retry.wait(STOP_POLL_SECONDS, 'Checking Slurm terminal state: {} / {}\nJob {} is preserved.'.format(
+                    attempt + 1, STOP_POLL_ATTEMPTS, manifest.get('job_id', '')))
     raise RuntimeError('Slurm cancellation is still settling; automatic collection is pending. '
-                       'The run is preserved. Synchronize and collect again after it reaches a terminal state.')
+                       'The run is preserved. Synchronize and collect again after it reaches a terminal state.'
+                       + ('\n' + manifest['stop_sync_error'] if messages else ''))
 
 
 def wait_current(root, ui, factory=dict):
@@ -361,8 +382,10 @@ def wait_current(root, ui, factory=dict):
                 if manifest.get('batch_id', '') and manifest.get('batch_id', '') == batch.get('batch_id', '') else None)
     scope = linked_kill_local(root, ui, job_id, token, stop_callback=callback) if scheduler == 'slurm' else nullcontext()
     errors = []
-    with scope:
+    check = current_wait_guard(root)
+    with scope, RetryWait(ui, 'CGYRO connection retry') as retry:
         for attempt in range(3):
+            check()
             try:
                 code = native_remote_execute(ui, manifest['server'], '/bin/bash -c ' + shell_quote(command),
                                          manifest['workDir'], manifest.get('tunnel', ''), quiet=False,
@@ -370,10 +393,11 @@ def wait_current(root, ui, factory=dict):
             except Exception as exc:
                 code = -1
                 errors.append(str(exc))
+            check()
             if code == 0 or manifest.get('stop_requested', False):
                 break
             if attempt < 2:
-                time.sleep(attempt + 1)
+                retry.wait(attempt + 1, 'Retrying job {} status connection ({}/2).'.format(job_id, attempt + 1))
     manifest['wait_completed'] = code == 0
     if code == 0:
         manifest.pop('wait_error', None)
