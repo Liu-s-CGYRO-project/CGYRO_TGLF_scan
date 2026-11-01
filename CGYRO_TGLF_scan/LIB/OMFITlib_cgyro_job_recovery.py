@@ -58,7 +58,7 @@ def _load_verified_manifest(ui, endpoint, identity, path):
     # Different saved scan coordinates must be resolved explicitly, never by
     # filesystem iteration order. Identical duplicate staging snapshots are OK.
     first, source = verified[0]
-    identity_fields = ('run_token', 'runid', 'case_id', 'points', 'scan_axes', 'point_table',
+    identity_fields = ('run_token', 'runid', 'case_id', 'convergence_batch', 'points', 'scan_axes', 'point_table',
                        'input_sha256', 'submit_script_sha256', 'point_workdirs', 'continuation')
     for other, _ in verified[1:]:
         if any(other.get(key, None) != first.get(key, None) for key in identity_fields):

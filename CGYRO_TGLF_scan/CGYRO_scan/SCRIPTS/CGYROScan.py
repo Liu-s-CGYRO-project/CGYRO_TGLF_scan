@@ -1,7 +1,7 @@
 # Run and collect a 1D, 2D, or 3D CGYRO parameter scan.
 from OMFITlib_gui_api import task_action
 import copy
-from builtins import ValueError, all, any, bool, dict, int, len, list, set, sorted, str
+from builtins import Exception, KeyError, TypeError, ValueError, all, any, bool, dict, int, len, list, set, sorted, str
 from datetime import datetime, timezone
 from OMFITlib_cgyro_archive import (cache_merge_status, canonical_case_key, case_scans, catalog_runs, clean_run_id, combine_cases, continuation_failed, coordinate_path, full_point_coordinate,
                                   grouped_case_path, install_case, matching_cases, output_final_time,
@@ -15,7 +15,7 @@ from OMFITlib_cgyro_db import run_cases
 from OMFITlib_cgyro_reference import copy_result_tree
 from OMFITlib_cgyro_input_identity import cache_parameters, cache_competing_parameters
 defaultVars(wait_for_completion=True, batch_id='', collect_stopped=False, continuation=None,
-            allow_solver_retries=None, check_temp_start=True, convergence_group=None)
+            allow_solver_retries=None, check_temp_start=True, convergence_group=None, convergence_plan=None)
 
 setup = root['SETTINGS']['SETUP']
 # Direct legacy run entries inherit their run intent. A collection-only entry
@@ -30,7 +30,7 @@ if dimensions not in (0, 1, 2, 3):
 if setup['irun'] == 1:
     task_action(root['SCRIPTS']['subscan_lin.py'], scan_dimensions=dimensions,
         wait_for_completion=wait_for_completion, batch_id=batch_id, continuation=continuation,
-        check_temp_start=check_temp_start, convergence_group=convergence_group)
+        check_temp_start=check_temp_start, convergence_group=convergence_group, convergence_plan=convergence_plan)
 if (wait_for_completion and (setup['idownsync'] == 1 or root.get('RUN_MANIFEST', {}).get('auto_collect_requested', False))
         and (collect_stopped or root.get('RUN_MANIFEST', {}).get('auto_collect_requested', False)
              or not root.get('RUN_MANIFEST', {}).get('stop_requested', False))):
@@ -42,11 +42,13 @@ def result_path(manifest, point_id):
     """Resolve a flat point ID; accept pre-1.13 readable directory names."""
     table = manifest.get('point_table', {})
     if point_id in table:
-        path = list(table[point_id]['result_path'])
-        coordinate = coordinate_path(table[point_id])
-        if len(coordinate) != 2 * int(manifest['dimensions']) + 2 or coordinate[-2] != 'lin':
+        row = table[point_id]
+        info = dict(manifest, **dict(row.get('result_info', {})))
+        path = list(row['result_path'])
+        coordinate = coordinate_path(row)
+        if len(coordinate) != 2 * int(info['dimensions']) + 2 or coordinate[-2] != 'lin':
             raise ValueError('Invalid point index for ' + point_id)
-        path[0] = scan_key(manifest, path[0])
+        path[0] = scan_key(info, path[0])
         return path
     parts = point_id.split('~')
     expected = 2 * int(manifest['dimensions']) + 2
@@ -71,6 +73,8 @@ def publish_loaded_run(root):
     partial = [point for point in manifest.get('partial_points', []) if point not in errors]
     readable = list(dict.fromkeys(loaded + partial))
     expected = list(manifest.get('points', loaded))
+    if manifest.get('convergence_batch', False):
+        return _publish_convergence_run(root, manifest)
     if not readable:
         if errors:
             raise ValueError('Result download/read errors remain; no verified points can be archived: ' + str(errors))
@@ -80,6 +84,16 @@ def publish_loaded_run(root):
         remember_collection(root)
         print('Collection finished: no readable results; {} empty/incomplete points skipped. Previous results are unchanged.'.format(len(expected)))
         return
+    _publish_scan(root, manifest)
+
+
+def _publish_scan(root, manifest, persist=True):
+    """Install one physical case/direction; the caller owns job-level state."""
+    errors = manifest.get('load_errors', {})
+    loaded = [point for point in manifest.get('loaded_points', []) if point not in errors]
+    partial = [point for point in manifest.get('partial_points', []) if point not in errors]
+    readable = list(dict.fromkeys(loaded + partial))
+    expected = list(manifest.get('points', loaded))
     complete = (set(loaded) == set(expected) and not manifest.get('failed_points', [])
                 and not partial and not manifest.get('load_errors', {}))
     continuation = manifest.get('continuation', None)
@@ -227,7 +241,7 @@ def publish_loaded_run(root):
     for key in old_keys:
         if key in run:
             del run[key]
-    root['RUN_MANIFEST']['case_id'] = case_key
+    manifest['case_id'] = case_key
     manifest['runid'] = run_id
     manifest['collection_status'] = 'incomplete' if errors else ('complete' if complete else 'partial')
     for point, row in task_rows.items():
@@ -235,8 +249,9 @@ def publish_loaded_run(root):
     manifest['unpublished_points'] = [point for point, row in task_rows.items() if row.get('archive_pending', False)]
     if complete:
         manifest['status'] = 'published'
-    remember_collection(root)
-    release_published_results(root, destination, verified_cases=prior_cases)
+    if persist:
+        remember_collection(root)
+        release_published_results(root, destination, verified_cases=prior_cases)
     # Unlink only the published coordinates here. Proving an owner has no
     # remaining references is a global maintenance operation, not collection.
     # One current result per coordinate. Job manifests retain provenance, not
@@ -244,6 +259,114 @@ def publish_loaded_run(root):
     print('Collected {} complete and {} partial points; {} points skipped. {}'.format(
         len(loaded), len(partial), len(manifest.get('skipped_points', [])),
         'Results merged into RUN_DB / {} / {}.'.format(run_id, ' / '.join(info['case_path']))))
+    return destination, prior_cases
+
+
+def _convergence_publication_groups(manifest):
+    """Partition this job's point metadata without resolving result payloads."""
+    groups, errors = [], {}
+    for point in manifest.get('points', []):
+        try:
+            info = copy.deepcopy(dict(manifest['point_table'][point]['result_info']))
+            for name in ('runid', 'case_id', 'source_nr', 'rho', 'ion_case', 'dimensions', 'scan_axes', 'convergence_group'):
+                if name not in info:
+                    raise ValueError('Missing per-point result identity: ' + name)
+            info['runid'] = clean_run_id(info['runid'])
+            info['case_id'] = canonical_case_key(info['case_id'], info)
+            if int(info['dimensions']) != 1 or not scan_key(info):
+                raise ValueError('Convergence points require one independently indexed scan direction')
+        except (KeyError, TypeError, ValueError) as exc:
+            errors[point] = str(exc)
+            continue
+        for existing, points in groups:
+            if existing == info:
+                points.append(point)
+                break
+        else:
+            groups.append((info, [point]))
+    return groups, errors
+
+
+def _convergence_group_manifest(manifest, info, points):
+    """Keep the shared job identity while narrowing all point lists and maps."""
+    lists = ('points', 'loaded_points', 'partial_points', 'failed_points', 'skipped_points', 'active_points')
+    maps = ('point_table', 'input_sha256', 'point_workdirs', 'continuation_pending', 'point_states', 'load_errors')
+    saved = {name: copy.deepcopy(value) for name, value in manifest.items()
+             if name not in lists + maps + ('collection_groups', 'archive_errors', 'unpublished_points')}
+    selected = set(points)
+    for name in lists:
+        if name in manifest:
+            saved[name] = [point for point in manifest[name] if point in selected]
+    for name in maps:
+        if name in manifest:
+            saved[name] = {point: copy.deepcopy(value) for point, value in manifest[name].items() if point in selected}
+    # Source-result provenance can still name a deleted parent. The current
+    # run token/server/allocation identify the new files and must stay shared.
+    saved.update({name: copy.deepcopy(value) for name, value in info.items()
+                  if name in RESULT_INFO_FIELDS and name not in ('run_token', 'server', 'runtime', 'case_tag')})
+    saved.update(dict(nr=info['source_nr'], mass=info['ion_case'], points=list(points)))
+    if saved.get('continuation', None):
+        continuation = saved['continuation']
+        continuation.update(dict(points=list(points), source_points=list(points)))
+        scope = continuation.get('scope', None)
+        if scope is not None:
+            scope['coordinates'] = [coordinate for coordinate in scope.get('coordinates', [])
+                if (coordinate['runid'], coordinate['case_id'], coordinate['scan']) ==
+                   (info['runid'], info['case_id'], scan_key(info))]
+        # The complete source scope stays in the job record. Only coordinates
+        # of this direction decide whether this installed scan is complete.
+    return saved
+
+
+def _publish_convergence_run(root, manifest):
+    """Publish independent directions from one array without inventing jobs."""
+    groups, errors = _convergence_publication_groups(manifest)
+    summaries, installed = [], []
+    unpublished = set(errors) | set(manifest.get('load_errors', {}))
+    for info, points in groups:
+        scoped = _convergence_group_manifest(manifest, info, points)
+        readable = set(scoped.get('loaded_points', []) + scoped.get('partial_points', [])) - set(scoped.get('load_errors', {}))
+        summary = dict(runid=info['runid'], case_id=info['case_id'], scan_key=scan_key(info),
+                       points=len(points), loaded=len(set(scoped.get('loaded_points', [])) & readable),
+                       partial=len(set(scoped.get('partial_points', [])) & readable),
+                       collection_status='incomplete' if scoped.get('load_errors', {}) else 'empty',
+                       submission_complete=False, scan_complete=False)
+        if readable:
+            try:
+                destination, previous = _publish_scan(root, scoped, persist=False)
+            except Exception as exc:
+                # Each case installation is independent. A malformed direction
+                # retains its inputs/results and cannot discard another case.
+                errors.update({point: str(exc) for point in readable})
+                unpublished.update(readable)
+                summary.update(dict(collection_status='incomplete', error=str(exc)))
+            else:
+                for point in readable:
+                    row = copy.deepcopy(scoped['point_table'][point])
+                    # A published header is a compact result view. Keep this
+                    # job's original per-point scope (including reused points)
+                    # for later partial collection, independent of new headers.
+                    row['result_info'] = copy.deepcopy(manifest['point_table'][point]['result_info'])
+                    manifest['point_table'][point] = row
+                unpublished.update(scoped.get('unpublished_points', []))
+                installed.append((destination, previous))
+                summary.update({name: scoped[name] for name in ('collection_status', 'submission_complete', 'scan_complete')})
+        summaries.append(summary)
+    complete = (bool(summaries) and not errors and not manifest.get('load_errors', {})
+                and all(item['submission_complete'] for item in summaries))
+    manifest.update(dict(collection_groups=summaries, archive_errors=errors,
+                    submission_complete=complete,
+                    scan_complete=bool(summaries) and not errors and all(item['scan_complete'] for item in summaries),
+                    unpublished_points=sorted(unpublished),
+                    collection_status='incomplete' if errors or manifest.get('load_errors', {}) else
+                        'complete' if complete else 'partial' if installed else 'empty'))
+    if complete:
+        manifest['status'] = 'published'
+    remember_collection(root)
+    for destination, previous in installed:
+        release_published_results(root, destination, verified_cases=previous)
+    if errors:
+        raise ValueError('Some convergence points were not archived; other verified results were preserved: ' + str(errors))
 
 
 if wait_for_completion:

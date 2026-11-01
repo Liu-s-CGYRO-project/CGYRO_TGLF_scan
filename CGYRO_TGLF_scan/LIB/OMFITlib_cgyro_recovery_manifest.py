@@ -15,7 +15,8 @@ import os
 import posixpath
 import re
 import zipfile
-from OMFITlib_cgyro_archive import case_constants, full_point_coordinate
+from OMFITlib_cgyro_archive import (case_constants, full_point_coordinate,
+                                   identity_key, result_identity)
 
 SIDECAR = '.cgyro_recovery.json'
 SCHEMA = 1
@@ -84,6 +85,54 @@ def read_manifest(content):
     return value
 
 
+def _point_context(manifest, row, point):
+    """A mixed convergence allocation freezes each point's result identity."""
+    if not manifest.get('convergence_batch', False):
+        return manifest
+    info = row.get('result_info', {})
+    required = ('runid', 'case_id', 'source_nr', 'rho', 'ion_case', 'dimensions',
+                'scan_dimensions', 'scan_axes', 'fixed_parameters', 'constant_parameters',
+                'numeric_parameters', 'scale_time_with_ky', 'convergence_group')
+    if not isinstance(info, dict) or any(name not in info for name in required):
+        raise ValueError('Missing frozen convergence point context: ' + point)
+    for field in ('runid', 'case_id', 'ion_case'):
+        value = info[field]
+        if not isinstance(value, str) or not value or value.startswith('__') or '/' in value or '\\' in value:
+            raise ValueError('Invalid convergence ' + field + ': ' + point)
+    for field in ('fixed_parameters', 'constant_parameters', 'numeric_parameters'):
+        values = info[field]
+        if not isinstance(values, dict) or any(not re.fullmatch(r'[A-Z][A-Z0-9_]*', str(name))
+                or not math.isfinite(float(value)) for name, value in values.items()):
+            raise ValueError('Invalid frozen convergence parameters: ' + point)
+    group = info['convergence_group']
+    if (not isinstance(group, dict) or group.get('role', '') not in ('baseline', 'direction')
+            or not isinstance(group.get('baseline', None), dict)
+            or not isinstance(group.get('fixed', None), dict)
+            or not isinstance(group.get('requested', None), list)
+            or 'submit_coordinates' in group):
+        raise ValueError('Invalid frozen convergence group: ' + point)
+    parameter = group.get('parameter', '')
+    branch = 'Base case' if group['role'] == 'baseline' else parameter
+    axes = info.get('scan_axes', [])
+    if (not re.fullmatch(r'[A-Z][A-Z0-9_]*', str(parameter))
+            or group.get('storage_branch', '') != branch
+            or info.get('dimensions', None) != 1 or info.get('scan_dimensions', None) != 1
+            or not isinstance(axes, list) or len(axes) != 1 or not isinstance(axes[0], dict)
+            or axes[0].get('name', '') != parameter):
+        raise ValueError('Convergence group disagrees with its scan axis: ' + point)
+    for name, number in case_constants(info['case_id'], info).items():
+        if info['fixed_parameters'].get(name, None) != number:
+            raise ValueError('Frozen constant parameter disagrees with input settings: ' + name)
+    # Do not let a stale row-level identity silently mask a different frozen
+    # context (result_identity intentionally gives those fields precedence).
+    coordinate = dict(row)
+    for field in ('runid', 'case_id', 'source_nr', 'rho', 'ion_case'):
+        coordinate.pop(field, None)
+    if identity_key(result_identity(info, row)) != identity_key(result_identity(info, coordinate)):
+        raise ValueError('Convergence point identity disagrees with its context: ' + point)
+    return info
+
+
 def _point_index(manifest):
     points, table = manifest.get('points', []), manifest.get('point_table', {})
     if (not isinstance(points, list) or not points or len(set(points)) != len(points)
@@ -94,16 +143,16 @@ def _point_index(manifest):
     active = manifest.get('active_points', points)
     if not isinstance(active, list) or not active or len(set(active)) != len(active) or not set(active) <= set(points):
         raise ValueError('Invalid active point list in recovered attempt.')
-    dimensions = manifest.get('dimensions', None)
-    axes = manifest.get('scan_axes', [])
-    if dimensions not in (1, 2, 3) or not isinstance(axes, list) or len(axes) != dimensions:
-        raise ValueError('Missing frozen scan axes; current GUI parameters cannot reconstruct this run.')
-    names = [axis.get('name', '') for axis in axes]
-    if len(set(names)) != len(names) or any(not re.fullmatch(r'[A-Z][A-Z0-9_]*', name) for name in names):
-        raise ValueError('Invalid frozen scan axis names.')
     coordinates = set()
     for point in points:
         row = table[point]
+        info = _point_context(manifest, row, point)
+        dimensions, axes = info.get('dimensions', None), info.get('scan_axes', [])
+        if dimensions not in (1, 2, 3) or not isinstance(axes, list) or len(axes) != dimensions:
+            raise ValueError('Missing frozen scan axes; current GUI parameters cannot reconstruct this run.')
+        names = [axis.get('name', '') for axis in axes]
+        if len(set(names)) != len(names) or any(not re.fullmatch(r'[A-Z][A-Z0-9_]*', name) for name in names):
+            raise ValueError('Invalid frozen scan axis names.')
         values, physical = row.get('values', {}), row.get('result_path', [])
         path = row.get('coordinate_path', physical)
         if (not isinstance(path, list) or len(path) != 2 * dimensions + 2 or path[-2] != 'lin'
@@ -126,7 +175,8 @@ def _point_index(manifest):
             raise ValueError('Missing numeric coordinates for ' + point) from exc
         if not all(math.isfinite(value) for value in numeric + indexed) or not matches or numeric[-1] == 0:
             raise ValueError('Frozen coordinates disagree with result path for ' + point)
-        identity = full_point_coordinate(manifest, row)
+        identity = (identity_key(result_identity(info, row)) if manifest.get('convergence_batch', False)
+                    else full_point_coordinate(manifest, row))
         if identity in coordinates:
             raise ValueError('Duplicate frozen result coordinates: ' + point)
         coordinates.add(identity)
@@ -200,7 +250,13 @@ def _verify_coordinates(archive, row):
         raise ValueError('Recovered input.cgyro is too large.')
     content = archive.read('input.cgyro').decode('utf-8')
     assignments = dict(re.findall(r'^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*([^#!\n]*)', content, re.MULTILINE))
-    for name, value in row['values'].items():
+    info = row.get('result_info', {})
+    values = {}
+    if info.get('convergence_group', {}):
+        values.update(info.get('numeric_parameters', {}))
+        values.update(info.get('fixed_parameters', {}))
+    values.update(row['values'])
+    for name, value in values.items():
         expected = row.get('effective_time', {}).get(name, value)
         try:
             actual = float(assignments[name].strip().replace('D', 'E').replace('d', 'e'))

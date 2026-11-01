@@ -117,6 +117,29 @@ def result_records(module, include_tasks=True):
     return records
 
 
+def _job_result_contexts(manifest):
+    """Read only this job's indexed result scopes, never its file payloads."""
+    if not manifest.get('convergence_batch', False):
+        yield manifest
+        return
+    if manifest.get('collection_groups', None) is not None:
+        # Publication already records these lightweight scope headers. Other
+        # radii/ions can be excluded without opening their entire point tables.
+        for info in manifest['collection_groups']:
+            yield info
+        return
+    seen = set()
+    for row in metadata_value(manifest.get('point_table', {})).values():
+        info = metadata_value(row).get('result_info', {})
+        try:
+            key = (clean_run_id(info['runid']), canonical_case_key(info['case_id'], info), scan_key(info))
+        except (KeyError, TypeError, ValueError):
+            continue  # Unidentified points stay retained for explicit repair.
+        if key not in seen:
+            seen.add(key)
+            yield info
+
+
 def _version_record(module, token, source, headers=None, include_tasks=True):
     """Pending-task payloads are local to this job's case and scan only."""
     source = metadata_value(source)
@@ -142,14 +165,14 @@ def _version_record(module, token, source, headers=None, include_tasks=True):
         return None
     table = metadata_value(manifest.get('point_table', {}))
     public = set()
-    try:
-        caseid = canonical_case_key(manifest.get('case_id', ''), manifest)
-        selection = 'scan:' + json.dumps([manifest['runid'], caseid, scan_key(manifest)], separators=(',', ':'))
-        header = headers.get(selection, None) if headers is not None else None
-        entry = _scan_record(module, selection, header)
-    except (KeyError, TypeError, ValueError):
-        entry = None
-    if entry is not None:
+    for info in _job_result_contexts(manifest):
+        try:
+            caseid = canonical_case_key(info.get('case_id', ''), info)
+            selection = 'scan:' + json.dumps([info['runid'], caseid, scan_key(info)], separators=(',', ':'))
+            header = headers.get(selection, None) if headers is not None else None
+            entry = _scan_record(module, selection, header)
+        except (KeyError, TypeError, ValueError):
+            continue
         for row in entry['tasks'].values():
             try:
                 public.add(identity_key(result_identity(entry, row)))
@@ -210,10 +233,12 @@ def select_result(module, entry, point):
     """Freeze one version using existing metadata; never open its files."""
     if point not in entry.get('tasks', {}):
         if point in entry.get('resume_tasks', {}) and entry.get('input_sha256', {}).get(point, None):
+            row = deepcopy(dict(entry['resume_tasks'][point]))
+            info = {key: deepcopy(value) for key, value in entry.items()
+                    if key not in ('tasks', 'resume_tasks', 'result_locations')}
+            info.update(deepcopy(dict(row.get('result_info', {}))))
             return dict(mode='input', record_token=str(entry['run_token']),
-                        row=deepcopy(dict(entry['resume_tasks'][point])),
-                        info={key: deepcopy(value) for key, value in entry.items()
-                              if key not in ('tasks', 'resume_tasks', 'result_locations')},
+                        row=row, info=info,
                         input_hashes=deepcopy(dict(entry['input_sha256'][point])))
         raise ValueError(str(point) + ': no retained result files in this version')
     row = deepcopy(dict(metadata_value(entry['tasks'][point])))
@@ -329,7 +354,8 @@ def release_published_results(module, case, verified_cases=()):
         manifest = metadata_value(record.get('manifest', {}))
         if not collection_recorded(manifest) or not run_settled(manifest):
             continue  # Live/requeued jobs still own their exact input/retry state.
-        if (clean_run_id(manifest.get('runid', '')), canonical_case_key(manifest.get('case_id', ''), manifest)) not in affected_cases:
+        if not any((clean_run_id(info.get('runid', '')), canonical_case_key(info.get('case_id', ''), info))
+                   in affected_cases for info in _job_result_contexts(manifest)):
             continue  # No point-table traversal for other radii/ions/runs.
         cases = metadata_value(record.get('cases', {}))
         retired = dict(metadata_value(record.get('retired_points', {})))

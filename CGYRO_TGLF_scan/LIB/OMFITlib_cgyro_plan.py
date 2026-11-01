@@ -74,15 +74,16 @@ def cgyro_plan_summary(root):
     physics = read(root, CGYRO_PATH + ('SETTINGS', 'PHYSICS'), {})
     if convergence_active(physics):
         ky = ky_values(physics)
-        counts, job_count = [], 0
+        counts, group_count = [], 0
         for row in selected:
             jobs = scan_jobs(physics, read(root, row['path']), 1, row.get('batch_key', str(row['nr'])))
             counts.append(sum(len(job['physics']['1d']['Range']) for job in jobs) * len(ky))
-            job_count += len(jobs) * ion_cases
+            group_count += len(jobs) * ion_cases
+        total = sum(counts) * ion_cases
         return dict(convergence=True, dimensions=1, axes=[], ky=len(ky),
-                    cases=len(selected) * ion_cases, jobs=job_count,
+                    cases=len(selected) * ion_cases, jobs=len(selected) * ion_cases if total else 0, group_count=group_count,
                     points_per_case=counts[0] if counts and len(set(counts)) == 1 else None,
-                    total_points=sum(counts) * ion_cases)
+                    total_points=total, array_points=total)
     dimensions, axes, ky = cgyro_scan_axes(root)
     points_per_case = len(ky)
     for axis in axes:

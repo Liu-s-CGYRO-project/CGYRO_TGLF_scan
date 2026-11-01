@@ -89,6 +89,119 @@ class ResultIdentityTests(unittest.TestCase):
         self.assertIn('version:legacy', entries)
         self.assertNotIn('tasks', entries['version:legacy'])
 
+    def grouped_pending_job(self, module):
+        first, row1, ref1 = self.result(module, 'grouped-first')
+        second, row2, ref2 = self.result(module, 'grouped-second', ky=-.1)
+        second.update(case_id='nr=2__rho=0.5__ion=D', nr=2, source_nr=2, rho=.5, mass='D', ion_case='D')
+        row1.update(result_info={name: copy.deepcopy(first[name]) for name in archive.RESULT_INFO_FIELDS if name in first}, run_token='grouped')
+        row2.update(result_info={name: copy.deepcopy(second[name]) for name in archive.RESULT_INFO_FIELDS if name in second}, run_token='grouped')
+        manifest = dict(first, run_token='grouped', convergence_batch=True, status='cancelled', collection_status='partial',
+                        points=['p000001', 'p000002'], loaded_points=['p000001', 'p000002'],
+                        point_table={'p000001': row1, 'p000002': row2})
+        records = db.run_records(module)
+        records.clear()
+        records['grouped'] = dict(manifest=manifest, cases={'p000001': ref1, 'p000002': ref2})
+        return first, second, row1, row2, ref1, ref2
+
+    def test_grouped_pending_index_does_not_repeat_published_nonheader_case(self):
+        module = {}
+        first, second, row1, row2, ref1, ref2 = self.grouped_pending_job(module)
+        self.public(module, second, row2, ref2)
+        entry = find_record(module, 'version:grouped')
+        self.assertEqual(set(entry['tasks']), {'p000001'})
+        self.assertEqual(set(entry['resume_tasks']), {'p000001'})
+        self.assertEqual(select_result(module, entry, 'p000001')['identity']['case_id'], first['case_id'])
+
+    def test_retire_grouped_alias_only_for_matching_nonheader_case(self):
+        module = {}
+        first, second, row1, row2, ref1, ref2 = self.grouped_pending_job(module)
+        current, replacement_row, replacement = self.result(module, 'grouped-replacement', ky=-.1)
+        current.update(case_id=second['case_id'], nr=2, source_nr=2, rho=.5, mass='D', ion_case='D')
+        case = self.public(module, current, replacement_row, replacement)
+        with patch.object(storage, 'resolve_result', side_effect=AssertionError('cleanup read result payload')):
+            released = release_published_results(module, case)
+        record = db.run_records(module)['grouped']
+        self.assertEqual(set(record['cases']), {'p000001'})
+        self.assertEqual(record['cases']['p000001'], ref1)
+        self.assertEqual(set(record['retired_points']), {'p000002'})
+        self.assertIn(storage.reference_id(ref2), released)
+        self.assertNotIn(storage.reference_id(ref1), released)
+        self.assertEqual(set(record['manifest']['point_table']), {'p000001', 'p000002'})
+
+    def convergence_bindings(self, module):
+        bindings, identities = {}, []
+        for point, axis, value, ky in (('p000010', 'N_ENERGY', 8, .1), ('p000020', 'N_XI', 4, .2)):
+            info, row, reference = self.result(module, 'resume-' + point, ky=ky)
+            info['scan_axes'] = [dict(name=axis, values=[value])]
+            # Legacy convergence metadata intentionally predates role/branch
+            # fields, but already records its true independent direction.
+            info['convergence_group'] = dict(parameter=axis, baseline={'N_ENERGY': 8, 'N_XI': 4},
+                                             requested=[value], shared=[], fixed={})
+            row.update(values={axis: value, 'KY': ky}, result_path=[axis, str(value), 'lin', str(ky)])
+            case = {}
+            archive.store_scan(case, {axis: {str(value): {'lin': {str(ky): reference}}}}, info, {point: row})
+            previous = list(archive.catalog_runs(module, 'Jet', info['case_id']).get('Jet', {}).values())
+            archive.install_case(module['RUN_DB'].setdefault('Jet', {}), info['case_id'], archive.combine_cases(previous + [case]))
+            selection = 'scan:' + json.dumps(['Jet', info['case_id'], axis], separators=(',', ':'))
+            entry = find_record(module, selection)
+            bindings[point] = select_result(module, entry, point)
+            identities.extend(scan_scope(entry)['coordinates'])
+        module['RUN_DB'].pop('__RUNS__')
+        return bindings, dict(coordinates=identities, unknown=[], issues=[])
+
+    def test_selected_multi_direction_continuation_keeps_each_axis_and_legacy_context(self):
+        from OMFITlib_cgyro_recovery_manifest import _point_context
+        module = {}
+        bindings, scope = self.convergence_bindings(module)
+        plan = continuation_plan(module, 'no-parent', list(bindings), 1., selections=bindings, scope=scope)
+        self.assertTrue(plan['convergence_batch'])
+        self.assertEqual(set(plan['points']), {'p000010', 'p000020'})
+        for point, axis, ky in (('p000010', 'N_ENERGY', .1), ('p000020', 'N_XI', .2)):
+            current, row, _ = prepare_point(module, plan, point, str(self.base / ('stage-' + point)), Input, runtime=self.current)
+            self.assertEqual(row['result_path'][0], axis)
+            self.assertEqual(current['KY'], ky)
+            self.assertEqual(current['MAX_TIME'], 1.)
+            self.assertEqual(row['result_info']['convergence_group']['storage_branch'], axis)
+            _point_context({'convergence_batch': True}, row, point)
+        self.assertNotIn('__RUNS__', module['RUN_DB'])
+
+    def test_single_direction_continuation_reads_only_selected_result(self):
+        import OMFITlib_cgyro_continue as continue_api
+        module = {}
+        bindings, scope = self.convergence_bindings(module)
+        with patch.object(continue_api, 'resume_source', wraps=continue_api.resume_source) as read:
+            plan = continuation_plan(module, 'no-parent', ['p000020'], 1., selections=bindings, scope=scope)
+        self.assertEqual([call.args[2] for call in read.call_args_list], ['p000020'])
+        self.assertEqual(plan['points'], ['p000020'])
+        self.assertEqual(set(plan['rows']), {'p000020'})
+        current, row, _ = prepare_point(module, plan, 'p000020', str(self.base / 'single-stage'), Input, runtime=self.current)
+        self.assertEqual(row['result_path'][0], 'N_XI')
+        self.assertEqual(current['KY'], .2)
+
+    def test_unstarted_convergence_selection_uses_its_own_direction_context(self):
+        entry = dict(run_token='job', runid='Jet', case_id='nr=1__rho=0.33__ion=T',
+            tasks={}, resume_tasks={'p000002': dict(result_info=dict(scan_axes=[dict(name='N_XI', values=[4])],
+                convergence_group=dict(parameter='N_XI')), values={'N_XI': 4, 'KY': .2})},
+            input_sha256={'p000002': {'input.cgyro': 'a' * 64}},
+            scan_axes=[dict(name='N_ENERGY', values=[8])], convergence_group=dict(parameter='N_ENERGY'))
+        selected = select_result({}, entry, 'p000002')
+        self.assertEqual(selected['mode'], 'input')
+        self.assertEqual(selected['info']['scan_axes'][0]['name'], 'N_XI')
+        self.assertEqual(selected['info']['convergence_group']['parameter'], 'N_XI')
+
+    def test_alias_cleanup_uses_other_convergence_jobs_scope_summary_only(self):
+        class ClosedTable(dict):
+            def values(self):
+                raise AssertionError('unrelated convergence point table was traversed')
+        module = {}
+        info, row, reference = self.result(module, 'selected-scope')
+        case = self.public(module, info, row, reference)
+        db.run_records(module)['other-convergence'] = dict(manifest=dict(
+            convergence_batch=True, status='cancelled', collection_status='partial',
+            collection_groups=[dict(runid='Other', case_id='nr=2__rho=0.5__ion=D', scan_key='N_THETA')],
+            point_table=ClosedTable()))
+        release_published_results(module, case)
+
     def test_scoped_bookkeeping_does_not_compute_global_storage_totals(self):
         module = {}
         info, row, ref = self.result(module, 'scoped')

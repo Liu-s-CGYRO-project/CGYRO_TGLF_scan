@@ -407,8 +407,8 @@ class CgyroPage:
     def preview_cgyro_convergence(self):
         """Explicit preview uses selected inputs and cached result summaries."""
         plan = self.actions.preview_cgyro_convergence()
-        summary = '{} 个候选点：新提交 {}，复用 {}；{} 份扫描作业。'.format(
-            plan['total_points'], plan['submit_points'], plan['reused_points'], plan['jobs'])
+        summary = '{} 个分组（含基准），{} 个候选点：复用 {}；{} 个数组主作业，{} 个新计算子任务。'.format(
+            plan['group_count'], plan['total_points'], plan['reused_points'], plan['jobs'], plan['array_points'])
         lines = [summary]
         for group in plan['groups'][:24]:
             lines.append('nr={} · {} · {} {}：新 {}，复用 {}，共享基准/重复配置 {}；额外固定项 {}'.format(
@@ -430,8 +430,8 @@ class CgyroPage:
         problems = cgyro_plan_issues(self.root)
         if not problems:
             plan = cgyro_plan_summary(self.root)
-            self.label(('{} 个半径/离子组合，至多 {} 份作业，共 {} 个候选点；复用后数量见“预览收敛扫描计划”。'.format(
-                plan['cases'], plan['jobs'], plan['total_points'])) if plan.get('convergence', False) else
+            self.label(('{} 个半径/离子组合、{} 个分组（含基准），每组合一个数组，至多 {} 个主作业，共 {} 个候选点；复用后数量见“预览收敛扫描计划”。'.format(
+                plan['cases'], plan['group_count'], plan['jobs'], plan['total_points'])) if plan.get('convergence', False) else
                 '{} 个输入组合 × 每组 {} 点 = {} 个任务'.format(
                     plan['cases'], plan['points_per_case'], plan['total_points']))
         remote = node['SETTINGS'].get('REMOTE_SETUP', {})
@@ -441,9 +441,12 @@ class CgyroPage:
             config.get('nodes', '—'), config.get('ntasks_per_node', '—'),
             config.get('cpus_per_task', node['SETTINGS'].get('SETUP', {}).get('cpus_per_task', 1))))
         if config.get('scheduler', '') in ('slurm', 'pbs'):
-            self.label('所有半径 / 离子先提交排队，再等待并收集；实际并行由队列资源决定。')
+            combined = convergence_active(node['SETTINGS']['PHYSICS'])
+            self.label('每个半径 / 离子方案的基准与方向合并提交一个数组，使用当前统一资源配置；实际并行由队列资源决定。' if combined else
+                       '所有半径 / 离子先提交排队，再等待并收集；实际并行由队列资源决定。')
             if config.get('scheduler', '') == 'slurm':
-                self.label('每案例并发上限 {} 点，H/D/T 三个案例可合计到三倍上限。'.format(config.get('array_parallel', '—')))
+                self.label(('每个半径 / 离子收敛数组并发上限 {} 点，多案例可同时运行。' if combined else
+                            '每案例并发上限 {} 点，H/D/T 三个案例可合计到三倍上限。').format(config.get('array_parallel', '—')))
         issues = problems + runtime_issues(self.root, 'cgyro')
         if config.get('scheduler', '') in ('slurm', 'pbs'):
             self.ui.Entry(location(MODULES['cgyro'] + ('SETTINGS', 'SETUP', 'failed_point_retries')),

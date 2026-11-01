@@ -4,7 +4,7 @@ The archive is the source of truth: live input/scan controls are never applied
 to a restart. Planning and staging do not change the successful result case.
 CGYRO rewinds its history to out.cgyro.tag and MAX_TIME adds a new time segment.
 """
-from builtins import (AttributeError, KeyError, OSError, TypeError, ValueError, abs, any, dict, float, int, len,
+from builtins import (AttributeError, KeyError, OSError, TypeError, ValueError, abs, all, any, dict, float, int, len,
                       bool, isinstance, iter, list, max, open, range, set, sorted, str, sum, type, zip)
 import copy
 import hashlib
@@ -14,7 +14,7 @@ import os
 import re
 import shutil
 import zipfile
-from OMFITlib_cgyro_archive import (canonical_case_key, case_constants, case_scans, clean_run_id, coordinate_path,
+from OMFITlib_cgyro_archive import (RESULT_INFO_FIELDS, canonical_case_key, case_constants, case_scans, clean_run_id, coordinate_path,
                                    output_final_time, point_coordinate, result_file, scan_branch, scan_key, solver_state)
 from OMFITlib_cgyro_storage import submission_file, store_result, reference_id, storage_state
 from OMFITlib_cgyro_result_index import (at as index_at, find_record, select_result,
@@ -283,9 +283,33 @@ def continuation_plan(module, token, point_ids, additional_time, selections=None
                          {key: value for key, value in entry.items() if key not in
                           ('tasks', 'resume_tasks', 'result_locations')})
     rows = {point: copy.deepcopy(dict(tasks[point])) for point in selected}
+    convergence_batch = all(bindings[point]['info'].get('convergence_group', None) for point in selected)
+    if convergence_batch:
+        for point, row in rows.items():
+            source_info = bindings[point]['info']
+            saved = {name: copy.deepcopy(source_info[name]) for name in RESULT_INFO_FIELDS if name in source_info}
+            # Older indexed convergence scans have the axis/baseline but no
+            # explicit storage role. Preserve their existing branch; absence
+            # of a baseline role never promotes a direction into Base case.
+            group = saved['convergence_group']
+            group.setdefault('parameter', saved['scan_axes'][0]['name'])
+            group.setdefault('role', 'baseline' if scan_key(source_info) == 'Base case' else 'direction')
+            group.setdefault('storage_branch', 'Base case' if group['role'] == 'baseline' else group['parameter'])
+            group.setdefault('baseline', {})
+            group.setdefault('fixed', {})
+            group.setdefault('requested', list(saved['scan_axes'][0].get('values', [])))
+            group.pop('submit_coordinates', None)
+            saved.setdefault('scan_dimensions', saved['dimensions'])
+            saved.setdefault('fixed_parameters', {})
+            saved.setdefault('constant_parameters', case_constants(saved['case_id'], saved))
+            saved['fixed_parameters'].update(saved['constant_parameters'])
+            saved.setdefault('numeric_parameters', {})
+            saved.setdefault('scale_time_with_ky', False)
+            row['result_info'] = saved
     return dict(source_token=str(token), source_runid=info['runid'], source_case_id=info['case_id'],
                 additional_time=duration, info=info, points=selected, rows=rows, sources=sources,
                 selections=bindings, scope=copy.deepcopy(scope), rejected=rejected,
+                convergence_batch=convergence_batch,
                 stopped_run=bool(entry and entry.get('stopped_run', False)),
                 source_points=list(tasks), runtime=copy.deepcopy(dict(info.get('runtime', {}))),
                 server=info.get('server', ''), case_tag=info.get('case_tag', 'linear'))
@@ -335,7 +359,7 @@ def previous_final_time(metadata, tag):
 def prepare_point(module, plan, point_id, stage, reader, runtime=None):
     """Copy to a new run directory and change only the segment duration."""
     row = copy.deepcopy(plan['rows'][point_id])
-    axes = plan.get('info', {}).get('scan_axes', [])
+    axes = row.get('result_info', {}).get('scan_axes', plan.get('info', {}).get('scan_axes', []))
     if axes:
         # Job manifests use the primary axis name; the public archive uses a
         # combined scan key. Preserve any extra physical coordinate leaf.

@@ -10,8 +10,8 @@ from builtins import (BaseException, KeyError, TypeError, ValueError, any, dict,
 from copy import deepcopy
 import math
 import re
-from OMFITlib_cgyro_archive import (canonical_case_key, case_scans, case_sources, clean_run_id, coordinate_path,
-                                   normalized_info, result_identity, identity_key,
+from OMFITlib_cgyro_archive import (RESULT_INFO_FIELDS, canonical_case_key, case_scans, case_sources, clean_run_id, coordinate_path,
+                                   normalized_info, result_identity, identity_key, scan_key,
                                    grouped_case_id, grouped_case_path, install_case, output_final_time, point_values, scan_branch, store_scan)
 from OMFITlib_cgyro_db import PENDING, STATE, ensure_layout, metadata_value, rollback_actions, run_records
 
@@ -146,7 +146,20 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
         if str(token) == str(exclude_token):
             continue
         manifest, points = record.get('manifest', {}), record.get('cases', {})
-        tasks, payload = factory(), factory()
+        groups, contexts, planned_groups = {}, {}, {}
+        for point, row in manifest.get('point_table', {}).items():
+            if manifest.get('convergence_batch', False) and not row.get('result_info', {}):
+                continue
+            path = list(row.get('result_path', []))
+            if not path:
+                continue
+            context = {name: value for name, value in row.get('result_info', {}).items()
+                       if name in RESULT_INFO_FIELDS and name not in ('run_token', 'server', 'runtime', 'case_tag')}
+            info = normalized_info(dict(manifest, **context))
+            info['run_token'] = str(token)
+            key = (info.get('runid', ''), canonical_case_key(info.get('case_id', ''), info), scan_key(info, path[0]))
+            contexts[point] = (info, key)
+            planned_groups.setdefault(key, []).append(point)
         for point, row in manifest.get('point_table', {}).items():
             if point not in points or _reference(points[point]) is None:
                 continue
@@ -160,30 +173,44 @@ def recover_archives(module, resolve, factory=dict, exclude_token=''):
             path = list(row.get('result_path', []))
             if not path:
                 continue
+            # One scheduler allocation can contain several physical cases and
+            # directions. Its top-level identity only describes the first one.
+            if point not in contexts:
+                _retain_pending(pending, 'run ' + str(token) + ' / ' + str(point), points[point])
+                continue
+            info, key = contexts[point]
+            if key not in groups:
+                groups[key] = (info, factory(), factory())
+            info, tasks, payload = groups[key]
             saved_row = deepcopy(dict(row))
             loaded = point in manifest.get('loaded_points', []) and point not in manifest.get('partial_points', [])
             saved_row.update(dict(task_id=str(point), status='loaded' if loaded else 'partial',
-                run_token=str(token), runid=manifest.get('runid', ''), case_id=manifest.get('case_id', ''),
-                rho=manifest.get('rho', None), ion_case=manifest.get('mass', ''), source_nr=manifest.get('nr', ''),
+                run_token=str(token), runid=info.get('runid', ''), case_id=info.get('case_id', ''),
+                rho=info.get('rho', None), ion_case=info.get('ion_case', ''), source_nr=info.get('source_nr', ''),
                 result_workDir=manifest.get('point_workdirs', {}).get(point, manifest.get('workDir', '')),
                 resume_pending=not loaded,
                 continuation_pending=manifest.get('continuation_pending', {}).get(point, ''),
                 scheduler_state=manifest.get('point_states', {}).get(point, '')))
+            saved_row['result_info'] = {name: deepcopy(info[name]) for name in RESULT_INFO_FIELDS if name in info}
             tasks[point] = saved_row
             node = payload
             for part in path[:-1]:
                 node = node.setdefault(part, factory())
             node[path[-1]] = points[point]
-        if tasks:
-            complete = (set(tasks) == set(manifest.get('points', [])) and
-                        set(tasks) == set(manifest.get('loaded_points', [])) and
-                        not manifest.get('partial_points', []) and not manifest.get('failed_points', []))
-            info = deepcopy(dict(manifest))
-            info.update(dict(ion_case=manifest.get('mass', ''), source_nr=manifest.get('nr', ''),
-                             planned_points=list(manifest.get('points', [])),
+        for key, (info, tasks, payload) in groups.items():
+            planned = planned_groups[key]
+            complete = (set(tasks) == set(planned) and set(tasks) <= set(manifest.get('loaded_points', []))
+                        and not set(tasks) & (set(manifest.get('partial_points', [])) | set(manifest.get('failed_points', []))))
+            info = deepcopy(dict(info))
+            if manifest.get('convergence_batch', False):
+                # The job retains its full table once; each public scan only
+                # owns this group's tasks and per-point result references.
+                for field in ('point_table', 'points', 'active_points'):
+                    info.pop(field, None)
+            info.update(dict(planned_points=planned,
                              collection_status='complete' if complete else 'partial'))
             payload['__INFO__'], payload['__TASKS__'] = info, tasks
-            candidates.append(('run ' + str(token), payload, False, '', ''))
+            candidates.append(('run ' + str(token) + ' / ' + ' / '.join(key), payload, False, '', ''))
     validated, issues, recovered = [], [], []
     for order, (label, source, remove_source, rid_hint, cid_hint) in enumerate(candidates):
         try:

@@ -203,7 +203,7 @@ class CollectionRollbackTests(unittest.TestCase):
         with patch.object(retry, 'require_retained_run'), patch.object(retry, 'save_current'), \
              patch.object(retry, 'run_cases', return_value={}), patch.object(retry, 'copy_result_tree', return_value={}), \
              patch.object(retry, 'set_run_cases', side_effect=RuntimeError('restore refused')), \
-             patch.object(retry.time, 'sleep', side_effect=AssertionError('retry after failed rollback')):
+             patch.object(retry.RetryWait, 'wait', side_effect=AssertionError('retry after failed rollback')):
             with self.assertRaises(RuntimeError) as caught:
                 retry.collect_current(root, object(), dict, None, None)
         self.assertIs(caught.exception, error)

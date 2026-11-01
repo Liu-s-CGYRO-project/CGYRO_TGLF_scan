@@ -1,7 +1,7 @@
-"""Prepare immutable point inputs, submit one case, then optionally wait.
+"""Prepare immutable point inputs, submit one array, then optionally wait.
 
-The project orchestrator calls this once per rho/isotope case. Point IDs keep
-their original array indices so failed subsets can be retried independently.
+Each rho/isotope case has its own array, shared by its convergence directions.
+Point IDs keep their original indices for independent failed-subset retries.
 """
 from builtins import (Exception, OSError, RuntimeError, TypeError, ValueError, all, any, bool, dict, enumerate, float,
                       int, isinstance, iter, len, list, max, print, range, set, sorted, str, sum, tuple, zip)
@@ -126,7 +126,7 @@ def runtime_abs_path(path):
 
 
 defaultVars(scan_dimensions=1, wait_for_completion=True, batch_id='', continuation=None, check_temp_start=True,
-            convergence_group=None)
+            convergence_group=None, convergence_plan=None)
 
 
 def json_scalar(value):
@@ -247,6 +247,52 @@ def validate_restart_input(previous, current):
         raise ValueError('Restart input is incompatible (%s); use restart_mode=0' % ', '.join(sorted(changed)))
 
 
+def convergence_points(root, plan, physics, effnum):
+    """Flatten pending directions into one array, preserving per-point identity.
+
+    Only directions within one radius/isotope case share a submission. The
+    existing result_info row carries the archive context through job recovery.
+    No result files are opened and no Cartesian product of directions is made.
+    """
+    points, sources, identities = [], {}, set()
+    submission_case = None
+    for item in plan:
+        source = root['BATCH_INPUTS'][item['batch_key']][item['ion_case']].duplicate()
+        source.pop('rho', None)
+        controls = copy.deepcopy(dict(physics))
+        controls.update(copy.deepcopy(item['scan_controls']))
+        initialize_parameters(controls, source, OMFITtree)
+        fixed = apply_parameters(source, controls, 1)
+        constants = configured_constants(controls)
+        source['NONLINEAR_FLAG'] = 0
+        group = item['convergence_group']
+        pending, axes = scan_points(controls, 1, effnum, source, selected=group['submit_coordinates'])
+        case_id = canonical_case_key(item['case_id'], dict(rho=item['rho'], ion_case=item['ion_case'],
+                                                         constant_parameters=constants))
+        if submission_case is None:
+            submission_case = (item['runid'], case_id)
+        elif submission_case != (item['runid'], case_id):
+            raise ValueError('A convergence array must contain one radius/isotope case only')
+        context = dict(runid=item['runid'], case_id=case_id, source_nr=item['nr'], rho=item['rho'],
+            ion_case=item['ion_case'], dimensions=1, scan_dimensions=1, scan_axes=axes,
+            fixed_parameters=fixed, constant_parameters=constants,
+            numeric_parameters={name: json_scalar(source[name]) for name in CALCULATION_FIELDS if name in source},
+            scale_time_with_ky=bool(controls['scale_time_with_ky']),
+            convergence_group={key: copy.deepcopy(value) for key, value in group.items() if key != 'submit_coordinates'})
+        for _, overrides, row in pending:
+            identity = (context['runid'], case_id, group['storage_branch'], tuple(row['result_path']))
+            if identity in identities:
+                raise ValueError('Duplicate convergence point in the submission plan')
+            identities.add(identity)
+            point = 'p{:06d}'.format(len(points) + 1)
+            row['result_info'] = context
+            points.append((point, overrides, row))
+            sources[point] = source
+    if not points:
+        raise ValueError('No pending convergence points to submit')
+    return points, sources
+
+
 physics = root['SETTINGS']['PHYSICS']
 setup = root['SETTINGS']['SETUP']
 retry_limit(root)
@@ -271,6 +317,8 @@ if check_temp_start:
     space = check_start_capacity(base_workdir)
     print('[CGYRO] Start check passed; preparing inputs. Later peaks above 200 GiB are allowed.', flush=True)
 restart_mode = 0 if continuation else int(physics['restart_mode'])
+if convergence_plan is not None and (continuation or restart_mode):
+    raise ValueError('A convergence submission requires new inputs; continue selected RUN_DB points separately.')
 previous_cases = result_view(root, run_cases(root)) if restart_mode else {}
 if restart_mode not in (0, 1):
     raise ValueError('restart_mode must be 0 or 1')
@@ -342,13 +390,21 @@ if continuation:
     base_input = first_prepared[0].duplicate()
 else:
     base_input = inputs_node['input.cgyro'].duplicate()
-prescribed_zeff = float(base_input.get('Z_EFF_METHOD', 2)) == 1
 source_rho = continuation['info'].get('rho', None) if continuation else physics.get('rho', None)
 if source_rho is None:
     source_rho = base_input.get('rho', None)
 if 'rho' in base_input:
     del base_input['rho']  # Old projects may still carry this non-solver metadata.
-if continuation:
+convergence_inputs = {}
+if convergence_plan is not None:
+    points, convergence_inputs = convergence_points(root, convergence_plan, physics, setup['effnum'])
+    base_input = convergence_inputs[points[0][0]]
+    first_info = points[0][2]['result_info']
+    fixed_parameters = first_info['fixed_parameters']
+    constant_parameters = first_info['constant_parameters']
+    scan_axes = first_info['scan_axes']
+    scan_dimensions = 1
+elif continuation:
     fixed_parameters = copy.deepcopy(continuation['info'].get('fixed_parameters', {}))
     constant_parameters = copy.deepcopy(continuation['info'].get('constant_parameters', {}))
     scan_axes = copy.deepcopy(continuation['info']['scan_axes'])
@@ -363,7 +419,7 @@ else:
 case_id = canonical_case_key(case_id, dict(rho=source_rho, ion_case=physics['mass'],
                                          constant_parameters=constant_parameters))
 input_names = ['input.cgyro']
-if base_input.get('PROFILE_MODEL', 1) == 2:
+if any(source.get('PROFILE_MODEL', 1) == 2 for source in (list(convergence_inputs.values()) or [base_input])):
     input_names += ['input.profiles', 'input.profiles.geo']
 for name in input_names[1:]:
     if not continuation and name not in inputs_node:
@@ -381,17 +437,25 @@ for point_number, (new_dir, overrides, point_metadata) in enumerate(points, 1):
     # OMFITobject.deploy(existing_dir) appends its original basename. Supply a
     # nonexistent destination when copying a result directory (framework API).
     os.makedirs(os.path.dirname(stage), exist_ok=True)
-    current_input = base_input.duplicate()
+    point_source = convergence_inputs.get(new_dir, base_input)
+    current_input = point_source.duplicate()
+    point_info = point_metadata.get('result_info', {})
+    point_fixed = point_info.get('fixed_parameters', fixed_parameters)
+    point_constants = point_info.get('constant_parameters', constant_parameters)
+    point_scaling = point_info.get('scale_time_with_ky', physics['scale_time_with_ky'])
     for name, value in overrides.items():
         current_input[name] = parameter_value(name, value) if name in CALCULATION_FIELDS else value
     if not continuation:
-        validate_zeff(current_input, set(fixed_parameters) | set(overrides), prescribed=prescribed_zeff)
-    if not continuation and physics['scale_time_with_ky'] and overrides['KY'] > 1:
+        validate_zeff(current_input, set(point_fixed) | set(overrides),
+                      prescribed=float(point_source.get('Z_EFF_METHOD', 2)) == 1)
+    if not continuation and point_scaling and overrides['KY'] > 1:
         current_input['DELTA_T'] = current_input['DELTA_T'] / overrides['KY']
         current_input['MAX_TIME'] = current_input['MAX_TIME'] / overrides['KY']
     point_metadata['effective_time'] = {
         name: json_scalar(current_input[name]) for name in ('DELTA_T', 'MAX_TIME', 'PRINT_STEP') if name in current_input}
-    packed_names = list(input_names)
+    point_input_names = (input_names if continuation else ['input.cgyro'] +
+                         (['input.profiles', 'input.profiles.geo'] if point_source.get('PROFILE_MODEL', 1) == 2 else []))
+    packed_names = list(point_input_names)
     if continuation:
         if new_dir == first_point:
             current_input, point_metadata, packed_names = first_prepared
@@ -412,11 +476,11 @@ for point_number, (new_dir, overrides, point_metadata) in enumerate(points, 1):
         validate_checkpoint_runtime(previous_manifest.get('runtime', {}), runtime,
                                     checkpoint=verified['candidates']['bin.cgyro.restart'])
     os.makedirs(stage, exist_ok=True)
-    point_metadata.setdefault('values', {}).update(constant_parameters)
-    size_inputs = [current_input] + ([] if continuation else [inputs_node[name] for name in input_names[1:]])
+    point_metadata.setdefault('values', {}).update(point_constants)
+    size_inputs = [current_input] + ([] if continuation else [inputs_node[name] for name in point_input_names[1:]])
     ensure_capacity(stage, sum(os.path.getsize(node.filename) for node in size_inputs if os.path.isfile(node.filename)))
     current_input.deploy(os.path.join(stage, 'input.cgyro'))
-    for name in input_names[1:]:
+    for name in point_input_names[1:]:
         if not continuation:
             inputs_node[name].duplicate().deploy(os.path.join(stage, name))
     prepared = OMFITtree()
@@ -447,7 +511,7 @@ for point_number, (new_dir, overrides, point_metadata) in enumerate(points, 1):
     # Never remove a path still used by the base input reader.
     try:
         clean_stage(submit_workdir, run_token, new_dir, zip_path, checksums,
-                    protected=[base_input.filename])
+                    protected=[point_source.filename])
     except (OSError, ValueError) as exc:
         print('Staging retained: ' + str(exc))
 
@@ -467,11 +531,15 @@ manifest = {'run_token': run_token, 'case_tag': caseName, 'dimensions': max(1, s
 manifest['runtime'] = runtime
 if convergence_group:
     manifest['convergence_group'] = copy.deepcopy(convergence_group)
+if convergence_plan is not None:
+    manifest['convergence_batch'] = True
 if execution is not None:
     manifest['launch'] = {key: execution[key] for key in
                           ('nodes', 'mpi_per_node', 'mpi_ranks', 'threads', 'total_cpus', 'executable')}
 if continuation:
     source_info = continuation['info']
+    if continuation.get('convergence_batch', False):
+        manifest['convergence_batch'] = True
     manifest.update(dict(runid=continuation['source_runid'], nr=source_info['source_nr'],
                          mass=source_info['ion_case'],
                          numeric_parameters=copy.deepcopy(source_info.get('numeric_parameters', {})),

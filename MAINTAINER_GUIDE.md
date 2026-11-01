@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.50。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.51。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 输入传递和更新完整性（1.24.49 / 管理器 1.10.35）
 
@@ -44,13 +44,13 @@ ParameterList 捕获轻量目录并分页；清空只恢复所选分组、匹配
 
 ## CGYRO 单变量收敛扫描（1.24.42）
 
-`OMFITlib_cgyro_convergence` 将公共基准、各方向取值及额外固定项转换成普通一维扫描计划。完整配置在所选输入内去重，公共基准独立提交并存入 Base case；方向自定义固定项所需的其他基准仍引用已经匹配的方向点。新收敛计划使用一次 `_convergence` 结果名后缀，路径复用已有半径 / constant / 离子分组及 __SCANS__ 索引。`PHYSICS.scan_mode` 区分普通与 convergence；原生 SETUP.idimrun 仍只接受 0–3，GUI 的 cgyro_scan_content 负责映射。切换模式保留两种设置，不把新模式编码为非法的第四维。
+`OMFITlib_cgyro_convergence` 将公共基准、各方向取值及额外固定项转换成普通一维扫描分组计划。完整配置在所选输入内去重，公共基准存入 Base case；方向自定义固定项所需的其他基准仍引用已经匹配的方向点。同一半径 / 离子方案下的基准与全部方向合并为一个数组，归档按各点的分组身份拆分；不同物理案例各自提交。新收敛计划使用一次 `_convergence` 结果名后缀，路径复用已有半径 / constant / 离子分组及 __SCANS__ 索引。`PHYSICS.scan_mode` 区分普通与 convergence；原生 SETUP.idimrun 仍只接受 0–3，GUI 的 cgyro_scan_content 负责映射。切换模式保留两种设置，不把新模式编码为非法的第四维。
 
 `OMFITlib_compare_convergence` 只在所选案例的轻量点表中，以已收集的生成输入摘要匹配方向与基准，构造临时 para/value/lin 引用视图。不改 RUN_DB、不复制造数组、不依赖 RUN_HISTORY；多个不同固定物理条件形成独立组。`convergence_group` 保留在每点 result_info 中，避免新提交的扫描头覆盖旧点语义。图形使用独立的方向列；普通多轴视图不改。缺失基准或无法证明身份的旧记录报告诊断，不猜测或触发读取器补齐。
 
 显式 `prepare_cgyro_batch` 验证计划后调用 `adopt_reused_points`，将本次已验证可复用的 owner 引用登记到 Base case 和相应方向，更新该组基准语义。只暂存所选案例的受影响分支和轻量索引，提交带回滚；不修改 owner、未选分支和历史记录。预览不调用此步骤。所有点复用、没有新作业时仍执行，因此更改基准不会留下旧绘图上下文。
 
-准备和提交共用 cgyro_plan / ProjectActions 的输入变换。批量键追加 convergence:参数，准确的作业身份仍由独立 token、冻结输入、点表及 sidecar 持有。每份提交只临时安装自己的输入、扫描轴和维度，finally 恢复编辑器。选择性提交的坐标必须出现在该组原始参数 × ky 中；恢复使用冻结点表，不重建未提交的笛卡尔点。
+准备和提交共用 cgyro_plan / ProjectActions 的输入变换。批量键追加 convergence:参数，`prepare_cgyro_batch` 保留逐组 plan 和 BATCH_INPUTS 以验证复用。`run_cgyro` 在 convergence 模式按 `(runid, canonical case_id)` 合并分组，case_id 已包含半径 / 离子 / constant；每个案例临时安装其首组输入、轴和维度，调用一次原生任务并传入该案例的 `convergence_plan`。RUN_BATCH.case_ids、完成计数及收集均按物理案例计算，全部案例先提交再分别收集，finally 恢复编辑器。底层使用本案例完整分组计划和 BATCH_INPUTS 生成一份冻结输入、点表与 sidecar，每点保留准确的来源和归档身份。各子任务共用当前资源配置；并发上限分别作用于每个案例数组，全部复用的案例不发起调用。普通扫描仍按案例分别提交。 合并作业通过逐点 result_info 传递方向；收集按方向切片，主清单保留完整数组顺序。新旧任务的物理身份和调度身份分别取自所选结果与当前作业，来源 token/server/runtime/case_tag 不能覆盖新作业。续算保留所选点自己的轴，完整扫描覆盖与本次提交完成分别统计。选择性提交的坐标必须出现在该组原始参数 × ky 中；恢复使用冻结点表，不重建未提交的笛卡尔点。
 
 复用查询只检查当前 runid、半径/离子及对应轴的现有索引。新点收集时在原任务行缓存已验证的显式 input_requested_parameters，配合现有生成参数、result_summary 和文件 owner 判断输入、输出选项、精度与完成时间。旧元数据不足、引用失效或 PROFILE_MODEL=2 的额外文件无法证明匹配时不复用，也不在查询时补读文件。复用坐标合并进既有覆盖 scope；若相应结果后来被移除，本次有效输出仍归档，但不能宣称整分支完整。未建立新的结果库、历史链或整批快照。
 

@@ -632,7 +632,10 @@ class ProjectActions:
                      batch_digest=marker['batch_digest'])
         pipeline = self.root.setdefault('PROJECT_STATE', self.factory()).setdefault('pipeline', self.factory())
         pipeline['cgyro'] = marker
-        self.settings['message'] = 'CGYRO 已准备 {} 份扫描；复用 {} 个已归档点。'.format(len(plan), reused_points)
+        self.settings['message'] = ('CGYRO 已准备 {} 组收敛扫描，{} 个数组主作业、{} 个新计算点；复用 {} 个已归档点。'.format(
+            len(plan), len({(item['runid'], item['case_id']) for item in plan}), marker['submit_points'], reused_points)
+            if convergence_active(physics) else
+            'CGYRO 已准备 {} 份扫描；复用 {} 个已归档点。'.format(len(plan), reused_points))
         return plan
 
     def load_cgyro_convergence_baseline(self):
@@ -663,7 +666,7 @@ class ProjectActions:
         physics = node['SETTINGS']['PHYSICS']
         summary = cgyro_plan_summary(self.root)
         rows = sync_cgyro_choices(self.root, self.settings, self.factory)
-        items, reused, pending_jobs = [], 0, 0
+        items, reused, pending_groups, pending_cases = [], 0, 0, set()
         for row in rows:
             if not self.settings['cgyro_radii'].get(row['key'], False):
                 continue
@@ -679,13 +682,16 @@ class ProjectActions:
                     reuse = convergence_reuse(node, runid, caseid, value, controls,
                         job['convergence_group']['parameter'], physics['convergence'].get('reuse_results', True))
                     reused += reuse['reused_points']
-                    pending_jobs += bool(reuse['submit_coordinates'])
+                    pending_groups += bool(reuse['submit_coordinates'])
+                    if reuse['submit_coordinates']:
+                        pending_cases.add((runid, caseid))
                     items.append(dict(nr=row['nr'], ion=ion, parameter=job['convergence_group'].get('storage_branch', job['convergence_group']['parameter']),
                         values=list(controls['1d']['Range']), new_points=len(reuse['submit_coordinates']),
                         reused_points=reuse['reused_points'], shared=len(job['convergence_group']['shared']),
                         fixed=job['convergence_group']['fixed']))
         summary.update(dict(groups=items, reused_points=reused, submit_points=summary['total_points'] - reused,
-                            jobs=pending_jobs))
+                            jobs=len(pending_cases), group_count=len(items), pending_groups=pending_groups,
+                            array_points=summary['total_points'] - reused))
         return summary
 
     def edit_cgyro_parameter(self, name):
@@ -1004,6 +1010,12 @@ class ProjectActions:
             return []
         setup = node['SETTINGS']['SETUP']
         physics = node['SETTINGS']['PHYSICS']
+        combined = convergence_active(physics)
+        plans_by_case = OrderedDict()
+        if combined:
+            for item in plan:
+                plans_by_case.setdefault((item['runid'], item['case_id']), []).append(item)
+        submissions = [items[0] for items in plans_by_case.values()] if combined else plan
         if int(physics.get('restart_mode', 0)) == 1 and len(plan) != 1:
             raise ValueError('重启只能运行一个 nr 与一个主离子案例；批量组合请使用“新计算”。')
         remote = node['SETTINGS']['REMOTE_SETUP']
@@ -1013,7 +1025,7 @@ class ProjectActions:
         original_batch = copy.deepcopy(node.get('RUN_BATCH', self.factory()))
         if queued:
             batch = self.factory()
-            batch.update(dict(batch_id=batch_id, case_ids=[item['case_id'] for item in plan],
+            batch.update(dict(batch_id=batch_id, case_ids=[item['case_id'] for item in submissions],
                               tokens=[], status='submitting', stop_requested=False))
             node['RUN_BATCH'] = batch
         else:
@@ -1035,7 +1047,7 @@ class ProjectActions:
         collecting = False
         try:
             setup['irun'], setup['idownsync'] = 1, 0 if queued else 1
-            for case_number, item in enumerate(plan):
+            for case_number, item in enumerate(submissions):
                 nr, ion_case = item['nr'], item['ion_case']
                 provenance = item.get('isotope_preparation', None)
                 case_physics = (remap_physics(original_physics, dimensions, provenance['index_map'])
@@ -1055,7 +1067,7 @@ class ProjectActions:
                 self.call('CGYRO {}'.format(item['case_id']),
                            MODULES['cgyro'] + ('SCRIPTS', 'runCGYRO.py'),
                            wait_for_completion=not queued, batch_id=batch_id, check_temp_start=case_number == 0,
-                           **({'convergence_group': item['convergence_group']} if 'convergence_group' in item else {}))
+                           **({'convergence_plan': plans_by_case[(item['runid'], item['case_id'])]} if combined else {}))
                 manifest = node.get('RUN_MANIFEST', {})
                 if manifest.get('stop_requested', False):
                     if queued:
@@ -1075,16 +1087,17 @@ class ProjectActions:
                     record.update(dict(status='cancelled', completed=completed))
                     self.settings['message'] = queue_summary(node) + ' 取消后已自动收集，可从结果记录选择未完成点继续计算。'
                     return completed
-                if len(completed) != len(plan):
+                if len(completed) != len(submissions):
                     record.update(dict(status='partial', completed=completed))
                     self.settings['message'] = queue_summary(node) + ' 未完成案例的原输入和已有输出保留。'
                     return completed
             record.update(dict(status='complete', completed=completed))
-            if len(completed) != len(plan):
+            if len(completed) != len(submissions):
                 record['status'] = 'partial'
                 self.settings['message'] = '已有结果已保留，未完成的计算点可从结果记录继续计算。'
                 return completed
-            self.settings['message'] = '已完成 {} 个输入组合，结果已保存到 RUN_DB。'.format(len(completed))
+            self.settings['message'] = ('{} 个收敛数组作业已完成，{} 组结果已保存到 RUN_DB。'.format(len(submissions), len(plan)) if combined else
+                '已完成 {} 个输入组合，结果已保存到 RUN_DB。'.format(len(completed)))
             return completed
         except BaseException as exc:
             if queued:

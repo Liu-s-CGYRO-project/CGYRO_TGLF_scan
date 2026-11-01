@@ -6,6 +6,7 @@ Run with: python -B -m unittest discover -s tests -p test_cgyro_storage.py
 """
 import ast
 import copy
+from collections import OrderedDict
 from datetime import datetime, timezone
 import hashlib
 import importlib
@@ -210,6 +211,162 @@ class StorageCases(unittest.TestCase):
         index_namespace(namespace)
         exec(compile(ast.Module(body=definitions, type_ignores=[]), str(path), 'exec'), namespace)
         return namespace['publish_loaded_run']
+
+    def convergence_array(self, token='grouped', specifications=None):
+        """A single job owns independent physical cases and scan directions."""
+        if specifications is None:
+            specifications = [(nr, rho, ion, branch, value, ky)
+                for nr, rho, ion, ky in ((1, .33, 'T', .5), (2, .5, 'D', -.5))
+                for branch, value in (('Base case', 32), ('N_THETA', 48), ('N_XI', 64))]
+        baseline = dict(N_ENERGY=32, N_THETA=32, N_RADIAL=32, N_XI=48)
+        root, table, cases, hashes = {}, {}, {}, {}
+        for nr, rho, ion, branch, value, ky in specifications:
+            point = 'p{:06d}'.format(len(table) + 1)
+            name = 'N_ENERGY' if branch == 'Base case' else branch
+            parameters = dict(baseline, KY=ky, BETAE_UNIT=.0001)
+            parameters[name] = value
+            info = dict(runid='Jet_convergence', case_id='nr={}__rho={}__ion={}'.format(nr, rho, ion),
+                source_nr=nr, rho=rho, ion_case=ion, dimensions=1, scan_dimensions=1,
+                scan_axes=[dict(name=name, values=[value], linked=[])],
+                fixed_parameters=baseline, constant_parameters={}, numeric_parameters=baseline,
+                scale_time_with_ky=False,
+                convergence_group=dict(parameter=name, baseline=baseline, requested=[value], shared=[], fixed={},
+                    role='baseline' if branch == 'Base case' else 'direction', storage_branch=branch,
+                    reused_scope=dict(coordinates=[], unknown=[], issues=[])))
+            result = self.result(token + point, (point + ion).encode(), parameters=parameters)
+            directory = Path(result.filename)
+            (directory / 'input.cgyro.gen').write_text(''.join('{} {}\n'.format(v, k) for k, v in parameters.items()))
+            (directory / 'out.cgyro.time').write_text('0\n600\n')
+            hashes[point] = {'input.cgyro': hashlib.sha256((directory / 'input.cgyro').read_bytes()).hexdigest()}
+            table[point] = dict(values=parameters, result_path=[name, str(value), 'lin', str(ky)], result_info=info)
+            cases[point] = result
+        first = table['p000001']['result_info']
+        manifest = dict(copy.deepcopy(first), nr=first['source_nr'], mass=first['ion_case'],
+            run_token=token, status='loaded', collection_status='ready', convergence_batch=True,
+            case_tag='case', server='fixture', workDir='/runs/' + token, job_id='job-' + token,
+            points=list(table), loaded_points=list(table), point_table=table, input_sha256=hashes)
+        root.update(RUN_MANIFEST=manifest, Cases={'case': cases})
+        return root, manifest
+
+    def test_one_array_archives_each_convergence_direction_and_physical_case(self):
+        root, manifest = self.convergence_array()
+        header = {name: manifest[name] for name in ('case_id', 'nr', 'rho', 'mass', 'run_token', 'job_id')}
+        self.publisher()(root)
+        catalog = archive_api.catalog_runs(root)['Jet_convergence']
+        self.assertEqual(set(catalog), {'nr=1__rho=0.33__ion=T', 'nr=2__rho=0.5__ion=D'})
+        for cid, case in catalog.items():
+            self.assertEqual(set(case['__SCANS__']), {'Base case', 'N_THETA', 'N_XI'})
+            for name, info, tasks in archive_api.case_scans(case):
+                self.assertEqual(info['dimensions'], 1)
+                self.assertEqual(info['job_id'], 'job-grouped')
+                self.assertTrue(info['submission_complete'])
+                self.assertTrue(info['scan_complete'])
+                row = next(iter(tasks.values()))
+                self.assertEqual(row['result_info']['case_id'], cid)
+                self.assertEqual(row['result_info']['convergence_group']['storage_branch'], name)
+                self.assertEqual(row['values']['KY'], .5 if info['ion_case'] == 'T' else -.5)
+        self.assertEqual({name: manifest[name] for name in header}, header)
+        self.assertEqual(len(manifest['point_table']), 6)
+        self.assertEqual(len(root['RUN_HISTORY']), 1)
+        self.assertEqual(len(manifest['collection_groups']), 6)
+        self.assertEqual(manifest['status'], 'published')
+        self.assertTrue(manifest['submission_complete'])
+        self.assertTrue(manifest['scan_complete'])
+        self.assertEqual(db_api.run_cases(root), {})
+
+    def test_partial_convergence_array_keeps_other_scans_and_empty_group_incomplete(self):
+        root, manifest = self.convergence_array(specifications=[(1, .33, 'T', branch, value, .5)
+            for branch, value in (('Base case', 32), ('N_THETA', 48), ('N_XI', 64))])
+        manifest['loaded_points'].remove('p000002')
+        manifest.update(failed_points=['p000002'], skipped_points=['p000002'])
+        root['Cases']['case'].pop('p000002')
+        old = self.indexed_scan(root, 'old-unselected', 'T', name='E_MAX', values=(8,), ky_count=1)
+        root['RUN_DB']['Jet_convergence'] = {}
+        archive_api.install_case(root['RUN_DB']['Jet_convergence'], manifest['case_id'], old)
+        preserved = copy.deepcopy(old['E_MAX'])
+        self.publisher()(root)
+        case = archive_api.catalog_runs(root)['Jet_convergence'][manifest['case_id']]
+        self.assertEqual(case['E_MAX'], preserved)
+        self.assertEqual(set(case['__SCANS__']), {'E_MAX', 'Base case', 'N_XI'})
+        summaries = {item['scan_key']: item for item in manifest['collection_groups']}
+        self.assertEqual(summaries['N_THETA']['collection_status'], 'empty')
+        self.assertTrue(summaries['N_XI']['submission_complete'])
+        self.assertFalse(manifest['submission_complete'])
+        self.assertFalse(manifest['scan_complete'])
+        self.assertEqual(manifest['collection_status'], 'partial')
+        self.assertEqual(set(manifest['point_table']), {'p000001', 'p000002', 'p000003'})
+
+    def test_bad_direction_does_not_block_other_case_and_can_be_recollected(self):
+        root, manifest = self.convergence_array()
+        manifest['point_table']['p000002']['values']['N_THETA'] = 999
+        publish = self.publisher()
+        with self.assertRaisesRegex(ValueError, 'Some convergence points'):
+            publish(root)
+        catalog = archive_api.catalog_runs(root)['Jet_convergence']
+        self.assertNotIn('N_THETA', catalog['nr=1__rho=0.33__ion=T']['__SCANS__'])
+        self.assertIn('N_THETA', catalog['nr=2__rho=0.5__ion=D']['__SCANS__'])
+        self.assertEqual(set(manifest['archive_errors']), {'p000002'})
+        self.assertEqual(manifest['collection_status'], 'incomplete')
+        self.assertFalse(manifest['submission_complete'])
+        self.assertEqual(manifest['unpublished_points'], ['p000002'])
+        self.assertIn('p000002', db_api.run_cases(root))
+        # Retry only the metadata mismatch; no new job or result file is needed.
+        manifest['point_table']['p000002']['values']['N_THETA'] = 48
+        publish(root)
+        self.assertEqual(manifest['archive_errors'], {})
+        self.assertEqual(manifest['status'], 'published')
+        self.assertEqual(len(manifest['collection_groups']), 6)
+        self.assertEqual(len(root['RUN_HISTORY']), 1)
+        self.assertIn('reused_scope', manifest['point_table']['p000001']['result_info']['convergence_group'])
+
+    def test_empty_convergence_groups_do_not_touch_result_readers(self):
+        root, manifest = self.convergence_array()
+        manifest['skipped_points'], manifest['loaded_points'] = list(manifest['points']), []
+        root['Cases']['case'].clear()
+        publish = self.publisher()
+        with patch.dict(publish.__globals__, resolve_result=lambda *args: self.fail('empty group read a result')):
+            publish(root)
+        self.assertEqual(manifest['collection_status'], 'empty')
+        self.assertFalse(manifest['scan_complete'])
+        self.assertEqual(len(manifest['collection_groups']), 6)
+        self.assertTrue(all(item['collection_status'] == 'empty' for item in manifest['collection_groups']))
+        self.assertNotIn('Jet_convergence', root['RUN_DB'])
+
+    def test_convergence_continuation_completion_uses_only_its_direction_scope(self):
+        root, manifest = self.convergence_array(specifications=[(1, .33, 'T', 'N_THETA', 48, .5)])
+        info = manifest['point_table']['p000001']['result_info']
+        scope = index_api.scan_scope(dict(info, tasks=manifest['point_table']))
+        unrelated = copy.deepcopy(scope['coordinates'][0])
+        unrelated.update(scan='N_XI')
+        unrelated['values'].update(N_XI=64, N_THETA=32)
+        scope['coordinates'].append(unrelated)  # An unselected, unavailable direction.
+        info.update(run_token='deleted-parent', server='old-server', case_tag='old-case', runtime={'mpi_ranks': 16})
+        manifest['runtime'] = {'mpi_ranks': 32}
+        manifest['continuation'] = dict(points=['p000001'], source_points=['p000001', 'p000999'], scope=scope)
+        self.publisher()(root)
+        self.assertTrue(manifest['submission_complete'])
+        self.assertTrue(manifest['scan_complete'])
+        self.assertEqual(len(manifest['continuation']['scope']['coordinates']), 2)
+        case = archive_api.catalog_runs(root)['Jet_convergence'][manifest['case_id']]
+        saved = case['__SCANS__']['N_THETA']['info']
+        self.assertEqual(len(saved['planned_coordinates']['coordinates']), 1)
+        self.assertEqual(saved['planned_coordinates']['coordinates'][0]['scan'], 'N_THETA')
+        self.assertEqual(saved['run_token'], 'grouped')
+        self.assertEqual(saved['server'], 'fixture')
+        self.assertEqual(saved['runtime']['mpi_ranks'], 32)
+
+    def test_convergence_read_error_keeps_good_direction_and_accurate_counts(self):
+        root, manifest = self.convergence_array(specifications=[(1, .33, 'T', branch, value, .5)
+            for branch, value in (('Base case', 32), ('N_THETA', 48))])
+        manifest['load_errors'] = {'p000002': 'output incomplete'}
+        self.publisher()(root)
+        summaries = {item['scan_key']: item for item in manifest['collection_groups']}
+        self.assertEqual(summaries['N_THETA']['loaded'], 0)
+        self.assertEqual(summaries['N_THETA']['collection_status'], 'incomplete')
+        self.assertEqual(summaries['Base case']['collection_status'], 'complete')
+        self.assertEqual(manifest['collection_status'], 'incomplete')
+        self.assertFalse(manifest['submission_complete'])
+        self.assertEqual(manifest['unpublished_points'], ['p000002'])
 
     def continuation_after_merged_source(self, *, finished=False):
         """A second scan changes the public header while the first owns rows."""
@@ -1411,8 +1568,9 @@ class StorageCases(unittest.TestCase):
         project_class = next(node for node in ast.parse(path.read_text(encoding='utf-8')).body
                              if isinstance(node, ast.ClassDef) and node.name == 'ProjectActions')
         method = next(node for node in project_class.body if isinstance(node, ast.FunctionDef) and node.name == 'run_cgyro')
-        scope = dict(copy=copy, MODULES={'cgyro': ('CGYRO_scan',)},
+        scope = dict(copy=copy, OrderedDict=OrderedDict, MODULES={'cgyro': ('CGYRO_scan',)},
                      module=lambda root, name: root['CGYRO_scan'],
+                     convergence_active=lambda physics: False,
                      cgyro_input_issues=lambda root: [], runtime_issues=lambda root, code: [],
                      retry_limit=lambda node: 0, pending_runs=lambda node: [],
                      uuid=types.SimpleNamespace(uuid4=lambda: types.SimpleNamespace(hex='c' * 32)))

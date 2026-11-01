@@ -2,7 +2,8 @@
 from OMFITlib_gui_api import task_action
 from builtins import print
 print('[CGYRO] Run entry started; validating endpoint and scan settings.', flush=True)
-defaultVars(wait_for_completion=True, batch_id='', continuation=None, check_temp_start=True, convergence_group=None)
+defaultVars(wait_for_completion=True, batch_id='', continuation=None, check_temp_start=True,
+            convergence_group=None, convergence_plan=None)
 rmt_setup=root['SETTINGS']['REMOTE_SETUP']
 setup=root['SETTINGS']['SETUP']
 
@@ -48,4 +49,4 @@ if idimrun not in (0, 1, 2, 3):
 print('[CGYRO] Loading scan preparation workflow.', flush=True)
 task_action(root['SCRIPTS']['CGYROScan.py'], wait_for_completion=wait_for_completion,
     batch_id=batch_id, continuation=continuation, check_temp_start=check_temp_start,
-    convergence_group=convergence_group)
+    convergence_group=convergence_group, convergence_plan=convergence_plan)

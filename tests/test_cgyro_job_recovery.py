@@ -50,6 +50,41 @@ def manifest():
         submit_script_sha256=hashlib.sha256(SCRIPT.encode()).hexdigest(), status='prepared')
 
 
+def convergence_manifest():
+    """One array crosses directions, isotopes and radii at repeated coordinates."""
+    frozen = manifest()
+    frozen.update(convergence_batch=True, runid='Jet_convergence')
+    table, payloads = {}, {}
+    specs = [(1, .33, 'T', 'N_THETA', 32, 'baseline'),
+             (1, .33, 'T', 'N_THETA', 48, 'direction'),
+             (1, .33, 'T', 'N_XI', 64, 'direction'),
+             (1, .33, 'D', 'N_THETA', 48, 'direction'),
+             (2, .5, 'T', 'N_THETA', 48, 'direction')]
+    for number, (nr, rho, ion, axis, value, role) in enumerate(specs, 1):
+        point = 'p{:06d}'.format(number)
+        fixed = dict(N_THETA=32, N_XI=48, BETAE_UNIT=.0001)
+        info = dict(runid='Jet_convergence', case_id='nr={}__rho={}__ion={}__constant=BETAE_UNIT=0.0001'.format(nr,rho,ion),
+            source_nr=nr, rho=rho, ion_case=ion, dimensions=1, scan_dimensions=1,
+            scan_axes=[dict(name=axis, values=[value])], fixed_parameters=fixed,
+            constant_parameters={'BETAE_UNIT':.0001}, numeric_parameters=dict(fixed, DELTA_T=.01), scale_time_with_ky=False,
+            convergence_group=dict(parameter=axis, baseline=dict(N_THETA=32,N_XI=48), requested=[32,48,64], fixed={},
+                                   role=role, storage_branch='Base case' if role == 'baseline' else axis,
+                                   reused_scope=dict(coordinates=[],unknown=[],issues=[])))
+        values = dict(fixed, KY=-.1)
+        values[axis] = value
+        table[point] = dict(values=values, result_path=[axis, format(value,'.5f'),'lin','-0.10000'], result_info=info,
+                            runid=info['runid'], case_id=info['case_id'], source_nr=nr, rho=rho, ion_case=ion)
+        numbers = dict(info['numeric_parameters'], **values)
+        payloads[point] = ''.join('{}={}\n'.format(key, val) for key,val in sorted(numbers.items())).encode()
+    script = '#!/bin/bash\ndir_list=(' + ' '.join(table) + ')\n'
+    first = table['p000001']['result_info']
+    frozen.update(case_id=first['case_id'], points=list(table), point_table=table, scan_axes=first['scan_axes'],
+                  fixed_parameters=first['fixed_parameters'], constant_parameters=first['constant_parameters'],
+                  input_sha256={point:{'input.cgyro':hashlib.sha256(data).hexdigest()} for point,data in payloads.items()},
+                  submit_script_sha256=hashlib.sha256(script.encode()).hexdigest())
+    return frozen, script, payloads
+
+
 def framed(name, value):
     return '\n__CGYRO_RECOVERY_' + name + '_BEGIN__\n' + value + '\n__CGYRO_RECOVERY_' + name + '_END__\n'
 
@@ -66,27 +101,29 @@ class FileOwner:
 
 class Remote:
     """Only the read/query/download interface is available to the recovery API."""
-    def __init__(self, directory, frozen=None, state='completed', sidecar=False):
+    def __init__(self, directory, frozen=None, state='completed', sidecar=False, script=SCRIPT, payloads=None):
         self.directory = Path(directory)
         self.frozen = manifest() if frozen is None else frozen
         self.state = state
         self.sidecar = sidecar
         self.downloads = 0
         self.calls = []
+        self.script = script
         self.directory.mkdir(parents=True, exist_ok=True)
-        (self.directory / 'scan.pbs').write_bytes(SCRIPT.encode())
+        (self.directory / 'scan.pbs').write_bytes(script.encode())
         for point in self.frozen['points']:
             with zipfile.ZipFile(self.directory / (point + '.zip'), 'w') as packed:
-                packed.writestr('input.cgyro', point_input(point))
+                packed.writestr('input.cgyro', point_input(point) if payloads is None else payloads[point])
 
     def remote_execute(self, server, command, workdir, tunnel, **kwargs):
         self.calls.append(command)
         if '_USER_BEGIN__' in command:
-            output = identity_text()
+            output = framed('USER','user\n') + framed('QUEUE','') + framed('ACCOUNT',''.join(
+                '123_{}|user|COMPLETED|{}\n'.format(index,WORKDIR) for index in range(len(self.frozen['points']))))
         elif '_SCRIPT_BEGIN__' in command:
             candidate = WORKDIR + '/' + schema.SIDECAR if self.sidecar else '/tmp/user/OMFIT/old/manifest.json'
             output = (framed('RECEIPT', 'Submitted batch job 123\n')
-                + framed('SCRIPT', base64.b64encode(SCRIPT.encode()).decode())
+                + framed('SCRIPT', base64.b64encode(self.script.encode()).decode())
                 + framed('NONCE', self.frozen.get('submission_nonce', '') + '\n')
                 + framed('CANDIDATES', candidate + '\n'))
         elif '_JSON_BEGIN__' in command:
@@ -99,7 +136,7 @@ class Remote:
             output = 'CGYRO_QUEUE_OK\nCGYRO_ACCOUNT_OK\n'
             if self.state == 'active':
                 output += 'CGYRO_QUEUE|123_1|RUNNING\n'
-            for index in range(2):
+            for index in range(len(self.frozen['points'])):
                 phase = 'CANCELLED' if self.state == 'cancelled' else 'COMPLETED'
                 output += 'CGYRO_STATE|123_{}|{}|0:0\n'.format(index, phase)
         kwargs['std_out'].append(output)
@@ -113,6 +150,62 @@ class Remote:
 
 
 class ManifestTests(unittest.TestCase):
+    def test_one_convergence_array_preserves_directions_physical_cases_and_signed_ky(self):
+        frozen, script, payloads = convergence_manifest()
+        with tempfile.TemporaryDirectory() as directory:
+            sidecar = schema.write_sidecar(directory, frozen)
+            saved = schema.validate_manifest(schema.read_manifest(Path(sidecar).read_text()),WORKDIR,script)
+            for point, content in payloads.items():
+                path = Path(directory) / (point + '.zip')
+                with zipfile.ZipFile(path,'w') as packed:
+                    packed.writestr('input.cgyro',content)
+                schema.verify_input_zip(str(path),saved['input_sha256'][point],saved['point_table'][point])
+        self.assertEqual(saved, frozen)
+        self.assertEqual(len(saved['points']), 5)
+        self.assertEqual({row['result_info']['convergence_group']['storage_branch'] for row in saved['point_table'].values()},
+                         {'Base case','N_THETA','N_XI'})
+
+    def test_convergence_context_is_required_and_cannot_override_point_identity(self):
+        for change in ('missing','axis','rho','ion','nr','runid','branch','constant','duplicate'):
+            frozen, script, _ = convergence_manifest()
+            row = frozen['point_table']['p000004']
+            info = row['result_info']
+            if change == 'missing': del row['result_info']
+            elif change == 'axis': info['scan_axes'][0]['name']='N_ENERGY'
+            elif change == 'rho': info['rho']=.5
+            elif change == 'ion': info['ion_case']='T'
+            elif change == 'nr': info['source_nr']=2
+            elif change == 'runid': info['runid']='Other_convergence'
+            elif change == 'branch': info['convergence_group']['storage_branch']='Base case'
+            elif change == 'constant': info['constant_parameters']['BETAE_UNIT']=.0002
+            elif change == 'duplicate': frozen['point_table']['p000004']=copy.deepcopy(frozen['point_table']['p000002'])
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                schema.validate_manifest(frozen,WORKDIR,script)
+
+    def test_convergence_frozen_numeric_input_and_effective_time_are_checked(self):
+        frozen, _, payloads = convergence_manifest()
+        row = frozen['point_table']['p000003']
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'point.zip'
+            with zipfile.ZipFile(path,'w') as packed:
+                packed.writestr('input.cgyro',payloads['p000003'])
+            row['result_info']['numeric_parameters']['DELTA_T']=.02
+            with self.assertRaisesRegex(ValueError,'DELTA_T'):
+                schema.verify_input_zip(str(path),frozen['input_sha256']['p000003'],row)
+            row['effective_time']={'DELTA_T':.01}
+            schema.verify_input_zip(str(path),frozen['input_sha256']['p000003'],row)
+
+    def test_retry_subset_retains_original_array_order_and_all_point_contexts(self):
+        frozen, script, _ = convergence_manifest()
+        original = copy.deepcopy(frozen['point_table'])
+        frozen.update(source_workDir=WORKDIR,workDir=WORKDIR+'/retry_1',active_points=['p000002','p000005'],
+                      point_workdirs={'p000002':WORKDIR+'/retry_1','p000005':WORKDIR+'/retry_1'})
+        self.assertEqual(schema.validate_manifest(frozen,frozen['workDir'],script)['point_table'],original)
+        with self.assertRaisesRegex(ValueError,'order'):
+            wrong = copy.deepcopy(frozen)
+            wrong['points'].reverse()
+            schema.validate_manifest(wrong,wrong['workDir'],script)
+
     def test_legacy_and_sidecar_read_validate_exact_script(self):
         for envelope in (manifest(), dict(schema=1, manifest=manifest())):
             value = schema.read_manifest(json.dumps(envelope))
@@ -288,6 +381,58 @@ class RecoveryTests(unittest.TestCase):
     def recover(self, root=None, factory=dict, remote=None):
         return recovery.recover_job(self.root if root is None else root, remote or self.remote,
             '123', ENDPOINT, str(self.path / 'local'), factory, FileOwner, FileOwner)
+
+    def test_recover_convergence_parent_job_installs_one_token_with_all_contexts(self):
+        frozen, script, payloads = convergence_manifest()
+        remote = Remote(self.path/'convergence',frozen,sidecar=True,script=script,payloads=payloads)
+        for factory in (dict,OMFITMapping):
+            root = treeify(copy.deepcopy(self.root),factory)
+            self.recover(root,factory,remote)
+            saved = root['RUN_MANIFEST']
+            self.assertTrue(saved['convergence_batch'])
+            self.assertEqual(saved['point_table'],frozen['point_table'])
+            self.assertEqual(root['RUN_BATCH']['tokens'],[TOKEN])
+            self.assertEqual(saved['scheduler_sync']['point_states'],{point:'COMPLETED' for point in frozen['points']})
+            self.assertEqual([token for token,_ in queue.queue_records(root)],[TOKEN])
+            self.assertEqual(root['RUN_DB']['Jet'],{'old_scan':'preserve'})
+
+    def test_explicit_archive_recovery_partitions_one_job_without_copying_owners(self):
+        frozen, _, payloads = convergence_manifest()
+        frozen['runtime'] = {'mpi_ranks': 64}
+        for row in frozen['point_table'].values():
+            row['result_info'].update(run_token='deleted-parent', runtime={'mpi_ranks': 16},
+                                      server='old-server', case_tag='old-case')
+        root = {}
+        owners = {}
+        storage, archive = test_cgyro_storage.storage, test_cgyro_storage.archive_api
+        for point, data in payloads.items():
+            directory = self.path/point
+            directory.mkdir()
+            (directory/'input.cgyro').write_bytes(data)
+            (directory/'out.cgyro.time').write_text('0\n10\n')
+            owners[point] = storage.store_result(root,test_cgyro_storage.OMFITcgyro(directory))
+        frozen.update(loaded_points=list(owners),collection_status='loaded')
+        root['RUN_DB']['__RUNS__']={TOKEN:dict(manifest=frozen,cases=owners)}
+        before = dict(storage.result_pool(root))
+        report = storage.recover_archives(root,storage.resolve_result)
+        self.assertEqual(report['unresolved'],[])
+        catalog = archive.catalog_runs(root)['Jet_convergence']
+        self.assertEqual(len(catalog),3)
+        refs = []
+        for cid,case in catalog.items():
+            for branch,info,tasks in archive.case_scans(case):
+                self.assertEqual(info['run_token'], TOKEN)
+                self.assertEqual(info['runtime'], {'mpi_ranks': 64})
+                self.assertEqual(info['server'], frozen['server'])
+                for row in tasks.values():
+                    self.assertEqual(archive.result_identity(info,row)['case_id'],cid)
+                    self.assertEqual(row['result_info']['convergence_group']['storage_branch'],branch)
+                    self.assertEqual(row['result_info']['run_token'], TOKEN)
+                    self.assertEqual(row['result_info']['runtime'], {'mpi_ranks': 64})
+                    refs.append(continuation.point_result(case,row))
+        self.assertCountEqual(refs,list(owners.values()))
+        self.assertEqual(dict(storage.result_pool(root)),before)
+        self.assertEqual(root['RUN_DB']['__RUNS__'][TOKEN]['manifest'],frozen)
 
     def test_completed_job_import_is_idempotent_and_keeps_public_scans(self):
         for factory in (dict, OMFITMapping):

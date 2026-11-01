@@ -189,38 +189,138 @@ class ConvergenceProjectTests(unittest.TestCase):
         self.cg['SETTINGS']['PHYSICS'].update(physics)
         self.cg['RUN_DB']['untouched'] = UnreadResults()
 
-    def test_batch_prepares_baseline_and_five_native_jobs_without_result_reads(self):
+    def test_batch_prepares_six_groups_for_one_array_without_result_reads(self):
         plan = self.actions.run_cgyro(prepare=True)
         summary = plans.cgyro_plan_summary(self.root)
         self.assertEqual(len(plan), 6)
         self.assertEqual(summary['total_points'], 77)
-        self.assertEqual(summary['jobs'], 6)
+        self.assertEqual((summary['jobs'], summary['group_count'], summary['array_points']), (1, 6, 77))
         self.assertEqual([row['convergence_group']['storage_branch'] for row in plan], ['Base case'] + list(convergence.DIRECTIONS)[:-1])
         self.assertTrue(all(row['runid'] == 'test_convergence' for row in plan))
         self.cg['SCRIPTS']['runCGYRO.py'].run.assert_not_called()
 
-    def test_submission_installs_each_group_then_restores_ordinary_scan_and_editor(self):
+    def test_submission_installs_first_group_and_passes_whole_plan_once_then_restores_editor(self):
         self.actions.run_cgyro(prepare=True)  # Initialize the ordinary parameter catalogue first.
         physics = self.cg['SETTINGS']['PHYSICS']
         setup = self.cg['SETTINGS']['SETUP']
         original_controls = copy.deepcopy({key: physics.get(key) for key in ('1d', '2d', 'fixed_parameters')})
         original_dimension = setup['idimrun']
         original_input = self.cg['INPUTS']['input.cgyro']
-        calls = []
         def submit(**kwargs):
             self.assertEqual(setup['idimrun'], 1)
-            name = physics['1d']['Para']
-            calls.append(name)
-            if name == 'E_MAX':
-                self.assertEqual(self.cg['INPUTS']['input.cgyro']['N_ENERGY'], 64)
-            self.assertEqual(kwargs['convergence_group']['parameter'], name)
+            self.assertEqual(physics['1d']['Para'], 'N_ENERGY')
+            self.assertNotIn('convergence_group', kwargs)
+            plan = kwargs['convergence_plan']
+            self.assertEqual([item['convergence_group']['storage_branch'] for item in plan],
+                             ['Base case'] + list(convergence.DIRECTIONS)[:-1])
+            self.assertEqual(sum(len(item['convergence_group']['submit_coordinates']) for item in plan), 77)
+            for item in plan:
+                source = self.cg['BATCH_INPUTS'][item['batch_key']][item['ion_case']]
+                if item['convergence_group']['parameter'] == 'E_MAX':
+                    self.assertEqual(source['N_ENERGY'], 64)
             self.cg['RUN_MANIFEST'] = dict(status='published')
         self.cg['SCRIPTS']['runCGYRO.py'].run.side_effect = submit
-        self.actions.run_cgyro()
-        self.assertEqual(calls, ['N_ENERGY'] + list(convergence.DIRECTIONS)[:-1])
+        self.assertEqual(len(self.actions.run_cgyro()), 1)
+        self.cg['SCRIPTS']['runCGYRO.py'].run.assert_called_once()
         self.assertEqual(setup['idimrun'], original_dimension)
         self.assertIs(self.cg['INPUTS']['input.cgyro'], original_input)
         self.assertEqual({key: physics.get(key) for key in original_controls}, original_controls)
+
+    def test_two_radii_and_two_ions_submit_and_collect_four_case_arrays(self):
+        source = self.transfer['Transfer_file']['input.cgyro']
+        profiles = {name: source.duplicate() for name in ('input.cgyro_1', 'input.cgyro_2')}
+        profiles['input.cgyro_2']['rho'] = .5
+        self.transfer['SETTINGS']['PHYSICS'].setdefault('generation', {}).update(minimum=.33, maximum=.5)
+        self.transfer.setdefault('OUTPUTS', {}).update(Profiles_gen=profiles,
+            Particle_processing=dict(main_count=1, options=plans.particle_options(
+                self.transfer['SETTINGS']['PHYSICS'].get('generation', {}))))
+        self.actions.settings.update(cgyro_source_mode='generated',
+            cgyro_ion_cases=dict(BASE=True, H=False, D=False, T=True))
+        config = self.cg['SETTINGS']['REMOTE_SETUP']['localhost']
+        config.update(scheduler='slurm', array_parallel=3, nodes=2, ntasks_per_node=16, cpus_per_task=2)
+        original_config = copy.deepcopy(config)
+        preview = self.actions.preview_cgyro_convergence()
+        self.assertEqual((preview['jobs'], preview['group_count'], preview['array_points']), (4, 24, 308))
+        submitted, collected = [], []
+        def submit(**kwargs):
+            plan = kwargs['convergence_plan']
+            identity = (plan[0]['nr'], plan[0]['ion_case'])
+            self.assertEqual({(item['nr'], item['ion_case']) for item in plan}, {identity})
+            self.assertNotIn(identity, submitted)
+            self.assertEqual(len(plan), 6)
+            self.assertEqual(sum(len(item['convergence_group']['submit_coordinates']) for item in plan), 77)
+            self.assertEqual(len(self.cg['RUN_BATCH']['case_ids']), 4)
+            self.assertFalse(kwargs['wait_for_completion'])
+            self.assertEqual(kwargs['check_temp_start'], not submitted)
+            submitted.append(identity)
+            token = 'combined-' + str(len(submitted))
+            manifest = dict(status='submitted', run_token=token, case_id=plan[0]['case_id'],
+                            job_id=str(1000 + len(submitted)), batch_id=kwargs['batch_id'])
+            self.cg['RUN_MANIFEST'] = manifest
+            self.cg.setdefault('RUN_HISTORY', {})[token] = dict(manifest=copy.deepcopy(manifest))
+            self.cg['RUN_BATCH']['tokens'].append(token)
+        def collect(**kwargs):
+            self.assertEqual(len(submitted), 4)
+            token = self.cg['RUN_MANIFEST']['run_token']
+            self.assertNotIn(token, collected)
+            collected.append(token)
+            self.cg['RUN_MANIFEST']['status'] = 'published'
+        def activate(node, token):
+            node['RUN_MANIFEST'] = copy.deepcopy(node['RUN_HISTORY'][token]['manifest'])
+        def save(node, factory):
+            manifest = node['RUN_MANIFEST']
+            node['RUN_HISTORY'][manifest['run_token']]['manifest'] = copy.deepcopy(manifest)
+        self.cg['SCRIPTS']['runCGYRO.py'].run.side_effect = submit
+        self.cg['SCRIPTS']['CGYROScan.py'].run.side_effect = collect
+        with patch.object(project_tests.project, 'runtime_issues', return_value=[]), \
+                patch('OMFITlib_cgyro_workflow.activate_run', side_effect=activate), \
+                patch('OMFITlib_cgyro_workflow.save_current', side_effect=save):
+            self.assertEqual(len(self.actions.run_cgyro()), 4)
+        self.assertEqual(set(submitted), {(1, 'BASE'), (1, 'T'), (2, 'BASE'), (2, 'T')})
+        self.assertEqual(self.cg['SCRIPTS']['runCGYRO.py'].run.call_count, 4)
+        self.assertEqual(self.cg['SCRIPTS']['CGYROScan.py'].run.call_count, 4)
+        self.assertEqual(self.cg['SCRIPTS']['wait_current_run.py'].run.call_count, 4)
+        self.assertEqual(len(collected), 4)
+        self.assertEqual(config, original_config)
+
+    def test_combined_submission_excludes_every_reused_point(self):
+        original = self.index_plan()[0]
+        tasks = self.cg['RUN_DB']['test_convergence'][original['case_id']]['__SCANS__']['Base case']['tasks']
+        next(iter(tasks.values()))['result_summary']['final_time'] = 600.
+        preview = self.actions.preview_cgyro_convergence()
+        self.assertEqual((preview['jobs'], preview['array_points'], preview['pending_groups']), (1, 1, 1))
+        def submit(**kwargs):
+            self.assertEqual(len(kwargs['convergence_plan']), 1)
+            self.assertEqual(kwargs['convergence_plan'][0]['convergence_group']['submit_coordinates'], [[32, .1]])
+            self.cg['RUN_MANIFEST'] = dict(status='published')
+        self.cg['SCRIPTS']['runCGYRO.py'].run.side_effect = submit
+        self.actions.run_cgyro()
+        self.cg['SCRIPTS']['runCGYRO.py'].run.assert_called_once()
+
+    def test_ordinary_scan_still_submits_each_ion_separately(self):
+        self.cg['SETTINGS']['PHYSICS']['scan_mode'] = 'regular'
+        self.actions.settings['cgyro_ion_cases'] = dict(BASE=True, H=False, D=False, T=True)
+        def submit(**kwargs):
+            self.assertNotIn('convergence_plan', kwargs)
+            self.cg['RUN_MANIFEST'] = dict(status='published')
+        self.cg['SCRIPTS']['runCGYRO.py'].run.side_effect = submit
+        self.assertEqual(len(self.actions.run_cgyro()), 2)
+        self.assertEqual(self.cg['SCRIPTS']['runCGYRO.py'].run.call_count, 2)
+
+    def test_combined_submission_failure_restores_input_and_controls(self):
+        self.actions.run_cgyro(prepare=True)
+        original_input = self.cg['INPUTS']['input.cgyro']
+        setup, physics = self.cg['SETTINGS']['SETUP'], self.cg['SETTINGS']['PHYSICS']
+        before_setup, before_physics = copy.deepcopy(setup), copy.deepcopy(physics)
+        before_runid = self.cg['SETTINGS']['EXPERIMENT']['runid']
+        self.cg['SCRIPTS']['runCGYRO.py'].run.side_effect = RuntimeError('combined submission failed')
+        with self.assertRaisesRegex(RuntimeError, 'combined submission failed'):
+            self.actions.run_cgyro()
+        self.cg['SCRIPTS']['runCGYRO.py'].run.assert_called_once()
+        self.assertIs(self.cg['INPUTS']['input.cgyro'], original_input)
+        self.assertEqual(setup, before_setup)
+        self.assertEqual(physics, before_physics)
+        self.assertEqual(self.cg['SETTINGS']['EXPERIMENT']['runid'], before_runid)
 
     def test_existing_content_selector_switches_modes_without_resetting_ranges(self):
         physics = self.cg['SETTINGS']['PHYSICS']
