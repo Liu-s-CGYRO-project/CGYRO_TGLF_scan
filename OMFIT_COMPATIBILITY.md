@@ -1,5 +1,37 @@
 # OMFIT 兼容审计与内部支持代码 · 1.1.1
 
+## 2026-10-31：原生 File 菜单展开前遍历工程
+
+太原实际 `omfit_gui.py` 的 File `postcommand` 每次先执行 `force_selection()`，再调用
+`OMFIT.moduleDict()`，最后对工程文件执行 `os.access()`。`_moduleDict()` 递归访问工程所有
+已载入树节点并求值模块属性，仅为启用“Reload modules / Export modules”。选择解析还会
+访问当前节点并执行 `update_idletasks()`；这些操作不属于展开 File 菜单的必要工作。
+
+用户当前会话的一次剖析记录：File 回调累计 24.267 秒，`moduleDict` 为 24.259 秒
+（约 99.97%），递归遍历调用 4711 次，触发 828 次 `importCode` 和 6625 次编译。
+这包含剖析开销；附带的第二份报告嵌套了同一个计时包装器，不能相加或作为另一瓶颈。
+
+`tools/repair_omfit_file_menu.py` 提供原生源码候选补丁和可撤销的会话修复。菜单展开仅读取
+工程文件名并更新 Save 项；模块查找保留在显式 reload/export 操作中。源码候选补丁还将
+空列表检查移到创建窗口前；会话修复保留原动作命令。`quickSave` 原有的路径、写权限和另存为处理保持不变。修复没有更改 Edit、Plot、
+Figures 菜单、求解器、结果保存路径或 RUN_DB，也没有注册自动工程扫描。
+
+该问题位于 OMFIT 主程序，更新 CGYRO_TGLF_scan 模板不能替换这段原生菜单代码。
+命令行工具只输出新的候选文件，拒绝覆盖源文件；安装需核对目标源码、保留备份并正常重启
+OMFIT，现有窗口的回调不会因磁盘文件变化自动更新。会话内显式调用
+`install(OMFITaux['GUI'], OMFIT)` 只更改当前菜单，主 GUI 重建后失效；
+`restore(OMFITaux['GUI'])` 撤销且不覆盖第三方后来设置的回调。
+
+验证使用从太原读取的原生源码，而非导入正在运行的工程：Windows/Tk 14 项以及太原
+Python 3.9.23/Linux/Tk 同样 14 项通过。覆盖旧回调遍历复现、连续 100 次展开的读取边界、
+工程文件名变化、原操作命令保留、空模块列表、撤销及 Tcl 回调释放。太原验证在独立进程
+中使用隐藏的测试菜单；这不等于用户当前工程更新后的端到端计时，不据此给出加速倍数。
+
+```bash
+python tools/run_regressions.py --suite test_omfit_file_menu --omfit-source /path/to/omfit
+python tools/repair_omfit_file_menu.py --source /path/to/omfit/omfit_gui.py --output /new/path/omfit_gui.candidate.py
+```
+
 ## 1.24.28：绘图后的隐式主树刷新
 
 太原实际会话中，点击“绘制所选数据”的详细剖析耗时 34.698 秒，其中两次 `<<update_treeGUI>>` 占 33.386 秒。主树的 `commandNamespace/moduleDict` 遍历触发 1086 次 `importCode`、15162 次编译；Matplotlib 画布绘制累计 0.764 秒。剖析含额外开销，不能直接和此前简易计时的 26.784 秒相减作为优化收益。
@@ -114,6 +146,40 @@ Linux 验证：
 仍有 5 处静态缺失引用，均属于已限制的旧路线：两个 GYRO 提交入口原已禁用；QLGYRO 需要未包含的 `TGLF_GACODE` 和 `GYRO_scan` 伴随模块，本版在读取/修改输入和提交前明确检查并拒绝缺失的配置。常用的 CGYRO、TGLF、Transfer 与多剖面流程不依赖这些伴随模块。
 
 常规 OMFIT 环境及其第三方依赖仍需正常安装。特别是 OMFIT 的 `OMFITcgyro/OMFITgyro/OMFITtgyro` 由标准 `pygacode` 支持，本版没有复制或替换 OMFIT 框架本身。可选 UQ/OMAS 功能仍需其对应的公开 Python 包。
+
+### 旧 pygacode 的 HIPREC 双精度输出
+
+PyPI `pygacode 1.0.1` 的 CGYRO 读取器固定用 `float32` 读取二进制文件。
+读取 `HIPREC_FLAG=1` 的双精度输出时，三个通量通道会被误识别成六个，
+原生 OMFIT 随后报 `conflicting sizes for dimension 'moment': length 6 ... length 3`。
+部分场数组还会被截取，不能通过修改 moment 坐标或截去三个通道处理。
+`out.cgyro.prec` 保存积分诊断，不能用它判断二进制字宽。
+
+在运行 OMFIT 的同一 Python 环境中，可使用仓库的独立修复工具：
+
+```bash
+python tools/repair_pygacode_hiprec.py          # 查看路径、摘要和拟修改内容
+python tools/repair_pygacode_hiprec.py --apply  # 备份后原子替换已核对的旧读取器
+```
+
+工具只接受 SHA-256 为
+`cf8dc0fb38826620d1138bc4f8f29e8bb8e2dfcf79d17d766f02fb132856651d`
+的原始读取器或完全一致的已修补版本；其他版本先核对，不盲目覆盖。
+补丁从每个所选结果的 `input.cgyro.gen` 读取 `HIPREC_FLAG`，按实例选择
+`float32`/`float64`，保留旧 OMFIT 所需的实部/虚部数组结构。
+没有该参数的历史格式保持原有单精度；非法或重复标记明确报错。
+只读取当前结果的小输入文件，不改变结果、RUN_DB、全局 BYTE 或求解器。
+
+安装后正常保存工程并重启整个 OMFIT 进程，再重新收集原作业；
+关闭重开总控不会重载已经导入的第三方库。无需重新计算，也不要关闭 HIPREC。
+模板更新本身不会修改环境中的 pygacode。原文件保存在读取器旁的
+`data.py.before-hiprec-cf8dc0fb3882`；更新/重装依赖后应重新核对兼容性。
+
+回归入口是 `tools/run_regressions.py --suite test_pygacode_hiprec_repair`。
+`tools/validate_pygacode_hiprec.py --legacy-reader <原始data.py> --omfit-reader <omfit_gacode.py>`
+另用合成的单/双精度、线性/非线性输出，执行已核对的上游读取器和原生
+`OMFITcgyro.load` 函数体，复现原错误并检查数值；这不代表正在运行的 GUI
+或所有实际结果已经验证。
 
 ## 使用新版
 

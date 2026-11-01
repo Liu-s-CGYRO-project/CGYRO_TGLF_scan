@@ -284,6 +284,7 @@
 ['LIB']['OMFITlib_cgyro_scan_values'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_scan_values.py <-:-:-> {}
 ['LIB']['OMFITlib_cgyro_convergence'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_cgyro_convergence.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cases.py <-:-:-> {}
+['LIB']['OMFITlib_compare_convergence'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_convergence.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro_selection'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro_selection.py <-:-:-> {}
 ['LIB']['OMFITlib_compare_cgyro_data'] <-:-:-> OMFITpythonTask <-:-:-> ./LIB/OMFITlib_compare_cgyro_data.py <-:-:-> {}

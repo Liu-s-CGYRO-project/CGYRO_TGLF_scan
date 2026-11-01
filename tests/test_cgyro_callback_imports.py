@@ -40,7 +40,7 @@ class ResultCallbackImportTests(unittest.TestCase):
         self.addCleanup(self.files.doCleanups)
 
     @contextmanager
-    def callbacks(self, imports):
+    def callbacks(self, imports, root=None):
         """Load through native LIB nodes, then call after the hook has gone."""
         previous = {name: module for name, module in sys.modules.items()
                     if name.startswith('OMFITlib_')}
@@ -51,7 +51,7 @@ class ResultCallbackImportTests(unittest.TestCase):
             for name in previous:
                 del sys.modules[name]
             sys.path[:] = [path for path in paths if Path(path).resolve() not in libraries]
-            exported = self.host.execute(imports)
+            exported = self.host.execute(imports, root=root)
             self.assertEqual(sys.meta_path, hooks)
             self.assertFalse(any(name.startswith('OMFITlib_') for name in sys.modules))
             sys.meta_path.insert(0, RejectCallbackImports())
@@ -70,6 +70,18 @@ class ResultCallbackImportTests(unittest.TestCase):
         info, row, reference = self.files.result(module, token, ky=ky, generated={'ERROR_TOL': 1e-4, 'RESTART_STEP': 10})
         case = self.files.public(module, info, row, reference)
         return info, row, reference, case
+
+    def test_convergence_baseline_lookup_survives_native_import_cleanup(self):
+        from test_compare_convergence import fixture
+        case = fixture()
+        with self.callbacks('from OMFITlib_compare_convergence import convergence_groups, convergence_case_view',
+                            root=self.host.modules[('CGYRO_TGLF_scan',)]) as api:
+            groups = api['convergence_groups'](case)
+            key = next(key for key, group in groups.items() if group['axis'] == 'N_XI')
+            view, selected, metadata, errors = api['convergence_case_view'](case, {key: [32, 64]})
+            self.assertEqual(errors, [])
+            self.assertEqual(selected[key], [48, 32, 64])
+            self.assertIs(view[key][48]['lin'][.5], case['Base case']['32']['lin']['0.5'])
 
     def test_result_list_scope_and_completion_survive_native_import_cleanup(self):
         module = {}

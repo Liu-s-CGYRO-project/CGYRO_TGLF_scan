@@ -26,7 +26,7 @@ RUN_CONTROL_PARAMETERS = frozenset(('MAX_TIME', 'PRINT_STEP', 'RESTART_STEP',
 
 RESULT_INFO_FIELDS = ('runid', 'case_id', 'source_nr', 'rho', 'ion_case', 'scan_axes', 'dimensions',
                       'scan_dimensions', 'fixed_parameters', 'constant_parameters', 'numeric_parameters', 'scale_time_with_ky',
-                      'runtime', 'server', 'case_tag', 'run_token')
+                      'runtime', 'server', 'case_tag', 'run_token', 'convergence_group')
 
 
 def clean_run_id(value):
@@ -285,6 +285,9 @@ def scan_key(info, fallback=''):
     and ky. Other combinations stay independent, including 1D versus 2D with
     the same first axis, linked axes and the ky-only fixed reference coordinate.
     """
+    group = info.get('convergence_group', {})
+    if group.get('role', '') == 'baseline':
+        return 'Base case'
     axes = info.get('scan_axes', [])
     if info.get('scan_dimensions', None) == 0 or (axes and all(axis.get('fixed', False) for axis in axes)):
         return 'KY_ONLY'
@@ -536,9 +539,12 @@ def share_matching_inputs(case, info, tasks, factory=dict, prefer_progress=False
             if target.get('coordinate_path', None):
                 row['coordinate_path'] = list(target['coordinate_path'])
             row.setdefault('result_info', {})
-            for name in ('scan_axes', 'dimensions', 'scan_dimensions', 'fixed_parameters'):
-                if name in saved:
-                    row['result_info'][name] = deepcopy(saved[name])
+            target_info = dict(saved, **dict(target.get('result_info', {})))
+            for name in ('scan_axes', 'dimensions', 'scan_dimensions', 'fixed_parameters', 'convergence_group'):
+                if name in target_info:
+                    row['result_info'][name] = deepcopy(target_info[name])
+                else:
+                    row['result_info'].pop(name, None)
             _at(case, row['result_path'][:-1])[row['result_path'][-1]] = copy_result_tree(result, factory)
             rows[point] = row
     for _, saved, rows in case_scans(case):

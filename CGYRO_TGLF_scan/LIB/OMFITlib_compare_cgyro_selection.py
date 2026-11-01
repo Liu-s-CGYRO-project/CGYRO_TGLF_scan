@@ -7,11 +7,12 @@ import ast
 import math
 import re
 from numpy import array
-from OMFITlib_compare_state import STYLE_DEFAULTS, stable_keys
+from OMFITlib_compare_state import STYLE_DEFAULTS, stable_keys, convergence_selection
 from OMFITlib_compare_core import resolve_key as _resolve_mapping_key
 from OMFITlib_compare_options import STAT_DEFAULTS, is_gamma_ratio_plot_mode, parse_float_list_text, validate_options
 from OMFITlib_compare_style import cgyro_case_caption
 from OMFITlib_cgyro_scan_view import comparison_case_view, view_config
+from OMFITlib_compare_convergence import convergence_case_view
 
 
 def _parse_gui_value_text(text):
@@ -245,7 +246,11 @@ def build_context(root, settings=None):
     # Backward compatible: legacy `nr_plot_mode` still works.
     legacy_merge = (settings.get('nr_plot_mode', 'Split by nr') == 'All nr in one figure')
     ctx['merge_all_nr_plot'] = bool(settings.get('merge_all_nr_plot', legacy_merge))
-    ctx['selected_paras'], ctx['selected_paras_by_nr'] = _sanitize_selected_parameters(root, settings)
+    ctx['convergence_plot'] = settings.get('cgyro_view', '') == '收敛测试'
+    if ctx['convergence_plot']:
+        ctx['selected_paras'], ctx['selected_paras_by_nr'] = {}, {}
+    else:
+        ctx['selected_paras'], ctx['selected_paras_by_nr'] = _sanitize_selected_parameters(root, settings)
 
     ctx['error_flag'] = settings.get('error_flag', 'CGYRO')
     ctx['effnum'] = settings.get('effnum', STAT_DEFAULTS['effnum'])
@@ -298,8 +303,13 @@ def build_context(root, settings=None):
         if case_key is None:
             per_case[str(nr)] = {}
             continue
-        selected = dict(_iter_selected_parameter_items(ctx, nr))
-        view, choices, metadata, problems = comparison_case_view(run[case_key], selected, view_config(settings, nr))
+        if ctx['convergence_plot']:
+            selected = {key: parse_float_list_text(values)
+                        for key, values in convergence_selection(settings, nr).items()}
+            view, choices, metadata, problems = convergence_case_view(run[case_key], selected)
+        else:
+            selected = dict(_iter_selected_parameter_items(ctx, nr))
+            view, choices, metadata, problems = comparison_case_view(run[case_key], selected, view_config(settings, nr))
         ctx['_cgyro_views'][str(nr)] = view
         per_case[str(nr)] = choices
         ctx['_cgyro_slices'].update({(str(nr), key): value for key, value in metadata.items()})

@@ -5,7 +5,7 @@ separate libraries. Only this adapter depends on OMFIT's FigureNotebook global.
 The frequently used data helpers remain importable from this original module.
 """
 from builtins import (IndexError, KeyError, RuntimeWarning, TypeError, ValueError,
-                      dict, len, list, str)
+                      any, dict, len, list, str)
 import warnings
 from OMFITlib_compare_cgyro_selection import (
     build_context, _combine_nr_on_single_page, _iter_selected_parameter_items,
@@ -17,7 +17,7 @@ from OMFITlib_compare_cgyro_eigen import (
     collect_eigen_entries_for_value, extract_eigen_curve, flatten_balloon_field,
     interpolate_field, select_eigen_entries)
 from OMFITlib_compare_cgyro_export import export_selected_linear_spectra
-from OMFITlib_compare_cgyro_render import render_page
+from OMFITlib_compare_cgyro_render import render_page, render_convergence_page
 from OMFITlib_compare_state import selection_check, selected_cgyro_runs
 from OMFITlib_compare_style import cgyro_case_caption
 from OMFITlib_cgyro_scan_view import slice_caption
@@ -67,7 +67,13 @@ def collect_plot_items(root, ctx):
 def group_plot_pages(items, ctx):
     pages = {}
     for item in items:
-        if ctx['plot_3d']:
+        if ctx.get('convergence_plot', False):
+            key = (str(item['nr']),)
+            if item.get('source_label', ''):
+                key += (item['source_label'],)
+            if ctx.get('plot_time_traces', False):
+                key += ('ky={:.10g}'.format(item['trace']['ky']),)
+        elif ctx['plot_3d']:
             key = (str(item['nr']), str(item['para']))
             if item.get('source_label', ''):
                 key += (item['source_label'],)
@@ -78,6 +84,10 @@ def group_plot_pages(items, ctx):
         pages.setdefault(key, []).append(item)
     labeled = []
     for key, values in pages.items():
+        if ctx.get('convergence_plot', False):
+            suffix = ' / '.join((cgyro_case_caption(key[0], include_radius=True),) + key[1:])
+            labeled.append(('收敛测试' + (' / ' + suffix if len(pages) > 1 else ''), values))
+            continue
         if ctx['plot_3d']:
             key = (key[0], slice_caption(values[0]['slice_meta'], key[1])) + key[2:]
         if not _combine_nr_on_single_page(ctx):
@@ -93,6 +103,8 @@ def run_plot(root):
     state = root['SETTINGS']['PHYSICS']['CGYRO_vs_CGYRO']
     contexts = [build_context(root, selected) for selected in selected_cgyro_runs(state)]
     ctx = dict(contexts[0])
+    if any(selected['convergence_plot'] != ctx['convergence_plot'] for selected in contexts):
+        raise ValueError('跨记录绘图请为各记录选择同一种绘图案例：收敛测试或常规扫描。')
     if not ctx['plotcgyro']:
         return []
     for selected in contexts:
@@ -116,5 +128,6 @@ def run_plot(root):
         raise ValueError('No valid selected CGYRO data for this plot.\n' + detail)
     if ctx['_diagnostics']:
         warnings.warn('CGYRO selections skipped or filtered:\n' + '\n'.join(ctx['_diagnostics'][:10]), RuntimeWarning)
-    notebook = FigureNotebook(0, 'CGYRO scan comparison')
-    return [render_page(notebook, ctx, label, values) for label, values in group_plot_pages(items, ctx)]
+    notebook = FigureNotebook(0, '收敛测试' if ctx['convergence_plot'] else 'CGYRO scan comparison')
+    render = render_convergence_page if ctx['convergence_plot'] else render_page
+    return [render(notebook, ctx, label, values) for label, values in group_plot_pages(items, ctx)]

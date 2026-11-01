@@ -197,7 +197,10 @@ class ComparisonUI(CaseSelection):
 
     def _render_ratio(self, cross_model=False):
         self._combo('gamma_ref_mode', OrderedDict([('全部 ky', 'all ky'), ('指定 ky', 'single ky')]), '参考统计范围', 'all ky', refresh=True)
-        self._entry('gamma_ref_value', '参考扫描值', '', help='留空时采用所选数据中的第一个有效扫描值。')
+        if self.mode == 'CGYRO_vs_CGYRO' and self.state.get('cgyro_view', '') == '收敛测试':
+            self.ui.Label('参考扫描值：各方向自己的基准；基准缺失时不计算比值。', align='left')
+        else:
+            self._entry('gamma_ref_value', '参考扫描值', '', help='留空时采用所选数据中的第一个有效扫描值。')
         if self.plot_settings.get('gamma_ref_mode', 'all ky') == 'single ky':
             self._entry('gamma_ref_ky_values', '参考 ky', '', help='多个 ky 用逗号分隔。')
         elif cross_model:

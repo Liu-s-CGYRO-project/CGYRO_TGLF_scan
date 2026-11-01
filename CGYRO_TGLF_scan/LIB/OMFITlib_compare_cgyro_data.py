@@ -215,8 +215,14 @@ def parse_gamma_ref_ky_values(ctx):
 
 
 def get_gamma_ratio_curve(root, ctx, nr, para, para_values):
-    """Use raw gamma, with a blank reference selecting the first valid scan value."""
-    reference = ctx.get('gamma_ref_value', '')
+    """Normalize convergence groups to their exact own baseline.
+
+    Ordinary scans retain the selectable/nearest reference behavior. Missing
+    convergence baselines leave a diagnostic, never a substitute denominator.
+    """
+    metadata = ctx.get('_cgyro_slices', {}).get((str(nr), str(para)), {})
+    convergence = metadata.get('convergence', False)
+    reference = metadata['baseline_value'] if convergence else ctx.get('gamma_ref_value', '')
     reference = None if reference is None or str(reference).strip() == '' else float(reference)
     if reference is not None and not np.isfinite(reference):
         raise ValueError('Reference scan value must be finite')
@@ -240,7 +246,12 @@ def get_gamma_ratio_curve(root, ctx, nr, para, para_values):
     if not gamma_map:
         return None
     available = np.asarray(list(gamma_map))
-    reference = float(available[0] if reference is None else available[np.argmin(np.abs(available - reference))])
+    if convergence:
+        if reference not in gamma_map:
+            diagnostic(ctx, nr, para, reference, 'Convergence baseline is missing; growth-rate ratio is unavailable')
+            return None
+    else:
+        reference = float(available[0] if reference is None else available[np.argmin(np.abs(available - reference))])
     denominator = gamma_map[reference]
     if denominator == 0:
         diagnostic(ctx, nr, para, reference, 'Reference gamma is zero; ratio is undefined')

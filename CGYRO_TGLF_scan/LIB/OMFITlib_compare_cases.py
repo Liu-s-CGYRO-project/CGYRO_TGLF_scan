@@ -18,6 +18,7 @@ from collections import Counter, OrderedDict
 from contextlib import contextmanager
 from OMFITlib_cgyro_archive import latest_cases, remap_case_selection, remap_pair_flags
 from OMFITlib_cgyro_scan_view import multiaxis_scans, axis_values
+from OMFITlib_compare_convergence import convergence_groups
 from OMFITlib_compare_widgets import (
     ComparisonWidgets,
 )
@@ -348,6 +349,43 @@ class CaseSelection(ComparisonWidgets):
         results, _ = self._choose_tglf(tg, lambda *k: path('TGLF', *k), target=target)
         self._tglf_parameters(tg, path, results, tg.get('rho_selected', []))
 
+    def _convergence_entries(self, state, path, run, radii, labels):
+        """One convergence case, with independent directional selections."""
+        groups_by_nr = {str(nr): convergence_groups(run[nr]) for nr in radii if nr in run}
+        if not any(groups_by_nr.values()):
+            state['cgyro_view'] = '常规扫描'
+            return False
+        state.setdefault('cgyro_view', '收敛测试')
+        self.ui.ComboBox(path('cgyro_view'), ['收敛测试', '常规扫描'], '绘图案例',
+                         default='收敛测试', updateGUI=True)
+        if state['cgyro_view'] != '收敛测试':
+            return False
+        self.ui.Separator('收敛测试')
+        self.ui.Label('各扫描方向分别成栏；自动加入参数一致的基准曲线。', align='left')
+        selections = state.setdefault('convergence_selected_by_nr', {})
+        flags_by_nr = state.setdefault('convergence_flags_by_nr', {})
+        for nr in radii:
+            groups = groups_by_nr.get(str(nr), {})
+            if len(radii) > 1:
+                self.ui.Separator(labels[nr][0])
+            if not groups:
+                self.ui.Label('此案例没有单变量收敛扫描索引。', align='left')
+                continue
+            selected = selections.setdefault(str(nr), {})
+            flags = flags_by_nr.setdefault(str(nr), {})
+            self._prune_mapping_keys(selected, list(groups))
+            self._prune_mapping_keys(flags, list(groups))
+            for token, group in groups.items():
+                flags.setdefault(token, True)
+                caption = '{} · {}（基准 {}）'.format(group['axis'], group['label'], group['baseline_value'])
+                self.ui.CheckBox(path('convergence_flags_by_nr', str(nr), token), caption,
+                                 default=True, updateGUI=True)
+                selected.setdefault(token, list(group['values']))
+                if flags[token]:
+                    self._parameter_entry(path('convergence_selected_by_nr', str(nr), token),
+                                          group['axis'], selected[token], default_values=group['values'])
+        return True
+
     def render_mode_cgyro_vs_cgyro(self, state):
         prefix = "root['SETTINGS']['PHYSICS']['CGYRO_vs_CGYRO']"
         path = lambda *keys: self._dict_path(prefix, *keys)
@@ -367,6 +405,8 @@ class CaseSelection(ComparisonWidgets):
         labels = self._choice_labels(available)
         radii = state.get('nr_CGYRO', [])
         if not radii:
+            return
+        if self._convergence_entries(state, path, run, radii, labels):
             return
         self.ui.Separator('扫描参数与取值')
         self.ui.CheckBox(path('force_read_all_nr_items'), '各输入案例分别选择参数',

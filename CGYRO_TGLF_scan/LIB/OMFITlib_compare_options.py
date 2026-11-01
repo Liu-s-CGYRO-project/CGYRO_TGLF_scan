@@ -56,7 +56,7 @@ def validate_options(settings):
             if not parse_float_list_text(settings.get('eigen_ky_values', '')):
                 raise ValueError('Enter at least one ky value for the eigenfunction')
         elif is_gamma_ratio_plot_mode(mode):
-            reference = settings.get('gamma_ref_value', '')
+            reference = '' if settings.get('cgyro_view', '') == '收敛测试' else settings.get('gamma_ref_value', '')
             if reference is not None and str(reference).strip() and not math.isfinite(float(reference)):
                 raise ValueError('Reference scan value must be finite')
             if settings.get('gamma_ref_mode', None) == 'single ky' and not parse_float_list_text(settings.get('gamma_ref_ky_values', '')):

@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.49。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.50。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 输入传递和更新完整性（1.24.49 / 管理器 1.10.35）
 
@@ -44,7 +44,11 @@ ParameterList 捕获轻量目录并分页；清空只恢复所选分组、匹配
 
 ## CGYRO 单变量收敛扫描（1.24.42）
 
-`OMFITlib_cgyro_convergence` 将公共基准、各方向取值及额外固定项转换成普通一维扫描计划。完整配置在所选输入内去重，重复基准归属首次请求它的方向，其他方向只保存共享来源。`PHYSICS.scan_mode` 区分普通与 convergence；原生 SETUP.idimrun 仍只接受 0–3，GUI 的 cgyro_scan_content 负责映射。切换模式保留两种设置，不把新模式编码为非法的第四维。
+`OMFITlib_cgyro_convergence` 将公共基准、各方向取值及额外固定项转换成普通一维扫描计划。完整配置在所选输入内去重，公共基准独立提交并存入 Base case；方向自定义固定项所需的其他基准仍引用已经匹配的方向点。新收敛计划使用一次 `_convergence` 结果名后缀，路径复用已有半径 / constant / 离子分组及 __SCANS__ 索引。`PHYSICS.scan_mode` 区分普通与 convergence；原生 SETUP.idimrun 仍只接受 0–3，GUI 的 cgyro_scan_content 负责映射。切换模式保留两种设置，不把新模式编码为非法的第四维。
+
+`OMFITlib_compare_convergence` 只在所选案例的轻量点表中，以已收集的生成输入摘要匹配方向与基准，构造临时 para/value/lin 引用视图。不改 RUN_DB、不复制造数组、不依赖 RUN_HISTORY；多个不同固定物理条件形成独立组。`convergence_group` 保留在每点 result_info 中，避免新提交的扫描头覆盖旧点语义。图形使用独立的方向列；普通多轴视图不改。缺失基准或无法证明身份的旧记录报告诊断，不猜测或触发读取器补齐。
+
+显式 `prepare_cgyro_batch` 验证计划后调用 `adopt_reused_points`，将本次已验证可复用的 owner 引用登记到 Base case 和相应方向，更新该组基准语义。只暂存所选案例的受影响分支和轻量索引，提交带回滚；不修改 owner、未选分支和历史记录。预览不调用此步骤。所有点复用、没有新作业时仍执行，因此更改基准不会留下旧绘图上下文。
 
 准备和提交共用 cgyro_plan / ProjectActions 的输入变换。批量键追加 convergence:参数，准确的作业身份仍由独立 token、冻结输入、点表及 sidecar 持有。每份提交只临时安装自己的输入、扫描轴和维度，finally 恢复编辑器。选择性提交的坐标必须出现在该组原始参数 × ky 中；恢复使用冻结点表，不重建未提交的笛卡尔点。
 

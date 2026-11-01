@@ -176,7 +176,8 @@ def publish_loaded_run(root):
     info['case_path'] = grouped_case_path(case_key, info)
     if manifest.get('convergence_group', None):
         info['convergence_group'] = {name: copy.deepcopy(manifest['convergence_group'][name])
-            for name in ('parameter', 'baseline', 'requested', 'shared', 'fixed')}
+            for name in ('parameter', 'baseline', 'requested', 'shared', 'fixed', 'role', 'storage_branch')
+            if name in manifest['convergence_group']}
     if continuation:
         # Provenance is diagnostic metadata only. The result merge does not
         # load or require any source token's point table.

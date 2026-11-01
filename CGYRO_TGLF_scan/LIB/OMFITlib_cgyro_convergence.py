@@ -3,15 +3,18 @@
 Plans contain small parameter dictionaries only. They never own result files,
 consult job ancestry, or perform storage maintenance.
 """
-from builtins import (KeyError, TypeError, ValueError, bool, dict, float, int, isinstance, len, list,
-                      max, round, set, sorted, str, tuple)
+from builtins import (BaseException, KeyError, TypeError, ValueError, all, bool, dict, enumerate, float, int, isinstance, len, list,
+                      max, reversed, round, set, sorted, str, tuple)
 from collections import OrderedDict
 from copy import deepcopy
+import math
 import re
 from OMFITlib_cgyro_parameters import FIELDS, constant_parameters, managed_parameter, numeric_source, parameter_value
 from OMFITlib_cgyro_scan_values import MAX_VALUES, ky_values, value_list
-from OMFITlib_cgyro_archive import (catalog_runs, canonical_case_key, case_scans, result_identity)
-from OMFITlib_cgyro_reference import REF, is_native_file, metadata_value, validate_reference
+from OMFITlib_cgyro_archive import (RUN_CONTROL_PARAMETERS, catalog_runs, canonical_case_key, case_destination,
+                                   case_scans, case_sources, clean_run_id, point_values, result_identity, scan_key, store_scan)
+from OMFITlib_cgyro_reference import REF, is_native_file, make_reference, metadata_value, validate_reference
+from OMFITlib_cgyro_db import rollback_actions
 
 CONTENTS = OrderedDict([('只扫 ky', 0), ('ky + 1 个参数', 1), ('ky + 2 个参数', 2),
                         ('ky + 3 个参数', 3), ('单变量收敛扫描', 'convergence')])
@@ -147,27 +150,85 @@ def context(group):
             ('parameter', 'baseline', 'requested', 'shared', 'fixed')}
 
 
+def archive_runid(value):
+    """Keep convergence results separate without stacking generated suffixes."""
+    value = str(value)
+    return value if value.endswith('_convergence') else value + '_convergence'
+
+
 def jobs(physics, source, dimensions, batch_key):
     if not active(physics):
         return [dict(physics=physics, dimensions=dimensions, batch_key=batch_key)]
-    return [dict(physics=group['physics'], dimensions=1,
-                 batch_key=str(batch_key) + ':convergence:' + group['parameter'],
-                 convergence_group=context(group))
-            for group in groups(physics, source) if group['values']]
+    plans = groups(physics, source)
+    baseline = plans[0]['baseline']
+    controls = deepcopy(dict(physics))
+    controls.pop('convergence', None)
+    controls['scan_mode'] = 'regular'
+    for name, value in baseline.items():
+        controls.setdefault('fixed_parameters', {})[name] = dict(enabled=True, value=value)
+    effective = numeric_source(source)
+    effective.update({name: parameter_value(name, item['value'])
+                      for name, item in controls.get('fixed_parameters', {}).items() if item.get('enabled', False)})
+    effective.update(constant_parameters(controls))
+    name = plans[0]['parameter']
+    center = parameter_value(name, effective.get(name, FIELDS[name][2]))
+    controls['1d'] = dict(Para=name, Range=[center])
+    base = dict(parameter=name, baseline=deepcopy(baseline), requested=[center], shared=[], fixed={},
+                role='baseline', storage_branch='Base case')
+    result = [dict(physics=controls, dimensions=1,
+                   batch_key=str(batch_key) + ':convergence:Base case', convergence_group=base)]
+    for group in plans:
+        name = group['parameter']
+        center = parameter_value(name, effective.get(name, FIELDS[name][2]))
+        # The common baseline is submitted and owned once. An E_MAX group
+        # with NE=64 instead uses the NE=64 direction result as its reference.
+        if all(float(effective.get(key, float('nan'))) == float(value)
+               for key, value in group['fixed'].items()):
+            if center in group['values']:
+                group['values'].remove(center)
+                group['physics']['1d']['Range'] = list(group['values'])
+            group['shared'] = [item for item in group['shared'] if item['value'] != center]
+            group['shared'].append(dict(value=center, group='Base case'))
+        if group['values']:
+            metadata = dict(context(group), role='direction', storage_branch=name)
+            result.append(dict(physics=group['physics'], dimensions=1,
+                               batch_key=str(batch_key) + ':convergence:' + name,
+                               convergence_group=metadata))
+    return result
 
 
-def reusable_points(module, runid, caseid, source, physics, parameter, enabled=True):
-    """Explicit preview/submission: inspect only this run/radius/axis index.
+def _cached_parameters_match(info, row, requested):
+    """Use the collection-time tolerance without opening generated input again."""
+    cached = row.get('input_parameters', None)
+    if not cached:
+        return False
+    cached = {name: float(value) for name, value in cached.items()}
+    if not all(math.isfinite(value) for value in cached.values()):
+        return False
+    coordinate = dict(point_values(info, row))
+    coordinate.update(row.get('effective_time', {}))
+    for expected in (requested, coordinate):
+        if not all(name in cached and math.isclose(float(value), cached[name], rel_tol=1e-9, abs_tol=1e-12)
+                   for name, value in expected.items() if name not in RUN_CONTROL_PARAMETERS):
+            return False
+    return True
+
+
+def reusable_points(module, runid, caseid, source, physics, parameter, enabled=True, capture=False):
+    """Explicit preview/submission: inspect this run/radius's lightweight index.
 
     Reuse requires the verified explicit input cached at collection, a retained
     owner and sufficient completed data. Missing old metadata schedules a new
     point; querying an index never backfills it by opening input/result files.
     """
     wanted = [(value, ky) for value in physics['1d']['Range'] for ky in ky_values(physics)]
-    pending, coordinates = set(wanted), []
+    pending, coordinates, matches, candidates = set(wanted), [], [], {}
     if not enabled or float(source.get('PROFILE_MODEL', 1)) == 2:
-        return dict(submit_coordinates=[list(pair) for pair in wanted], reused_points=0,
-                    reused_scope=dict(coordinates=[], unknown=[], issues=[]))
+        result = dict(submit_coordinates=[list(pair) for pair in wanted], reused_points=0,
+                      reused_scope=dict(coordinates=[], unknown=[], issues=[]))
+        if capture:
+            result['_matches'] = []
+        return result
     runtime = {'MAX_TIME', 'RESTART_STEP', 'MPI_RANK_ORDER', 'TOROIDALS_PER_PROC',
                'MPIIO_STRIPE_FACTOR', 'MPIIO_SMALL_STRIPE_FACTOR'}
     base = {str(name): float(source[name]) for name in source.keys()
@@ -178,8 +239,6 @@ def reusable_points(module, runid, caseid, source, physics, parameter, enabled=T
         if canonical_case_key(cid, case.get('__INFO__', {})) != caseid:
             continue
         for key, info, rows in case_scans(case):
-            if key != parameter:
-                continue
             for row in rows.values():
                 try:
                     requested = row.get('input_requested_parameters', None)
@@ -188,6 +247,8 @@ def reusable_points(module, runid, caseid, source, physics, parameter, enabled=T
                         continue
                     pair = (requested.get(parameter, None), requested.get('KY', None))
                     if pair not in pending or summary.get('sample_count', 0) < 2 or summary.get('version', 0) != 1:
+                        continue
+                    if not _cached_parameters_match(info, row, requested):
                         continue
                     value, ky = pair
                     card = dict(base, **{parameter: float(value), 'KY': float(ky), 'NONLINEAR_FLAG': 0.})
@@ -211,10 +272,128 @@ def reusable_points(module, runid, caseid, source, physics, parameter, enabled=T
                         continue
                     validate_reference(node, owner)
                     identity = result_identity(info, row)
+                    if identity['runid'] != clean_run_id(runid) or identity['case_id'] != canonical_case_key(caseid):
+                        continue
+                    if not all(math.isclose(identity['values'][name], float(number), rel_tol=1e-9, abs_tol=1e-12)
+                               for name, number in ((parameter, value), ('KY', ky))):
+                        continue
                 except (KeyError, TypeError, ValueError):
                     continue
-                coordinates.append(identity)
-                pending.remove(pair)
-    return dict(submit_coordinates=[list(pair) for pair in wanted if pair in pending],
-                reused_points=len(wanted) - len(pending),
-                reused_scope=dict(coordinates=coordinates, unknown=[], issues=[]))
+                match = dict(info=info, row=row, owner=owner, value=value, ky=ky)
+                if pair not in candidates:
+                    candidates[pair] = (identity, match)
+                elif candidates[pair] is not None and candidates[pair][1]['owner'] != owner:
+                    candidates[pair] = None  # Conflicting current owners cannot prove safe reuse.
+    for pair, candidate in candidates.items():
+        if candidate is not None:
+            identity, match = candidate
+            coordinates.append(identity)
+            if capture:
+                matches.append(match)
+            pending.remove(pair)
+    result = dict(submit_coordinates=[list(pair) for pair in wanted if pair in pending],
+                  reused_points=len(wanted) - len(pending),
+                  reused_scope=dict(coordinates=coordinates, unknown=[], issues=[]))
+    if capture:
+        result['_matches'] = matches  # Transient metadata only; never persisted in a manifest.
+    return result
+
+
+def _at(node, path):
+    for key in path:
+        node = metadata_value(node)[key]
+    return metadata_value(node)
+
+
+def _adoption_destination(module, request, info):
+    path = tuple(case_destination(module, request['runid'], request['case_id'], info))
+    try:
+        return path, _at(module['RUN_DB'], path)
+    except KeyError:
+        # Old projects may still use a short nr key. Use its verified physical
+        # location rather than creating a second case or migrating other scans.
+        sources = case_sources(module, request['runid'], request['case_id'])[request['runid']]
+        matching = [parts for cid, case, parts in sources
+                    if canonical_case_key(cid, case.get('__INFO__', {})) == request['case_id']]
+        if len(matching) != 1:
+            raise ValueError('Cannot locate one existing case for convergence result reuse') from None
+        path = (request['runid'],) + tuple(matching[0])
+        return path, _at(module['RUN_DB'], path)
+
+
+def _adopted_scan(request, matches):
+    """Rebind the selected plan's context while retaining each physical owner."""
+    group = request['group']
+    parameter, branch = group['parameter'], group['storage_branch']
+    info = deepcopy(dict(matches[0]['info']))
+    axes = deepcopy(request['scan_axes'])
+    axes[0]['values'] = list(group['requested'])
+    info.update(dict(convergence_group=deepcopy(group), scan_axes=axes, dimensions=1,
+                     scan_dimensions=1, parameters=[branch], scan_key=branch,
+                     fixed_parameters={name: item['value'] for name, item in
+                         request['physics'].get('fixed_parameters', {}).items() if item.get('enabled', False)}))
+    # The source job's planned task IDs/scope do not describe this new view.
+    # Current job identities remain on the retained point rows and in history.
+    info.pop('planned_points', None)
+    info.pop('planned_coordinates', None)
+    complete = len(matches) == len(group['requested']) * len(ky_values(request['physics']))
+    info.update(dict(scan_complete=complete, collection_status='complete' if complete else 'partial'))
+    data, tasks = {}, {}
+    for index, match in enumerate(matches, 1):
+        point = 'p{:06d}'.format(index)
+        value, ky = match['value'], match['ky']
+        row = deepcopy(dict(match['row']))
+        row.update(dict(values={parameter: value, 'KY': ky},
+                        result_path=[branch, str(value), 'lin', str(ky)]))
+        row.pop('coordinate_path', None)
+        own = row.setdefault('result_info', deepcopy(dict(match['info'])))
+        for name in ('convergence_group', 'scan_axes', 'dimensions', 'scan_dimensions', 'fixed_parameters'):
+            own[name] = deepcopy(info[name])
+        data.setdefault(branch, {}).setdefault(str(value), {}).setdefault('lin', {})[str(ky)] = make_reference(match['owner'])
+        tasks[point] = row
+    return data, info, tasks
+
+
+def adopt_reused_points(module, requests, factory=dict):
+    """Explicit preparation adopts verified references into the selected plan.
+
+    Build touched scan indexes off-tree, then commit only their branches and
+    headers with rollback. Preview never calls this. Physical owners, other
+    scans, and job history remain untouched; no file read or rehash is needed.
+    """
+    if not requests:
+        return 0
+    updates = {}
+    for request in requests:
+        controls = dict(request['physics'])
+        group = request['group']
+        # Include the shared baseline: an existing direction row at that
+        # coordinate must also describe the newly selected center.
+        controls['1d'] = dict(Para=group['parameter'], Range=list(group['requested']))
+        matches = reusable_points(module, request['runid'], request['case_id'], request['source'],
+                                  controls, group['parameter'], capture=True)['_matches']
+        if not matches:
+            continue
+        data, info, tasks = _adopted_scan(request, matches)
+        path, original = _adoption_destination(module, request, info)
+        if path not in updates:
+            case = dict(original.items())
+            case['__SCANS__'] = {key: dict(info=saved, tasks=rows) for key, saved, rows in case_scans(original)}
+            updates[path] = (original, case, set())
+        original, case, branches = updates[path]
+        store_scan(case, data, info, tasks, factory)
+        branches.add(scan_key(info))
+    rollback = []
+    try:
+        for original, case, branches in updates.values():
+            for key in list(branches) + ['__SCANS__', '__INFO__', '__TASKS__']:
+                if key in original:
+                    old = original[key]
+                    rollback.append((key, lambda node=original, key=key, old=old: node.__setitem__(key, old)))
+                else:
+                    rollback.append((key, lambda node=original, key=key: node.pop(key, None)))
+                original[key] = case[key]
+    except BaseException as error:
+        rollback_actions(error, list(reversed(rollback)))
+        raise
+    return len(updates)

@@ -285,6 +285,7 @@
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_scan_values'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_scan_values.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_cgyro_convergence'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_cgyro_convergence.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cases'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cases.py <-:-:-> {}
+['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_convergence'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_convergence.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_selection'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_selection.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['LIB']['OMFITlib_compare_cgyro_data'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/LIB/OMFITlib_compare_cgyro_data.py <-:-:-> {}

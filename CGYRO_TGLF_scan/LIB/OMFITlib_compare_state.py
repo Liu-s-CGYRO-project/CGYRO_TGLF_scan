@@ -45,6 +45,7 @@ SELECTION_KEYS = (
     'rho_pair_flags', 'rho_pair_cfg', 'para_list_flag_by_nr',
     'selected_paras_by_nr', '_selector_keys', '_pairing_run',
     'cgyro_multi', 'cgyro_multi_by_nr', 'force_read_all_nr_items',
+    'cgyro_view', 'convergence_selected_by_nr', 'convergence_flags_by_nr',
 )
 
 
@@ -175,16 +176,27 @@ def selected_cgyro_runs(state):
     return selected
 
 
+def convergence_selection(state, nr):
+    """Read only the saved controls for the selected case."""
+    values = state.get('convergence_selected_by_nr', {}).get(str(nr), {})
+    flags = state.get('convergence_flags_by_nr', {}).get(str(nr), {})
+    return {key: value for key, value in values.items() if flags.get(key, True)}
+
+
 def _cgyro_selection_errors(root, cg, mode):
     errors = []
     if cg.get('runid', None) not in root.get('CGYRO_scan', {}).get('RUN_DB', {}):
         errors.append('请选择已保存的 CGYRO 运行记录。')
     selections = [cg.get('selected_paras', {})]
-    if mode == 'CGYRO_vs_CGYRO' and cg.get('force_read_all_nr_items', None):
+    convergence = mode == 'CGYRO_vs_CGYRO' and cg.get('cgyro_view', '') == '收敛测试'
+    if convergence:
+        selections = [convergence_selection(cg, nr) for nr in cg.get('nr_CGYRO', [])]
+    elif mode == 'CGYRO_vs_CGYRO' and cg.get('force_read_all_nr_items', None):
         selections = [cg.get('selected_paras_by_nr', {}).get(str(nr), {}) for nr in cg.get('nr_CGYRO', [])]
     if not any(has_values(v) for selected in selections for v in selected.values()):
         errors.append('请选择 CGYRO 扫描参数及取值。')
-    errors.extend(_cgyro_axis_errors(cg))
+    if not convergence:
+        errors.extend(_cgyro_axis_errors(cg))
     if mode == 'CGYRO_vs_CGYRO' and not cg.get('nr_CGYRO', None):
         errors.append('请选择所选 CGYRO 半径下的离子。' if cg.get('cgyro_radius_selected', None)
                       else '请选择 CGYRO 半径。')

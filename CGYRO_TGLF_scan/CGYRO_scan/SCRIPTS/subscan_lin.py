@@ -263,6 +263,7 @@ if continuation:
         continuation['points'], continuation['additional_time'],
         selections=continuation.get('selections', None), scope=continuation.get('scope', None))
     scan_dimensions = int(continuation['info'].get('scan_dimensions', continuation['info']['dimensions']))
+    convergence_group = copy.deepcopy(continuation['info'].get('convergence_group', None))
 caseName = continuation['case_tag'] if continuation else physics['case_tag']
 base_workdir = runtime_abs_path(setup_workdir())
 if check_temp_start:

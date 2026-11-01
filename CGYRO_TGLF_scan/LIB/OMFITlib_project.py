@@ -43,7 +43,8 @@ from OMFITlib_cgyro_parameters import (constant_parameters, initialize_parameter
     numeric_source, parameter_catalog)
 from OMFITlib_cgyro_scan_values import scan_axes as configured_scan_axes
 from OMFITlib_cgyro_convergence import (active as convergence_active, jobs as cgyro_scan_jobs,
-    load_baseline as load_convergence_baseline, reusable_points as convergence_reuse)
+    archive_runid as convergence_runid, load_baseline as load_convergence_baseline, reusable_points as convergence_reuse,
+    adopt_reused_points as adopt_convergence_reuse)
 from OMFITlib_cgyro_isotopes import remap_physics
 from OMFITlib_cgyro_run_state import stop_message, submission_pending
 from OMFITlib_cgyro_queue import activate_run, collection_done, pending_runs, queue_records, queue_summary, queue_sync_summary, save_current
@@ -546,7 +547,7 @@ class ProjectActions:
         ion_cases = [key for key in ION_CASES
                      if bool(sync_cgyro_ion_cases(self.settings, self.factory).get(key, False))]
         batch, records, plan = self.factory(), self.factory(), []
-        reused_points = 0
+        reused_points, reuse_requests = 0, []
         physics = module(self.root, 'cgyro')['SETTINGS']['PHYSICS']
         dimensions = int(module(self.root, 'cgyro')['SETTINGS']['SETUP']['idimrun'])
         work = []
@@ -582,14 +583,21 @@ class ProjectActions:
                                  isotope_preparation=provenance,
                                  scan_axes=configured_scan_axes(case_physics, size, value)))
                 if 'convergence_group' in job:
+                    plan[-1]['runid'] = convergence_runid(plan[-1]['runid'])
                     plan[-1].update(dict(scan_dimensions=size, convergence_group=copy.deepcopy(job['convergence_group']),
                         scan_controls={key: copy.deepcopy(case_physics[key]) for key in
                                        ('fixed_parameters', 'constant_parameter', '1d') if key in case_physics}))
                     reuse = convergence_reuse(module(self.root, 'cgyro'), plan[-1]['runid'], plan[-1]['case_id'],
                         value, case_physics, job['convergence_group']['parameter'],
                         enabled=physics['convergence'].get('reuse_results', True))
+                    for coordinate in reuse['reused_scope']['coordinates']:
+                        coordinate['scan'] = job['convergence_group']['storage_branch']
                     plan[-1]['convergence_group'].update(reuse)
                     reused_points += reuse['reused_points']
+                    if reuse['reused_points']:
+                        reuse_requests.append(dict(runid=plan[-1]['runid'], case_id=plan[-1]['case_id'],
+                            source=value, physics=case_physics, scan_axes=plan[-1]['scan_axes'],
+                            group=copy.deepcopy(job['convergence_group'])))
                     if not reuse['submit_coordinates']:
                         plan.pop()
             batch[nr_key] = radial
@@ -616,6 +624,7 @@ class ProjectActions:
                            points_per_case=scan['points_per_case'], total_points=scan['total_points'],
                            reused_points=reused_points, submit_points=scan['total_points'] - reused_points))
         active_copy = (active.duplicate() if hasattr(active, 'duplicate') else copy.deepcopy(active)) if install_first and first else None
+        adopt_convergence_reuse(node, reuse_requests, self.factory)
         node['BATCH_INPUTS'] = batch
         if install_first and first:
             node['INPUTS']['input.cgyro'] = active_copy
@@ -666,12 +675,12 @@ class ProjectActions:
                         continue
                     value, controls, _, _ = _cgyro_case_input(self.root, row, source, ion, job['physics'], 1)
                     caseid = _cgyro_case_id(row, ion, constant_parameters(controls))
-                    runid = scheme_runid(node['SETTINGS']['EXPERIMENT']['runid'], row.get('scheme', ''))
+                    runid = convergence_runid(scheme_runid(node['SETTINGS']['EXPERIMENT']['runid'], row.get('scheme', '')))
                     reuse = convergence_reuse(node, runid, caseid, value, controls,
                         job['convergence_group']['parameter'], physics['convergence'].get('reuse_results', True))
                     reused += reuse['reused_points']
                     pending_jobs += bool(reuse['submit_coordinates'])
-                    items.append(dict(nr=row['nr'], ion=ion, parameter=job['convergence_group']['parameter'],
+                    items.append(dict(nr=row['nr'], ion=ion, parameter=job['convergence_group'].get('storage_branch', job['convergence_group']['parameter']),
                         values=list(controls['1d']['Range']), new_points=len(reuse['submit_coordinates']),
                         reused_points=reuse['reused_points'], shared=len(job['convergence_group']['shared']),
                         fixed=job['convergence_group']['fixed']))
