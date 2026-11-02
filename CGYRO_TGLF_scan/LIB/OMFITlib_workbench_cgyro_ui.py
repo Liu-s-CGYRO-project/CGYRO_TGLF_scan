@@ -395,8 +395,10 @@ class CgyroPage:
             group = config['groups'][name]
             path = prefix + "['groups'][{!r}]".format(name)
             with self.ui.same_row():
-                checkbox(self.ui, path + "['enabled']", group, 'enabled', name + ' · ' + caption,
-                         updateGUI=False, refresh_tree=False)
+                checkbox(self.ui, path + "['enabled']", group, 'enabled',
+                    name + ' · ' + ('区间' if name == 'N_RADIAL' else caption),
+                    help=('ballooning 区间。\n\n' + parameter_help(name)) if name == 'N_RADIAL' else '',
+                    updateGUI=False, refresh_tree=False)
                 automatic = checkbox(self.ui, path + "['auto_values']", group, 'auto_values', '随基准更新',
                     default=True, updateGUI=False, refresh_tree=False, postcommand=lambda location=None, name=name:
                         self.cgyro_convergence_edited(physics, name, source, controls))

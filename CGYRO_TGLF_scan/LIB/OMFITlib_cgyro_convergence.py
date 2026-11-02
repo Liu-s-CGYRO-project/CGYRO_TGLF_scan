@@ -48,7 +48,8 @@ def default_values(name, center):
     """Seed one direction from its center; no inputs/results are opened."""
     center = parameter_value(name, center)
     if name == 'N_ENERGY':
-        values = [center, max(1, round(float(center) * 1.5)), max(1, round(float(center) * 2))]
+        step = max(1, round(float(center) / 4))
+        values = [max(1, center - step), center, center + step]
     elif name == 'N_XI':
         values = [max(2, round(float(center) / 3) * 2), center,
                   max(2, round(float(center) * 2 / 3) * 2)]

@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.56。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.57。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 原生 GUI 验证记录与提示
 
@@ -83,7 +83,9 @@ OMFIT 原生保存器会将 OMFITtree 的键作为目录分量。相同主轴 / 
 
 整数取值默认值由 `parameter_range_defaults` 生成，非等步长列表使用公约数间隔初始化范围。更换参数从新参数自身的输入值开始；切换方式和普通重绘保留手填列表与有效自定义范围。字段回调只刷新所属 section，基准数字和方向勾选不立即重绘，复用预览是显式动作。增加检查方向时同步更新 DIRECTIONS、参数校验和去重/提交/恢复回归，不能在开窗时解析结果文件。
 
-收敛方向的初始候选统一由 `convergence.default_values` 生成，显式基准编辑通过 `sync_values` 只更新该方向。`groups[name].auto_values` 记录“随基准更新”，手填取值回车设为 False，重新勾选按当前基准生成；不改额外固定项。初始化仅补缺省，不在开窗、切页或计划查询时覆盖已有取值。该状态属于轻量设置，不另建历史快照或结果索引。
+收敛方向的初始候选统一由 `convergence.default_values` 生成，NE 使用基准 ± 取整后的 25%（步长至少 1、候选保持正整数），显式基准编辑通过 `sync_values` 只更新该方向。`groups[name].auto_values` 记录“随基准更新”，手填取值回车设为 False，重新勾选按当前基准生成；不改额外固定项。初始化仅补缺省，不在开窗、切页或计划查询时覆盖已有取值。该状态属于轻量设置，不另建历史快照或结果索引。原 77 点回归明确提供用户指定的 NE32/48/64，不依赖 GUI 新默认；新默认计划单独验证 E_MAX 组仍保留自身的 NE64 基准。
+
+N_RADIAL 的短标题只用于扫描设置 GUI，完整 `DIRECTIONS` 名称及归档/绘图元数据不变；帮助保留完整术语。继续沿用 `same_row` 的自适应列布局，不改全局列宽或刷新规则。
 
 基准、自动模式和手填回调均 `updateGUI=False, refresh_tree=False`。`cgyro_convergence_edited` 持有当前 GUI 内各方向 Entry / CheckBox 的引用，仅调用既有控件的文字更新和 `set_checkbox_value`，保留基准控件、其他方向未提交文字与外层标签。引用不写入工程；关闭后的控件不再更新。原生 Tk 回归用 Return / ButtonRelease 绑定验证实际显示值、手动模式恢复、零主树通知和零整窗刷新，不能只看参数字典值变化。
 

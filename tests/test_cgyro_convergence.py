@@ -36,6 +36,8 @@ def fixture():
     physics = dict(scan_mode='convergence', kyarr=[i / 10 for i in range(1, 8)],
                    fixed_parameters={}, scale_time_with_ky=False)
     convergence.initialize(physics, source)
+    # Retain the original user-specified 77-point plan independently of GUI defaults.
+    physics['convergence']['groups']['N_ENERGY']['values'] = [32, 48, 64]
     return source, physics
 
 
@@ -76,7 +78,8 @@ def indexed_group(module, runid, caseid, source, controls, values=None, group=No
 class ConvergenceTests(unittest.TestCase):
     def test_range_defaults_follow_the_current_grid_and_keep_integer_candidates(self):
         for name, center, expected in (
-                ('N_ENERGY', 16, [16, 24, 32]), ('N_XI', 48, [32, 48, 64]),
+                ('N_ENERGY', 16, [12, 16, 20]), ('N_ENERGY', 32, [24, 32, 40]),
+                ('N_XI', 48, [32, 48, 64]),
                 ('N_RADIAL', 24, [18, 24, 36]), ('N_THETA', 32, [24, 32, 48]),
                 ('N_RADIAL', 26, [20, 26, 40]), ('E_MAX', 10, [10, 12.5, 15])):
             with self.subTest(parameter=name, center=center):
@@ -85,17 +88,39 @@ class ConvergenceTests(unittest.TestCase):
                 if name != 'E_MAX':
                     self.assertTrue(all(type(value) is int for value in values))
 
+    def test_energy_defaults_bracket_small_centers_without_zero_or_duplicates(self):
+        for center in (1, 2, 3, 4, 5, 16, 48, 64):
+            with self.subTest(center=center):
+                values = convergence.default_values('N_ENERGY', center)
+                self.assertIn(center, values)
+                self.assertGreater(values[-1], center)
+                if center > 1:
+                    self.assertLess(values[0], center)
+                self.assertTrue(all(type(value) is int and value > 0 for value in values))
+                self.assertEqual(values, sorted(set(values)))
+
+    def test_new_defaults_keep_the_conditional_energy_limit_baseline(self):
+        source, physics = fixture()
+        del physics['convergence']
+        convergence.initialize(physics, source)
+        self.assertEqual(physics['convergence']['groups']['N_ENERGY']['values'], [24, 32, 40])
+        jobs = convergence.jobs(physics, source, 1, '1')
+        energy_limit = next(job for job in jobs if job['convergence_group']['parameter'] == 'E_MAX')
+        self.assertEqual(energy_limit['physics']['1d']['Range'], [8, 10, 12])
+        self.assertEqual(energy_limit['physics']['fixed_parameters']['N_ENERGY']['value'], 64)
+        self.assertEqual(sum(len(job['physics']['1d']['Range']) for job in jobs), 12)
+
     def test_baseline_edit_regenerates_only_its_direction_without_reading_input_or_results(self):
         source, physics = fixture()
         config = physics['convergence']
         previous = copy.deepcopy(config['groups'])
         config['baseline']['N_ENERGY'] = 16
         self.assertTrue(convergence.sync_values(physics, 'N_ENERGY', UnreadResults({'forbidden': 1})))
-        self.assertEqual(config['groups']['N_ENERGY']['values'], [16, 24, 32])
+        self.assertEqual(config['groups']['N_ENERGY']['values'], [12, 16, 20])
         for name in convergence.DIRECTIONS:
             expected = previous[name]
             if name == 'N_ENERGY':
-                expected['values'] = [16, 24, 32]
+                expected['values'] = [12, 16, 20]
             self.assertEqual(config['groups'][name], expected)
 
     def test_manual_range_survives_baseline_changes_and_auto_can_be_restored(self):
@@ -112,7 +137,7 @@ class ConvergenceTests(unittest.TestCase):
         self.assertEqual(reopened['convergence']['groups']['N_ENERGY']['values'], [12, 24, 60])
         group['auto_values'] = True
         self.assertTrue(convergence.sync_values(physics, 'N_ENERGY', source))
-        self.assertEqual(group['values'], [48, 72, 96])
+        self.assertEqual(group['values'], [36, 48, 60])
         self.assertEqual(group['fixed'], {'E_MAX': 10})
 
     def test_invalid_baseline_does_not_replace_any_direction_values(self):

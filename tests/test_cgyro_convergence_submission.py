@@ -45,6 +45,8 @@ def plan_fixture(cases=((1, .33, 'T'),)):
     source.update(N_ENERGY=32, N_XI=48, N_RADIAL=32, N_THETA=32, E_MAX=8,
                   MAX_TIME=1200, DELTA_T=.01, PRINT_STEP=100, ERROR_TOL=1e-4)
     convergence.initialize(physics, source)
+    # The original 77-point request explicitly specified NE32/48/64.
+    physics['convergence']['groups']['N_ENERGY']['values'] = [32, 48, 64]
     root, plan = dict(BATCH_INPUTS={}), []
     for nr, rho, ion in cases:
         base = source.duplicate()

@@ -768,6 +768,19 @@ class NativeTabsTests(unittest.TestCase):
         physics = node['SETTINGS']['PHYSICS']
         self.assertEqual(physics['scan_mode'], 'convergence')
         self.assertEqual(node['SETTINGS']['SETUP']['idimrun'], 2)
+        radial = next(value[0] for path, value in checks.items()
+                      if path.endswith("['groups']['N_RADIAL']['enabled']"))
+        radial_auto = next(value[0] for path, value in checks.items()
+                           if path.endswith("['groups']['N_RADIAL']['auto_values']"))
+        left, right = radial.master.master, radial_auto.master.master
+        row = left.master
+        self.assertIs(row, right.master)
+        self.assertEqual(radial.cget('text'), 'N_RADIAL · 区间')
+        self.host.owner.top.geometry('760x900')
+        self.host.drain(150)
+        self.assertEqual((int(left.grid_info()['row']), int(right.grid_info()['row'])), (0, 0))
+        for control in (left, right):
+            self.assertGreaterEqual(control.winfo_width(), control.winfo_reqwidth())
         self.entry = next(value for path, value in fields.items()
                           if path.endswith("['baseline']['N_ENERGY']"))
         saved_entry = self.entry
@@ -778,18 +791,21 @@ class NativeTabsTests(unittest.TestCase):
         neighbor.insert(0, '[24, 48, 72]')  # Uncommitted text in another direction must survive.
         tree_events = []
         self.host.root.bind('<<update_treeGUI>>', lambda event: tree_events.append(event), add='+')
+        self.commit('16')
+        self.assertEqual(physics['convergence']['groups']['N_ENERGY']['values'], [12, 16, 20])
+        self.assertEqual(values.get(), '[12, 16, 20]')
         self.commit('48')
         self.assertEqual(physics['convergence']['baseline']['N_ENERGY'], 48)
-        self.assertEqual(physics['convergence']['groups']['N_ENERGY']['values'], [48, 72, 96])
+        self.assertEqual(physics['convergence']['groups']['N_ENERGY']['values'], [36, 48, 60])
         self.assertTrue(values.winfo_exists())
-        self.assertEqual(values.get(), '[48, 72, 96]')
+        self.assertEqual(values.get(), '[36, 48, 60]')
         self.assertTrue(neighbor.winfo_exists())
         self.assertEqual(neighbor.get(), '[24, 48, 72]')
         self.assertTrue(saved_entry.winfo_exists())
         self.assertIs(self.header, header)
 
         self.entry = next(value for path, value in fields.items() if path.endswith(direction + "['values']"))
-        self.assertEqual(self.entry.get(), '[48, 72, 96]')
+        self.assertEqual(self.entry.get(), '[36, 48, 60]')
         self.commit('[24, 48, 80]')
         self.assertFalse(physics['convergence']['groups']['N_ENERGY']['auto_values'])
         self.entry = saved_entry
@@ -799,7 +815,7 @@ class NativeTabsTests(unittest.TestCase):
         automatic.event_generate('<ButtonRelease-1>')
         self.host.drain(100)
         self.assertTrue(physics['convergence']['groups']['N_ENERGY']['auto_values'])
-        self.assertEqual(physics['convergence']['groups']['N_ENERGY']['values'], [64, 96, 128])
+        self.assertEqual(physics['convergence']['groups']['N_ENERGY']['values'], [48, 64, 80])
         self.entry = next(value for path, value in fields.items() if path.endswith("['baseline']['N_XI']"))
         self.commit('16')
         self.assertEqual(physics['convergence']['groups']['N_XI']['values'], [10, 16, 22])
