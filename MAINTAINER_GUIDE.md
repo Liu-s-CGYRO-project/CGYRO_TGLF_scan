@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.54。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.55。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 输入传递和更新完整性（1.24.49 / 管理器 1.10.35）
 
@@ -67,6 +67,10 @@ OMFIT 原生保存器会将 OMFITtree 的键作为目录分量。相同主轴 / 
 复用查询只检查当前 runid、半径/离子及对应轴的现有索引。新点收集时在原任务行缓存已验证的显式 input_requested_parameters，配合现有生成参数、result_summary 和文件 owner 判断输入、输出选项、精度与完成时间。旧元数据不足、引用失效或 PROFILE_MODEL=2 的额外文件无法证明匹配时不复用，也不在查询时补读文件。复用坐标合并进既有覆盖 scope；若相应结果后来被移除，本次有效输出仍归档，但不能宣称整分支完整。未建立新的结果库、历史链或整批快照。
 
 整数取值默认值由 `parameter_range_defaults` 生成，非等步长列表使用公约数间隔初始化范围。更换参数从新参数自身的输入值开始；切换方式和普通重绘保留手填列表与有效自定义范围。字段回调只刷新所属 section，基准数字和方向勾选不立即重绘，复用预览是显式动作。增加检查方向时同步更新 DIRECTIONS、参数校验和去重/提交/恢复回归，不能在开窗时解析结果文件。
+
+收敛方向的初始候选统一由 `convergence.default_values` 生成，显式基准编辑通过 `sync_values` 只更新该方向。`groups[name].auto_values` 记录“随基准更新”，手填取值回车设为 False，重新勾选按当前基准生成；不改额外固定项。初始化仅补缺省，不在开窗、切页或计划查询时覆盖已有取值。该状态属于轻量设置，不另建历史快照或结果索引。
+
+基准、自动模式和手填回调均 `updateGUI=False, refresh_tree=False`。`cgyro_convergence_edited` 持有当前 GUI 内各方向 Entry / CheckBox 的引用，仅调用既有控件的文字更新和 `set_checkbox_value`，保留基准控件、其他方向未提交文字与外层标签。引用不写入工程；关闭后的控件不再更新。原生 Tk 回归用 Return / ButtonRelease 绑定验证实际显示值、手动模式恢复、零主树通知和零整窗刷新，不能只看参数字典值变化。
 
 ## TGLF 扫描控制与参数预设（1.24.31）
 

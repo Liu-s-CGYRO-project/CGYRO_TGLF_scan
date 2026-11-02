@@ -44,6 +44,43 @@ def active(physics):
     return physics.get('scan_mode', 'regular') == 'convergence'
 
 
+def default_values(name, center):
+    """Seed one direction from its center; no inputs/results are opened."""
+    center = parameter_value(name, center)
+    if name == 'N_ENERGY':
+        values = [center, max(1, round(float(center) * 1.5)), max(1, round(float(center) * 2))]
+    elif name == 'N_XI':
+        values = [max(2, round(float(center) / 3) * 2), center,
+                  max(2, round(float(center) * 2 / 3) * 2)]
+    elif name in ('N_RADIAL', 'N_THETA'):
+        values = [max(2, round(float(center) * .75 / 2) * 2), center,
+                  max(2, round(float(center) * 1.5 / 2) * 2)]
+    elif name == 'E_MAX':
+        values = [center, float(center) * 1.25, float(center) * 1.5]
+    else:
+        values = [center, float(center) / 10]
+    return list(dict.fromkeys(parameter_value(name, value) for value in values))
+
+
+def sync_values(physics, name, source=None):
+    """Explicit baseline/auto-mode edit; touch only this direction's values."""
+    config = physics['convergence']
+    baseline = config['baseline']
+    fixed = physics.get('fixed_parameters', {}).get(name, {})
+    if name in baseline:
+        center = baseline[name]
+    else:
+        center = fixed.get('value', 1e-4) if fixed.get('enabled', False) else (source or {}).get(name, 1e-4)
+    center = parameter_value(name, center)
+    group = config['groups'][name]
+    if group.get('auto_values', True):
+        values = default_values(name, center)
+        group['values'] = values
+    if name in baseline:
+        baseline[name] = center
+    return group.get('auto_values', True)
+
+
 def initialize(physics, source=None, factory=dict):
     config = physics.setdefault('convergence', factory())
     config.setdefault('reuse_results', True)
@@ -57,23 +94,13 @@ def initialize(physics, source=None, factory=dict):
     for name in DIRECTIONS:
         group = groups.setdefault(name, factory())
         group.setdefault('enabled', name != 'ERROR_TOL')
+        group.setdefault('auto_values', True)
         if 'fixed' not in group:
             group['fixed'] = {'N_ENERGY': max(64, int(float(baseline['N_ENERGY'])))} if name == 'E_MAX' else {}
         if 'values' in group:
             continue
         center = baseline.get(name, fixed.get(name, {}).get('value', (source or {}).get(name, 1e-4)))
-        if name == 'N_ENERGY':
-            values = [center, max(1, round(float(center) * 1.5)), max(1, round(float(center) * 2))]
-        elif name == 'N_XI':
-            values = [max(2, round(float(center) / 3) * 2), center,
-                      max(2, round(float(center) * 2 / 3) * 2)]
-        elif name in ('N_RADIAL', 'N_THETA'):
-            values = [max(1, round(float(center) * .75)), center, max(1, round(float(center) * 1.5))]
-        elif name == 'E_MAX':
-            values = [center, float(center) * 1.25, float(center) * 1.5]
-        else:
-            values = [center, float(center) / 10]
-        group['values'] = values
+        group['values'] = default_values(name, center)
     return config
 
 

@@ -743,10 +743,10 @@ class NativeTabsTests(unittest.TestCase):
         native.native_definitions(SOURCE / 'omfit_classes/OMFITx.py',
                                   {'Separator', 'TitleGUI'}, self.host.api.__dict__)
         actions = ProjectActions(self.host.tree)
-        fields, combos = {}, {}
+        fields, combos, checks = {}, {}, {}
         def render(ui):
             self.ui = ui
-            for kind, controls in (('Entry', fields), ('ComboBox', combos)):
+            for kind, controls in (('Entry', fields), ('ComboBox', combos), ('CheckBox', checks)):
                 constructor = getattr(ui, kind)
                 def capture(path, *args, constructor=constructor, controls=controls, **kwargs):
                     value = constructor(path, *args, **kwargs)
@@ -771,16 +771,47 @@ class NativeTabsTests(unittest.TestCase):
         self.entry = next(value for path, value in fields.items()
                           if path.endswith("['baseline']['N_ENERGY']"))
         saved_entry = self.entry
+        direction = "['groups']['N_ENERGY']"
+        values = next(value for path, value in fields.items() if path.endswith(direction + "['values']"))
+        neighbor = next(value for path, value in fields.items() if path.endswith("['groups']['N_XI']['values']"))
+        neighbor.delete(0, 'end')
+        neighbor.insert(0, '[24, 48, 72]')  # Uncommitted text in another direction must survive.
+        tree_events = []
+        self.host.root.bind('<<update_treeGUI>>', lambda event: tree_events.append(event), add='+')
         self.commit('48')
         self.assertEqual(physics['convergence']['baseline']['N_ENERGY'], 48)
+        self.assertEqual(physics['convergence']['groups']['N_ENERGY']['values'], [48, 72, 96])
+        self.assertTrue(values.winfo_exists())
+        self.assertEqual(values.get(), '[48, 72, 96]')
+        self.assertTrue(neighbor.winfo_exists())
+        self.assertEqual(neighbor.get(), '[24, 48, 72]')
         self.assertTrue(saved_entry.winfo_exists())
         self.assertIs(self.header, header)
+
+        self.entry = next(value for path, value in fields.items() if path.endswith(direction + "['values']"))
+        self.assertEqual(self.entry.get(), '[48, 72, 96]')
+        self.commit('[24, 48, 80]')
+        self.assertFalse(physics['convergence']['groups']['N_ENERGY']['auto_values'])
+        self.entry = saved_entry
+        self.commit('64')
+        self.assertEqual(physics['convergence']['groups']['N_ENERGY']['values'], [24, 48, 80])
+        automatic = next(value[0] for path, value in checks.items() if path.endswith(direction + "['auto_values']"))
+        automatic.event_generate('<ButtonRelease-1>')
+        self.host.drain(100)
+        self.assertTrue(physics['convergence']['groups']['N_ENERGY']['auto_values'])
+        self.assertEqual(physics['convergence']['groups']['N_ENERGY']['values'], [64, 96, 128])
+        self.entry = next(value for path, value in fields.items() if path.endswith("['baseline']['N_XI']"))
+        self.commit('16')
+        self.assertEqual(physics['convergence']['groups']['N_XI']['values'], [10, 16, 22])
+        self.commit('48')
+        self.assertEqual(physics['convergence']['groups']['N_XI']['values'], [32, 48, 64])
+        self.assertEqual(tree_events, [])
         picker = next(value for path, value in combos.items() if path.endswith("['cgyro_scan_content']"))
         picker.set('ky + 2 个参数')
         picker.event_generate('<<ComboboxSelected>>')
         self.host.drain(200)
         self.assertEqual(physics['scan_mode'], 'regular')
-        self.assertEqual(physics['convergence']['baseline']['N_ENERGY'], 48)
+        self.assertEqual(physics['convergence']['baseline']['N_ENERGY'], 64)
         self.assertEqual(node['SETTINGS']['SETUP']['idimrun'], 2)
         parameter = next(value for path, value in combos.items() if path.endswith("['2d']['Para_y']"))
         parameter.set('N_THETA')

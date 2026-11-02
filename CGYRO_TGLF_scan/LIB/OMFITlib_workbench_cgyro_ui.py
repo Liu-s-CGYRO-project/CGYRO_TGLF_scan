@@ -21,8 +21,9 @@ from OMFITlib_cgyro_radius_cleanup import preview_radius, radius_choices
 from OMFITlib_cgyro_task_manager import TaskManager, confirm_scope
 from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_gui_controls import ParameterList, checkbox
+from OMFITlib_gui_api import set_checkbox_value
 from OMFITlib_cgyro_convergence import (BASELINE, DIRECTIONS, CONTENTS as SCAN_CONTENTS,
-    active as convergence_active, initialize as initialize_convergence)
+    active as convergence_active, initialize as initialize_convergence, sync_values as sync_convergence_values)
 
 CGYRO_MAIN_TABS = ('input', 'parameters', 'results')
 
@@ -367,6 +368,7 @@ class CgyroPage:
         physics = node['SETTINGS']['PHYSICS']
         config = initialize_convergence(physics, source, self.actions.factory)
         prefix = location(MODULES['cgyro'] + ('SETTINGS', 'PHYSICS', 'convergence'))
+        controls = {}
         self.ui.Separator('基准网格')
         self.label('每组只改变一个参数；其余参数沿用此基准和“计算参数”。修改后回车生效。')
         if rows:
@@ -383,19 +385,28 @@ class CgyroPage:
             with self.ui.same_row():
                 for name in names[offset:offset + 2]:
                     self.scan_field(self.ui.Entry(prefix + "['baseline'][{!r}]".format(name), name,
-                        width=10, updateGUI=False, refresh_tree=False, help=parameter_help(name)), 10)
+                        width=10, updateGUI=False, refresh_tree=False, help=parameter_help(name),
+                        postcommand=lambda location=None, name=name:
+                            self.cgyro_convergence_edited(physics, name, source, controls)), 10)
         self.ui.Separator('单变量检查方向')
         self.label('取值列表会包含本组基准；额外固定项可填字典，例如 E_MAX 组的 {\'N_ENERGY\': 64}。')
+        self.label('基准回车后更新对应自动范围；手填取值关闭该方向的“随基准更新”，重新勾选可恢复。')
         for name, caption in DIRECTIONS.items():
             group = config['groups'][name]
             path = prefix + "['groups'][{!r}]".format(name)
-            checkbox(self.ui, path + "['enabled']", group, 'enabled', name + ' · ' + caption,
-                     updateGUI=False, refresh_tree=False)
             with self.ui.same_row():
-                self.scan_field(self.ui.Entry(path + "['values']", '取值', width=24,
-                    updateGUI=False, refresh_tree=False), 24)
+                checkbox(self.ui, path + "['enabled']", group, 'enabled', name + ' · ' + caption,
+                         updateGUI=False, refresh_tree=False)
+                automatic = checkbox(self.ui, path + "['auto_values']", group, 'auto_values', '随基准更新',
+                    default=True, updateGUI=False, refresh_tree=False, postcommand=lambda location=None, name=name:
+                        self.cgyro_convergence_edited(physics, name, source, controls))
+            with self.ui.same_row():
+                values = self.scan_field(self.ui.Entry(path + "['values']", '取值', width=24,
+                    updateGUI=False, refresh_tree=False, postcommand=lambda location=None, name=name:
+                        self.cgyro_convergence_edited(physics, name, source, controls, manual=True)), 24)
                 self.scan_field(self.ui.Entry(path + "['fixed']", '额外固定项', width=24,
                     updateGUI=False, refresh_tree=False), 24)
+            controls[name] = (values, automatic)
         self.label('时间上限、输出精度、节点和核数沿用现有配置。结果仍按参数坐标写入 RUN_DB。')
         checkbox(self.ui, prefix + "['reuse_results']", config, 'reuse_results',
                  '复用当前结果集内完整匹配的已完成结果', updateGUI=False, refresh_tree=False)
@@ -407,6 +418,21 @@ class CgyroPage:
         self.cgyro_convergence_preview = ttk.Frame(parent) if isinstance(parent, tk.Misc) else None
         if self.cgyro_convergence_preview is not None:
             self.cgyro_convergence_preview.pack(fill=tk.X)
+
+    def cgyro_convergence_edited(self, physics, name, source, controls, manual=False):
+        """Commit one range and update its existing widgets without a redraw."""
+        group = physics['convergence']['groups'][name]
+        if manual:
+            group['auto_values'] = False
+            changed = False
+        else:
+            changed = sync_convergence_values(physics, name, source)
+        values, automatic = controls.get(name, (None, None))
+        if isinstance(automatic, tk.Misc) and automatic.winfo_exists():
+            set_checkbox_value(automatic, group.get('auto_values', True))
+        if changed and isinstance(values, tk.Misc) and values.winfo_exists():
+            values.delete(0, tk.END)
+            values.insert(0, str(group['values']))
 
     def preview_cgyro_convergence(self):
         """Explicit preview uses selected inputs and cached result summaries."""
