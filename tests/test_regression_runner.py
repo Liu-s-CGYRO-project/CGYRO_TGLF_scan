@@ -45,6 +45,24 @@ class EnvironmentTests(unittest.TestCase):
 
 
 class RunnerProcessTests(unittest.TestCase):
+    def test_unparsable_or_unrecognized_native_menu_is_an_environment_error(self):
+        for content in ("s += 'Python' %\nexecutable\n", 'class OtherGUI: pass\n'):
+            with self.subTest(source=content), tempfile.TemporaryDirectory() as directory:
+                directory = Path(directory)
+                native = directory / 'native'
+                (native / 'omfit_classes').mkdir(parents=True)
+                (native / 'omfit_classes/OMFITx.py').write_text('')
+                (native / 'utils_tk.py').write_text('')
+                (native / 'omfit_gui.py').write_text(content)
+                row = runner.run_suite(REPO / 'tests/test_omfit_file_menu.py', REPO, directory,
+                                       dict(os.environ, PYTHONDONTWRITEBYTECODE='1'), 15, False, native)
+                output = (directory / row['log']).read_text(encoding='utf-8')
+                self.assertEqual(row['status'], 'environment_error')
+                self.assertEqual(row['exit_code'], isolated.ENVIRONMENT_EXIT)
+                self.assertEqual((row['tests'], row['errors']), (0, 0))
+                self.assertIn('Unsupported native File menu source', output)
+                self.assertNotIn('Traceback', output)
+
     def execute(self, source):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)

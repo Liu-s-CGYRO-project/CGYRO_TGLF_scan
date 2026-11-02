@@ -18,7 +18,7 @@ from OMFITlib_template_github import DEFAULT_REPOSITORY, GitHub
 from OMFITlib_template_proxy import DEFAULT_PROXY_HOST, DEFAULT_PROXY_PORT, manual_proxy, network_preferences
 
 
-def gui_environment(check_only=False, project='', library=None):
+def gui_environment(check_only=False, project='', library=None, startup_notice=''):
     try:
         import tkinter as tk
     except ImportError as exc:
@@ -35,7 +35,7 @@ def gui_environment(check_only=False, project='', library=None):
             finally:
                 window.destroy()
         from OMFITlib_template_ui import open_manager
-        open_manager(project, library)
+        open_manager(project, library, startup_notice=startup_notice)
     except tk.TclError as exc:
         raise TemplateError('无法打开 Tk 桌面窗口。请在 Linux 桌面会话中运行，并确认 X11 / XWayland 显示可用；'
                             '当前 DISPLAY={!r}。原始错误：{}'.format(os.environ.get('DISPLAY', ''), exc)) from exc
@@ -101,6 +101,7 @@ def main():
             print(json.dumps(gui_environment(check_only=True), ensure_ascii=False, indent=2))
             return
         if args.command is None:
+            startup_notice = ''
             if not args.no_update_redirect:
                 from OMFITlib_template_incremental import active_launch
                 try:
@@ -108,8 +109,9 @@ def main():
                     if active is not None and active.resolve() != Path(__file__).resolve():
                         os.execv(sys.executable, [sys.executable, str(active)] + sys.argv[1:])
                 except (TemplateError, OSError, KeyError) as exc:
-                    print('已安装更新无法启用，继续运行当前目录版本：' + str(exc), file=sys.stderr)
-            gui_environment(project=args.project, library=args.library)
+                    startup_notice = '已安装更新无法启用，继续运行当前目录版本：' + str(exc)
+                    print(startup_notice, file=sys.stderr)
+            gui_environment(project=args.project, library=args.library, startup_notice=startup_notice)
             return
         args.library = args.library or str(default_library())
         if args.command == 'inspect':

@@ -262,6 +262,8 @@ class IncrementalTest(unittest.TestCase):
             namespace['main']()
         execute.assert_not_called()
         gui.assert_called_once()
+        self.assertIn('独立摘要', gui.call_args.kwargs['startup_notice'])
+        self.assertIn('继续运行当前目录版本', gui.call_args.kwargs['startup_notice'])
         self.assertIn('继续运行当前目录版本', errors.getvalue())
         self.assertIn('独立摘要', errors.getvalue())
 

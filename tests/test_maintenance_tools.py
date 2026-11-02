@@ -40,6 +40,10 @@ class MaintenanceToolsTests(unittest.TestCase):
         self.assertEqual(report['sha256'], hashlib.sha256(raw.encode('utf-8')).hexdigest())
         namespace = {'__name__': 'repair_fixture'}
         exec(compile(raw, 'repair_cgyro_save_paths.py', 'exec'), namespace)
+        expected_limit = next(ast.literal_eval(node.value) for node in ast.parse(original).body
+                              if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name)
+                                  and target.id == 'MAX_ARCHIVE_KEY_BYTES' for target in node.targets))
+        self.assertEqual(namespace['MAX_ARCHIVE_KEY_BYTES'], expected_limit)
         matcher = namespace['_same_coordinate_path']
         for physical, requested in (
                 (['N_ENERGY', '8', 'lin', '-0.1'], ['N_ENERGY', '8.0', 'lin', '-1e-1']),

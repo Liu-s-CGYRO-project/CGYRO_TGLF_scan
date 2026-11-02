@@ -641,6 +641,32 @@ class ResultIdentityTests(unittest.TestCase):
                 self.assertEqual(case, previous)
                 self.assertIs(parent[old], leaf)
 
+    def test_long_path_repair_requires_coordinate_index_before_changing_any_point(self):
+        module = {}
+        case, row, parent, old, leaf = self.legacy_long_case(module, 'missing-coordinate')
+        invalid = copy.deepcopy(row)
+        del invalid['coordinate_path']
+        case['__TASKS__']['p000002'] = invalid
+        previous = copy.deepcopy(case)
+        with self.assertRaisesRegex(ValueError, 'Unsupported oversized result path for p000002'):
+            archive.repair_archive_paths(module)
+        self.assertEqual(case, previous)
+        self.assertIs(parent[old], leaf)
+
+    def test_long_path_repair_rejects_nonleaf_or_multiple_long_components(self):
+        for duplicate in (False, True):
+            with self.subTest(multiple=duplicate):
+                module = {}
+                case, row, parent, old, leaf = self.legacy_long_case(module, 'nonleaf-' + str(duplicate))
+                row['result_path'][1] = old
+                if not duplicate:
+                    row['result_path'][-1] = 'short'
+                previous = copy.deepcopy(case)
+                with self.assertRaisesRegex(ValueError, 'Unsupported oversized'):
+                    archive.repair_archive_paths(module)
+                self.assertEqual(case, previous)
+                self.assertIs(parent[old], leaf)
+
     def test_long_path_repair_rolls_back_an_abort_after_native_assignment(self):
         class AbortAfterAssignment(dict):
             triggered = False

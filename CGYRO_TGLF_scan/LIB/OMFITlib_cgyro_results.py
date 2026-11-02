@@ -409,6 +409,28 @@ class ResultBrowser:
             except Exception as exc:
                 messagebox.showerror('时间曲线', str(exc), parent=window)
 
+        def show_parameters():
+            points = list(table.selection())
+            if len(points) != 1:
+                details.set('请选择一个计算点查看其完整参数。')
+                return
+            point = points[0]
+            row = tasks[point]
+            parameters = row.get('input_parameters', {})
+            title = '输入身份参数（归档索引，不含运行控制项）' if parameters else '旧索引仅保留以下扫描参数'
+            parameters = parameters or row.get('values', {})
+            dialog = tk.Toplevel(window)
+            dialog.title(point + ' · 参数详情')
+            dialog.geometry('{}x480'.format(min(800, width)))
+            text = tk.Text(dialog, wrap='word')
+            scroll = ttk.Scrollbar(dialog, command=text.yview)
+            text.configure(yscrollcommand=scroll.set)
+            scroll.pack(side=tk.RIGHT, fill=tk.Y)
+            text.pack(fill=tk.BOTH, expand=True)
+            text.insert('end', title + '\n\n' + '\n'.join(
+                '{}={}'.format(name, parameters[name]) for name in sorted(parameters)))
+            text.configure(state='disabled')
+
         table.bind('<<TreeviewSelect>>', selection_changed)
         if entry.get('stopped_run', False):
             table.selection_set([str(point) for point in tasks if statuses[str(point)]['restartable']
@@ -421,6 +443,7 @@ class ResultBrowser:
         ttk.Button(selections, text='全选', command=lambda: table.selection_set(table.get_children())).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(selections, text='清空', command=lambda: table.selection_remove(table.selection())).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(selections, text='绘制 omega & gamma vs time', command=draw).pack(side=tk.LEFT)
+        ttk.Button(selections, text='所选点参数…', command=show_parameters).pack(side=tk.LEFT, padx=8)
         if self.continue_callback is not None:
             controls = ttk.Frame(window)
             controls.pack(fill=tk.X, padx=10, pady=(4, 8))

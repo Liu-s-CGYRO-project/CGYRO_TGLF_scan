@@ -7,6 +7,23 @@ import tkinter as tk
 from tkinter import ttk
 
 SAVE_RETRY_MS = 100
+# The tested source snapshots have hashes, but no verified Git/version binding.
+# Add exact repo_str values only with the evidence required in MAINTAINER_GUIDE.
+VERIFIED_NATIVE_VERSIONS = ()
+
+
+def native_version_notice(api):
+    """One session notice from loaded metadata; no Git, source I/O or probes."""
+    namespace = getattr(api, '__dict__', {})
+    version = str(namespace.get('repo_str', '') or '未提供版本标识')
+    root = namespace.get('OMFITaux', {}).get('rootGUI', None)
+    if not isinstance(root, tk.Misc) or version in VERIFIED_NATIVE_VERSIONS:
+        return ''
+    if getattr(root, '_omfit_native_version_notified', False):
+        return ''
+    root._omfit_native_version_notified = True
+    return ('原生 GUI 兼容性：当前 OMFIT（' + version + '）尚无对应的已验证版本记录。'
+            '可继续使用；已验证源码快照及回归范围见维护指南。此提示每个会话只显示一次。')
 
 
 def begin_view_open(api):

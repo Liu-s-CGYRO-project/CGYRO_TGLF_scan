@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'CGYRO_TGLF_scan/LIB'))
 from OMFITlib_tk_callbacks import RetryWait, unbind_callback
+import OMFITlib_tk_callbacks as callbacks
 
 
 class TkCallbacksTests(unittest.TestCase):
@@ -29,6 +30,26 @@ class TkCallbacksTests(unittest.TestCase):
     def handlers(self):
         self.calls = []
         return [self.widget.bind('<<Probe>>', lambda e, i=i: self.calls.append(i), add='+') for i in range(3)]
+
+    def test_native_version_notice_only_reads_loaded_metadata_once_per_session(self):
+        class NoProjectReads:
+            def __getattr__(self, name):
+                raise AssertionError('project access: ' + name)
+        api = SimpleNamespace(repo_str='custom-institution-v1', OMFIT=NoProjectReads(),
+                              OMFITaux={'rootGUI': self.root})
+        with patch('builtins.open', side_effect=AssertionError('source I/O')):
+            notice = callbacks.native_version_notice(api)
+            self.assertIn('custom-institution-v1', notice)
+            self.assertIn('可继续使用', notice)
+            self.assertEqual(callbacks.native_version_notice(api), '')
+        self.assertFalse(self.errors)
+
+    def test_native_version_allowlist_requires_an_exact_record(self):
+        api = SimpleNamespace(repo_str='verified-fixture', OMFITaux={'rootGUI': self.root})
+        with patch.object(callbacks, 'VERIFIED_NATIVE_VERSIONS', ('verified-fixture',)):
+            self.assertEqual(callbacks.native_version_notice(api), '')
+            api.repo_str = 'verified-fixture-local-changes'
+            self.assertIn('尚无对应', callbacks.native_version_notice(api))
 
     def test_whitespace_binding_removes_only_target_and_is_idempotent(self):
         first, second, third = self.handlers()

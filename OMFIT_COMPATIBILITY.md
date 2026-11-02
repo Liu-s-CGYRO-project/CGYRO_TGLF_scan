@@ -203,3 +203,7 @@ python3 -B tools/run_regressions.py --omfit-source /path/to/omfit \
 ```
 
 发布回归以 `tools/run_regressions.py` 为统一入口：各套件独立进程运行，自动补齐本工程的 LIB 路径。`--omfit-source` 提供原生回调源码，不代表已经安装完整 OMFIT；`--adapters` 是明确启用的原生读取器测试替身。Tk 套件需要可用桌面或 Xvfb，shell 套件需要其实际调用的 bash（Windows 下部分套件还使用 WSL Ubuntu）。环境不满足、所有测试被跳过及零测试均不能计为通过；环境问题单独记为 `environment_error`。具体准备步骤见 `MAINTAINER_GUIDE.md` 的回归运行说明。
+
+File 菜单测试在加载 unittest 前检查实际 `omfit_gui.py`；不能解析或结构不受支持时，以 `environment_error` 结束并显示源码位置和原因。补丁 CLI 也给出统一的“未修改”诊断，不创建候选文件。不能把此项记为测试通过；更换受支持的真实源码后再验证。独立的 `test_file_menu_patch` 不依赖本机 OMFIT，覆盖解析错误、编译错误、未知实现和候选文件不落盘。
+
+原生 GUI 已测源码摘要、未核实的版本信息及运行时提示规则见 [维护指南中的验证记录](MAINTAINER_GUIDE.md#原生-gui-验证记录与提示)。版本提示不阻断操作，也不在开窗路径进行源码或网络检查。

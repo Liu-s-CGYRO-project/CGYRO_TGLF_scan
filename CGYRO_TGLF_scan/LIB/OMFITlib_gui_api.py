@@ -5,7 +5,8 @@ import inspect
 from collections import ChainMap
 from functools import update_wrapper
 from types import FunctionType
-from OMFITlib_tk_callbacks import SAVE_RETRY_MS, begin_view_open
+from OMFITlib_tk_callbacks import SAVE_RETRY_MS
+from OMFITlib_tk_callbacks import begin_view_open  # noqa: F401 - compatibility export for saved GUIs.
 import tkinter as tk
 from tkinter import ttk
 

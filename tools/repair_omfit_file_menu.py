@@ -46,30 +46,52 @@ MODULE_GUARD = '''        moduleDict = OMFIT.moduleDict()
 STATE_ATTRIBUTE = '_file_menu_local_postcommand'
 
 
-def patched_source(source):
-    """Patch only the inspected File callback and move its empty-list check."""
+def _syntax_error(error):
+    return ValueError('Unrecognized or unparsable native File menu implementation; no change made: '
+                      '{} (line {}, column {})'.format(error.msg, error.lineno, error.offset))
+
+
+def inspect_source(source):
+    """Validate the supplied core without executing it or writing a candidate."""
     text = source.decode('utf-8')
     newline = '\r\n' if '\r\n' in text else '\n'
     text = text.replace('\r\n', '\n')
-    if NEW_UPDATE in text and MODULE_GUARD in text and OLD_UPDATE not in text:
-        return source
-    if text.count(OLD_UPDATE) != 1 or text.count(MODULE_LOOKUP) != 1:
+    try:
+        tree = ast.parse(text, filename='omfit_gui.py')
+        compile(tree, 'omfit_gui.py', 'exec')
+    except SyntaxError as error:
+        raise _syntax_error(error) from None
+    installed = NEW_UPDATE in text and MODULE_GUARD in text and OLD_UPDATE not in text
+    if not installed and (text.count(OLD_UPDATE) != 1 or text.count(MODULE_LOOKUP) != 1):
         raise ValueError('Unrecognized native File menu implementation; no change made')
-    tree = ast.parse(text)
-    gui = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'OMFITgui')
-    method = next(node for node in gui.body if isinstance(node, ast.FunctionDef) and node.name == 'OMFITmodules')
+    gui = next((node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'OMFITgui'), None)
+    method = next((node for node in gui.body if isinstance(node, ast.FunctionDef) and node.name == 'OMFITmodules'),
+                  None) if gui else None
+    if method is None:
+        raise ValueError('Unrecognized native module dialog implementation; no change made')
+    if not installed and text.splitlines()[method.body[0].lineno - 1] != '        top = tk.Toplevel(self.rootGUI)':
+        raise ValueError('Unrecognized native module dialog implementation; no change made')
+    return text, newline, method, installed
+
+
+def patched_source(source):
+    """Patch only the inspected File callback and move its empty-list check."""
+    text, newline, method, installed = inspect_source(source)
+    if installed:
+        return source
     lines = text.splitlines(keepends=True)
     # This native action creates its own window first; do not scan modules on
     # menu expansion, and do not create an empty dialog when no module exists.
     start = method.body[0].lineno - 1
-    if lines[start] != '        top = tk.Toplevel(self.rootGUI)\n':
-        raise ValueError('Unrecognized native module dialog implementation; no change made')
     lines.insert(start, MODULE_GUARD)
     text = ''.join(lines).replace(OLD_UPDATE, NEW_UPDATE, 1)
     # The first lookup is the inserted guard; remove the old action-local copy.
     position = text.index(MODULE_LOOKUP, text.index(MODULE_GUARD) + len(MODULE_GUARD))
     text = text[:position] + text[position:].replace(MODULE_LOOKUP, '', 1)
-    compile(text, 'omfit_gui.py', 'exec')
+    try:
+        compile(text, 'omfit_gui.py', 'exec')
+    except SyntaxError as error:
+        raise _syntax_error(error) from None
     return text.replace('\n', newline).encode('utf-8')
 
 
@@ -121,7 +143,10 @@ def main():
     parser.add_argument('--source', type=Path, required=True, help='Inspected native omfit_gui.py')
     parser.add_argument('--output', type=Path, required=True, help='New candidate path; cannot already exist')
     args = parser.parse_args()
-    data = patched_source(args.source.read_bytes())
+    try:
+        data = patched_source(args.source.read_bytes())
+    except ValueError as error:
+        parser.exit(2, str(error) + '\n')
     with args.output.open('xb') as stream:
         stream.write(data)
     print('Candidate written: ' + str(args.output))

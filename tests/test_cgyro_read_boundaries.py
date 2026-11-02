@@ -220,7 +220,9 @@ class ReadBoundaryTests(unittest.TestCase):
             directory = Path(owner.filename)
             (directory / 'out.cgyro.time').write_text('0\n1\n')
             (directory / 'out.cgyro.tag').write_text('2 1\n')
-            rows[point] = dict(task_id=point, values=dict(KY=.1 * number))
+            rows[point] = dict(task_id=point, values=dict(KY=.1 * number),
+                               input_parameters=dict(KY=.1 * number, BETAE_UNIT=number * .0001),
+                               result_path=['lin', str(.1 * number), 'input_' + str(number) * 64])
             results[point] = OMFITcgyro(owner, reads=reads)
         # No retained ZIP needs to be touched just to list this unstarted row.
         unstarted = 'p000003'
@@ -249,6 +251,12 @@ class ReadBoundaryTests(unittest.TestCase):
             self.assertIn('待校验', table.set('p000001', 'checkpoint'))
             self.assertIn('待校验', table.set(unstarted, 'checkpoint'))
             table.selection_set('p000002')
+            next(child for child in children if isinstance(child, ttk.Button) and
+                 child.cget('text') == '所选点参数…').invoke()
+            parameter_text = next(child for child in widgets(window) if isinstance(child, tk.Text))
+            self.assertIn('BETAE_UNIT=0.0002', parameter_text.get('1.0', 'end'))
+            self.assertNotIn('BETAE_UNIT=0.0001', parameter_text.get('1.0', 'end'))
+            self.assertEqual(parameter_text.cget('state'), 'disabled')
             next(child for child in children if isinstance(child, ttk.Button) and
                  child.cget('text') == '绘制 omega & gamma vs time').invoke()
         plot.assert_called_once_with(time_traces=True, run_token='run', point_ids=['p000002'], stopped_points=True, selections={'p000002': {'result_id': 'p000002', 'row': rows['p000002']}})

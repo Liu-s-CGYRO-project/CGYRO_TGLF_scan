@@ -145,6 +145,8 @@ class TemplateManager(ManagerUpdateUI):
         self.window = window
         window._project_cjk_defer_load = True
         self.native_open_events = None
+        self.native_version = '独立运行（无 OMFIT 原生 GUI）'
+        self.startup_notices = set()
         self.session = session
         self.last_output = None
         self.publish_plan = None
@@ -663,6 +665,7 @@ class TemplateManager(ManagerUpdateUI):
         self._button(actions, '字体管理', lambda: open_font_manager(self.window)).pack(side='left', padx=(0, 10))
         self._button(actions, '读取当前工程的更新记录', self._history).pack(side='left')
         self._button(actions, '初始化 GitHub 空仓库', self._initialize_repository).pack(side='left', padx=10)
+        self._button(actions, '开窗诊断', self._native_diagnostics).pack(side='left')
         self.log = self._text_area(page, wrap='word', background='#ffffff', foreground='#17283d',
                            relief='flat', padx=16, pady=14, height=5)
         scroll = ttk.Scrollbar(page, orient='vertical', command=self.log.yview)
@@ -687,6 +690,21 @@ class TemplateManager(ManagerUpdateUI):
             '读取与校验模板不会执行其代码。应用生成的工程在 OMFIT 中运行时，才使用该版本代码。\n'
             '发布页在未登录时禁用；作者 ID 自动使用经 GitHub 验证的当前账号。\n'
             'SHA-256 用于验证文件完整性。导入的既有模板仍保留原作者信息。\n')
+
+    def show_startup_notice(self, message):
+        """A visible, nonmodal notice; reused windows do not repeat it."""
+        if not message or message in self.startup_notices:
+            return
+        self.startup_notices.add(message)
+        self._notice(self.tabs.master, message).pack(fill='x', before=self.tabs, pady=(6, 0))
+        self._log(message)
+
+    def _native_diagnostics(self):
+        events = self.native_open_events
+        detail = ('未启用原生开窗过滤' if events is None else
+                  'active={active}，observed={observed}，suppressed={suppressed}'.format(**events))
+        self._log('开窗诊断\nOMFIT：' + self.native_version + '\n' + detail +
+                  '\n计数仅供排障；0 次拦截不表示错误。此操作不读取工程或结果文件。')
 
     def _log(self, message):
         self.log.configure(state='normal')
@@ -1709,12 +1727,13 @@ class TemplateManager(ManagerUpdateUI):
         self.window.destroy()
 
 
-def open_manager(current_project='', library=None, preferences=None, session=None):
+def open_manager(current_project='', library=None, preferences=None, session=None, startup_notice=''):
     """Reuse OMFIT's existing Tk interpreter; only standalone creates a root."""
     parent = tk._default_root
     if parent is not None:
         previous = getattr(parent, '_omfit_template_manager', None)
         if previous is not None and previous.alive and previous.window.winfo_exists():
+            previous.show_startup_notice(startup_notice)
             previous.window.deiconify()
             previous.window.lift()
             return previous
@@ -1722,6 +1741,7 @@ def open_manager(current_project='', library=None, preferences=None, session=Non
     else:
         window = tk.Tk(className='OMFITtemplates')
     manager = TemplateManager(window, current_project=current_project, library=library, preferences=preferences, session=session)
+    manager.show_startup_notice(startup_notice)
     if parent is not None:
         parent._omfit_template_manager = manager
     else:

@@ -62,6 +62,10 @@ class ManagerEntryTests(unittest.TestCase):
         self.assertEqual(manager.native_open_events['suppressed'], 1)
         self.host.root.update()
         self.assertFalse(manager.native_open_events['active'])
+        manager._native_diagnostics()
+        self.assertIn('suppressed=1', manager.log.get('1.0', 'end'))
+        self.assertIn('0 次拦截不表示错误', manager.log.get('1.0', 'end'))
+        self.assertEqual(self.refreshes, [])
         self.host.root.event_generate('<<update_treeGUI>>')
         self.assertEqual(self.refreshes, ['project traversal'])
         manager.tabs.select(3)
@@ -88,6 +92,19 @@ class ManagerEntryTests(unittest.TestCase):
         self.assertEqual(self.host.root.bindtags(), before)
         self.host.root.event_generate('<<update_treeGUI>>')
         self.assertEqual(self.refreshes, ['project traversal'])
+
+    def test_startup_notice_is_visible_once_without_changing_tabs_or_project(self):
+        manager = self.open()
+        self.host.root.update()
+        tab = manager.tabs.select()
+        message = '独立摘要锚点缺失：继续运行当前目录版本'
+        before = len(manager.tabs.master.winfo_children())
+        manager.show_startup_notice(message)
+        manager.show_startup_notice(message)
+        self.assertEqual(len(manager.tabs.master.winfo_children()), before + 1)
+        self.assertEqual(manager.log.get('1.0', 'end').count(message), 1)
+        self.assertEqual(manager.tabs.select(), tab)
+        self.assertEqual(self.refreshes, [])
 
 
 if __name__ == '__main__':

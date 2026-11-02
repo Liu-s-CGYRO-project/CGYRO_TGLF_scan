@@ -52,6 +52,14 @@ def check_environment(path, omfit_source, adapters=False):
         if omfit_source is None or not all((omfit_source / name).is_file()
                                           for name in ('omfit_classes/OMFITx.py', 'utils_tk.py')):
             raise ValueError('Native callback tests require --omfit-source /path/to/omfit; no tests were run')
+    if path.stem == 'test_omfit_file_menu':
+        from repair_omfit_file_menu import inspect_source
+        native_gui = omfit_source / 'omfit_gui.py'
+        try:
+            inspect_source(native_gui.read_bytes())
+        except (OSError, ValueError) as error:
+            raise ValueError('Unsupported native File menu source {}: {}; no tests were run'.format(
+                native_gui, error)) from None
     if path.stem in FAKE_NATIVE and not adapters and importlib.util.find_spec('omfit_classes') is None:
         raise ValueError('This suite needs omfit_classes or the explicit --adapters fixtures; --omfit-source supplies callback source only')
     if path.stem in BASH_PATH_SUITES:
