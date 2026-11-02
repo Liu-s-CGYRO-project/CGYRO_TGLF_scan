@@ -357,6 +357,16 @@ def coordinate_path(row):
     return list(row.get('coordinate_path', row.get('result_path', [])))
 
 
+def _same_coordinate_path(actual, requested):
+    """Match numeric key reuse from _install_point, with exact text axes."""
+    if len(actual) != len(requested) or actual[::2] != requested[::2]:
+        return False
+    try:
+        return all(float(left) == float(right) for left, right in zip(actual[1::2], requested[1::2]))
+    except (TypeError, ValueError):
+        return False
+
+
 def point_coordinate(row):
     """Read primary axes and signed ky from the saved coordinate path.
 
@@ -541,7 +551,7 @@ def repair_archive_paths(module):
                                  if len(str(part).encode('utf-8')) > MAX_ARCHIVE_KEY_BYTES]
                     if not oversized:
                         continue
-                    if oversized != [len(path) - 1] or path[:-1] != coordinate_path(row):
+                    if oversized != [len(path) - 1] or not _same_coordinate_path(path[:-1], coordinate_path(row)):
                         raise ValueError('Unsupported oversized result path for ' + str(point) + '; indexes unchanged')
                     parent = _at(case, path[:-1])
                     old = path[-1]

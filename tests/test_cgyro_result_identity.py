@@ -600,6 +600,47 @@ class ResultIdentityTests(unittest.TestCase):
         self.assertEqual(row['result_path'], previous_path)
         self.assertEqual(parent[new], {'__RESULT_REF__': 'f' * 64})
 
+    def test_long_path_repair_accepts_equivalent_numeric_coordinate_spelling(self):
+        for index, (axis, ky) in enumerate((('8', '0.10'), ('8.0', '0.1'), ('8e0', '1e-1'))):
+            with self.subTest(axis=axis, ky=ky):
+                module = {}
+                case, row, parent, old, leaf = self.legacy_long_case(module, 'long-spelling-' + str(index))
+                row['coordinate_path'] = ['N_ENERGY', axis, 'lin', ky]
+                previous = copy.deepcopy(row)
+                with patch.object(storage, 'resolve_result', side_effect=AssertionError('result opened')):
+                    report = archive.repair_archive_paths(module)
+                self.assertEqual(report, dict(renamed_branches=1, updated_points=1))
+                self.assertEqual(row['result_path'][:-1], ['N_ENERGY', '8', 'lin', '0.1'])
+                self.assertIs(parent[row['result_path'][-1]], leaf)
+                self.assertNotIn(old, parent)
+                self.assertEqual({k: v for k, v in row.items() if k != 'result_path'},
+                                 {k: v for k, v in previous.items() if k != 'result_path'})
+                self.assertEqual(archive.repair_archive_paths(module), dict(renamed_branches=0, updated_points=0))
+                restored = json.loads(json.dumps(case))
+                self.assertEqual(fixtures.continuation.point_result(restored, restored['__TASKS__']['p000001']), leaf)
+
+    def test_long_path_repair_rejects_other_coordinates_before_any_rename(self):
+        for index, expected in enumerate((
+                ['N_XI', '8', 'lin', '0.1'],
+                ['N_ENERGY', '8.000000001', 'lin', '0.1'],
+                ['N_ENERGY', '8', 'lin', '-0.1'],
+                ['N_ENERGY', '8', 'lin', '0.100000000001'],
+                ['N_ENERGY', '8', 'N_XI', '48', 'lin', '0.1'],
+                ['N_ENERGY', 'eight', 'lin', '0.1'],
+                ['N_ENERGY', '8', 'lin', 'NaN'],
+                ['N_ENERGY', '8', 'lin', 'inf'])):
+            with self.subTest(coordinate=expected):
+                module = {}
+                case, row, parent, old, leaf = self.legacy_long_case(module, 'long-mismatch-' + str(index))
+                bad = copy.deepcopy(row)
+                bad['coordinate_path'] = expected
+                case['__TASKS__']['p000002'] = bad
+                previous = copy.deepcopy(case)
+                with self.assertRaisesRegex(ValueError, 'Unsupported oversized result path for p000002'):
+                    archive.repair_archive_paths(module)
+                self.assertEqual(case, previous)
+                self.assertIs(parent[old], leaf)
+
     def test_long_path_repair_rolls_back_an_abort_after_native_assignment(self):
         class AbortAfterAssignment(dict):
             triggered = False

@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.53。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.54。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 输入传递和更新完整性（1.24.49 / 管理器 1.10.35）
 
@@ -51,6 +51,10 @@ ParameterList 捕获轻量目录并分页；清空只恢复所选分组、匹配
 基准共享、方向筛选和绘图引用匹配使用同一数值容差（`rel_tol=1e-9, abs_tol=1e-12`），不舍入或改写 RUN_DB 坐标。带符号 ky 仍严格区分正、负与零；完整参数匹配后遇到不同 owner 引用仍报告冲突。固定参数或请求扫描值不符时保留该方向及逐点诊断，不能静默丢弃整组。比较查询按物理案例、字段集合和 ky 范围限定候选，只读取所选案例的索引。
 
 OMFIT 原生保存器会将 OMFITtree 的键作为目录分量。相同主轴 / ky 下的完整输入变体不能用无限长参数文本命名：短差异仍可读，超过 200 UTF-8 字节时用完整数值坐标的 SHA-256 短标识。完整参数保留在点索引，`coordinate_path` 保留物理坐标，`result_path` 指向实际短分支。已有长键可显式运行 `SCRIPTS/repair_cgyro_archive_paths`：先检查全部改名目标，再仅移动索引分支和回写路径；冲突不修改，异常回滚，不解析结果、改作业、清理文件或复制扫描。该维护动作不得塞入开窗、查询、刷新或保存钩子。ky 范围预览超过 8 点时显示前后各 4 点及总数，不改实际取值或刷新边界。
+
+修复入口比对物理前缀和 `coordinate_path` 时须复用 `_install_point` 的数字键规则：各数值位置用 `float()` 精确相等，轴名与 `lin` 文本严格相等，长度也须一致。请求键 `16.0/0.10` 与实际复用的 `16/0.1` 可对应同一坐标；真实数值差异和相反的非零 ky 不可合并。继续保留原 `coordinate_path` 及物理前缀的拼写，只缩短末级超长键；不能用近似容差或改写输入来绕过检查。
+
+独立附件由 `python tools/build_save_path_repair.py --output /new/path/repair_cgyro_save_paths.py` 从当前归档库直接提取修复函数、比较函数和命名常量，禁止手工维护另一份实现。附件包含新比较函数，不要求旧安装库具有它；现有库仅提供坐标索引访问及回滚工具。生成器使用原子、不覆盖的输出，维护工具回归检查提取内容与源码一致。发布时重新生成附件并核对摘要，不能沿用旧版附件。
 
 合并作业的归档以方向为安装边界。有成功方向时，邻近方向失败记为 `collection_status=partial` 并保留逐点 `archive_errors/load_errors`，不抛整作业失败；全部失败仍抛错。成功点在现有点表记录 `published_result_id`，同一作业、同一不可变 owner 的后续发布不重复安装/释放；新 owner 和未成功点继续处理。新续算与按作业号恢复清除此标记。父清单的 `input_sha256/point_states/continuation_pending` 由下载收集更新；方向发布只回写修改的点行和归档状态，不用旧切片覆盖父清单。
 
@@ -106,6 +110,12 @@ OMFIT 原生保存器会将 OMFITtree 的键作为目录分量。相同主轴 / 
 
 
 ## 当前 GUI 刷新边界
+
+模板管理器的 `OMFITtemplates/GUIS/main.py` 也必须在创建独立窗口之前调用共享 `OMFITlib_tk_callbacks.begin_view_open(OMFITx)`。原生 `GUI.update` 与 `OMFITpythonGUI.run` 在只读开窗后仍会发送主树刷新，大工程因此在 Tk 主线程遍历并求值保存的表达式。该临时 bindtag 只过滤当前入口的这两个直接发射者，业务函数主动发送的事件、其他窗口和之后的编辑仍通过；零延迟普通定时器在入口返回后移除绑定，失败开窗也清理。不能改成永久屏蔽主树事件。`OMFITlib_gui_api` 保留同名导出，两个模块的共享 Tk 库保持相同内容。
+
+管理器实例的 `native_open_events` 保存本次 `observed/suppressed/active` 瞬态计数，仅用于排障，不写入工程，也不把拦截次数当作成功或失败判据。入口占位窗口的延迟关闭由共享 Tk 根持有定时器，避免管理器先关闭后遗留已删除的 Tcl 回调。`test_template_manager_entry` 执行未修改的原生 `GUI.update` 函数体及管理器入口，验证开窗不刷新、业务事件保留、后续通知恢复和失败清理；独立管理器的慢网络仍由 `manager_test_manager_startup` 验证可切页和关闭。
+
+已分配实际宽度后才设置空列表提示的换行宽度，相同宽度不重复配置。后台验证字体缓存后，已使用相同字体的管理器不强制重新注册或重设整窗样式；首次应用仍在 Tk 主线程更新字体，下载和文件校验留在后台。
 
 `OMFITlib_gui_api.adapt` 按控件所属区域路由刷新，不能把 `updateGUI=True` 一律解释成整窗刷新，也不能一律改成 `False`。局部区域由 `gui_deferred.DeferredSection` / `TabPages` 声明；`local=True` 提供字段边界，`action=True` 提供业务动作边界。同一刷新区域的多次请求合并执行，其他窗口不随之重建。
 

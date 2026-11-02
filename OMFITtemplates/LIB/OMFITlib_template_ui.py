@@ -144,6 +144,7 @@ class TemplateManager(ManagerUpdateUI):
     def __init__(self, window, current_project='', library=None, preferences=None, session=None):
         self.window = window
         window._project_cjk_defer_load = True
+        self.native_open_events = None
         self.session = session
         self.last_output = None
         self.publish_plan = None
@@ -263,7 +264,10 @@ class TemplateManager(ManagerUpdateUI):
             self._log('当前使用系统字体；可在“字体资源”中下载或导入界面字体。')
             return
         self.window._project_cjk_defer_load = False
-        font_family(self.window, retry=True, verified_path=fonts[FONT_FILENAME])
+        previous_family = str(self.font.cget('family'))
+        family = font_family(self.window, verified_path=fonts[FONT_FILENAME])
+        if family and family.casefold() == previous_family.casefold():
+            return  # This window was already built with the active cached font.
         configure_window_fonts(self.window, refresh=True)
         self._refresh_font_metrics()
 
@@ -387,9 +391,14 @@ class TemplateManager(ManagerUpdateUI):
         self.empty_hint.place(relx=.5, rely=.45, relwidth=.92, anchor='center')
 
     def _layout_empty_hint(self, event=None):
-        width = max(80, int(self.library_table.winfo_width() * .92) - 16)
+        actual = self.library_table.winfo_width()
+        if actual <= 1:
+            return  # Wait for real table geometry; an 80px initial column is misleading.
+        width = max(80, int(actual * .92) - 16)
         for label in self.empty_hint_lines:
-            label.configure(wraplength=width)
+            current = label.cget('wraplength')
+            if not current or label.winfo_pixels(current) != width:
+                label.configure(wraplength=width)
 
     def _button(self, parent, text, command):
         widget = ttk.Button(parent, text=text, command=command, style='TM.TButton', width=0)

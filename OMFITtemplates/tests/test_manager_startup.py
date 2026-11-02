@@ -218,9 +218,19 @@ class ManagerStartupTest(unittest.TestCase):
                 warnings.catch_warnings():
             warnings.simplefilter('ignore', RuntimeWarning)
             app._startup_fonts({fonts.FONT_FILENAME: '/removed/font'})
-            register.assert_called_once_with('/removed/font', retry=True)
+            register.assert_called_once_with('/removed/font', retry=False)
             self.assertFalse(fonts.font_status(self.root)['active'])
             self.assertEqual(len(app.tabs.tabs()), 4)
+
+    def test_warm_manager_keeps_active_font_without_registration_or_window_restyle(self):
+        app = self.create()
+        self.root._project_cjk_family = (fonts.FONT_PROFILE, fonts.FONT_FAMILY)
+        app.font.configure(family=fonts.FONT_FAMILY)
+        with patch.object(fonts, '_register', side_effect=AssertionError('active font registered again')), \
+                patch('OMFITlib_template_ui.configure_window_fonts') as configure:
+            app._startup_fonts({fonts.FONT_FILENAME: '/verified/cache'})
+            app._startup_fonts({fonts.FONT_FILENAME: '/verified/cache'})
+            configure.assert_not_called()
 
 
 class DiscoveryBudgetTest(unittest.TestCase):

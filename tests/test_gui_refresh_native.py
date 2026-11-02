@@ -416,17 +416,20 @@ class NativeTkRefreshTests(unittest.TestCase):
 
     def test_raw_double_click_omits_two_tree_repaints_without_loading_result_expressions(self):
         loads = []
+        openings = []
         self.root.bind('<<update_treeGUI>>', lambda event: loads.append('result expressions'), add='+')
         tags, binding = self.root.bindtags(), self.root.bind('<<update_treeGUI>>')
         original = self.api.GUI.update
         def build(api):
-            widgets.begin_view_open(api)
+            openings.append(widgets.begin_view_open(api))
             ttk.Label(api._aux['parentGUI'], text='Ready').pack()
         script = self.raw_view(build)
         script()  # No gui_view wrapper: exercise the user's actual entry point.
         self.assertEqual(loads, [])
+        self.assertEqual(openings[0]['suppressed'], 2)
         self.assertIs(self.api.GUI.update, original)
         self.root.update()
+        self.assertFalse(openings[0]['active'])
         self.assertEqual(self.root.bindtags(), tags)
         self.assertEqual(self.root.bind('<<update_treeGUI>>'), binding)
         self.root.event_generate('<<update_treeGUI>>')
@@ -434,6 +437,7 @@ class NativeTkRefreshTests(unittest.TestCase):
 
     def test_open_filter_keeps_business_events_and_other_native_windows(self):
         events = []
+        tags = self.root.bindtags()
         self.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
         other = self.raw_view(lambda api: ttk.Label(api._aux['parentGUI'], text='other').pack())
         def build(api):
@@ -445,7 +449,7 @@ class NativeTkRefreshTests(unittest.TestCase):
         self.raw_view(build)()
         self.assertEqual(events, ['tree', 'tree', 'tree'])
         self.root.update()
-        self.assertFalse(any(str(tag).startswith('CGYROViewOpen') for tag in self.root.bindtags()))
+        self.assertEqual(self.root.bindtags(), tags)
 
     def test_failed_open_cleans_filter_and_preserves_original_exception(self):
         tags = self.root.bindtags()

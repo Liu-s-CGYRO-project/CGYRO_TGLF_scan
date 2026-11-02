@@ -479,6 +479,19 @@ class UITest(unittest.TestCase):
             self.assertTrue(widget.winfo_ismapped())
             self.assertLessEqual(widget.winfo_rooty() + widget.winfo_height(), bottom)
 
+    def test_empty_hint_waits_for_table_width_and_only_rewraps_when_it_changes(self):
+        with patch.object(self.app.library_table, 'winfo_width', return_value=1):
+            self.app._set_empty_hint('连接 GitHub 仓库\n也可使用本地模板')
+        for label in self.app.empty_hint_lines:
+            self.assertIn(str(label.cget('wraplength')), ('', '0'))
+        with patch.object(self.app.library_table, 'winfo_width', return_value=900):
+            self.app._layout_empty_hint()
+            for label in self.app.empty_hint_lines:
+                self.assertEqual(label.winfo_pixels(label.cget('wraplength')), 812)
+            with patch.object(self.app.empty_hint_lines[0], 'configure', wraps=self.app.empty_hint_lines[0].configure) as change:
+                self.app._layout_empty_hint()
+                change.assert_not_called()
+
     def test_mixed_omfit_font_does_not_clip_labels_or_choice_text(self):
         default = tkfont.Font(root=self.root, name='TkDefaultFont', exists=True)
         saved_font = default.actual()

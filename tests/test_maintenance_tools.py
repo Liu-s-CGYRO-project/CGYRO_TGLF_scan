@@ -20,11 +20,36 @@ import compact_commandbox as commandbox
 import build_bootstrap
 import build_deployer
 import build_maintenance_commandbox
+import build_save_path_repair
 from OMFITlib_template_archive import TemplateError
 from release_policy import MAX_MANAGER_BOOTSTRAP_BYTES
 
 
 class MaintenanceToolsTests(unittest.TestCase):
+    def test_save_path_repair_embeds_the_current_numeric_matcher_and_transaction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / 'repair_cgyro_save_paths.py'
+            report = build_save_path_repair.build(output)
+            raw = output.read_text(encoding='utf-8')
+        original = build_save_path_repair.ARCHIVE_SOURCE.read_text(encoding='utf-8')
+        source_nodes = {node.name: node for node in ast.parse(original).body if isinstance(node, ast.FunctionDef)}
+        copied_nodes = {node.name: node for node in ast.parse(raw).body if isinstance(node, ast.FunctionDef)}
+        for name in build_save_path_repair.FUNCTIONS:
+            self.assertEqual(ast.get_source_segment(raw, copied_nodes[name]),
+                             ast.get_source_segment(original, source_nodes[name]))
+        self.assertEqual(report['sha256'], hashlib.sha256(raw.encode('utf-8')).hexdigest())
+        namespace = {'__name__': 'repair_fixture'}
+        exec(compile(raw, 'repair_cgyro_save_paths.py', 'exec'), namespace)
+        matcher = namespace['_same_coordinate_path']
+        for physical, requested in (
+                (['N_ENERGY', '8', 'lin', '-0.1'], ['N_ENERGY', '8.0', 'lin', '-1e-1']),
+                (['NE', '8', 'NXI', '48', 'lin', '0.1'], ['NE', '8e0', 'NXI', '48.0', 'lin', '0.10']),
+                (['NE', '8', 'NXI', '48', 'NR', '32', 'lin', '0.1'],
+                 ['NE', '8.0', 'NXI', '4.8e1', 'NR', '32.0', 'lin', '1e-1'])):
+            self.assertTrue(matcher(physical, requested))
+            self.assertFalse(matcher(physical, requested[:-1] + ['-0.2']))
+        self.assertNotIn("'_same_coordinate_path'", raw)  # Not requested from the old installed API.
+
     def test_legacy_zip_rejects_before_reading_or_writing_any_path(self):
         with patch('builtins.open', side_effect=AssertionError('Unexpected I/O')):
             with self.assertRaisesRegex(RuntimeError, 'retired'):

@@ -76,6 +76,7 @@ def verify(source):
         case['__INFO__'], case['__TASKS__'] = info, tasks
         node = case
         coordinate = ['N_ENERGY', '16', 'lin', '0.1']
+        requested_coordinate = ['N_ENERGY', '16.0', 'lin', '0.10']
         for part in coordinate:
             node[part] = OMFITtree()
             node = node[part]
@@ -84,7 +85,7 @@ def verify(source):
         old = ', '.join('{}={:.17g}'.format(name, value) for name, value in sorted(values.items()))
         node[old] = OMFITtree({'__RESULT_REF__': 'a' * 64})
         tasks['p000001'] = dict(values={'KY': .1, 'N_ENERGY': 16.}, input_parameters=values,
-            result_path=coordinate + [old], coordinate_path=coordinate)
+            result_path=coordinate + [old], coordinate_path=requested_coordinate)
         failed = False
         try:
             root._save(str(work / 'before'), quiet=True)
@@ -119,9 +120,11 @@ def verify(source):
         row = reopened['__TASKS__']['p000001']
         result = archive_api._at(reopened, row['result_path'])
         assert result['__RESULT_REF__'] == 'a' * 64
-        assert row['input_parameters'] == values and row['coordinate_path'] == coordinate
+        assert row['input_parameters'] == values and row['coordinate_path'] == requested_coordinate
+        assert row['result_path'][:-1] == coordinate
         assert len(row['result_path'][-1].encode('utf-8')) <= archive_api.MAX_ARCHIVE_KEY_BYTES
         return dict(native_save_error_reproduced=True, repaired=repair, save_and_index_reload=True,
+            equivalent_numeric_spelling=True,
             former_save_error=save_error,
             full_parameters_retained=len(values), result_reference_retained=True,
             native_save_sha256=hashlib.sha256(ast.get_source_segment(raw, method).encode()).hexdigest(),
