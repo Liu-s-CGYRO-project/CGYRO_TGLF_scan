@@ -220,6 +220,7 @@
 ['SCRIPTS']['import_tglf_multi'] <-:-:-> OMFITpythonTask <-:-:-> ./SCRIPTS/import_tglf_multi.py <-:-:-> {}
 ['SCRIPTS']['run_tglf_multi'] <-:-:-> OMFITpythonTask <-:-:-> ./SCRIPTS/run_tglf_multi.py <-:-:-> {}
 ['SCRIPTS']['compact_cgyro_storage'] <-:-:-> OMFITpythonTask <-:-:-> ./SCRIPTS/compact_cgyro_storage.py <-:-:-> {}
+['SCRIPTS']['repair_cgyro_archive_paths'] <-:-:-> OMFITpythonTask <-:-:-> ./SCRIPTS/repair_cgyro_archive_paths.py <-:-:-> {}
 ['PLOTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['PLOTS']['CGYRO_vs_TGLF'] <-:-:-> OMFITpythonPlot <-:-:-> ./PLOTS/CGYRO_vs_TGLF.py <-:-:-> {}
 ['PLOTS']['CGYRO_vs_CGYRO'] <-:-:-> OMFITpythonPlot <-:-:-> ./PLOTS/CGYRO_vs_CGYRO.py <-:-:-> {}

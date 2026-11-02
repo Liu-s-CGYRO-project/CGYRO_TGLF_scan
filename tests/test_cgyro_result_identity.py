@@ -535,6 +535,99 @@ class ResultIdentityTests(unittest.TestCase):
         owners = {storage.reference_id(fixtures.continuation.point_result(case, r)) for r in case['__TASKS__'].values()}
         self.assertEqual(owners, {storage.reference_id(old), storage.reference_id(replacement)})
 
+    def test_expanded_input_variants_have_saveable_distinct_directory_components(self):
+        module = {}
+        info, row, old = self.result(module, 'short-index')
+        case = self.public(module, info, row, old)
+        expanded = {'DEFAULT_FIELD_' + str(index): index / 7 for index in range(247)}
+        other_info, other_row, new = self.result(module, 'expanded-index', generated=expanded)
+        archive.store_scan(case, {'N_ENERGY': {'8': {'lin': {'0.1': new}}}}, other_info, {'p000001': other_row})
+        rows = list(case['__TASKS__'].values())
+        paths = [r['result_path'] for r in rows]
+        self.assertEqual(len({tuple(path) for path in paths}), 2)
+        for path in paths:
+            self.assertTrue(all(len(str(part).encode('utf-8')) <= 200 for part in path))
+        self.assertEqual({storage.reference_id(fixtures.continuation.point_result(case, r)) for r in rows},
+                         {storage.reference_id(old), storage.reference_id(new)})
+        self.assertTrue(any(all(name in r['input_parameters'] for name in expanded)
+                            for r in rows if 'input_parameters' in r))
+
+    def legacy_long_case(self, module, token):
+        info, row, ref = self.result(module, token)
+        case = self.public(module, info, row, ref)
+        saved = case['__TASKS__']['p000001']
+        coordinate = list(saved['result_path'])
+        parent = archive._at(case, coordinate[:-1])
+        # The former collision branch exists below the signed ky coordinate.
+        variant = {'MASS_1': 1.5, 'N_ENERGY': 8., 'KY': .1}
+        saved['input_parameters'] = variant
+        old = ', '.join('FIELD_{}={:.17g}'.format(index, index / 7) for index in range(247))
+        leaf = parent.pop(coordinate[-1])
+        parent[coordinate[-1]] = {old: leaf}
+        saved['coordinate_path'] = coordinate
+        saved['result_path'] = coordinate + [old]
+        return case, saved, archive._at(case, coordinate), old, leaf
+
+    def test_legacy_long_path_repair_only_renames_index_branches_and_is_idempotent(self):
+        module = {}
+        case, row, parent, old, leaf = self.legacy_long_case(module, 'long-save')
+        previous = copy.deepcopy(row)
+        # Payload owners and all histories are outside this repair's boundary.
+        module['RUN_HISTORY'] = object()
+        with patch.object(storage, 'resolve_result', side_effect=AssertionError('result opened')):
+            report = archive.repair_archive_paths(module)
+        self.assertEqual(report, dict(renamed_branches=1, updated_points=1))
+        new = row['result_path'][-1]
+        self.assertLessEqual(len(new.encode('utf-8')), 200)
+        self.assertNotIn(old, parent)
+        self.assertIs(parent[new], leaf)
+        self.assertIs(fixtures.continuation.point_result(case, row), leaf)
+        self.assertEqual({k: v for k, v in row.items() if k != 'result_path'},
+                         {k: v for k, v in previous.items() if k != 'result_path'})
+        self.assertEqual(archive.repair_archive_paths(module), dict(renamed_branches=0, updated_points=0))
+        restored = json.loads(json.dumps(case))
+        self.assertEqual(fixtures.continuation.point_result(restored, restored['__TASKS__']['p000001']), leaf)
+
+    def test_long_path_repair_checks_conflicts_before_changing_any_case(self):
+        module = {}
+        _, row, parent, old, leaf = self.legacy_long_case(module, 'long-conflict')
+        new = archive.archive_variant_key(old, archive.point_values({}, row, include_input=True))
+        parent[new] = {'__RESULT_REF__': 'f' * 64}
+        previous_path = list(row['result_path'])
+        with self.assertRaisesRegex(ValueError, 'Conflicting compact'):
+            archive.repair_archive_paths(module)
+        self.assertIs(parent[old], leaf)
+        self.assertEqual(row['result_path'], previous_path)
+        self.assertEqual(parent[new], {'__RESULT_REF__': 'f' * 64})
+
+    def test_long_path_repair_rolls_back_an_abort_after_native_assignment(self):
+        class AbortAfterAssignment(dict):
+            triggered = False
+            def __setitem__(self, key, value):
+                super().__setitem__(key, value)
+                if key.startswith('input_') and not self.triggered:
+                    self.triggered = True
+                    raise KeyboardInterrupt('native Abort after assignment')
+        module = {}
+        case, row, parent, old, leaf = self.legacy_long_case(module, 'long-abort')
+        previous_path = list(row['result_path'])
+        altered = AbortAfterAssignment(parent)
+        case['N_ENERGY']['8']['lin']['0.1'] = altered
+        with self.assertRaises(KeyboardInterrupt):
+            archive.repair_archive_paths(module)
+        self.assertEqual(list(altered), [old])
+        self.assertIs(altered[old], leaf)
+        self.assertEqual(row['result_path'], previous_path)
+
+    def test_variant_directory_limit_counts_utf8_bytes_and_keeps_short_labels(self):
+        self.assertEqual(archive.archive_variant_key('ERROR_TOL=1e-5', {'ERROR_TOL': 1e-5}), 'ERROR_TOL=1e-5')
+        label = '参数' * 50
+        self.assertLess(len(label), 200)
+        first = archive.archive_variant_key(label, {'KY': .1, 'Q': 1.})
+        second = archive.archive_variant_key(label, {'KY': -.1, 'Q': 1.})
+        self.assertLessEqual(len(first.encode('utf-8')), 200)
+        self.assertNotEqual(first, second)
+
     def test_staging_detects_a_valid_checkpoint_changed_after_selection(self):
         module = {}
         _, _, ref = self.result(module, 'stage-race')

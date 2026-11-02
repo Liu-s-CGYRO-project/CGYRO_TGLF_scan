@@ -221,6 +221,7 @@
 ['CGYRO_TGLF_scan']['SCRIPTS']['import_tglf_multi'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/SCRIPTS/import_tglf_multi.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['SCRIPTS']['run_tglf_multi'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/SCRIPTS/run_tglf_multi.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['SCRIPTS']['compact_cgyro_storage'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/SCRIPTS/compact_cgyro_storage.py <-:-:-> {}
+['CGYRO_TGLF_scan']['SCRIPTS']['repair_cgyro_archive_paths'] <-:-:-> OMFITpythonTask <-:-:-> ./CGYRO_TGLF_scan/SCRIPTS/repair_cgyro_archive_paths.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['PLOTS'] <-:-:-> OMFITtree <-:-:->  <-:-:-> {}
 ['CGYRO_TGLF_scan']['PLOTS']['CGYRO_vs_TGLF'] <-:-:-> OMFITpythonPlot <-:-:-> ./CGYRO_TGLF_scan/PLOTS/CGYRO_vs_TGLF.py <-:-:-> {}
 ['CGYRO_TGLF_scan']['PLOTS']['CGYRO_vs_CGYRO'] <-:-:-> OMFITpythonPlot <-:-:-> ./CGYRO_TGLF_scan/PLOTS/CGYRO_vs_CGYRO.py <-:-:-> {}

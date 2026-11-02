@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.52。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.53。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 输入传递和更新完整性（1.24.49 / 管理器 1.10.35）
 
@@ -49,6 +49,8 @@ ParameterList 捕获轻量目录并分页；清空只恢复所选分组、匹配
 `OMFITlib_compare_convergence` 只在所选案例的轻量点表中，以已收集的生成输入摘要匹配方向与基准，构造临时 para/value/lin 引用视图。不改 RUN_DB、不复制造数组、不依赖 RUN_HISTORY；多个不同固定物理条件形成独立组。`convergence_group` 保留在每点 result_info 中，避免新提交的扫描头覆盖旧点语义。图形使用独立的方向列；普通多轴视图不改。缺失基准或无法证明身份的旧记录报告诊断，不猜测或触发读取器补齐。
 
 基准共享、方向筛选和绘图引用匹配使用同一数值容差（`rel_tol=1e-9, abs_tol=1e-12`），不舍入或改写 RUN_DB 坐标。带符号 ky 仍严格区分正、负与零；完整参数匹配后遇到不同 owner 引用仍报告冲突。固定参数或请求扫描值不符时保留该方向及逐点诊断，不能静默丢弃整组。比较查询按物理案例、字段集合和 ky 范围限定候选，只读取所选案例的索引。
+
+OMFIT 原生保存器会将 OMFITtree 的键作为目录分量。相同主轴 / ky 下的完整输入变体不能用无限长参数文本命名：短差异仍可读，超过 200 UTF-8 字节时用完整数值坐标的 SHA-256 短标识。完整参数保留在点索引，`coordinate_path` 保留物理坐标，`result_path` 指向实际短分支。已有长键可显式运行 `SCRIPTS/repair_cgyro_archive_paths`：先检查全部改名目标，再仅移动索引分支和回写路径；冲突不修改，异常回滚，不解析结果、改作业、清理文件或复制扫描。该维护动作不得塞入开窗、查询、刷新或保存钩子。ky 范围预览超过 8 点时显示前后各 4 点及总数，不改实际取值或刷新边界。
 
 合并作业的归档以方向为安装边界。有成功方向时，邻近方向失败记为 `collection_status=partial` 并保留逐点 `archive_errors/load_errors`，不抛整作业失败；全部失败仍抛错。成功点在现有点表记录 `published_result_id`，同一作业、同一不可变 owner 的后续发布不重复安装/释放；新 owner 和未成功点继续处理。新续算与按作业号恢复清除此标记。父清单的 `input_sha256/point_states/continuation_pending` 由下载收集更新；方向发布只回写修改的点行和归档状态，不用旧切片覆盖父清单。
 

@@ -1,13 +1,14 @@
 """Stable case identities and independent parameter scans within each case."""
-from builtins import (AttributeError, OSError, TypeError, ValueError, all, any, bool, dict, enumerate, float, format, frozenset, getattr,
-                      hasattr, int, isinstance, len, list, max, object, open, range, reversed, set, sorted, str, tuple, type, zip)
+from builtins import (AttributeError, BaseException, OSError, TypeError, ValueError, all, any, bool, dict, enumerate, float, format, frozenset, getattr,
+                      hasattr, id, int, isinstance, len, list, max, object, open, range, reversed, set, sorted, str, tuple, type, zip)
 from collections import OrderedDict
 from copy import deepcopy
+import hashlib
 import json
 import math
 import os
 import re
-from OMFITlib_cgyro_db import legacy_branch, metadata_value
+from OMFITlib_cgyro_db import legacy_branch, metadata_value, rollback_actions
 from OMFITlib_cgyro_reference import copy_result_tree, same_result_reference
 from OMFITlib_cgyro_run_state import point_complete
 
@@ -27,6 +28,7 @@ RUN_CONTROL_PARAMETERS = frozenset(('MAX_TIME', 'PRINT_STEP', 'RESTART_STEP',
 RESULT_INFO_FIELDS = ('runid', 'case_id', 'source_nr', 'rho', 'ion_case', 'scan_axes', 'dimensions',
                       'scan_dimensions', 'fixed_parameters', 'constant_parameters', 'numeric_parameters', 'scale_time_with_ky',
                       'runtime', 'server', 'case_tag', 'run_token', 'convergence_group')
+MAX_ARCHIVE_KEY_BYTES = 200  # Native OMFIT saves tree keys as directory components (NAME_MAX=255).
 
 
 def clean_run_id(value):
@@ -506,6 +508,71 @@ def summarize_tasks(info, tasks):
     info.update(dict(task_counts=counts, merged_run_tokens=list(counts), points=len(tasks)))
 
 
+def archive_variant_key(label, values):
+    """Bound the physical directory name; full parameters remain in the index."""
+    label = label or 'original parameters'
+    if len(label.encode('utf-8')) <= MAX_ARCHIVE_KEY_BYTES:
+        return label
+    identity = json.dumps(sorted(values.items()), ensure_ascii=True, separators=(',', ':'), allow_nan=False)
+    return 'input_' + hashlib.sha256(identity.encode('ascii')).hexdigest()
+
+
+def _restore_variant(parent, old, new, value):
+    parent[old] = value
+    if new in parent:
+        del parent[new]
+
+
+def repair_archive_paths(module):
+    """Explicit index repair for old oversized variant keys; never open files.
+
+    Plan every rename before mutation, keep each existing owner object, and
+    update only public result_path entries. Scheduler manifests use their own
+    task locations and coordinate_path, not these public physical leaf names.
+    """
+    renames, rows, seen, targets = [], {}, {}, set()
+    for cases in case_sources(module).values():
+        for _, case, _ in cases:
+            for _, info, tasks in case_scans(case):
+                for point, source in tasks.items():
+                    row = metadata_value(source)
+                    path = list(row.get('result_path', []))
+                    oversized = [index for index, part in enumerate(path)
+                                 if len(str(part).encode('utf-8')) > MAX_ARCHIVE_KEY_BYTES]
+                    if not oversized:
+                        continue
+                    if oversized != [len(path) - 1] or path[:-1] != coordinate_path(row):
+                        raise ValueError('Unsupported oversized result path for ' + str(point) + '; indexes unchanged')
+                    parent = _at(case, path[:-1])
+                    old = path[-1]
+                    new = archive_variant_key(old, point_values(info, row, include_input=True))
+                    address = (id(parent), old)
+                    if address not in seen:
+                        if new in parent or (id(parent), new) in targets:
+                            raise ValueError('Conflicting compact result path for ' + str(point) + '; indexes unchanged')
+                        renames.append((parent, old, new, parent[old]))
+                        targets.add((id(parent), new))
+                        seen[address] = new
+                    elif seen[address] != new:
+                        raise ValueError('Shared result path has inconsistent parameters; indexes unchanged')
+                    rows[id(row)] = (row, row['result_path'], path[:-1] + [new])
+    journal = []
+    try:
+        for parent, old, new, value in renames:
+            journal.append(('restore variant', lambda parent=parent, old=old, new=new, value=value:
+                            _restore_variant(parent, old, new, value)))
+            parent[new] = value
+        for row, old, new in rows.values():
+            journal.append(('restore result path', lambda row=row, old=old: row.update(dict(result_path=old))))
+            row['result_path'] = new
+        for parent, old, _, _ in renames:
+            del parent[old]
+    except BaseException as exc:
+        rollback_actions(exc, reversed(journal))
+        raise
+    return dict(renamed_branches=len(renames), updated_points=len(rows))
+
+
 def share_matching_inputs(case, info, tasks, factory=dict, prefer_progress=False):
     """Unify proven equal-input references across existing scan views, off-tree.
 
@@ -635,7 +702,7 @@ def store_scan(destination, data, info, tasks, factory=dict, prefer_progress=Fal
             varied = {name for item in variants for name in item
                       if len({item.get(name, None) for item in variants}) > 1}
             label = ', '.join('{}={:.17g}'.format(name, value) for name, value in sorted(values.items()) if name in varied)
-            path.append(label or 'original parameters')
+            path.append(archive_variant_key(label, values))
         row['result_path'] = _install_point(payload, path, result, factory)
         saved_tasks[assigned] = row
     saved_info.update(dict(scan_key=key, parameters=[key]))

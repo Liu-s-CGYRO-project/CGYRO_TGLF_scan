@@ -288,8 +288,12 @@ class CgyroPage:
         self.scan_value_fields(ky_spec, ky_prefix, location(base + ('PHYSICS', 'kyarr')), 'ky 列表 / 表达式')
         try:
             values = ky_values(physics)
-            self.label('ky 预览：' + ', '.join('{:g}'.format(value) for value in values[:8]) +
-                       (' …（共 {} 个）'.format(len(values)) if len(values) > 8 else ''))
+            preview = ['{:g}'.format(value) for value in values[:4]] if len(values) > 8 else [
+                '{:g}'.format(value) for value in values]
+            if len(values) > 8:
+                preview += ['…'] + ['{:g}'.format(value) for value in values[-4:]]
+            self.label('ky 预览：' + ', '.join(preview) +
+                       ('（共 {} 个）'.format(len(values)) if len(values) > 8 else ''))
         except (TypeError, ValueError, OverflowError) as exc:
             self.label(str(exc))
         dim = int(node['SETTINGS']['SETUP']['idimrun'])
