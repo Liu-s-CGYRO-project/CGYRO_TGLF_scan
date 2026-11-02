@@ -35,6 +35,7 @@ def verify():
             from OMFITlib_cgyro_reference import make_reference, validate_reference
             from OMFITlib_cgyro_storage import directory_inventory
             import OMFITlib_cgyro_payload as payload
+            import OMFITlib_cgyro_browser as browser
             native.OMFITcwd = native.OMFITtmpDir = str(work)
             native.OMFITcgyro, native.OMFITpath = OMFITcgyro, OMFITpath
 
@@ -114,7 +115,10 @@ def verify():
             reopened['scratch'] = native.OMFITtree()
             native.OMFIT = reopened
             restored_module = reopened['CGYRO_scan']
-            restored_module['LIB'] = {'OMFITlib_cgyro_payload': SimpleNamespace(importCode=lambda **kwargs: payload)}
+            restored_module['LIB'] = {
+                'OMFITlib_cgyro_payload': SimpleNamespace(filename=payload.__file__, importCode=lambda **kwargs: payload),
+                'OMFITlib_cgyro_browser': SimpleNamespace(filename=browser.__file__, importCode=lambda **kwargs: browser),
+            }
             for number, key in enumerate(keys, 1):
                 reference = restored_module['RUN_DB']['Jet'][str(number)]
                 validate_reference(reference, key)

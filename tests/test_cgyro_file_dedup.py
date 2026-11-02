@@ -18,6 +18,14 @@ import test_cgyro_storage as fixture
 
 storage, db = fixture.storage, fixture.db_api
 payload = importlib.import_module('OMFITlib_cgyro_payload')
+browser = importlib.import_module('OMFITlib_cgyro_browser')
+
+def browser_libraries():
+    return {
+        'OMFITlib_cgyro_browser': SimpleNamespace(filename=browser.__file__, importCode=lambda **kwargs: browser),
+        'OMFITlib_cgyro_payload': SimpleNamespace(filename=payload.__file__, importCode=lambda **kwargs: payload),
+    }
+
 SOURCE = fixture.REPO.parents[2] / 'OMFIT-source-ASIPP_unstable/omfit'
 
 
@@ -113,7 +121,7 @@ class FileDedupTests(unittest.TestCase):
         for number in range(payload.VIEW_CACHE_SIZE + 3):
             refs.append(storage.store_result(root, self.result('point-' + str(number), str(number).encode())))
         root['RUN_DB']['__UNCLASSIFIED__'] = dict(enumerate(refs))
-        root['LIB'] = {'OMFITlib_cgyro_payload': SimpleNamespace(importCode=lambda **kwargs: payload)}
+        root['LIB'] = browser_libraries()
         expression_type.__value__ = lambda self, dependencies: eval(
             self.expression, {'root': root})
         readers = []
@@ -285,7 +293,7 @@ class FileDedupTests(unittest.TestCase):
         self.pack(root)
         with self.browsable_expressions():
             ref = fixture.reference_api.make_reference(storage.reference_id(refs[0]))
-            root['LIB'] = {'OMFITlib_cgyro_payload': SimpleNamespace(importCode=lambda **kwargs: payload)}
+            root['LIB'] = browser_libraries()
             before = set(storage.result_pool(root))
             reader = eval(ref['data'].expression, {'root': root})
             self.assertIsInstance(reader, fixture.OMFITcgyro)

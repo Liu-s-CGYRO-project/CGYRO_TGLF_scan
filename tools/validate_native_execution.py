@@ -436,6 +436,46 @@ physics = dict(scan_mode='convergence', kyarr=[.1, .2, .3, .4, .5, .6, .7], fixe
                 self.assertEqual(out['ensure_cli'](client), str(target))
             self.assertEqual(target.read_bytes(), binary)
 
+    def test_saved_browser_batch_imports_once_then_reads_only_the_selected_result(self):
+        host, reads, imports = self.host, [], []
+        root = host.cg
+        previous = root.get('RUN_DB', None)
+        class OMFITcgyro(host.factory):
+            def __getitem__(self, name):
+                reads.append((self.result_key, name))
+                return 'selected frequency'
+        original = host.Task.importCode
+        def counted(task, **kwargs):
+            imports.append(Path(task.filename).stem)
+            return original(task, **kwargs)
+        names = ('OMFITlib_cgyro_browser', 'OMFITlib_cgyro_payload')
+        with patch.dict(root['LIB'][names[0]].__dict__), patch.dict(root['LIB'][names[1]].__dict__):
+            for name, attribute in zip(names, ('_cgyro_browser_entry', '_cgyro_payload_api')):
+                root['LIB'][name].__dict__.pop(attribute, None)
+            root['RUN_DB'] = host.factory({'__STORE__': host.factory()})
+            try:
+                with patch.object(host.gacode, 'OMFITcgyro', OMFITcgyro), \
+                        patch.object(host.Task, 'importCode', counted):
+                    for number in range(709):
+                        owner = OMFITcgyro()
+                        owner.result_key = format(number, '064x')
+                        root['RUN_DB']['__STORE__'][owner.result_key] = owner
+                    code = host.execute('from OMFITlib_cgyro_reference import browse_code')['browse_code']
+                    readers = [eval(code(format(i, '064x')), {'root': root}) for i in range(709)]
+                    for reader in readers:
+                        iter(reader)
+                        self.assertTrue(reader.dynaLoad)
+                        self.assertFalse(reader.modifyOriginal)
+                    self.assertEqual(imports, ['OMFITlib_cgyro_browser'])
+                    self.assertEqual(reads, [])
+                    self.assertFalse(any(name.startswith('OMFITlib_') for name in sys.modules))
+                    for number in (17, 42):
+                        self.assertEqual(readers[number]['freq'], 'selected frequency')
+                    self.assertEqual(imports, ['OMFITlib_cgyro_browser', 'OMFITlib_cgyro_payload'])
+                    self.assertEqual(reads, [(format(i, '064x'), 'freq') for i in (17, 42)])
+            finally:
+                root['RUN_DB'] = previous
+
     def test_file_manifest_browser_works_after_native_import_cleanup(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder, factory = Path(temporary), self.host.factory

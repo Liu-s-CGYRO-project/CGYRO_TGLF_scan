@@ -18,6 +18,16 @@ GROUP = 'CGYRO_TGLF_scan'
 LEGACY = ('CGYRO_scan', 'TGLF_scan', 'Transfer_tool')
 
 
+def browser_codes(key):
+    """Known saved contracts, independent of not-yet-installed project code."""
+    task = "root['LIB']['OMFITlib_cgyro_browser']"
+    return ("root['RUN_DB']['__STORE__']['" + key + "']",
+            "root['LIB']['OMFITlib_cgyro_payload'].importCode(_relLoc={'root': root})"
+            ".resolve_browser(root, '" + key + "')",
+            "(getattr(" + task + ", '_cgyro_browser_entry', None) or " + task +
+            ".importCode(_relLoc={'root': root}).resolve_browser)(root, '" + key + "')")
+
+
 def kind(value, name):
     return any(base.__name__ == name for base in type(value).__mro__)
 
@@ -179,9 +189,7 @@ class ArchiveIndex:
         # generated lookup is permitted; never evaluate it during migration.
         if set(contents) != {'__RESULT_REF__'}:
             data = contents.get('data', None)
-            expected = ("root['RUN_DB']['__STORE__']['" + key + "']",
-                        "root['LIB']['OMFITlib_cgyro_payload'].importCode(_relLoc={'root': root})"
-                        ".resolve_browser(root, '" + key + "')")
+            expected = browser_codes(key)
             if (set(contents) != {'__RESULT_REF__', 'data'} or not kind(data, 'OMFITexpression')
                     or object.__getattribute__(data, 'expression') not in expected):
                 raise ValueError('Invalid CGYRO result reference')
@@ -190,7 +198,7 @@ class ArchiveIndex:
             self.packed_inventory(owner, key)
         return True
 
-    def deferred_browser_links(self, module):
+    def deferred_browser_links(self, module, lightweight=False):
         """Plan a text-only repair of old RUN_DB browser conveniences.
 
         Native project loading evaluates saved expressions and calls iter() on
@@ -211,12 +219,10 @@ class ArchiveIndex:
                 key, data = self.materialize(contents['__RESULT_REF__']), contents.get('data', None)
                 if (set(contents) == {'__RESULT_REF__', 'data'} and isinstance(key, str)
                         and re.fullmatch(r'[0-9a-f]{64}', key) is not None and kind(data, 'OMFITexpression')
-                        and object.__getattribute__(data, 'expression') ==
-                        "root['RUN_DB']['__STORE__']['" + key + "']"):
+                        and object.__getattribute__(data, 'expression') in
+                        browser_codes(key)[:2 if lightweight else 1]):
                     replacement = object.__new__(type(data))
-                    replacement.expression = (
-                        "root['LIB']['OMFITlib_cgyro_payload'].importCode(_relLoc={'root': root})"
-                        ".resolve_browser(root, '" + key + "')")
+                    replacement.expression = browser_codes(key)[2 if lightweight else 1]
                     replacement.lastEval = None
                     changes.append((path + ('data',), data, replacement))
                 return

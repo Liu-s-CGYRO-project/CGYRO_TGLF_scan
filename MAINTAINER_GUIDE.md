@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.57。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.58。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 原生 GUI 验证记录与提示
 
@@ -250,6 +250,16 @@ test_runtime_persistence 使用未修改的原生 OMFITlazyLoad、SortedDict 与
 `resource_issues` 按完整 MPI×线程数和 nodes 校验：32/64 混合队列的 64 CPU/node 合法；若请求三台但只有两台符合容量则提示。节点数是配置总量，不是瞬时空闲量；忙碌节点交由调度器排队。内存范围仅展示，不组合为虚假的单节点规格。分区政策不一致、缺失计数或聚合后的 `32+` 格式均拒绝整个探测，保留旧设置。
 
 `launch_spec` 先解析实际 nodes、ntasks_per_node、cpus_per_task 再检查容量，不能读取 UI 的 cores 旧副本代替实际启动值。检测只调整超过真实上限的草稿，不自动把 32 增大为 64，也不改变已提交运行。新增检测字段和版本时，应同时更新匹配、草稿应用、UI 摘要和实际启动回归。
+
+## 工程加载的结果浏览入口（1.24.58）
+
+原生 `_load` 在保存树重建后恢复全部表达式，但这段收尾没有逐条进度。旧直接 owner 链接会在 `iter()` 分类时触发读取；原延迟链接虽不读数组，每条仍经 `OMFITpythonTask.importCode` 重跑整个 payload 库。当前 `cgyro_reference.browse_code` 改为每个 LIB 文件共用 `cgyro_browser` 入口，精确查询一个 owner，生成延迟视图，不解析清单、统计文件、哈希、复制或遍历其他结果。`cgyro_payload` 仅在实际使用所选结果时导入。
+
+缓存只在原生代码节点的运行时属性中，`OMFITobject.__save_kw__` 不保存这些属性，表达式仍只保存文字。原生复制会 pickle 代码节点，因此 `RuntimeCache.__reduce__` 必须返回普通空字典，不能复制库命名空间、旧 root 或结果对象。首次使用重新建立缓存。源码文件的路径/mtime_ns/size 改变会失效；模板事务 apply/undo/回滚也清空两个已知代码节点的缓存，防止仅更新依赖库时沿用旧导入。不遍历 RUN_DB 来使缓存失效。
+
+管理器 1.10.38 在目标工程 >=1.24.58 的保留数据更新中，将直接 owner 链接与旧 payload-import 链接一起升级。仅改已识别 `__RESULT_REF__ + data` 的固定表达式，保留物理 owner、完整参数索引与自定义表达式；老目标版本仍只使用它提供的协议。新归档默认生成新入口。旧 ZIP 自身不被改写，当前工程更新并保存一次后，后续加载沿用新协议。该元数据迁移不放在开窗、切页、每次保存或绘图回调中。
+
+回归：`test_cgyro_browser_update` 覆盖原生表达式分类、保存状态、709 链接只导入一次、重开/复制/更新失效、跨工程隔离、错误点单独拒绝和回滚；`validate_native_execution --test test_saved_browser_batch_imports_once_then_reads_only_the_selected_result` 使用原生 importCode/execGlobLoc（求解器 reader 为适配器）。完整原生 ZIP 保存/重开另用 `validate_native_file_storage.py`，需要已安装的 omfit_classes/pygacode；缺此环境不得报告为已通过。0.1 秒的链接恢复微基准不能当作 10 GB ZIP 总加载时间。
 
 ## 快照退休与文件存储接口（1.24.18）
 

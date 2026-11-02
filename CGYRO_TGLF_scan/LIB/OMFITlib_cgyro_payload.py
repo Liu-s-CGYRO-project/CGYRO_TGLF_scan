@@ -17,9 +17,10 @@ import hashlib
 import json
 import os
 import re
-from weakref import WeakValueDictionary, ref
+from weakref import WeakValueDictionary
 import omfit_classes.omfit_gacode as native_readers
 from omfit_classes.omfit_path import OMFITpath
+from OMFITlib_cgyro_browser import deferred_view
 from OMFITlib_cgyro_db import metadata_value, result_pool, rollback_actions, storage_state
 from OMFITlib_cgyro_reference import is_native_file
 from OMFITlib_cgyro_storage_files import FILE_STORE, file_digest, native_kind
@@ -136,88 +137,17 @@ def materialize_owner(module, key):
     return reader
 
 
-def _deferred_reader(module, key):
-    """Build a runtime-only native adapter, never a persisted custom class.
-
-    Native execGlobLoc removes top-level subclasses of OMFITobject/SortedDict
-    from LIB namespaces. Keep this class inside the factory. Listing scans
-    must not expand result files; only actual reads need a private directory.
-    """
-    class DeferredResult(native_readers.OMFITcgyro):
-        def __init__(self):
-            object.__setattr__(self, '_payload_module', module)
-            object.__setattr__(self, '_payload_key', key)
-
-        def _payload_reader(self):
-            reader = materialize_owner(module, key)
-            try:
-                object.__setattr__(self, '_payload_active', ref(reader))
-            except TypeError:
-                pass  # Plain mapping adapters need not support weak references.
-            return reader
-
-        def _payload_cached(self):
-            active = object.__getattribute__(self, '__dict__').get('_payload_active', None)
-            return None if active is None else active()
-
-        @property
-        def dynaLoad(self):
-            # Native tree refresh probes collapsed rows. Never create a
-            # directory just to ask whether that row has been opened. A weak
-            # reference also lets the bounded runtime cache evict old views.
-            reader = self._payload_cached()
-            return True if reader is None else getattr(reader, 'dynaLoad', True)
-
-        @dynaLoad.setter
-        def dynaLoad(self, value):
-            reader = self._payload_cached()
-            if reader is not None:
-                reader.dynaLoad = value
-
-        def __tree_repr__(self):
-            return ('CGYRO result (expand to load)' if self.dynaLoad else 'CGYRO result (loaded)'), []
-
-        def _payload_file(self, name):
-            owner = result_pool(module).get(key, None)
-            if native_kind(owner, 'OMFITcgyro'):
-                return os.path.join(owner.filename, name)
-            for relative, size, digest, path in sources(module, owner, key):
-                if relative == name:
-                    if file_digest(path) != (size, digest):
-                        raise ValueError('Stored CGYRO file was modified: ' + digest)
-                    return path
-            raise ValueError('Missing CGYRO result file: ' + name)
-
-        def __getattribute__(self, name):
-            if name.startswith('_payload_') or name in ('__class__', '__dict__', '__weakref__',
-                                                       'dynaLoad', '__tree_repr__'):
-                return object.__getattribute__(self, name)
-            if name in ('modifyOriginal', 'readOnly'):
-                reader = self._payload_cached()
-                return False if reader is None else getattr(reader, name, False)
-            return getattr(self._payload_reader(), name)
-
-        def __getattr__(self, name):
-            # Do not fall back to SortedDict.__getattr__, whose missing-attr
-            # probe can dynamically load this uninitialised adapter itself.
-            raise AttributeError(name)
-
-        def __getitem__(self, name):
-            return self._payload_reader()[name]
-
-        def __iter__(self):
-            # OMFIT evaluates every saved expression on reopen and calls iter
-            # only to classify its value. A generator defers file copies and
-            # native parsing until that iterator is actually consumed.
-            yield from self._payload_reader()
-
-        def __len__(self):
-            return len(self._payload_reader())
-
-        def __contains__(self, name):
-            return name in self._payload_reader()
-
-    return DeferredResult()
+def browser_file(module, key, name):
+    """Resolve one selected file without parsing the result arrays."""
+    owner = result_pool(module).get(key, None)
+    if native_kind(owner, 'OMFITcgyro'):
+        return os.path.join(owner.filename, name)
+    for relative, size, digest, path in sources(module, owner, key):
+        if relative == name:
+            if file_digest(path) != (size, digest):
+                raise ValueError('Stored CGYRO file was modified: ' + digest)
+            return path
+    raise ValueError('Missing CGYRO result file: ' + name)
 
 
 def resolve_owner(module, key, *, defer_native=False):
@@ -237,7 +167,7 @@ def resolve_owner(module, key, *, defer_native=False):
     cache_key = id(module), key, id(owner)
     reader = cache.get(cache_key, None)
     if reader is None:
-        reader = _deferred_reader(module, key)
+        reader = deferred_view(module, key, lambda module, key: materialize_owner(module, key), browser_file)
         cache[cache_key] = reader
     return reader
 

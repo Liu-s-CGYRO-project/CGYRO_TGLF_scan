@@ -320,7 +320,8 @@ class LivePlan:
             # Older target releases do not provide this lazy browser contract.
             version = tuple(int(part) for part in self.prepared.release['version'].split('.'))
             if name == 'CGYRO_scan' and replacements is None and version >= (1, 24, 20):
-                for relative, old, new in self.archive_index.deferred_browser_links(node):
+                for relative, old, new in self.archive_index.deferred_browser_links(
+                        node, lightweight=version >= (1, 24, 58)):
                     self._operation(path + relative, old, new, data=True)
             for row in self.archive_index.sources[sources:] + self.archive_index.issues[issues:]:
                 row['module'] = name
@@ -573,6 +574,16 @@ class LivePlan:
                 value = rebind(value)
             op['parent'][op['path'][-1]] = value
 
+    def _clear_browser_runtime(self):
+        # Code updates may change a reader dependency while its entry file is
+        # unchanged. Drop only two runtime caches, without walking result data.
+        for path in ((GROUP,), (GROUP, 'CGYRO_scan')):
+            for name, attribute in (('OMFITlib_cgyro_browser', '_cgyro_browser_entry'),
+                                    ('OMFITlib_cgyro_payload', '_cgyro_payload_api')):
+                task = lookup(self.omfit, path + ('LIB', name))
+                if task is not MISSING and python_node(task):
+                    object.__getattribute__(task, '__dict__').pop(attribute, None)
+
     def apply(self, refresh):
         if self.applied:
             raise TemplateError('此预览已经应用，请重新预览')
@@ -587,6 +598,7 @@ class LivePlan:
                 self._put(op, op['new'])
                 # Native SortedDict copies expressions when attaching them.
                 op['new'] = lookup(self.omfit, op['path'])
+            self._clear_browser_runtime()
             refresh(self, False)
             for op in self.operations:
                 op['stamp'] = None if op['data'] else stamp(op['new'])
@@ -605,6 +617,7 @@ class LivePlan:
                 self._rollback_step(location(op['path']), self._put, op, op['old'])
             if self.scaffold is not None:
                 self._rollback_step('module roots', self._restore_roots)
+            self._rollback_step('browser runtime', self._clear_browser_runtime)
             self._rollback_step('GUI refresh', refresh, self, True)
             setattr(exc, 'template_rollback_errors', list(self.rollback_errors))
             if not isinstance(exc, Exception):
@@ -638,12 +651,14 @@ class LivePlan:
                 self._put(op, op['old'])
             if self.scaffold is not None:
                 self._restore_roots()
+            self._clear_browser_runtime()
             refresh(self, True)
         except BaseException as exc:
             if self.scaffold is not None and raw(self.omfit, GROUP) is MISSING:
                 self._rollback_step('module roots', self._move)
             for op in reversed(completed):
                 self._rollback_step(location(op['path']), self._put, op, op['new'])
+            self._rollback_step('browser runtime', self._clear_browser_runtime)
             self._rollback_step('GUI refresh', refresh, self, False)
             setattr(exc, 'template_rollback_errors', list(self.rollback_errors))
             raise

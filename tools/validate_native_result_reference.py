@@ -34,6 +34,12 @@ def verify(reference_source):
             import omfit_classes.omfit_base as native
             from omfit_classes.omfit_gacode import OMFITcgyro
             import OMFITlib_cgyro_payload as payload_api
+            import OMFITlib_cgyro_browser as browser_api
+            def browser_libraries():
+                return {
+                    "OMFITlib_cgyro_payload": types.SimpleNamespace(filename=payload_api.__file__, importCode=lambda **kw: payload_api),
+                    "OMFITlib_cgyro_browser": types.SimpleNamespace(filename=browser_api.__file__, importCode=lambda **kw: browser_api),
+                }
             helper = types.ModuleType('reference_under_test')
             exec(compile(reference_source, 'OMFITlib_cgyro_reference.py', 'exec'), helper.__dict__)
             native.OMFITcwd = str(work)
@@ -66,7 +72,7 @@ def verify(reference_source):
             module = tree['CGYRO_scan']
             # A standalone host has no registered project LIB. The real native
             # importCode path is tested separately by validate_native_execution.
-            module['LIB'] = {'OMFITlib_cgyro_payload': types.SimpleNamespace(importCode=lambda **kw: payload_api)}
+            module['LIB'] = browser_libraries()
             module['RUN_DB'] = native.OMFITtree()
             db = module['RUN_DB']
             db['__STORE__'] = native.OMFITtree()
@@ -87,7 +93,8 @@ def verify(reference_source):
             assert helper.validate_reference(ref, digest) == digest
             assert owner.dynaLoad, 'Reference validation read the result'
             actual = expression._value_()
-            assert actual is owner, (builtins.type(actual).__name__, expression.expression)
+            assert payload_api.deferred_key(module, actual) == digest
+            assert owner.dynaLoad, 'Expression classification read the result'
             assert 'out.cgyro.info' in list(expression.keys()), 'Native expression is not browsable'
             duplicate = copy.deepcopy(expression)
             assert duplicate.expression == expression.expression
@@ -112,13 +119,13 @@ def verify(reference_source):
             reopened['scratch'] = native.OMFITtree()
             native.OMFIT = reopened
             reopened_module = reopened['CGYRO_scan']
-            reopened_module['LIB'] = {'OMFITlib_cgyro_payload': types.SimpleNamespace(importCode=lambda **kw: payload_api)}
+            reopened_module['LIB'] = browser_libraries()
             reopened_ref = reopened_module['RUN_DB']['Jet']['0.1']
             reopened_owner = reopened_module['RUN_DB']['__STORE__'][digest]
             reopened_owner.test_mode = True  # This fixture deliberately has no solver arrays.
             helper.validate_reference(reopened_ref, digest)
             restored = dict.__getitem__(reopened_ref, 'data')
-            assert restored._value_() is reopened_owner
+            assert payload_api.deferred_key(reopened_module, restored._value_()) == digest
             assert 'out.cgyro.info' in list(restored.keys())
             report = dict(source=native.__file__, python=sys.version.split()[0],
                           reference_sha256=hashlib.sha256(reference_source.encode()).hexdigest(),

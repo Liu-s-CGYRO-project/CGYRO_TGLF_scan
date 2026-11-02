@@ -40,6 +40,12 @@ def browse_code(key):
         raise ValueError('Invalid CGYRO result reference')
     # ``root`` is the containing native CGYRO module. Unlike an absolute path,
     # this keeps working after project/module renaming and save/reload.
+    task = "root['LIB']['OMFITlib_cgyro_browser']"
+    return ("(getattr(" + task + ", '_cgyro_browser_entry', None) or " + task +
+            ".importCode(_relLoc={'root': root}).resolve_browser)(root, '" + key + "')")
+
+
+def legacy_browse_code(key):
     return ("root['LIB']['OMFITlib_cgyro_payload'].importCode(_relLoc={'root': root})"
             ".resolve_browser(root, '" + key + "')")
 
@@ -53,7 +59,7 @@ def browse_matches(value, key):
     """Validate without calling _value_, getattr, repr, or a reader method."""
     return (any(base.__name__ == 'OMFITexpression' for base in type(value).__mro__)
             and object.__getattribute__(value, 'expression') in (
-                browse_code(key), "root['RUN_DB']['__STORE__']['" + key + "']"))
+                browse_code(key), legacy_browse_code(key), "root['RUN_DB']['__STORE__']['" + key + "']"))
 
 
 def validate_reference(node, key):

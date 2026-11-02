@@ -77,7 +77,7 @@ def maintain(omfit):
                 raise ValueError('Maintenance package CRC failed; project unchanged')
         install(omfit, code, directory)
     if not RUN_MAINTENANCE:
-        print('Code update completed. Reopen the CGYRO workbench, then use Results / Recover by job ID.')
+        print('Code update completed. Close and reopen the workbench and template manager windows.')
         print('Existing inputs, results and settings were kept. Save the project to retain this update.')
         return dict(installed=PACKAGE['version'], maintenance=False)
     node = omfit['CGYRO_TGLF_scan']['CGYRO_scan']
