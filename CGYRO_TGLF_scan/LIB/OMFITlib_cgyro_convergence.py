@@ -3,7 +3,7 @@
 Plans contain small parameter dictionaries only. They never own result files,
 consult job ancestry, or perform storage maintenance.
 """
-from builtins import (BaseException, KeyError, TypeError, ValueError, all, bool, dict, enumerate, float, int, isinstance, len, list,
+from builtins import (BaseException, KeyError, TypeError, ValueError, all, any, bool, dict, enumerate, float, int, isinstance, len, list,
                       max, reversed, round, set, sorted, str, tuple)
 from collections import OrderedDict
 from copy import deepcopy
@@ -23,6 +23,21 @@ DIRECTIONS = OrderedDict([('N_ENERGY', '能量分辨率'), ('N_XI', '俯仰角�
     ('ERROR_TOL', '时间步精度')])
 BASELINE = OrderedDict([('N_ENERGY', 32), ('N_XI', 48), ('N_RADIAL', 32),
                         ('N_THETA', 32), ('E_MAX', 8)])
+PARAMETER_RTOL, PARAMETER_ATOL = 1e-9, 1e-12
+
+
+def same_value(first, second):
+    """Use the collected-input tolerance, without rounding stored coordinates."""
+    first, second = float(first), float(second)
+    return (math.isfinite(first) and math.isfinite(second) and
+            math.isclose(first, second, rel_tol=PARAMETER_RTOL, abs_tol=PARAMETER_ATOL))
+
+
+def same_parameters(first, second):
+    """Complete numeric identity; even tiny opposite signed KY stay distinct."""
+    return (first.keys() == second.keys() and all(same_value(first[name], value) and
+        (name != 'KY' or (float(first[name]) > 0, float(first[name]) < 0) ==
+                        (float(value) > 0, float(value) < 0)) for name, value in second.items()))
 
 
 def active(physics):
@@ -108,6 +123,10 @@ def groups(physics, source):
         if not group.get('enabled', False):
             continue
         extra = _numbers(group.get('fixed', {}), source, caption + ' 额外固定项')
+        # A formatted copy of the center must not create a second physical
+        # configuration before jobs() gives its ownership to Base case.
+        extra = {key: effective[key] if key in effective and same_value(value, effective[key]) else value
+                 for key, value in extra.items()}
         if name in extra:
             raise ValueError(caption + ' 不能同时扫描并固定 ' + name)
         if physics.get('constant_parameter', '') == name:
@@ -118,7 +137,7 @@ def groups(physics, source):
             if isinstance(value, bool):
                 raise ValueError(name + ' 请填写数值。')
             number = parameter_value(name, value)
-            if number not in requested:
+            if not any(same_value(number, previous) for previous in requested):
                 requested.append(number)
         own, shared = [], []
         for number in requested:
@@ -182,12 +201,11 @@ def jobs(physics, source, dimensions, batch_key):
         center = parameter_value(name, effective.get(name, FIELDS[name][2]))
         # The common baseline is submitted and owned once. An E_MAX group
         # with NE=64 instead uses the NE=64 direction result as its reference.
-        if all(float(effective.get(key, float('nan'))) == float(value)
+        if all(same_value(effective.get(key, float('nan')), value)
                for key, value in group['fixed'].items()):
-            if center in group['values']:
-                group['values'].remove(center)
-                group['physics']['1d']['Range'] = list(group['values'])
-            group['shared'] = [item for item in group['shared'] if item['value'] != center]
+            group['values'] = [value for value in group['values'] if not same_value(value, center)]
+            group['physics']['1d']['Range'] = list(group['values'])
+            group['shared'] = [item for item in group['shared'] if not same_value(item['value'], center)]
             group['shared'].append(dict(value=center, group='Base case'))
         if group['values']:
             metadata = dict(context(group), role='direction', storage_branch=name)
@@ -208,7 +226,7 @@ def _cached_parameters_match(info, row, requested):
     coordinate = dict(point_values(info, row))
     coordinate.update(row.get('effective_time', {}))
     for expected in (requested, coordinate):
-        if not all(name in cached and math.isclose(float(value), cached[name], rel_tol=1e-9, abs_tol=1e-12)
+        if not all(name in cached and same_value(value, cached[name])
                    for name, value in expected.items() if name not in RUN_CONTROL_PARAMETERS):
             return False
     return True

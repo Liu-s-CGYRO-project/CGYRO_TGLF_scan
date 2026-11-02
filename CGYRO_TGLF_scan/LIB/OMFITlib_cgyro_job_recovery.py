@@ -21,6 +21,7 @@ from OMFITlib_cgyro_job_probe import (files_command, identity_command, input_inv
     parse_identity, parse_inventory, read_remote_manifest, remote_text, script_content, section)
 from OMFITlib_cgyro_recovery_manifest import (SIDECAR, job_number, read_manifest,
                                             validate_manifest, verify_input_zip)
+from OMFITlib_cgyro_result_index import cache_job_result_contexts
 from OMFITlib_cgyro_run_state import refresh_run_state, submitted_job_id, uncollected_job, submission_pending
 from OMFITlib_cgyro_scratch import ensure_capacity
 
@@ -134,14 +135,17 @@ def _recovered_manifest(original, identity, endpoint, source, local, missing):
     # saved control flags grants a recovered job permission to cancel or retry.
     for name in ('submission_parent', 'stop_requested', 'submission_stop_requested', 'auto_collect_requested',
                  'cancellation', 'scheduler_sync', 'scheduler_status', 'load_errors', 'loaded_points',
-                 'partial_points', 'failed_points', 'skipped_points', 'skipped_reasons', 'terminal_reason'):
+                 'partial_points', 'failed_points', 'skipped_points', 'skipped_reasons', 'terminal_reason', 'collection_groups'):
         manifest.pop(name, None)
+    for row in manifest.get('point_table', {}).values():
+        row.pop('published_result_id', None)  # A remote receipt cannot prove publication in this project.
     manifest.update(dict(server=endpoint['server'], tunnel=endpoint.get('tunnel', ''),
         serverPicker=endpoint.get('serverPicker', ''), job_id=identity['job_id'], status='submitted',
         submission_uncertain=False, collection_status='pending', local_workDir=local, source_local_workDir=local))
     manifest['recovery'] = dict(job_id=identity['job_id'], user=identity['user'], manifest_path=source,
         original_batch_id=original.get('batch_id', ''), original_local_workDir=original.get('local_workDir', ''),
         missing_inputs=missing, at=datetime.now(timezone.utc).isoformat())
+    cache_job_result_contexts(manifest)
     return manifest
 
 

@@ -117,8 +117,8 @@ def result_records(module, include_tasks=True):
     return records
 
 
-def _job_result_contexts(manifest):
-    """Read only this job's indexed result scopes, never its file payloads."""
+def _job_result_contexts(manifest, *, point_table=None):
+    """Use scope headers; only an explicitly selected job may supply its rows."""
     if not manifest.get('convergence_batch', False):
         yield manifest
         return
@@ -128,8 +128,10 @@ def _job_result_contexts(manifest):
         for info in manifest['collection_groups']:
             yield info
         return
+    if point_table is None:
+        return  # An unindexed old job retains its aliases until explicit repair/collection.
     seen = set()
-    for row in metadata_value(manifest.get('point_table', {})).values():
+    for row in point_table.values():
         info = metadata_value(row).get('result_info', {})
         try:
             key = (clean_run_id(info['runid']), canonical_case_key(info['case_id'], info), scan_key(info))
@@ -138,6 +140,15 @@ def _job_result_contexts(manifest):
         if key not in seen:
             seen.add(key)
             yield info
+
+
+def cache_job_result_contexts(manifest):
+    """Index the current submitted/recovered job once, never from a list query."""
+    if manifest.get('convergence_batch', False) and manifest.get('collection_groups', None) is None:
+        table = metadata_value(manifest.get('point_table', {}))
+        manifest['collection_groups'] = [dict(runid=clean_run_id(info['runid']),
+            case_id=canonical_case_key(info['case_id'], info), scan_key=scan_key(info))
+            for info in _job_result_contexts(manifest, point_table=table)]
 
 
 def _version_record(module, token, source, headers=None, include_tasks=True):
@@ -165,7 +176,7 @@ def _version_record(module, token, source, headers=None, include_tasks=True):
         return None
     table = metadata_value(manifest.get('point_table', {}))
     public = set()
-    for info in _job_result_contexts(manifest):
+    for info in _job_result_contexts(manifest, point_table=table):
         try:
             caseid = canonical_case_key(info.get('case_id', ''), info)
             selection = 'scan:' + json.dumps([info['runid'], caseid, scan_key(info)], separators=(',', ':'))

@@ -122,6 +122,34 @@ class ConvergenceTests(unittest.TestCase):
         self.assertEqual(jobs[1]['physics']['1d']['Range'], [48, 64])
         self.assertEqual(jobs[-1]['physics']['1d']['Range'], [10, 12])
 
+    def test_formatted_extra_fixed_center_is_owned_once_by_base_case(self):
+        source, physics = fixture()
+        physics['convergence']['groups']['N_THETA']['fixed'] = {'E_MAX': 8.0000000001}
+        before = copy.deepcopy(physics)
+        jobs = convergence.jobs(physics, source, 1, '1')
+        self.assertEqual(sum(len(job['physics']['1d']['Range']) for job in jobs), 11)
+        theta = next(job for job in jobs if job['convergence_group']['storage_branch'] == 'N_THETA')
+        self.assertEqual(theta['physics']['1d']['Range'], [24, 48])
+        self.assertIn(dict(value=32, group='Base case'), theta['convergence_group']['shared'])
+        self.assertEqual(physics, before)
+
+    def test_float_axis_center_drift_does_not_schedule_a_duplicate(self):
+        source, physics = fixture()
+        group = physics['convergence']['groups']['ERROR_TOL']
+        group.update(enabled=True, values=[1e-4 + 1e-14, 1e-5])
+        jobs = convergence.jobs(physics, source, 1, '1')
+        precision = next(job for job in jobs if job['convergence_group']['parameter'] == 'ERROR_TOL')
+        self.assertEqual(precision['physics']['1d']['Range'], [1e-5])
+        self.assertIn(dict(value=1e-4, group='Base case'), precision['convergence_group']['shared'])
+
+    def test_distinct_extra_fixed_physics_is_not_absorbed_into_base(self):
+        source, physics = fixture()
+        physics['convergence']['groups']['N_THETA']['fixed'] = {'E_MAX': 8.0001}
+        jobs = convergence.jobs(physics, source, 1, '1')
+        theta = next(job for job in jobs if job['convergence_group']['storage_branch'] == 'N_THETA')
+        self.assertIn(32, theta['physics']['1d']['Range'])
+        self.assertNotIn(dict(value=32, group='Base case'), theta['convergence_group']['shared'])
+
     def test_invalid_grid_and_conflicting_extra_are_rejected(self):
         for name, value in [('N_ENERGY', 1.5), ('N_XI', 0), ('E_MAX', float('nan'))]:
             with self.subTest(name=name):

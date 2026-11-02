@@ -102,6 +102,60 @@ class ConvergenceReferenceTests(unittest.TestCase):
         self.assertIs(view[token_for(case, 'E_MAX')][8]['lin'][.5], case['N_ENERGY']['64']['lin']['0.5'])
         self.assertIsNot(view[token_for(case, 'E_MAX')][8]['lin'][.5], case['Base case']['32']['lin']['0.5'])
 
+    def test_formatted_fixed_inputs_keep_direction_and_join_baseline(self):
+        case = fixture()
+        for row in case['__SCANS__']['N_XI']['tasks'].values():
+            row['input_parameters'].update(E_MAX=8.0000000001, BETAE_UNIT=.00010000000001)
+        original = copy.deepcopy(case)
+        token = token_for(case, 'N_XI')
+        view, _, _, diagnostics = convergence_case_view(case, {token: [32, 64]})
+        self.assertEqual(diagnostics, [])
+        self.assertEqual(set(view[token][48]['lin']), {-.5, .5})
+        self.assertIs(view[token][48]['lin'][.5], case['Base case']['32']['lin']['0.5'])
+        self.assertEqual(case, original)
+        self.assertEqual(convergence_case_view(case), convergence_case_view(json.loads(json.dumps(case))))
+
+    def test_float_scan_value_drift_is_visible_and_resolves_requested_value(self):
+        case = fixture()
+        rows = add_scan(case, 'ERROR_TOL', 'ERROR_TOL', [1e-5], [1e-4, 1e-5], kys=(-.5, .5))
+        rows['p000001']['input_parameters']['ERROR_TOL'] += 1e-14
+        token = token_for(case, 'ERROR_TOL')
+        view, _, _, diagnostics = convergence_case_view(case, {token: [1e-5]})
+        self.assertEqual(diagnostics, [])
+        self.assertIs(view[token][1e-5]['lin'][.5], case['ERROR_TOL']['1e-05']['lin']['0.5'])
+
+    def test_rejected_direction_stays_visible_with_point_specific_diagnostic(self):
+        for field, value, reason in [('E_MAX', 9, '固定参数'), ('N_XI', 99, '扫描值')]:
+            with self.subTest(field=field):
+                case = {}
+                rows = add_scan(case, 'N_XI', 'N_XI', [32], [48, 32])
+                rows['p000001']['input_parameters'][field] = value
+                if field == 'N_XI':
+                    rows['p000001']['values'][field] = value
+                    rows['p000001']['coordinate_path'][1] = str(value)
+                groups = convergence_groups(case)
+                self.assertEqual(len(groups), 1)
+                view, _, _, diagnostics = convergence_case_view(case)
+                self.assertTrue(any('N_XI / p000001' in message and reason in message for message in diagnostics))
+                self.assertFalse(next(iter(view.values()))[32]['lin'])
+
+    def test_tolerant_baseline_match_still_rejects_conflicting_owners_and_opposite_ky(self):
+        case = fixture()
+        add_scan(case, 'alias', 'N_ENERGY', [32], [32], role='baseline',
+                 physics=dict(PHYSICS, BETAE_UNIT=.00010000000001))
+        token = token_for(case, 'N_XI')
+        view, _, _, diagnostics = convergence_case_view(case, {token: [32]})
+        self.assertNotIn(.5, view[token][48]['lin'])
+        self.assertTrue(any('不同结果引用' in message for message in diagnostics))
+        tiny = {}
+        add_scan(tiny, 'Base case', 'N_ENERGY', [32], [32], role='baseline', kys=(-1e-14,))
+        add_scan(tiny, 'N_XI', 'N_XI', [32], [48, 32], kys=(1e-14,))
+        token = token_for(tiny, 'N_XI')
+        view, _, _, diagnostics = convergence_case_view(tiny, {token: [32]})
+        self.assertNotIn(1e-14, view[token][48]['lin'])
+        self.assertNotIn(-1e-14, view[token][32]['lin'])
+        self.assertTrue(diagnostics)
+
     def test_runtime_duration_does_not_change_physical_baseline_identity(self):
         case = fixture()
         for row in case['__SCANS__']['Base case']['tasks'].values():

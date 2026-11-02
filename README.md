@@ -1,15 +1,15 @@
-工程 1.24.51 / 管理器 1.10.35：单变量收敛扫描按“一个半径 × 一种离子方案”合并提交一个数组主作业。
+工程 1.24.52 / 管理器 1.10.35：修复单变量收敛扫描的基准共享、绘图诊断和部分归档重试。
 
-同一案例的 Base case、N_THETA、N_XI、N_ENERGY、N_RADIAL、E_MAX 等方向共用主作业号；不同半径、离子方案、输入来源或 constant 坐标分别提交。例如两个半径 × H/T 对应 4 个主作业，每案例 77 点的示例仍为 77 个数组子任务。已验证可复用的点从新提交中排除。
+基准和扫描值采用统一浮点容差，格式化尾差不会导致公共基准重复计算或绘图缺失；真实参数差异、带符号 ky 与不同结果引用仍分别核对。扫描值或固定值不符合已保存请求时，保留对应方向并显示具体点的原因。
 
-结果继续按 `RUN_DB / XX_convergence / nr=x_rho=x_<constant>=x / H|D|T / Base case|N_THETA|N_XI|…` 归档。每点保存自己的输入、方向和完整物理身份，支持按主作业号恢复；一个方向失败时其他有效方向仍可归档。续算只处理所选点，保留各点原扫描轴；新作业的 token、服务器和资源不会被来源记录覆盖。验证范围见 [验证记录](VALIDATION.md)。
+一个方向归档失败时，已成功方向保留为部分结果。自动收集不会把部分成功当作整体失败重试；显式重新收集只发布失败、新到达或结果引用已更新的点。缺少摘要的旧作业列表与清理只查已有索引，未确定覆盖的旧引用继续保留。新收敛扫描继续按一个半径 × 一种离子方案提交一个主作业，归档路径为 `RUN_DB / XX_convergence / nr=x_rho=x_<constant>=x / H|D|T / Base case|N_THETA|N_XI|…`。验证范围见 [验证记录](VALIDATION.md)。
 
 源码另附可选的原生 OMFIT File 菜单和 pygacode HIPREC 修复工具；模板更新不会自动安装这些环境修复。安装范围、备份和重启要求见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
 
 constant 固定值独立保存；计算参数页和“本页沿用输入值”保留该值，提交副本使用同一固定值。保持局部刷新，不读取结果库。223 项相关回归通过，新增 constant 用例另在本地 Linux/Tk 通过；完整 Linux 开窗验证仍受本机显示环境限制。更新后保存工程、关闭旧总控再重开；此前已被覆盖的值需重新填写并回车。详见 [验证记录](VALIDATION.md)。
 重试等待支持退出并保持界面响应，保留原作业身份；纯操作日志与输入备份分别清理，不触碰结果文件和未完成任务。Tk 解绑只移除确认归属的回调，保留其他事件处理。16 套件、278 项相关回归通过，9 项 Tk 用例另在本地 Ubuntu 复测通过。未在太原当前 OMFIT 会话实测，单次远程查询仍受现有超时控制。更新后保存工程，关闭旧总控再打开。详见 [验证记录](VALIDATION.md)。
 
-已有工程可下载本版 [仅更新代码脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.51/omfit-update-1.24.51.py)，上传到运行 OMFIT 的服务器执行，保留输入、结果和设置。若旧会话已经无响应，先重新启动 OMFIT，打开原工程后先不要双击总控，在 Command Box 执行更新脚本，再打开总控。无需重新收集或整理全部结果。任务删除见 [任务管理说明](CGYRO_TGLF_scan/DOCS/TASK_CLEANUP.md)。按作业号恢复见 [恢复说明](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。需要额外整理旧归档时，使用 [更新与整理脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.51/omfit-maintain-1.24.51.py)，步骤见 [Command Box 整理说明](COMMAND_BOX_COMPACTION.md)。
+已有工程可下载本版 [仅更新代码脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.52/omfit-update-1.24.52.py)，上传到运行 OMFIT 的服务器执行，保留输入、结果和设置。若旧会话已经无响应，先重新启动 OMFIT，打开原工程后先不要双击总控，在 Command Box 执行更新脚本，再打开总控。无需重新收集或整理全部结果。任务删除见 [任务管理说明](CGYRO_TGLF_scan/DOCS/TASK_CLEANUP.md)。按作业号恢复见 [恢复说明](CGYRO_TGLF_scan/DOCS/JOB_RECOVERY.md)。需要额外整理旧归档时，使用 [更新与整理脚本](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases/download/omfit/tdxy-liu/cgyro-tglf/1.24.52/omfit-maintain-1.24.52.py)，步骤见 [Command Box 整理说明](COMMAND_BOX_COMPACTION.md)。
 
 标签页不再使用某一时刻测到的固定高度：当前页随内容自然伸展，隐藏页不撑大窗口，返回时复用已建控件。根滚动区仍由既有局部布局器更新；不重建整个 GUI、不读取结果。192 项回归以及太原 Python 3.9/Linux Tk 的 6 项交叉验证通过，包括快速切页、延迟内容增高/缩短、滚动到底部、参数搜索清空和缩放重开。更新后关闭旧总控再打开，无需重新收集结果。目标环境使用独立原生控件测试宿主，完整用户工程仍需更新后确认；详见 [验证记录](VALIDATION.md)。
 
@@ -51,7 +51,7 @@ python3 omfit-deploy.py '/路径/旧工程.zip'
 
 用于 Linux 桌面的 OMFIT 工程，包含已审计、修复和整理的 CGYRO/TGLF 工具，以及项目内置的 **OMFIT GitHub 模板管理器**。
 
-当前工程版本为 **1.24.51**，管理器为 **1.10.35**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
+当前工程版本为 **1.24.52**，管理器为 **1.10.35**。分发包仅包含代码、输入模板和默认设置，计算前请导入自己的输入并配置求解器环境。项目专用支持库随工程保存，不依赖私人 Python 路径；兼容范围见 [OMFIT 兼容说明](OMFIT_COMPATIBILITY.md)。
 
 运行与环境 → 选择服务器和队列 → **自动检测** → 核对“服务器能力”和资源草稿 → **应用到整个工程**。检测结果只用于原服务器和隧道；队列查询失败时保留资源设置并显示未知。内存值用于展示，不推算求解器需求；账户 / QOS 配额及实时空闲资源仍由调度器决定。v3 检查点验证通过后可调整 MPI / OpenMP 资源继续计算。
 
@@ -59,7 +59,7 @@ python3 omfit-deploy.py '/路径/旧工程.zip'
 
 ## 在 OMFIT 打开
 
-发布后可从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.24.51.zip`，在 OMFIT 中打开。
+发布后可从 [Releases](https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/releases) 下载 `CGYRO_TGLF_scan_code_only_1.24.52.zip`，在 OMFIT 中打开。
 
 也可直接加载本仓库的工程入口：
 

@@ -4,14 +4,15 @@ Only the selected case's lightweight indexes are inspected. Shared baselines
 are joined by the complete cached generated input, never by task number, job
 ancestry, a Cartesian axis product, or a reader's science arrays.
 """
-from builtins import (KeyError, TypeError, ValueError, all, dict, float, format, len, list,
-                      set, sorted, str, tuple)
+from builtins import (KeyError, TypeError, ValueError, abs, all, any, dict, float, format, len, list,
+                      max, next, set, sorted, str, tuple)
+from bisect import bisect_left, bisect_right
 from collections import OrderedDict
 import hashlib
 import json
 import math
 from OMFITlib_cgyro_archive import RUN_CONTROL_PARAMETERS, case_scans, point_values, result_identity
-from OMFITlib_cgyro_convergence import DIRECTIONS
+from OMFITlib_cgyro_convergence import DIRECTIONS, PARAMETER_RTOL, PARAMETER_ATOL, same_parameters, same_value
 from OMFITlib_cgyro_reference import metadata_value, same_result_reference
 from OMFITlib_compare_options import parse_float_list_text
 
@@ -41,15 +42,41 @@ def _parameters(info, row):
     # the scan header retains the user's unscaled reference value.
     expected.update(row.get('effective_time', {}))
     for name, value in expected.items():
-        if name not in RUN_CONTROL_PARAMETERS and (name not in values or not math.isclose(
-                values[name], float(value), rel_tol=1e-9, abs_tol=1e-12)):
+        if name not in RUN_CONTROL_PARAMETERS and (name not in values or not same_value(values[name], value)):
             raise ValueError('生成输入摘要与结果坐标不一致：' + name)
+        if name == 'KY' and not same_parameters({'KY': values[name]}, {'KY': float(value)}):
+            raise ValueError('生成输入摘要与结果坐标不一致：带符号 KY')
     identity = result_identity(info, row)
     return values, (identity['runid'], identity['case_id'])
 
 
 def _coordinate(identity, values):
     return identity, tuple(sorted(values.items()))
+
+
+def _coordinate_bucket(key):
+    values = dict(key[1])
+    ky = values['KY']
+    return key[0], tuple(values), (ky > 0, ky < 0)
+
+
+def _coordinate_index(wanted):
+    """Bound tolerant lookups by physical case, field names and signed KY."""
+    buckets = {}
+    for key in wanted:
+        buckets.setdefault(_coordinate_bucket(key), []).append((dict(key[1])['KY'], key))
+    return {bucket: ([item[0] for item in rows], [item[1] for item in rows])
+            for bucket, entries in buckets.items() for rows in [sorted(entries)]}
+
+
+def _matching_coordinates(index, key):
+    values = dict(key[1])
+    ky = values['KY']
+    ky_values, keys = index.get(_coordinate_bucket(key), ([], []))
+    margin = max(abs(ky) * PARAMETER_RTOL, PARAMETER_ATOL) / (1 - PARAMETER_RTOL)
+    for candidate in keys[bisect_left(ky_values, ky - margin):bisect_right(ky_values, ky + margin)]:
+        if same_parameters(values, dict(candidate[1])):
+            yield candidate
 
 
 def _family(info, row, values, identity, axis, center):
@@ -60,6 +87,11 @@ def _family(info, row, values, identity, axis, center):
     if own.get('scale_time_with_ky', False) and values['KY'] > 1 and 'DELTA_T' in fixed:
         fixed['DELTA_T'] *= values['KY']
     return identity, axis, center, tuple(sorted(fixed.items()))
+
+
+def _same_family(first, second):
+    return (first[:2] == second[:2] and same_value(first[2], second[2])
+            and same_parameters(dict(first[3]), dict(second[3])))
 
 
 def convergence_groups(case):
@@ -87,11 +119,15 @@ def convergence_groups(case):
             problem = ''
             try:
                 values, identity = _parameters(info, row)
-                if axis not in values or values[axis] not in requested:
-                    continue
-                if not all(name in values and float(number) == values[name] for name, number in fixed.items()):
-                    continue
+                if axis not in values or not any(same_value(values[axis], value) for value in requested):
+                    raise ValueError('扫描值不在请求列表：{}={}，请求 {}'.format(axis, values.get(axis, '缺失'), requested))
+                mismatched = [name for name, number in fixed.items()
+                              if name not in values or not same_value(number, values[name])]
+                if mismatched:
+                    raise ValueError('固定参数与收敛基准不一致：' + ', '.join(
+                        '{}={}，预期 {}'.format(name, values.get(name, '缺失'), fixed[name]) for name in mismatched))
                 family = _family(info, row, values, identity, axis, center)
+                family = next((old for old in groups if old[0] != 'unverified' and _same_family(old, family)), family)
             except (KeyError, TypeError, ValueError) as error:
                 # An identified direction stays visible with a point-specific
                 # diagnostic, but cannot silently borrow an unproven baseline.
@@ -106,7 +142,7 @@ def convergence_groups(case):
                     _extra_fixed=dict(context.get('fixed', {})))
             group = groups[family]
             for value in requested:
-                if value not in group['values']:
+                if not any(same_value(value, previous) for previous in group['values']):
                     group['values'].append(value)
             if problem:
                 group['diagnostics'].append(problem)
@@ -171,7 +207,7 @@ def convergence_case_view(case, selected=None):
         group = groups[token]
         values = [group['baseline_value']]
         for value in parse_float_list_text(chosen):
-            if value not in values:
+            if not any(same_value(value, previous) for previous in values):
                 values.append(value)
         selections[token] = values
         metadata[token] = {key: value for key, value in group.items() if not key.startswith('_')}
@@ -185,7 +221,7 @@ def convergence_case_view(case, selected=None):
         return view, selections, metadata, diagnostics
     candidates, indexed = {}, []
     # Only this selected physical case's lightweight rows are searched. Reader
-    # resolution below is restricted to exact requested coordinates.
+    # resolution below is restricted to verified requested coordinates.
     for scan, info, rows in case_scans(case):
         for point, row in rows.items():
             try:
@@ -200,19 +236,20 @@ def convergence_case_view(case, selected=None):
             for token, values in selections.items():
                 group = groups[token]
                 axis, center = group['axis'], group['baseline_value']
-                if parameters.get(axis, None) == center and _family(
-                        info, row, parameters, identity, axis, center) == group['_family']:
+                if (axis in parameters and same_value(parameters[axis], center) and group['_frozen']
+                        and _same_family(_family(info, row, parameters, identity, axis, center), group['_family'])):
                     _request(wanted, token, axis, values, parameters, identity)
+    coordinate_index = _coordinate_index(wanted)
     for scan, point, row, key in indexed:
-        if key not in wanted:
+        matches = list(_matching_coordinates(coordinate_index, key))
+        if not matches:
             continue
         try:
             node = _point_reference(case, row)
-            previous = candidates.get(key, None)
-            if previous is None:
-                candidates[key] = [node]
-            elif not same_result_reference(previous[0], node):
-                previous.append(node)
+            for match in matches:
+                previous = candidates.setdefault(match, [])
+                if not any(same_result_reference(saved, node) for saved in previous):
+                    previous.append(node)
         except (KeyError, TypeError, ValueError) as error:
             # Unselected records never abort selected valid curves.
             diagnostics.append('{} / {}: {}'.format(scan, point, error))

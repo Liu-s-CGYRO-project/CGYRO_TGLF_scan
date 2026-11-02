@@ -87,7 +87,7 @@ def publish_loaded_run(root):
     _publish_scan(root, manifest)
 
 
-def _publish_scan(root, manifest, persist=True):
+def _publish_scan(root, manifest, persist=True, publish_points=None):
     """Install one physical case/direction; the caller owns job-level state."""
     errors = manifest.get('load_errors', {})
     loaded = [point for point in manifest.get('loaded_points', []) if point not in errors]
@@ -96,6 +96,8 @@ def _publish_scan(root, manifest, persist=True):
     expected = list(manifest.get('points', loaded))
     complete = (set(loaded) == set(expected) and not manifest.get('failed_points', [])
                 and not partial and not manifest.get('load_errors', {}))
+    if publish_points is not None:
+        readable = [point for point in readable if point in publish_points]
     continuation = manifest.get('continuation', None)
     if continuation and set(expected) != set(continuation['points']):
         raise ValueError('Continuation point list changed; the previous case is preserved')
@@ -245,6 +247,11 @@ def _publish_scan(root, manifest, persist=True):
     manifest['runid'] = run_id
     manifest['collection_status'] = 'incomplete' if errors else ('complete' if complete else 'partial')
     for point, row in task_rows.items():
+        if manifest.get('convergence_batch', False):
+            if row.get('archive_pending', False):
+                row.pop('published_result_id', None)
+            else:
+                row['published_result_id'] = reference_id(run_cases(root, manifest)[point])
         manifest['point_table'][point] = copy.deepcopy(dict(row))
     manifest['unpublished_points'] = [point for point, row in task_rows.items() if row.get('archive_pending', False)]
     if complete:
@@ -288,7 +295,12 @@ def _convergence_publication_groups(manifest):
 
 
 def _convergence_group_manifest(manifest, info, points):
-    """Keep the shared job identity while narrowing all point lists and maps."""
+    """Keep the shared job identity while narrowing all point lists and maps.
+
+    Input hashes, scheduler states and continuation warnings are collected on
+    the parent. Publication reads these snapshots; only its result rows and
+    archive outcomes are written back, not a second copy of scheduler state.
+    """
     lists = ('points', 'loaded_points', 'partial_points', 'failed_points', 'skipped_points', 'active_points')
     maps = ('point_table', 'input_sha256', 'point_workdirs', 'continuation_pending', 'point_states', 'load_errors')
     saved = {name: copy.deepcopy(value) for name, value in manifest.items()
@@ -322,6 +334,9 @@ def _publish_convergence_run(root, manifest):
     """Publish independent directions from one array without inventing jobs."""
     groups, errors = _convergence_publication_groups(manifest)
     summaries, installed = [], []
+    previous_summaries = {(item['runid'], item['case_id'], item['scan_key']): item
+                          for item in manifest.get('collection_groups', [])}
+    archived = set()
     unpublished = set(errors) | set(manifest.get('load_errors', {}))
     for info, points in groups:
         scoped = _convergence_group_manifest(manifest, info, points)
@@ -332,16 +347,37 @@ def _publish_convergence_run(root, manifest):
                        collection_status='incomplete' if scoped.get('load_errors', {}) else 'empty',
                        submission_complete=False, scan_complete=False)
         if readable:
+            # Collection keeps immutable owners. A successful direction must
+            # not be installed/released again just because its neighbor failed.
+            pending = set()
+            cases = run_cases(root, manifest)
+            for point in readable:
+                row = manifest['point_table'][point]
+                published = row.get('published_result_id', None)
+                if (published and row.get('run_token', '') == manifest['run_token'] and not row.get('archive_pending', False)
+                        and (point not in cases or reference_id(cases[point]) == published)):
+                    archived.add(point)
+                else:
+                    pending.add(point)
+            if not pending:
+                prior = previous_summaries.get((info['runid'], info['case_id'], scan_key(info)), {})
+                complete = (set(scoped.get('loaded_points', [])) == set(points)
+                    and not scoped.get('failed_points', []) and not scoped.get('partial_points', [])
+                    and not scoped.get('load_errors', {}))
+                summary.update(dict(submission_complete=complete, scan_complete=prior.get('scan_complete', False),
+                    collection_status='incomplete' if scoped.get('load_errors', {}) else 'complete' if complete else 'partial'))
+                summaries.append(summary)
+                continue
             try:
-                destination, previous = _publish_scan(root, scoped, persist=False)
+                destination, previous = _publish_scan(root, scoped, persist=False, publish_points=pending)
             except Exception as exc:
                 # Each case installation is independent. A malformed direction
                 # retains its inputs/results and cannot discard another case.
-                errors.update({point: str(exc) for point in readable})
-                unpublished.update(readable)
+                errors.update({point: str(exc) for point in pending})
+                unpublished.update(pending)
                 summary.update(dict(collection_status='incomplete', error=str(exc)))
             else:
-                for point in readable:
+                for point in pending:
                     row = copy.deepcopy(scoped['point_table'][point])
                     # A published header is a compact result view. Keep this
                     # job's original per-point scope (including reused points)
@@ -349,24 +385,30 @@ def _publish_convergence_run(root, manifest):
                     row['result_info'] = copy.deepcopy(manifest['point_table'][point]['result_info'])
                     manifest['point_table'][point] = row
                 unpublished.update(scoped.get('unpublished_points', []))
+                archived.update(pending - set(scoped.get('unpublished_points', [])))
                 installed.append((destination, previous))
                 summary.update({name: scoped[name] for name in ('collection_status', 'submission_complete', 'scan_complete')})
         summaries.append(summary)
     complete = (bool(summaries) and not errors and not manifest.get('load_errors', {})
                 and all(item['submission_complete'] for item in summaries))
+    successful = bool(archived or installed)
     manifest.update(dict(collection_groups=summaries, archive_errors=errors,
                     submission_complete=complete,
                     scan_complete=bool(summaries) and not errors and all(item['scan_complete'] for item in summaries),
                     unpublished_points=sorted(unpublished),
-                    collection_status='incomplete' if errors or manifest.get('load_errors', {}) else
-                        'complete' if complete else 'partial' if installed else 'empty'))
+                    collection_status='complete' if complete else 'partial' if successful else
+                        'incomplete' if errors or manifest.get('load_errors', {}) else 'empty'))
     if complete:
         manifest['status'] = 'published'
     remember_collection(root)
     for destination, previous in installed:
         release_published_results(root, destination, verified_cases=previous)
+    errors = dict(manifest.get('load_errors', {}), **errors)
+    if errors and not successful:
+        raise ValueError('Some convergence points were not archived; no verified direction was installed: ' + str(errors))
     if errors:
-        raise ValueError('Some convergence points were not archived; other verified results were preserved: ' + str(errors))
+        print('Convergence collection partially archived; pending points require explicit recollection: ' +
+              str(errors))
 
 
 if wait_for_completion:

@@ -8,6 +8,7 @@ from contextlib import nullcontext
 from copy import deepcopy
 from OMFITlib_tk_callbacks import RetryWait
 from OMFITlib_cgyro_storage import compact_storage
+from OMFITlib_cgyro_result_index import cache_job_result_contexts
 from OMFITlib_cgyro_db import ensure_layout, freeze_run_inputs, rollback_actions, run_is_deleted, run_records
 from OMFITlib_cgyro_run_state import (STOP_POLL_ATTEMPTS, STOP_POLL_SECONDS, STOP_QUERY_ERROR_LIMIT,
                                     collection_finished, linked_kill_local, native_remote_execute, pbs_wait, quote as shell_quote,
@@ -71,6 +72,7 @@ def save_current(root, factory=dict):
         # branches or overwrite that record from the stale live manifest.
         return
     compact_storage(root, factory, run_token=manifest['run_token'])
+    cache_job_result_contexts(manifest)
     batch = root.get('RUN_BATCH', {})
     token = manifest['run_token']
     if (batch.get('batch_id', '') and manifest.get('batch_id', '') == batch['batch_id']

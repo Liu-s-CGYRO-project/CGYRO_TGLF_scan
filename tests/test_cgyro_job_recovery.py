@@ -150,6 +150,19 @@ class Remote:
 
 
 class ManifestTests(unittest.TestCase):
+    def test_recovery_rebuilds_scope_headers_without_reusing_remote_publication_marks(self):
+        frozen, _, _ = convergence_manifest()
+        frozen['collection_groups'] = [dict(runid='wrong', case_id='wrong', scan_key='wrong', submission_complete=True)]
+        frozen['point_table']['p000001']['published_result_id'] = 'f' * 64
+        before = copy.deepcopy(frozen)
+        recovered = recovery._recovered_manifest(frozen, {'job_id': '123', 'user': 'user'},
+            ENDPOINT, 'remote-sidecar', '/tmp/recovered', [])
+        self.assertNotIn('published_result_id', recovered['point_table']['p000001'])
+        self.assertEqual(len(recovered['collection_groups']), 5)
+        self.assertTrue(all(item['runid'] == 'Jet_convergence' for item in recovered['collection_groups']))
+        self.assertTrue(all('submission_complete' not in item for item in recovered['collection_groups']))
+        self.assertEqual(frozen, before)
+
     def test_one_convergence_array_preserves_directions_physical_cases_and_signed_ky(self):
         frozen, script, payloads = convergence_manifest()
         with tempfile.TemporaryDirectory() as directory:

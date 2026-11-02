@@ -300,24 +300,115 @@ class StorageCases(unittest.TestCase):
         root, manifest = self.convergence_array()
         manifest['point_table']['p000002']['values']['N_THETA'] = 999
         publish = self.publisher()
-        with self.assertRaisesRegex(ValueError, 'Some convergence points'):
-            publish(root)
+        publish(root)
         catalog = archive_api.catalog_runs(root)['Jet_convergence']
         self.assertNotIn('N_THETA', catalog['nr=1__rho=0.33__ion=T']['__SCANS__'])
         self.assertIn('N_THETA', catalog['nr=2__rho=0.5__ion=D']['__SCANS__'])
         self.assertEqual(set(manifest['archive_errors']), {'p000002'})
-        self.assertEqual(manifest['collection_status'], 'incomplete')
+        self.assertEqual(manifest['collection_status'], 'partial')
         self.assertFalse(manifest['submission_complete'])
         self.assertEqual(manifest['unpublished_points'], ['p000002'])
         self.assertIn('p000002', db_api.run_cases(root))
         # Retry only the metadata mismatch; no new job or result file is needed.
         manifest['point_table']['p000002']['values']['N_THETA'] = 48
-        publish(root)
+        with patch.dict(publish.__globals__, store_scan=unittest.mock.Mock(wraps=archive_api.store_scan)):
+            install = publish.__globals__['store_scan']
+            publish(root)
+            self.assertEqual(install.call_count, 1)
+            self.assertEqual(set(install.call_args.args[3]), {'p000002'})
         self.assertEqual(manifest['archive_errors'], {})
         self.assertEqual(manifest['status'], 'published')
         self.assertEqual(len(manifest['collection_groups']), 6)
         self.assertEqual(len(root['RUN_HISTORY']), 1)
         self.assertIn('reused_scope', manifest['point_table']['p000001']['result_info']['convergence_group'])
+
+    def test_partial_publication_does_not_trigger_another_automatic_collection(self):
+        from OMFITlib_cgyro_workflow import collect_batch
+        root, manifest = self.convergence_array()
+        manifest['point_table']['p000002']['values']['N_THETA'] = 999
+        manifest['batch_id'] = 'batch'
+        root['RUN_BATCH'] = dict(batch_id='batch', tokens=['grouped'], case_ids=[manifest['case_id']])
+        root['SETTINGS'] = {'SETUP': dict(irun=0, idownsync=0)}
+        self.publisher()(root)
+        def unexpected(*args, **kwargs):
+            self.fail('automatic collector retried a sealed partial publication')
+        self.assertEqual(collect_batch(root, unexpected, automatic=True), [])
+        self.assertEqual(root['RUN_BATCH']['status'], 'partial')
+        self.assertEqual(set(manifest['archive_errors']), {'p000002'})
+
+    def test_no_successful_convergence_direction_remains_an_explicit_failure(self):
+        root, manifest = self.convergence_array(specifications=[(1, .33, 'T', 'N_THETA', 48, .5)])
+        manifest['point_table']['p000001']['values']['N_THETA'] = 999
+        with self.assertRaisesRegex(ValueError, 'Some convergence points'):
+            self.publisher()(root)
+        self.assertEqual(manifest['collection_status'], 'incomplete')
+        self.assertFalse(manifest['submission_complete'])
+        self.assertEqual(manifest['unpublished_points'], ['p000001'])
+
+    def test_group_publication_keeps_parent_hashes_states_and_continuation_warnings(self):
+        root, manifest = self.convergence_array()
+        manifest['point_states'] = {point: 'COMPLETED' for point in manifest['points']}
+        manifest['partial_points'] = ['p000002']
+        manifest['loaded_points'].remove('p000002')
+        manifest['continuation_pending'] = {'p000002': 'new samples did not reach restart target'}
+        maps = {name: copy.deepcopy(manifest[name]) for name in
+                ('input_sha256', 'point_states', 'continuation_pending')}
+        self.publisher()(root)
+        saved = root['RUN_HISTORY']['grouped']['manifest']
+        for name, expected in maps.items():
+            self.assertEqual(manifest[name], expected)
+            self.assertEqual(saved[name], expected)
+        self.assertEqual(saved['point_table']['p000002']['continuation_pending'], maps['continuation_pending']['p000002'])
+        self.assertEqual(saved['point_table']['p000001']['scheduler_state'], 'COMPLETED')
+        self.assertEqual(saved['point_table']['p000001']['input_sha256'], maps['input_sha256']['p000001']['input.cgyro'])
+
+    def test_changed_owner_is_published_but_unchanged_neighbor_is_not_reinstalled(self):
+        root, manifest = self.convergence_array()
+        manifest['load_errors'] = {'p000002': 'unreadable'}
+        publish = self.publisher()
+        publish(root)
+        first_owner = manifest['point_table']['p000001']['published_result_id']
+        cases = db_api.run_cases(root)
+        # A newly validated immutable owner, as produced by another downsync.
+        parameters = dict(manifest['point_table']['p000001']['input_requested_parameters'])
+        new = self.result('changed-owner', b'changed output', parameters=parameters)
+        directory = Path(new.filename)
+        (directory / 'input.cgyro.gen').write_text(''.join('{} {}\n'.format(v, k) for k, v in parameters.items()))
+        (directory / 'out.cgyro.time').write_text('0\n900\n')
+        cases['p000001'] = storage.store_result(root, new)
+        manifest['collection_status'] = 'ready'
+        with patch.dict(publish.__globals__, store_scan=unittest.mock.Mock(wraps=archive_api.store_scan)):
+            install = publish.__globals__['store_scan']
+            publish(root)
+            self.assertEqual(install.call_count, 1)
+            self.assertEqual(set(install.call_args.args[3]), {'p000001'})
+        self.assertNotEqual(manifest['point_table']['p000001']['published_result_id'], first_owner)
+
+    def test_only_new_points_in_one_direction_are_republished_after_partial_read(self):
+        root, manifest = self.convergence_array(specifications=[(1, .33, 'T', 'N_THETA', 48, ky) for ky in (.5, .6)])
+        manifest['load_errors'] = {'p000002': 'unreadable'}
+        publish = self.publisher()
+        publish(root)
+        self.assertFalse(manifest['submission_complete'])
+        manifest['load_errors'] = {}
+        manifest['collection_status'] = 'ready'
+        with patch.dict(publish.__globals__, store_scan=unittest.mock.Mock(wraps=archive_api.store_scan)):
+            install = publish.__globals__['store_scan']
+            publish(root)
+            self.assertEqual(install.call_count, 1)
+            self.assertEqual(set(install.call_args.args[3]), {'p000002'})
+        self.assertTrue(manifest['submission_complete'])
+        self.assertTrue(manifest['scan_complete'])
+        case = archive_api.catalog_runs(root)['Jet_convergence'][manifest['case_id']]
+        self.assertEqual(len(case['__SCANS__']['N_THETA']['tasks']), 2)
+
+    def test_all_unreadable_convergence_points_remain_a_collection_error(self):
+        root, manifest = self.convergence_array()
+        manifest['load_errors'] = {point: 'unreadable' for point in manifest['points']}
+        with self.assertRaisesRegex(ValueError, 'no verified direction'):
+            self.publisher()(root)
+        self.assertEqual(manifest['collection_status'], 'incomplete')
+        self.assertEqual(set(manifest['unpublished_points']), set(manifest['points']))
 
     def test_empty_convergence_groups_do_not_touch_result_readers(self):
         root, manifest = self.convergence_array()
@@ -364,7 +455,7 @@ class StorageCases(unittest.TestCase):
         self.assertEqual(summaries['N_THETA']['loaded'], 0)
         self.assertEqual(summaries['N_THETA']['collection_status'], 'incomplete')
         self.assertEqual(summaries['Base case']['collection_status'], 'complete')
-        self.assertEqual(manifest['collection_status'], 'incomplete')
+        self.assertEqual(manifest['collection_status'], 'partial')
         self.assertFalse(manifest['submission_complete'])
         self.assertEqual(manifest['unpublished_points'], ['p000002'])
 

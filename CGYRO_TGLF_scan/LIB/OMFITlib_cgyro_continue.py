@@ -359,6 +359,7 @@ def previous_final_time(metadata, tag):
 def prepare_point(module, plan, point_id, stage, reader, runtime=None):
     """Copy to a new run directory and change only the segment duration."""
     row = copy.deepcopy(plan['rows'][point_id])
+    row.pop('published_result_id', None)  # A new attempt has not been published in this job.
     axes = row.get('result_info', {}).get('scan_axes', plan.get('info', {}).get('scan_axes', []))
     if axes:
         # Job manifests use the primary axis name; the public archive uses a

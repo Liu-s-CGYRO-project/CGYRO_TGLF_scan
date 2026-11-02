@@ -12,7 +12,7 @@ import test_cgyro_storage as fixtures
 import test_checkpoint_resources as checkpoints
 from test_checkpoint_resources import Input
 from OMFITlib_cgyro_result_index import (result_records, select_result, selected_result,
-                                        find_record, scan_scope, result_identity, release_published_results)
+                                        find_record, scan_scope, result_identity, release_published_results, cache_job_result_contexts)
 from OMFITlib_cgyro_continue import continuation_plan, prepare_point
 from OMFITlib_cgyro_payload import pack_results
 from OMFITlib_cgyro_input_identity import cache_parameters, cache_competing_parameters, read_parameters
@@ -115,6 +115,7 @@ class ResultIdentityTests(unittest.TestCase):
     def test_retire_grouped_alias_only_for_matching_nonheader_case(self):
         module = {}
         first, second, row1, row2, ref1, ref2 = self.grouped_pending_job(module)
+        cache_job_result_contexts(db.run_records(module)['grouped']['manifest'])
         current, replacement_row, replacement = self.result(module, 'grouped-replacement', ky=-.1)
         current.update(case_id=second['case_id'], nr=2, source_nr=2, rho=.5, mass='D', ion_case='D')
         case = self.public(module, current, replacement_row, replacement)
@@ -174,9 +175,12 @@ class ResultIdentityTests(unittest.TestCase):
         self.assertEqual([call.args[2] for call in read.call_args_list], ['p000020'])
         self.assertEqual(plan['points'], ['p000020'])
         self.assertEqual(set(plan['rows']), {'p000020'})
+        plan['rows']['p000020']['published_result_id'] = 'e' * 64
         current, row, _ = prepare_point(module, plan, 'p000020', str(self.base / 'single-stage'), Input, runtime=self.current)
         self.assertEqual(row['result_path'][0], 'N_XI')
         self.assertEqual(current['KY'], .2)
+        self.assertNotIn('published_result_id', row)
+        self.assertEqual(plan['rows']['p000020']['published_result_id'], 'e' * 64)
 
     def test_unstarted_convergence_selection_uses_its_own_direction_context(self):
         entry = dict(run_token='job', runid='Jet', case_id='nr=1__rho=0.33__ion=T',
@@ -201,6 +205,40 @@ class ResultIdentityTests(unittest.TestCase):
             collection_groups=[dict(runid='Other', case_id='nr=2__rho=0.5__ion=D', scan_key='N_THETA')],
             point_table=ClosedTable()))
         release_published_results(module, case)
+
+    def test_missing_scope_summary_never_expands_an_unselected_old_job(self):
+        class ClosedTable(dict):
+            def values(self):
+                raise AssertionError('unselected old point table was traversed')
+            def items(self):
+                raise AssertionError('unselected old point table was traversed')
+        module = {}
+        info, row, reference = self.result(module, 'selected-scope')
+        case = self.public(module, info, row, reference)
+        old = db.run_records(module)['old-convergence'] = dict(manifest=dict(
+            convergence_batch=True, status='cancelled', collection_status='partial',
+            runid='Other', case_id='nr=2__rho=0.5__ion=D', point_table=ClosedTable()),
+            cases={'p000001': reference})
+        result_records(module, include_tasks=False)
+        release_published_results(module, case)
+        self.assertEqual(old['cases'], {'p000001': reference})
+        self.assertNotIn('collection_groups', old['manifest'])
+
+    def test_scope_headers_are_cached_once_on_explicit_save_and_survive_roundtrip(self):
+        module = {}
+        self.grouped_pending_job(module)
+        manifest = db.run_records(module)['grouped']['manifest']
+        module['RUN_MANIFEST'] = manifest
+        fixtures.queue_api.save_current(module)
+        self.assertEqual(len(manifest['collection_groups']), 2)
+        headers = json.loads(json.dumps(manifest['collection_groups']))
+        self.assertEqual(headers, module['RUN_HISTORY']['grouped']['manifest']['collection_groups'])
+        class ClosedTable(dict):
+            def values(self):
+                raise AssertionError('cached scope was rebuilt')
+        manifest['point_table'] = ClosedTable()
+        cache_job_result_contexts(manifest)
+        self.assertEqual(manifest['collection_groups'], headers)
 
     def test_scoped_bookkeeping_does_not_compute_global_storage_totals(self):
         module = {}
