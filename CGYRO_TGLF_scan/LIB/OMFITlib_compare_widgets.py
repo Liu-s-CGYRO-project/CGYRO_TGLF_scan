@@ -134,29 +134,35 @@ class ComparisonWidgets:
                     self.ui.CheckBox(path_template.format(idx=idx), label,
                                      updateGUI=True, width=18, help=help_text)
 
-    def _render_key_checkbox_grid(self, path_builder, values, cols=2, labels=None):
+    def _render_key_checkbox_grid(self, path_builder, values, cols=2, labels=None,
+                                  extra_choices=(), enabled=True):
         labels = self._choice_labels(values) if labels is None else labels
-        for begin in range(0, len(values), cols):
+        count = len(values) + len(extra_choices)
+        for begin in range(0, count, cols):
             with self.ui.same_row():
-                for key in values[begin:begin + cols]:
+                for index in range(begin, min(begin + cols, count)):
+                    if index >= len(values):
+                        extra_choices[index - len(values)]()
+                        continue
+                    key = values[index]
                     label, help_text = labels[key]
-                    self.ui.CheckBox(path_builder(key), label, updateGUI=True, width=18, help=help_text)
+                    self.ui.CheckBox(path_builder(key), label, updateGUI=True, width=18, help=help_text,
+                                     **({} if enabled else {'state': 'disabled'}))
 
     def _render_parameter_entries(self, state, flag_key, selected_key, parameters,
                                   checkbox_path_builder, entry_path_builder, value_keys_builder,
-                                  unchecked_policy='empty', entry_renderer=None):
+                                  unchecked_policy='empty', entry_renderer=None,
+                                  extra_choices=(), enabled=True):
         selected = state.setdefault(selected_key, {})
         flags = sync_flags(state, flag_key, parameters, selected_key)
+        indices = dict(enumerate(parameters))
+        self._render_key_checkbox_grid(
+            lambda index: checkbox_path_builder(index, indices[index]), list(indices),
+            labels={index: self._choice_label(name) for index, name in indices.items()},
+            extra_choices=extra_choices, enabled=enabled)
+        if not enabled:
+            return selected  # A different scan item is active; retain ordinary choices.
         self._prune_mapping_keys(selected, parameters)
-        # Match the shared compact layout's two columns. Splitting groups of
-        # three into two columns left a separate short row after every group.
-        for begin in range(0, len(parameters), 2):
-            with self.ui.same_row():
-                for idx in range(begin, min(begin + 2, len(parameters))):
-                    name = parameters[idx]
-                    label, help_text = self._choice_label(name)
-                    self.ui.CheckBox(checkbox_path_builder(idx, name), label,
-                                     updateGUI=True, width=18, help=help_text)
         for idx, name in enumerate(parameters):
             if flags.get(idx, None):
                 available = self._normalize_value_list(value_keys_builder(name))

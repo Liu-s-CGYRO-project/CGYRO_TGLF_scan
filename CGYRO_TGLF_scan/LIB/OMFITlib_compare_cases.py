@@ -350,18 +350,10 @@ class CaseSelection(ComparisonWidgets):
         results, _ = self._choose_tglf(tg, lambda *k: path('TGLF', *k), target=target)
         self._tglf_parameters(tg, path, results, tg.get('rho_selected', []))
 
-    def _convergence_entries(self, state, path, run, radii, labels):
+    def _convergence_entries(self, state, path, run, radii, labels, groups_by_nr=None):
         """One convergence case, with independent directional selections."""
-        groups_by_nr = {str(nr): convergence_groups(run[nr]) for nr in radii if nr in run}
-        default = '收敛测试' if any(groups_by_nr.values()) else '常规扫描'
-        state.setdefault('cgyro_view', default)
-        # Native CheckBox supports mapped values, preserving old project
-        # selections without a duplicate mode flag or migration on opening.
-        self.ui.CheckBox(path('cgyro_view'), 'convergence_test',
-                         mapFalseTrue=['常规扫描', '收敛测试'], default=default, updateGUI=True,
-                         help='勾选后只选择收敛测试方向；取消勾选后选择常规扫描。两类取值分别记忆。')
-        if state['cgyro_view'] != '收敛测试':
-            return False
+        if groups_by_nr is None:
+            groups_by_nr = {str(nr): convergence_groups(run[nr]) for nr in radii if nr in run}
         self.ui.Separator('收敛测试')
         self.ui.Label('每个扫描方向单独一个绘图标签页；自动加入参数一致的基准曲线。', align='left')
         selections = state.setdefault('convergence_selected_by_nr', {})
@@ -413,29 +405,46 @@ class CaseSelection(ComparisonWidgets):
         return render() if section is None else section.show()
 
     def _cgyro_scan_entries(self, state, path, run, radii, labels):
-        """The mode and parameter controls share one local refresh boundary."""
-        if self._convergence_entries(state, path, run, radii, labels):
-            return
-        run = {nr: ordinary_case_view(run[nr]) for nr in radii if nr in run}
-        self.ui.Separator('常规扫描参数与取值')
-        if not any(stable_keys(case) for case in run.values()):
-            self.ui.Label('所选案例没有常规扫描结果；勾选 convergence_test 查看收敛测试。', align='left')
-            return
+        """Choose a scan item below the selected radius/isotope, locally."""
+        groups = {str(nr): convergence_groups(run[nr]) for nr in radii if nr in run}
+        default = '收敛测试' if any(groups.values()) else '常规扫描'
+        state.setdefault('cgyro_view', default)
+        convergence = state['cgyro_view'] == '收敛测试'
+
+        def convergence_choice():
+            # Preserve the saved mapped value; this is a scan-list item, not
+            # a switch in the radius/isotope selection area.
+            self.ui.CheckBox(path('cgyro_view'), 'convergence_test', width=18,
+                             mapFalseTrue=['常规扫描', '收敛测试'], default=default, updateGUI=True,
+                             help='仅绘制收敛测试；取消勾选后恢复普通扫描参数及取值。')
+
+        ordinary = {nr: ordinary_case_view(run[nr]) for nr in radii if nr in run}
+        self.ui.Separator('扫描参数与取值')
         self.ui.CheckBox(path('force_read_all_nr_items'), '各输入案例分别选择参数',
-                         default=False, updateGUI=True)
+                         default=False, updateGUI=True, state='disabled' if convergence else 'normal')
         if not state.get('force_read_all_nr_items', None):
-            parameters = self._intersection_of_keysets({nr: run[nr].keys() for nr in radii if nr in run})
-            self.ui.Label('选择共同参数，再填写需要比较的扫描值。', align='left')
+            parameters = self._intersection_of_keysets({nr: ordinary[nr].keys() for nr in radii if nr in ordinary})
+            self.ui.Label('选择扫描项，再填写取值；convergence_test 仅绘制收敛测试。', align='left')
             self._render_parameter_entries(
                 state, 'para_list_flag', 'selected_paras', parameters,
                 lambda i, name: path('para_list_flag', i), lambda name: path('selected_paras', name),
-                lambda name: (v for nr in radii if name in run.get(nr, {}) for v in run[nr][name].keys()),
-                entry_renderer=lambda name, selected: self._multi_axis_entries(state, path, run, radii, name, selected))
-            return
+                lambda name: (v for nr in radii if name in ordinary.get(nr, {}) for v in ordinary[nr][name].keys()),
+                entry_renderer=lambda name, selected: self._multi_axis_entries(state, path, ordinary, radii, name, selected),
+                extra_choices=(convergence_choice,), enabled=not convergence)
+        else:
+            # Per-case choices keep their existing identities. The shared
+            # convergence item applies only to the selected radius/isotopes.
+            self.ui.Label('选择扫描项；convergence_test 仅绘制收敛测试。', align='left')
+            self._cgyro_individual_entries(state, path, ordinary, radii, labels,
+                                            convergence_choice, enabled=not convergence)
+        if convergence:
+            self._convergence_entries(state, path, run, radii, labels, groups_by_nr=groups)
+
+    def _cgyro_individual_entries(self, state, path, run, radii, labels, convergence_choice, enabled):
         by_nr = state.setdefault('selected_paras_by_nr', {})
         flags_by_nr = state.setdefault('para_list_flag_by_nr', {})
         aggregate = {}
-        for nr in radii:
+        for index, nr in enumerate(radii):
             self.ui.Separator('{} · 扫描参数'.format(labels[nr][0]))
             node = run.get(nr, {})
             names = stable_keys(node)
@@ -443,7 +452,10 @@ class CaseSelection(ComparisonWidgets):
             flags = flags_by_nr.setdefault(str(nr), {})
             for name in names:
                 flags.setdefault(name, name in values and self._is_nonempty_selection(values[name]))
-            self._render_key_checkbox_grid(lambda name: path('para_list_flag_by_nr', str(nr), name), names)
+            self._render_key_checkbox_grid(lambda name: path('para_list_flag_by_nr', str(nr), name), names,
+                                          extra_choices=(convergence_choice,) if index == 0 else (), enabled=enabled)
+            if not enabled:
+                continue
             for name in names:
                 if not flags.get(name, None):
                     values.pop(name, None)
@@ -453,4 +465,5 @@ class CaseSelection(ComparisonWidgets):
                     self._parameter_entry(path('selected_paras_by_nr', str(nr), name), name, values[name],
                                           default_values=self._normalize_value_list(node[name].keys()))
                 aggregate.setdefault(name, []).extend(values[name])
-        state['selected_paras'] = {name: self._normalize_value_list(values) for name, values in aggregate.items()}
+        if enabled:
+            state['selected_paras'] = {name: self._normalize_value_list(values) for name, values in aggregate.items()}

@@ -1,5 +1,6 @@
 """Selection/plot boundaries for the dedicated one-factor convergence case."""
 import copy
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import sys
@@ -19,10 +20,24 @@ from OMFITlib_compare_convergence import convergence_groups
 class UI:
     def __init__(self):
         self.events = []
+        self.rows = []
+        self.row = None
+
+    @contextmanager
+    def same_row(self):
+        previous = self.row
+        self.row = []
+        self.rows.append(self.row)
+        try:
+            yield
+        finally:
+            self.row = previous
 
     def __getattr__(self, method):
         def record(*args, **kwargs):
             self.events.append((method, args, kwargs))
+            if method == 'CheckBox' and self.row is not None:
+                self.row.append(args[1])
         return record
 
 
@@ -52,13 +67,32 @@ class ConvergencePlottingTests(unittest.TestCase):
                 patch.object(app, '_multi_axis_entries', side_effect=AssertionError('Cartesian UI used')):
             app.render_mode_cgyro_vs_cgyro(settings)
         self.assertEqual(settings['cgyro_view'], '收敛测试')
-        self.assertEqual([args[0] for kind, args, _ in ui.events if kind == 'Separator'], ['收敛测试'])
+        self.assertEqual([args[0] for kind, args, _ in ui.events if kind == 'Separator'],
+                         ['扫描参数与取值', '收敛测试'])
         self.assertEqual(len([1 for kind, args, _ in ui.events if kind == 'Entry']), 2)
         self.assertFalse(any(' × ' in str(args) for _, args, _ in ui.events))
         self.assertFalse(any(kind == 'ComboBox' and 'cgyro_view' in str(args) for kind, args, _ in ui.events))
         toggles = [kwargs for kind, args, kwargs in ui.events if kind == 'CheckBox' and args[1] == 'convergence_test']
         self.assertEqual(len(toggles), 1)
         self.assertEqual(toggles[0]['mapFalseTrue'], ['常规扫描', '收敛测试'])
+        self.assertEqual(ui.rows, [['convergence_test']])
+
+    def test_convergence_choice_is_in_the_selected_isotopes_scan_grid(self):
+        root, settings = fixture()
+        case = indexed_case()
+        for name in ('N_RADIAL', 'N_THETA', 'ordinary'):
+            case[name] = {'1': {}, '2': {}}
+        ui = UI()
+        app = cases.CaseSelection(root, ui)
+        with patch.object(app, '_choose_cgyro', return_value=({'nr=1': case}, ['nr=1'])):
+            app.render_mode_cgyro_vs_cgyro(settings)
+        self.assertEqual(ui.rows, [['N_RADIAL', 'N_THETA'], ['ordinary', 'convergence_test']])
+        self.assertTrue(all(kwargs.get('state') == 'disabled' for kind, args, kwargs in ui.events
+                            if kind == 'CheckBox' and args[1] in ('N_RADIAL', 'N_THETA', 'ordinary')))
+        captions = [args[1] if kind == 'CheckBox' else args[0] for kind, args, _ in ui.events
+                    if kind in ('Separator', 'CheckBox')]
+        self.assertLess(captions.index('扫描参数与取值'), captions.index('convergence_test'))
+        self.assertLess(captions.index('convergence_test'), captions.index('收敛测试'))
 
     def test_ordinary_and_convergence_controls_keep_separate_selections(self):
         root, settings = fixture()
@@ -68,30 +102,53 @@ class ConvergencePlottingTests(unittest.TestCase):
         ui = UI()
         app = cases.CaseSelection(root, ui)
         saved = copy.deepcopy(settings['convergence_selected_by_nr'])
-        with patch.object(app, '_choose_cgyro', return_value=({'nr=1': case}, ['nr=1'])), \
-                patch.object(app, '_render_parameter_entries') as parameters:
+        with patch.object(app, '_choose_cgyro', return_value=({'nr=1': case}, ['nr=1'])):
             app.render_mode_cgyro_vs_cgyro(settings)
-            self.assertEqual(parameters.call_args.args[3], ['ordinary'])
+            self.assertEqual([args[1] for kind, args, _ in ui.events if kind == 'Entry'], ['ordinary'])
             self.assertEqual(settings['convergence_selected_by_nr'], saved)
             settings['cgyro_view'] = '收敛测试'
-            parameters.reset_mock()
+            ui.events.clear()
             app.render_mode_cgyro_vs_cgyro(settings)
-            parameters.assert_not_called()
+            self.assertNotIn('ordinary', [args[1] for kind, args, _ in ui.events if kind == 'Entry'])
             self.assertEqual(settings['selected_paras'], {'ordinary': [1]})
             settings['cgyro_view'] = '常规扫描'
+            ui.events.clear()
             app.render_mode_cgyro_vs_cgyro(settings)
-            self.assertEqual(parameters.call_args.args[3], ['ordinary'])
+            self.assertEqual([args[1] for kind, args, _ in ui.events if kind == 'Entry'], ['ordinary'])
+            self.assertEqual(settings['selected_paras'], {'ordinary': [1]})
+
+    def test_per_case_scan_choices_survive_exclusive_convergence_selection(self):
+        root, settings = fixture()
+        case = indexed_case()
+        case['ordinary'] = {'1': {}, '2': {}}
+        settings.update(nr_CGYRO=['nr=1', 'nr=2'], force_read_all_nr_items=True,
+                        selected_paras={'ordinary': [1, 2]},
+                        selected_paras_by_nr={'nr=1': {'ordinary': [1]}, 'nr=2': {'ordinary': [2]}})
+        saved = copy.deepcopy(settings['selected_paras_by_nr'])
+        ui = UI()
+        app = cases.CaseSelection(root, ui)
+        with patch.object(app, '_choose_cgyro', return_value=({'nr=1': case, 'nr=2': case}, ['nr=1', 'nr=2'])):
+            app.render_mode_cgyro_vs_cgyro(settings)
+            self.assertEqual(ui.rows, [['ordinary', 'convergence_test'], ['ordinary']])
+            self.assertEqual(settings['selected_paras_by_nr'], saved)
+            self.assertEqual(settings['selected_paras'], {'ordinary': [1, 2]})
+            self.assertNotIn('ordinary', [args[1] for kind, args, _ in ui.events if kind == 'Entry'])
+            settings['cgyro_view'] = '常规扫描'
+            ui.events.clear()
+            app.render_mode_cgyro_vs_cgyro(settings)
+        self.assertEqual([args[1] for kind, args, _ in ui.events if kind == 'Entry'], ['ordinary', 'ordinary'])
+        self.assertEqual(settings['selected_paras_by_nr'], saved)
 
     def test_convergence_only_run_does_not_leak_into_unchecked_ordinary_list(self):
         root, settings = fixture()
         settings['cgyro_view'] = '常规扫描'
         ui = UI()
         app = cases.CaseSelection(root, ui)
-        with patch.object(app, '_choose_cgyro', return_value=({'nr=1': indexed_case()}, ['nr=1'])), \
-                patch.object(app, '_render_parameter_entries') as parameters:
+        with patch.object(app, '_choose_cgyro', return_value=({'nr=1': indexed_case()}, ['nr=1'])):
             app.render_mode_cgyro_vs_cgyro(settings)
-        parameters.assert_not_called()
-        self.assertTrue(any('没有常规扫描结果' in str(args) for _, args, _ in ui.events))
+        self.assertEqual(ui.rows, [['convergence_test']])
+        self.assertFalse(any(kind == 'Entry' for kind, _, _ in ui.events))
+        self.assertTrue(any('没有共同的扫描参数' in str(args) for _, args, _ in ui.events))
 
     def test_ordinary_plot_does_not_read_stale_selected_convergence_branches(self):
         root, settings = fixture()
@@ -217,8 +274,17 @@ class ConvergencePlottingTests(unittest.TestCase):
         # Simulate native index persistence: physical data in this fixture is
         # JSON-safe, and no task/ancestry record exists in the reopened tree.
         root = json.loads(json.dumps(root))
+        class UnreadOrdinary(dict):
+            def __getitem__(self, key):
+                raise AssertionError('Convergence plotting opened an ordinary result')
+            def get(self, key, default=None):
+                raise AssertionError('Convergence plotting opened an ordinary result')
+        root['CGYRO_scan']['RUN_DB']['Jet_convergence'][cid]['ordinary'] = {
+            '1': {'lin': {'.5': UnreadOrdinary()}}}
+        root['SETTINGS']['PHYSICS']['CGYRO_vs_CGYRO']['selected_paras'] = {'ordinary': [1]}
         ctx = selection.build_context(root)
         items = plotting.collect_plot_items(root, ctx)
+        self.assertEqual(ctx['selected_paras'], {})
         self.assertEqual(ctx['_diagnostics'], [])
         self.assertEqual(len(items), 6)
         baseline = {item['slice_meta']['axis']: item for item in items if item['value'] == item['slice_meta']['baseline_value']}

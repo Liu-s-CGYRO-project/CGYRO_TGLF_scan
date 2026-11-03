@@ -767,6 +767,16 @@ class NativeTabsTests(unittest.TestCase):
 
         self.host.render(render)
         source, radius, header, notebook = self.source, self.radius, self.header, self.pages.notebook
+        ordinary_path = prefix + "['para_list_flag'][0]"
+        ordinary = checks[ordinary_path][0]
+        convergence = checks[prefix + "['cgyro_view']"][0]
+        # These are sibling cells in the scan grid, below the source/isotope
+        # selector. The mapped scan choice remains clickable while ordinary
+        # controls are disabled and retain their saved selection.
+        self.assertIs(ordinary.master.master.master, convergence.master.master.master)
+        self.assertTrue(ordinary.instate(['disabled', 'selected']))
+        self.assertFalse(convergence.instate(['disabled']))
+        self.assertNotIn(prefix + "['selected_paras']['ordinary']", fields)
         events = []
         self.host.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
         def toggle():
@@ -777,10 +787,13 @@ class NativeTabsTests(unittest.TestCase):
 
         toggle()
         self.assertEqual(settings['cgyro_view'], '常规扫描')
+        self.assertFalse(checks[ordinary_path][0].instate(['disabled']))
         self.entry = fields[prefix + "['selected_paras']['ordinary']"]
         self.commit('[2]')
         toggle()
         self.assertEqual(settings['cgyro_view'], '收敛测试')
+        self.assertTrue(checks[ordinary_path][0].instate(['disabled']))
+        self.assertEqual(settings['selected_paras'], {'ordinary': [2]})
         token = next(key for key in settings['convergence_flags_by_nr']['nr=1'] if ':N_XI:' in key)
         control = checks[prefix + "['convergence_flags_by_nr']['nr=1'][" + repr(token) + "]"][0]
         self.host.invoke(lambda: control.event_generate('<ButtonRelease-1>'))
