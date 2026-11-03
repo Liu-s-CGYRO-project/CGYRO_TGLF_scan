@@ -17,6 +17,34 @@ class QueueWaitTests(unittest.TestCase):
         self.wait = patch.object(callbacks.RetryWait, 'wait').start()
         self.addCleanup(patch.stopall)
 
+    def test_normal_wait_supplies_progress_callback_without_claiming_solver_success(self):
+        self.manifest.update(scheduler='slurm', status='submitted', run_token='a' * 32)
+        def remote(ui, server, command, directory, tunnel, **kwargs):
+            self.assertEqual((server, directory, tunnel), ('cluster', '/run', ''))
+            self.assertIn('CGYRO_WAIT|123', command)
+            self.assertNotIn('sbatch', command)
+            callback = kwargs['progressFunction']
+            self.assertEqual(callback('CGYRO_WAIT|123|2|1|0\n'), 0)
+            self.assertEqual(callback('CGYRO_WAIT_LEFT|123\n'), 0)
+            return 0
+        with patch.object(queue, 'save_current'), patch.object(queue, 'native_remote_execute', side_effect=remote):
+            queue.wait_current(self.root, self.ui)
+        self.assertTrue(self.manifest['wait_completed'])
+        self.assertEqual(self.manifest['status'], 'submitted_or_finished')
+        self.assertNotIn('collection_status', self.manifest)
+        self.assertEqual(self.manifest['job_id'], '123')
+
+    def test_wait_progress_cannot_hide_a_reentrant_job_change(self):
+        self.manifest.update(scheduler='slurm', status='submitted', run_token='a' * 32)
+        def remote(*args, **kwargs):
+            kwargs['progressFunction']('CGYRO_WAIT|123|0|1|0\n')
+            self.manifest['job_id'] = '456'
+            return 0
+        with patch.object(queue, 'save_current'), patch.object(queue, 'native_remote_execute', side_effect=remote):
+            with self.assertRaisesRegex(RuntimeError, 'job changed'):
+                queue.wait_current(self.root, self.ui)
+        self.assertNotIn('wait_completed', self.manifest)
+
     def test_terminal_required_after_polling(self):
         with patch.object(queue, 'refresh_run_state', side_effect=[{'terminal': False}, {'terminal': True}]) as query:
             queue.wait_for_stop(self.root, self.ui)

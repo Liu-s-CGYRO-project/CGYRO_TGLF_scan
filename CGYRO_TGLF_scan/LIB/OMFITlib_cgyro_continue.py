@@ -325,7 +325,7 @@ def restart_files(directory, source, verified=False):
     """
     if not verified:
         checkpoint_tag(directory)
-    required = ['out.cgyro.prec']
+    required = ['out.cgyro.prec', 'out.cgyro.timing']
     required.append('out.cgyro.freq' if int(source.get('N_TOROIDAL', 1)) == 1 else 'bin.cgyro.freq')
     if int(source.get('PROFILE_MODEL', 1)) == 2:
         required.extend(('input.profiles', 'input.profiles.geo'))

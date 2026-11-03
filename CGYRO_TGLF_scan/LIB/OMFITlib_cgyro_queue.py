@@ -7,12 +7,13 @@ from builtins import BaseException, Exception, RuntimeError, ValueError, any, di
 from contextlib import nullcontext
 from copy import deepcopy
 from OMFITlib_tk_callbacks import RetryWait
+from OMFITlib_cgyro_wait_ui import NativeWaitView
 from OMFITlib_cgyro_storage import compact_storage
 from OMFITlib_cgyro_result_index import cache_job_result_contexts
 from OMFITlib_cgyro_db import ensure_layout, freeze_run_inputs, rollback_actions, run_is_deleted, run_records
 from OMFITlib_cgyro_run_state import (STOP_POLL_ATTEMPTS, STOP_POLL_SECONDS, STOP_QUERY_ERROR_LIMIT,
                                     collection_finished, linked_kill_local, native_remote_execute, pbs_wait, quote as shell_quote,
-                                    refresh_run_state, slurm_wait, stop_message, stop_run, submission_pending,
+                                    refresh_run_state, slurm_wait, stop_marker, stop_message, stop_run, submission_pending,
                                     uncollected_job)
 
 
@@ -385,13 +386,15 @@ def wait_current(root, ui, factory=dict):
     scope = linked_kill_local(root, ui, job_id, token, stop_callback=callback) if scheduler == 'slurm' else nullcontext()
     errors = []
     check = current_wait_guard(root)
-    with scope, RetryWait(ui, 'CGYRO connection retry') as retry:
+    markers = stop_marker(job_id, token) if scheduler == 'slurm' else ('qstat -f ' + job_id,)
+    with scope, NativeWaitView(ui, job_id, markers) as view, RetryWait(ui, 'CGYRO connection retry') as retry:
         for attempt in range(3):
             check()
             try:
                 code = native_remote_execute(ui, manifest['server'], '/bin/bash -c ' + shell_quote(command),
                                          manifest['workDir'], manifest.get('tunnel', ''), quiet=False,
-                                         ignoreReturnCode=True, use_bang_command=False, std_err=errors)
+                                         ignoreReturnCode=True, use_bang_command=False, std_err=errors,
+                                         progressFunction=view.progress)
             except Exception as exc:
                 code = -1
                 errors.append(str(exc))

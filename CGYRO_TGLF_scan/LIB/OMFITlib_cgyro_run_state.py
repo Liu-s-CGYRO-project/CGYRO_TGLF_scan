@@ -386,6 +386,15 @@ while true; do
   check_stop
   queued=$(cgyro_queue_rows '%i|%T') || exit 1
   [ -n "$queued" ] || break
+  pending=0; running=0; other=0
+  while IFS='|' read -r queued_id state; do
+    case "$state" in
+      PENDING|CONFIGURING) pending=$((pending+1));;
+      RUNNING) running=$((running+1));;
+      *) other=$((other+1));;
+    esac
+  done <<< "$queued"
+  printf 'CGYRO_WAIT|JOB_ID|%s|%s|%s\\n' "$pending" "$running" "$other"
   tick=0
   while [ "$tick" -lt POLL_SECONDS ]; do
     check_stop
@@ -397,6 +406,7 @@ while true; do
     echo "[heartbeat] job JOB_ID still in queue/running at $(date)"; hb=0
   fi
 done
+printf 'CGYRO_WAIT_LEFT|JOB_ID\\n'
 echo "[heartbeat] job JOB_ID left the queue at $(date)"
 '''.replace('JOB_ID', str(job_id)).replace('STOP_FILE', quote(marker)).replace('STOP_STAMP', quote(stamp)).replace(
         'POLL_SECONDS', str(QUEUE_POLL_SECONDS)).replace('HEARTBEAT_SECONDS', str(WAIT_HEARTBEAT_SECONDS))

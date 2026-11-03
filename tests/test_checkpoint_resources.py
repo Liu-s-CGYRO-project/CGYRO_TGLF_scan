@@ -74,6 +74,22 @@ class ResourceContinuationTests(unittest.TestCase):
         layout = report['candidates']['bin.cgyro.restart']
         self.assertEqual((layout['format'], layout['mpi_ranks'], layout['nt_loc'], layout['nv_loc']), (3, 16, 1, 4))
 
+    def test_custom_timer_history_is_preserved_byte_for_byte(self):
+        content = b'# custom timer columns\n1.0 2.0 3.0\n'
+        (self.original / 'out.cgyro.timing.debug').write_bytes(content)
+        self.before['out.cgyro.timing.debug'] = content
+        _, _, names = self.prepare()
+        self.assertIn('out.cgyro.timing.debug', names)
+        self.assertEqual((self.base / 'stage/out.cgyro.timing.debug').read_bytes(), content)
+        self.unchanged()
+
+    def test_missing_standard_timing_rejects_only_selected_checkpoint(self):
+        (self.original / 'out.cgyro.timing').unlink()
+        self.before.pop('out.cgyro.timing')
+        with self.assertRaisesRegex(ValueError, 'out.cgyro.timing'):
+            self.prepare()
+        self.unchanged()
+
     def test_retained_checkpoint_stages_without_ancestor_or_old_temporary_directory(self):
         row = dict(self.plan['rows']['p000001'], result_path=['N_ENERGY', '8', 'lin', '0.1'])
         manifest = dict(run_token='child', runid='Jet', case_id='nr=1__rho=0.33__ion=T',

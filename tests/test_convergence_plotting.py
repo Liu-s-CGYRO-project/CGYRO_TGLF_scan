@@ -58,6 +58,37 @@ def fixture():
 
 
 class ConvergencePlottingTests(unittest.TestCase):
+    def test_ordinary_source_does_not_offer_convergence_from_another_run_or_constant_case(self):
+        for per_case in (False, True):
+            with self.subTest(per_case=per_case):
+                root, settings = fixture()
+                settings.update(runid='Jet', force_read_all_nr_items=per_case)
+                root['CGYRO_scan']['RUN_DB']['Jet_convergence']['nr=1'] = indexed_case()
+                run = {'nr=1': {'N_THETA': {'24': {}, '32': {}}},
+                       'different_constant': indexed_case()}
+                ui = UI()
+                app = cases.CaseSelection(root, ui)
+                with patch.object(app, '_choose_cgyro', return_value=(run, ['nr=1'])):
+                    app.render_mode_cgyro_vs_cgyro(settings)
+                self.assertEqual(settings['cgyro_view'], '常规扫描')
+                self.assertFalse(any(kind == 'CheckBox' and args[1] == 'convergence_test'
+                                     for kind, args, _ in ui.events))
+                self.assertFalse(any('此案例没有' in str(args) for _, args, _ in ui.events))
+                self.assertTrue(any('N_THETA' in row for row in ui.rows))
+
+    def test_unresolved_current_case_does_not_offer_convergence(self):
+        root, settings = fixture()
+        case = indexed_case()
+        for name in list(case):
+            if not name.startswith('__'):
+                case[name] = {}  # Retained index, missing physical references.
+        ui = UI()
+        app = cases.CaseSelection(root, ui)
+        with patch.object(app, '_choose_cgyro', return_value=({'nr=1': case}, ['nr=1'])):
+            app.render_mode_cgyro_vs_cgyro(settings)
+        self.assertEqual(settings['cgyro_view'], '常规扫描')
+        self.assertNotIn('convergence_test', [name for row in ui.rows for name in row])
+
     def test_selector_has_one_case_and_independent_directions_without_cartesian_controls(self):
         root, settings = fixture()
         ui = UI()
@@ -169,6 +200,22 @@ class ConvergencePlottingTests(unittest.TestCase):
             app._convergence_entries(restored, lambda *k: str(k), {'nr=1': {}}, ['nr=1'], {'nr=1': ('one', '')})
         self.assertEqual(state.convergence_selection(restored, 'nr=1'), {'N_THETA': [48]})
         self.assertFalse(restored['convergence_flags_by_nr']['nr=1']['N_XI'])
+
+    def test_unavailable_case_and_stale_values_are_not_offered_or_sent_to_plot(self):
+        root, settings = fixture()
+        settings['convergence_selected_by_nr']['nr=1']['N_THETA'] = [24, 32, 64]
+        settings['convergence_selected_by_nr']['nr=2'] = {'N_THETA': [32]}
+        settings['convergence_flags_by_nr']['nr=2'] = {'N_THETA': True}
+        groups = copy.deepcopy(GROUPS)
+        groups['N_THETA']['values'] = [32, 48]
+        ui = UI()
+        app = cases.CaseSelection(root, ui)
+        app._convergence_entries(settings, lambda *k: str(k), {}, ['nr=1', 'nr=2'],
+                                 {'nr=1': ('one', ''), 'nr=2': ('unavailable', '')},
+                                 groups_by_nr={'nr=1': groups, 'nr=2': {}})
+        self.assertEqual(state.convergence_selection(settings, 'nr=1')['N_THETA'], [32])
+        self.assertEqual(state.convergence_selection(settings, 'nr=2'), {})
+        self.assertFalse(any('unavailable' in str(args) or '此案例没有' in str(args) for _, args, _ in ui.events))
 
     def test_saved_ordinary_flags_follow_names_when_convergence_entries_are_removed(self):
         root, settings = fixture()

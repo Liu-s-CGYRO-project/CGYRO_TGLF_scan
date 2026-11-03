@@ -135,7 +135,7 @@ def output_probe_commands(manifest, point_ids):
     fi
   fi
   if [ -s "$point/run_log" ]; then
-    fatal=$(grep -m 4 -i -E "Integration error exceeded limit|Bogus parameter|Unknown parameter|invalid input|error reading input" "$point/run_log" || true)
+    fatal=$(grep -m 4 -i -E "Integration error exceeded limit|Bogus parameter|Unknown parameter|invalid input|error reading input|Fortran runtime error:" "$point/run_log" || true)
     if [ -n "$fatal" ]; then
       missing="$missing solver_error"
       printf '%s\n' "$fatal" | while IFS= read -r error; do
@@ -264,6 +264,7 @@ def path_join(dirname, filename):
 # Native OMFIT versions omit some newer optional histories and profile inputs.
 # Preserve them for a subsequent restart without modifying OMFIT itself.
 restart_extra_files = ['bin.cgyro.restart', 'bin.cgyro.restart.old', 'run_log', 'cgyro.exit',
+                       'out.cgyro.timing.debug',
                        'input.profiles', 'input.profiles.geo', 'bin.cgyro.kxky_v',
                        'bin.cgyro.lky_flux_n', 'bin.cgyro.lky_flux_e', 'bin.cgyro.lky_flux_v',
                        'bin.cgyro.eparb', 'bin.cgyro.hb']

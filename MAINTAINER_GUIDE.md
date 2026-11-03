@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.60。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.61。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 原生 GUI 验证记录与提示
 
@@ -574,6 +574,16 @@ python -B tools/run_regressions.py --suite test_build_project --suite test_maint
 ```
 
 ## 原生远程执行环境（1.24.13）
+
+### CGYRO 等待显示与续算文件边界
+
+`wait_current` 保留原生远程执行、Kill local 和 Abort。`NativeWaitView` 只匹配当前作业的停止文件与 nonce 标记，将原生 Text 中的长命令折叠为两行状态；原命令仍留在 Text 中供准确的停止绑定识别。活动进度条只表示正在等待，不表示模拟完成百分比。队列轮询输出排队、运行及其他活动状态数量；只有成功查询且该作业已不在队列时才输出离队标记，随后仍须核验调度终态和结果。不得因离队、网络中断或关闭显示而推断求解成功。所有 Tk 操作在原生主线程回调执行，不刷新工程树或读取结果。
+
+续算只核验用户选中的 RUN_DB 文件引用。标准历史必须包含 `out.cgyro.timing`；收集器还保留部分机构 CGYRO 必需的 `out.cgyro.timing.debug`。缺少 debug 文件时，准备阶段至多查询一次当前配置的实际安装：只识别与 `$GACODE_ROOT/cgyro/bin/cgyro` 匹配的启动器，检查对应二进制是否引用该文件，不运行求解器。已存在该文件的点、全新计算及页面切换不触发此查询。无法识别的包装器不凭猜测要求额外文件；查询失败不能记录为验证成功。
+
+确认需要 debug 历史而该点缺失时，只拒绝该点并保留原因，其他完整选中点仍可准备；原扫描覆盖范围保持不变。旧归档缺文件需要从该点原始目录补收匹配检查点的历史，不伪造空文件，不通过再次收集已归档任务承诺自动补齐。Fortran runtime error 属于确定性失败，不能当作可自动重试的节点故障。回归覆盖 `test_cgyro_restart_preflight`、`test_cgyro_collection`、`test_cgyro_wait`、`test_cgyro_wait_ui` 和原生库注册清理后的 `test_cgyro_callback_imports`；Tk 测试执行原生 OMFIT 等待面板构造代码，验证进度条和停止按钮可见、停止身份正确及异常清理。
+
+绘图选项通过 `available_convergence_groups` 复用实际绘图的参数/文件引用解析规则。只读所选记录、半径、离子和 constant 案例的索引，不跨案例借用结果、不打开结果文件。一个方向至少有一个可解析的非基准取值才显示；只有共享基准或只有计划索引的方向不显示。旧选项记忆必须与当前可用值取交集。完整诊断仍由显式检查入口提供，不能靠隐藏索引错误来修复结果本身。
 
 CGYRO 的远程执行使用 `cgyro_run_state.native_remote_execute(ui, ...)`，参数和异常沿用原生 OMFIT 接口。该边界只在进程的 SHELL 缺失或为空时设置 `/bin/bash`，保留已有 shell。VNC/桌面启动器未必传递登录 shell；原生 remote_execute 的同主机分支会调用 execute，后者即便禁用 bang command 仍读取 SHELL 构造终端按钮。因此不能只在 shell 命令文本中 export，必须在调用宿主接口前准备进程环境。
 

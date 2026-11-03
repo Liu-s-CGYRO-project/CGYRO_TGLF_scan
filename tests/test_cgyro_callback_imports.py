@@ -83,6 +83,27 @@ class ResultCallbackImportTests(unittest.TestCase):
             self.assertEqual(selected[key], [48, 32, 64])
             self.assertIs(view[key][48]['lin'][.5], case['Base case']['32']['lin']['0.5'])
 
+    def test_wait_view_remains_callable_after_native_import_cleanup(self):
+        with self.callbacks('from OMFITlib_cgyro_wait_ui import NativeWaitView') as api:
+            with api['NativeWaitView'](object(), '123', ('job=123',)) as view:
+                self.assertEqual(view.progress('CGYRO_WAIT|123|2|1|0\n'), 0)
+                self.assertIn('排队 2，运行 1', view.status)
+                view.progress('CGYRO_WAIT_LEFT|123\n')
+                self.assertIn('等待收集校验', view.status)
+
+    def test_restart_preflight_filters_only_selected_bad_zip_after_native_import_cleanup(self):
+        plan = dict(points=['bad', 'fresh'], sources={
+            'bad': dict(mode='checkpoint_zip', zip=str(self.files.base / 'absent.zip')),
+            'fresh': dict(mode='fresh', zip='/not-opened.zip')})
+        with self.callbacks('from OMFITlib_cgyro_restart_preflight import filter_restart_points, requirement_command') as api:
+            api['filter_restart_points'](plan, {}, object(), 'cluster', '/work', '', {})
+            self.assertEqual(plan['points'], ['fresh'])
+            self.assertEqual(set(plan['rejected']), {'bad'})
+            command = api['requirement_command'](dict(environment='export GACODE_ROOT=/selected',
+                executable='cgyro -e . -n 32 -nomp 2'))
+            self.assertIn('command -v', command)
+            self.assertNotIn('cgyro -e .', command)
+
     def test_result_list_scope_and_completion_survive_native_import_cleanup(self):
         module = {}
         info, row, _, _ = self.public_point(module)

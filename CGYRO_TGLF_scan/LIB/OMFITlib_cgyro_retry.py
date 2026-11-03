@@ -292,7 +292,8 @@ def retryable_points(root):
     # conservative whole-run guard only for older records lacking that map;
     # one invalid point must not suppress recovery of an unrelated NODE_FAIL.
     if not solver and any(text in str(manifest.get('failure_log', '')).lower() for text in (
-            'integration error exceeded limit', 'bogus parameter', 'unknown parameter', 'invalid input', 'error reading input')):
+            'integration error exceeded limit', 'bogus parameter', 'unknown parameter', 'invalid input',
+            'error reading input', 'fortran runtime error:')):
         return []
     # The latest scheduler record contains only active_points. Without the
     # earlier attempts, an excluded TIMEOUT could appear eligible after a

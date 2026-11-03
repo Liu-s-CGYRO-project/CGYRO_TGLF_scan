@@ -268,13 +268,13 @@ class OutputProbeTests(unittest.TestCase):
         self.assertIn('/runs/retried/' + points[-1], batches[-1][1])
 
     def test_actual_probe_requires_normal_linear_termination_even_with_zero_exit(self):
-        points = ['p000001', 'p000002', 'p000003', 'p000004']
+        points = ['p000001', 'p000002', 'p000003', 'p000004', 'p000005']
         manifest = dict(workDir='/cgyro_probe_fixture', case_tag='linear')
         source = '''set -eu
 probe_dir=$(mktemp -d)
 trap 'rm -r -- "$probe_dir"' EXIT
 cd "$probe_dir"
-for point in p000001 p000002 p000003 p000004; do
+for point in p000001 p000002 p000003 p000004 p000005; do
   mkdir "$point"
   for file in out.cgyro.grids out.cgyro.time out.cgyro.freq; do printf '1\\n' > "$point/$file"; done
   printf '0\\n' > "$point/cgyro.exit"
@@ -283,6 +283,8 @@ printf 'Still initializing\\n' > p000001/out.cgyro.info
 printf 'Linear converged\\n' > p000002/out.cgyro.info
 printf 'Linear terminated at max time\\n' > p000003/out.cgyro.info
 printf 'Linear converged\\nERROR: Integration error exceeded limit\\n' > p000004/out.cgyro.info
+printf 'Restarted but stopped unexpectedly\\n' > p000005/out.cgyro.info
+printf "Fortran runtime error: Cannot open file './out.cgyro.timing.debug': No such file or directory\\n" > p000005/run_log
 '''
         source += '\n'.join(command.replace('/cgyro_probe_fixture/', './')
                             for _, command in self.functions['output_probe_commands'](manifest, points))
@@ -292,8 +294,9 @@ printf 'Linear converged\\nERROR: Integration error exceeded limit\\n' > p000004
         self.assertEqual(completed.returncode, 0, completed.stderr.decode(errors='replace'))
         result = self.parse(completed.stdout.decode(), points)
         self.assertEqual(result['complete'], {'p000002', 'p000003'})
-        self.assertEqual(result['failed'], {'p000001', 'p000004'})
+        self.assertEqual(result['failed'], {'p000001', 'p000004', 'p000005'})
         self.assertEqual(result['missing'], {})  # Keep readable partial data.
+        self.assertIn('out.cgyro.timing.debug', result['solver_errors']['p000005'][0])
 
 
 class NativeCollectionEntryTests(unittest.TestCase):
@@ -692,7 +695,63 @@ sacct() {
         self.assertEqual(root, original)
 
 
+class WaitProgressProtocolTests(unittest.TestCase):
+    def run_wait(self, setup):
+        with patch.object(state, 'QUEUE_POLL_SECONDS', 0):
+            source = '''set -eu
+wait_dir=$(mktemp -d)
+trap 'rm -r -- "$wait_dir"' EXIT
+cd "$wait_dir"
+''' + setup + '\n' + state.slurm_wait('123', 'a' * 32)
+        command = ['wsl.exe', '-d', 'Ubuntu', '--', '/bin/bash', '-s'] if os.name == 'nt' else ['/bin/bash', '-s']
+        return subprocess.run(command, input=source.encode(), stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, timeout=15)
+
+    def test_actual_poll_reports_only_this_job_and_reports_queue_departure_separately(self):
+        result = self.run_wait(r'''
+printf '0\n' > poll_count
+squeue() {
+  count=$(cat poll_count)
+  printf '%s\n' "$((count+1))" > poll_count
+  case "$count" in
+    0) printf '123_0|PENDING\n123_1|RUNNING\n123_2|COMPLETING\n999_0|RUNNING\n';;
+    1) printf '123_0|RUNNING\n123_1|COMPLETING\n999_0|RUNNING\n';;
+  esac
+}
+''')
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        reports = [line for line in result.stdout.decode().splitlines() if line.startswith('CGYRO_WAIT')]
+        self.assertEqual(reports, ['CGYRO_WAIT|123|1|1|1', 'CGYRO_WAIT|123|0|1|1', 'CGYRO_WAIT_LEFT|123'])
+
+    def test_controller_error_does_not_report_progress_or_completion(self):
+        result = self.run_wait('squeue() { echo "controller unavailable" >&2; return 1; }')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('controller unavailable', result.stderr.decode())
+        self.assertNotIn('CGYRO_WAIT', result.stdout.decode())
+
+    def test_confirmed_stop_exits_without_a_success_or_queue_departure_report(self):
+        marker, stamp = state.stop_marker('123', 'a' * 32)
+        result = self.run_wait("printf '%s\\n' " + state.quote(stamp) + ' > ' + state.quote(marker) + '\n'
+                               'squeue() { echo "must not query" >&2; return 99; }')
+        self.assertEqual(result.returncode, 125)
+        self.assertEqual(result.stdout.decode().strip(), 'CGYRO_WAIT_STOPPED')
+        self.assertEqual(result.stderr, b'')
+
+
 class StateContractTests(unittest.TestCase):
+    def test_missing_restart_history_is_not_blindly_retried_while_other_node_failure_can_retry(self):
+        error = "Fortran runtime error: Cannot open file './out.cgyro.timing.debug': No such file or directory"
+        points = ['p000001', 'p000002']
+        manifest = dict(scheduler='slurm', status='failed', points=points, probe_failed_points=points,
+                        scheduler_sync=dict(terminal=True, point_states={'p000001': 'FAILED', 'p000002': 'NODE_FAIL'}),
+                        input_sha256={point: 'a' * 64 for point in points}, submit_script_sha256='b' * 64,
+                        solver_errors={'p000001': [error]})
+        root = dict(RUN_MANIFEST=manifest, SETTINGS=dict(SETUP=dict(failed_point_retries=2)))
+        self.assertEqual(retry.retryable_points(root), ['p000002'])
+        manifest.pop('solver_errors')
+        manifest['failure_log'] = error
+        self.assertEqual(retry.retryable_points(root), [])
+
     def test_one_unreadable_point_does_not_block_verified_neighbors(self):
         from types import SimpleNamespace
         manifest = dict(run_token='x', collection_status='pending')

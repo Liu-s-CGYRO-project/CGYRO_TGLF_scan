@@ -31,6 +31,7 @@ from OMFITlib_cgyro_db import run_cases, set_run_cases
 from OMFITlib_cgyro_scratch import check_start_capacity, clean_stage, directory_bytes, ensure_capacity
 from OMFITlib_cgyro_launch import (launch_spec, slurm_guard, slurm_process_limits,
                                   validate_checkpoint_runtime)
+from OMFITlib_cgyro_restart_preflight import check_debug_history, filter_restart_points
 
 if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
@@ -382,7 +383,12 @@ if continuation:
 elif restart_mode:
     validate_checkpoint_runtime(previous_manifest.get('runtime', {}), runtime, has_checkpoint=False)
 inputs_node = root['INPUTS']
+restart_requirements = {}
 if continuation:
+    filter_restart_points(continuation, runtime, OMFITx, remote_server,
+                          submit_workdir if local_submit else remote_base, remote_tunnel, restart_requirements)
+    for point, reason in continuation.get('rejected', {}).items():
+        print('[CGYRO] Skipping continuation {}: {}'.format(point, reason), flush=True)
     first_point = continuation['points'][0]
     first_stage = os.path.join(submit_workdir, 'staging', first_point)
     os.makedirs(os.path.dirname(first_stage), exist_ok=True)
@@ -475,6 +481,9 @@ for point_number, (new_dir, overrides, point_metadata) in enumerate(points, 1):
         verified = checkpoint_details(stage)
         validate_checkpoint_runtime(previous_manifest.get('runtime', {}), runtime,
                                     checkpoint=verified['candidates']['bin.cgyro.restart'])
+    if restart_mode or (continuation and continuation['sources'][new_dir]['mode'] != 'fresh'):
+        check_debug_history(stage, new_dir, runtime, OMFITx, remote_server,
+                            submit_workdir if local_submit else remote_base, remote_tunnel, restart_requirements)
     os.makedirs(stage, exist_ok=True)
     point_metadata.setdefault('values', {}).update(point_constants)
     size_inputs = [current_input] + ([] if continuation else [inputs_node[name] for name in point_input_names[1:]])
@@ -547,6 +556,9 @@ if continuation:
                          continuation={key: copy.deepcopy(continuation[key]) for key in
                              ('source_token', 'source_runid', 'source_case_id', 'additional_time', 'points',
                               'stopped_run', 'source_points', 'scope')}))
+if continuation and continuation.get('rejected', {}):
+    manifest['continuation']['rejected'] = copy.deepcopy(continuation['rejected'])
+
 environment=script_fragment(required_cfg(server_setup, 'environment'))
 executable=script_fragment(required_cfg(server_setup, 'executable')).strip()
 if execution is not None:

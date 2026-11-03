@@ -18,7 +18,9 @@ from collections import Counter, OrderedDict
 from contextlib import contextmanager
 from OMFITlib_cgyro_archive import latest_cases, remap_case_selection, remap_pair_flags
 from OMFITlib_cgyro_scan_view import multiaxis_scans, axis_values
-from OMFITlib_compare_convergence import convergence_groups, ordinary_case_view
+from OMFITlib_cgyro_convergence import same_value
+from OMFITlib_compare_convergence import available_convergence_groups as convergence_groups, ordinary_case_view
+from OMFITlib_compare_options import parse_float_list_text
 from OMFITlib_gui_deferred import deferred_section
 from OMFITlib_compare_widgets import (
     ComparisonWidgets,
@@ -360,21 +362,24 @@ class CaseSelection(ComparisonWidgets):
         flags_by_nr = state.setdefault('convergence_flags_by_nr', {})
         for nr in radii:
             groups = groups_by_nr.get(str(nr), {})
-            if len(radii) > 1:
-                self.ui.Separator(labels[nr][0])
-            if not groups:
-                self.ui.Label('此案例没有单变量收敛扫描索引。', align='left')
-                continue
             selected = selections.setdefault(str(nr), {})
             flags = flags_by_nr.setdefault(str(nr), {})
             self._prune_mapping_keys(selected, list(groups))
             self._prune_mapping_keys(flags, list(groups))
+            if not groups:
+                continue
+            if len(radii) > 1:
+                self.ui.Separator(labels[nr][0])
             for token, group in groups.items():
                 flags.setdefault(token, True)
+                chosen = parse_float_list_text(selected.get(token, group['values']))
+                selected[token] = [value for value in chosen
+                                   if any(same_value(value, available) for available in group['values'])]
+                if chosen and not selected[token]:
+                    flags[token] = False
                 caption = '{} · {}（基准 {}）'.format(group['axis'], group['label'], group['baseline_value'])
                 self.ui.CheckBox(path('convergence_flags_by_nr', str(nr), token), caption,
                                  default=True, updateGUI=True)
-                selected.setdefault(token, list(group['values']))
                 if flags[token]:
                     self._parameter_entry(path('convergence_selected_by_nr', str(nr), token),
                                           group['axis'], selected[token], default_values=group['values'])
@@ -407,8 +412,13 @@ class CaseSelection(ComparisonWidgets):
     def _cgyro_scan_entries(self, state, path, run, radii, labels):
         """Choose a scan item below the selected radius/isotope, locally."""
         groups = {str(nr): convergence_groups(run[nr]) for nr in radii if nr in run}
-        default = '收敛测试' if any(groups.values()) else '常规扫描'
+        available = any(groups.values())
+        default = '收敛测试' if available else '常规扫描'
         state.setdefault('cgyro_view', default)
+        if not available:
+            # A remembered choice belongs to its source/case. Do not offer
+            # convergence from another run, isotope or constant variant.
+            state['cgyro_view'] = '常规扫描'
         convergence = state['cgyro_view'] == '收敛测试'
 
         def convergence_choice():
@@ -430,13 +440,13 @@ class CaseSelection(ComparisonWidgets):
                 lambda i, name: path('para_list_flag', i), lambda name: path('selected_paras', name),
                 lambda name: (v for nr in radii if name in ordinary.get(nr, {}) for v in ordinary[nr][name].keys()),
                 entry_renderer=lambda name, selected: self._multi_axis_entries(state, path, ordinary, radii, name, selected),
-                extra_choices=(convergence_choice,), enabled=not convergence)
+                extra_choices=(convergence_choice,) if available else (), enabled=not convergence)
         else:
             # Per-case choices keep their existing identities. The shared
             # convergence item applies only to the selected radius/isotopes.
             self.ui.Label('选择扫描项；convergence_test 仅绘制收敛测试。', align='left')
             self._cgyro_individual_entries(state, path, ordinary, radii, labels,
-                                            convergence_choice, enabled=not convergence)
+                                            convergence_choice if available else None, enabled=not convergence)
         if convergence:
             self._convergence_entries(state, path, run, radii, labels, groups_by_nr=groups)
 
@@ -453,7 +463,8 @@ class CaseSelection(ComparisonWidgets):
             for name in names:
                 flags.setdefault(name, name in values and self._is_nonempty_selection(values[name]))
             self._render_key_checkbox_grid(lambda name: path('para_list_flag_by_nr', str(nr), name), names,
-                                          extra_choices=(convergence_choice,) if index == 0 else (), enabled=enabled)
+                                          extra_choices=(convergence_choice,) if index == 0 and convergence_choice else (),
+                                          enabled=enabled)
             if not enabled:
                 continue
             for name in names:

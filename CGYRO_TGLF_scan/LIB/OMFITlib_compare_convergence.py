@@ -233,7 +233,28 @@ def _request(wanted, token, axis, values, parameters, identity):
         wanted.setdefault(_coordinate(identity, expected), set()).add(address)
 
 
-def convergence_case_view(case, selected=None):
+def available_convergence_groups(case):
+    """Offer only directions/values with resolved references in this case.
+
+    Reuse the plot resolver's metadata rules, so a requested-but-uncollected
+    direction is not a checkbox. Diagnostics remain available to explicit
+    checks; determining availability never opens a result reader or file.
+    """
+    groups = convergence_groups(case)
+    if not groups:
+        return groups
+    view, _, _, _ = convergence_case_view(case, groups=groups)
+    result = OrderedDict()
+    for token, group in groups.items():
+        values = [value for value, tree in view[token].items() if tree['lin']]
+        # A shared baseline alone cannot make an uncollected/invalid direction
+        # look available. At least one retained varied value must resolve.
+        if any(not same_value(value, group['baseline_value']) for value in values):
+            result[token] = dict(group, values=values)
+    return result
+
+
+def convergence_case_view(case, selected=None, *, groups=None):
     """Return (virtual view, selections, metadata, diagnostics).
 
     None selects every saved direction, {} none. For every selected direction
@@ -241,7 +262,7 @@ def convergence_case_view(case, selected=None):
     Full-input matching never changes the archive or opens payload files. A
     conflicting owner or unavailable baseline leaves a gap and a diagnostic.
     """
-    groups = convergence_groups(case)
+    groups = convergence_groups(case) if groups is None else groups
     selected = {token: group['values'] for token, group in groups.items()} if selected is None else selected
     view, selections, metadata, diagnostics = {}, OrderedDict(), {}, []
     wanted = {}

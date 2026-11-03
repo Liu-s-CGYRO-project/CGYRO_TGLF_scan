@@ -6,7 +6,8 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'CGYRO_TGLF_scan/LIB'))
-from OMFITlib_compare_convergence import convergence_case_view, convergence_groups, ordinary_case_view
+from OMFITlib_compare_convergence import (available_convergence_groups, convergence_case_view,
+                                        convergence_groups, ordinary_case_view)
 
 
 BASE = {'N_ENERGY': 32, 'N_XI': 48, 'N_RADIAL': 32, 'N_THETA': 32, 'E_MAX': 8}
@@ -72,6 +73,38 @@ def scaled_fixture():
 
 
 class ConvergenceReferenceTests(unittest.TestCase):
+    def test_available_directions_exclude_missing_owners_and_uncollected_values(self):
+        case = fixture()
+        case['N_XI'].clear()  # Index exists, but this case cannot resolve its results.
+        del case['N_ENERGY']['48']
+        before = copy.deepcopy(case)
+        groups = available_convergence_groups(case)
+        self.assertEqual({group['axis'] for group in groups.values()}, {'N_ENERGY', 'E_MAX'})
+        self.assertEqual(groups[token_for(case, 'N_ENERGY')]['values'], [32, 64])
+        self.assertEqual(case, before)
+        self.assertEqual(available_convergence_groups(json.loads(json.dumps(case))), groups)
+
+    def test_invalid_generated_input_cannot_offer_a_direction_using_only_its_baseline(self):
+        case = fixture()
+        for row in case['__SCANS__']['N_XI']['tasks'].values():
+            row['input_parameters']['E_MAX'] = 9  # Wrong fixed physics.
+        self.assertNotIn(token_for(case, 'N_XI'), available_convergence_groups(case))
+        self.assertTrue(any('固定参数' in issue for issue in convergence_case_view(case)[3]))
+
+    def test_available_options_use_inert_references_without_reading_science_arrays(self):
+        class Reference(dict):
+            def __getitem__(self, key):
+                if key not in ('__RESULT_REF__',):
+                    raise AssertionError('result payload read: ' + key)
+                return super().__getitem__(key)
+        case = fixture()
+        for entry in case['__SCANS__'].values():
+            for row in entry['tasks'].values():
+                branch, value, mode, ky = row['result_path']
+                owner = case[branch][value][mode][ky]
+                case[branch][value][mode][ky] = Reference(owner)
+        self.assertEqual(len(available_convergence_groups(case)), 3)
+
     def test_ordinary_view_excludes_convergence_directions_and_baseline_without_loading(self):
         case = fixture()
         ordinary = {'1': {'lin': {'.5': object()}}}
