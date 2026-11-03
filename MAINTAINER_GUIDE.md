@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.58。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.59。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 原生 GUI 验证记录与提示
 
@@ -61,7 +61,7 @@ ParameterList 捕获轻量目录并分页；清空只恢复所选分组、匹配
 
 `OMFITlib_cgyro_convergence` 将公共基准、各方向取值及额外固定项转换成普通一维扫描分组计划。完整配置在所选输入内去重，公共基准存入 Base case；方向自定义固定项所需的其他基准仍引用已经匹配的方向点。同一半径 / 离子方案下的基准与全部方向合并为一个数组，归档按各点的分组身份拆分；不同物理案例各自提交。新收敛计划使用一次 `_convergence` 结果名后缀，路径复用已有半径 / constant / 离子分组及 __SCANS__ 索引。`PHYSICS.scan_mode` 区分普通与 convergence；原生 SETUP.idimrun 仍只接受 0–3，GUI 的 cgyro_scan_content 负责映射。切换模式保留两种设置，不把新模式编码为非法的第四维。
 
-`OMFITlib_compare_convergence` 只在所选案例的轻量点表中，以已收集的生成输入摘要匹配方向与基准，构造临时 para/value/lin 引用视图。不改 RUN_DB、不复制造数组、不依赖 RUN_HISTORY；多个不同固定物理条件形成独立组。`convergence_group` 保留在每点 result_info 中，避免新提交的扫描头覆盖旧点语义。图形使用独立的方向列；普通多轴视图不改。缺失基准或无法证明身份的旧记录报告诊断，不猜测或触发读取器补齐。
+`OMFITlib_compare_convergence` 只在所选案例的轻量点表中，以已收集的生成输入摘要匹配方向与基准，构造临时 para/value/lin 引用视图。不改 RUN_DB、不复制造数组、不依赖 RUN_HISTORY；多个不同固定物理条件形成独立组。`convergence_group` 保留在每点 result_info 中，避免新提交的扫描头覆盖旧点语义。`ordinary_case_view` 从常规选择及读取路径排除有收敛标记的点，混合旧分支只重建引用路径，复用原所有者。`convergence_test` CheckBox 通过原生 mapFalseTrue 复用已保存的 cgyro_view，不另建模式状态；其局部 DeferredSection 不重建来源、半径或外层标签页。图形按完整案例 / 方向组 / 来源（时间轨迹另加 ky）分别建 FigureNotebook 标签页，单页仅一个方向；普通多轴绘图的分组行为保留。缺失基准或无法证明身份的旧记录报告诊断，不猜测或触发读取器补齐。
 
 基准共享、方向筛选和绘图引用匹配使用同一数值容差（`rel_tol=1e-9, abs_tol=1e-12`），不舍入或改写 RUN_DB 坐标。带符号 ky 仍严格区分正、负与零；完整参数匹配后遇到不同 owner 引用仍报告冲突。固定参数或请求扫描值不符时保留该方向及逐点诊断，不能静默丢弃整组。比较查询按物理案例、字段集合和 ky 范围限定候选，只读取所选案例的索引。
 

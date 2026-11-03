@@ -20,6 +20,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_cgyro_storage  # Explicit isolated-process native import boundary.
 import OMFITlib_compare_cgyro_render as render
+from OMFITlib_compare_cgyro import group_plot_pages
+from OMFITlib_plot_labels import apply_english_labels
 
 
 class Notebook:
@@ -78,17 +80,23 @@ class ConvergenceRenderTests(unittest.TestCase):
         plt.close('all')
 
     def draw(self, items, **options):
-        return render.render_convergence_page(self.notebook, context(**options), '收敛测试', items)
+        ctx = context(**options)
+        ctx.update(convergence_plot=True, plot_3d=ctx['plot_mode'] == 'Plot 3D',
+                   plot_time_traces=ctx['plot_mode'] == 'Plot time traces',
+                   nr_CGYRO=list(dict.fromkeys(item['nr'] for item in items)))
+        figures = [render.render_convergence_page(self.notebook, ctx, label, group)
+                   for label, group in group_plot_pages(items, ctx)]
+        return figures[0] if figures else None
 
-    def test_each_direction_has_omega_gamma_column_and_own_baseline(self):
+    def test_each_direction_has_its_own_tab_spectra_and_baseline(self):
         items = spectra() + spectra('N_XI', baseline=48.) + spectra('N_THETA')
         figure = self.draw(items)
-        self.assertEqual(len(self.notebook.figures), 1)
-        self.assertEqual(figure.get_label(), '收敛测试')
-        self.assertEqual(len(figure.axes), 6)
-        for column, name in enumerate(('N_ENERGY', 'N_XI', 'N_THETA')):
-            upper, lower = figure.axes[column], figure.axes[column + 3]
-            self.assertIn(name, upper.get_title())
+        self.assertEqual(len(self.notebook.figures), 3)
+        for figure, name in zip(self.notebook.figures, ('N_ENERGY', 'N_XI', 'N_THETA')):
+            self.assertEqual(figure.get_label(), name)
+            self.assertEqual(len(figure.axes), 2)
+            upper, lower = figure.axes
+            self.assertIn(name, figure._suptitle.get_text())
             self.assertEqual(len(upper.lines), 3)
             self.assertEqual(len(lower.lines), 3)
             for axis in (upper, lower):
@@ -98,34 +106,48 @@ class ConvergenceRenderTests(unittest.TestCase):
                 self.assertEqual(baseline[0].get_linestyle(), '--')
         self.assertIn('10%', figure._suptitle.get_text())
 
-    def test_same_axis_different_fixed_group_keeps_distinct_panels_and_picking(self):
+    def test_same_axis_different_fixed_group_keeps_distinct_tabs_and_picking(self):
         first = spectra(token='@energy-e8')
         second = spectra(token='@energy-e10', offset=10.)
         second[0]['slice_meta']['label'] = 'N_ENERGY · E_MAX=10'
         figure = self.draw(first + second)
-        self.assertEqual(len(figure.axes), 4)
-        self.assertIn('E_MAX=10', figure.axes[1].get_title())
+        second_figure = self.notebook.figures[1]
+        self.assertEqual(len(figure.axes), 2)
+        self.assertNotEqual(figure.get_label(), second_figure.get_label())
+        self.assertIn('E_MAX=10', second_figure._suptitle.get_text())
         np.testing.assert_allclose(figure.axes[0].lines[0].get_ydata(), first[0]['series'][1])
-        np.testing.assert_allclose(figure.axes[1].lines[0].get_ydata(), second[0]['series'][1])
+        np.testing.assert_allclose(second_figure.axes[0].lines[0].get_ydata(), second[0]['series'][1])
         self.assertNotEqual(figure.axes[0].lines[1]._comparison_identity,
-                            figure.axes[1].lines[1]._comparison_identity)
+                            second_figure.axes[0].lines[1]._comparison_identity)
         self.assertEqual(figure.axes[0].lines[1]._comparison_identity,
-                         figure.axes[2].lines[1]._comparison_identity)
+                         figure.axes[1].lines[1]._comparison_identity)
 
     def test_absent_baseline_is_not_replaced_or_labelled_as_another_curve(self):
         figure = self.draw(spectra(values=(16., 48.)))
-        self.assertIn('结果缺失', figure.axes[0].get_title())
+        self.assertIn('结果缺失', figure._suptitle.get_text())
         for axis in figure.axes:
             self.assertFalse(any('基准' in line.get_label() for line in axis.lines))
             self.assertEqual(len(axis.lines), 2)
 
-    def test_relative_fluctuations_are_rows_in_the_same_direction_column(self):
+    def test_same_axis_with_different_baselines_has_distinct_tab_labels(self):
+        first = spectra(token='@energy-base16', baseline=16.)
+        second = spectra(token='@energy-base32', baseline=32.)
+        self.draw(first + second)
+        labels = [figure.get_label() for figure in self.notebook.figures]
+        self.assertNotEqual(*labels)
+        self.assertIn('Base=16', labels[0])
+        self.assertIn('Base=32', labels[1])
+
+    def test_relative_fluctuations_fit_in_a_two_by_two_direction_page(self):
         figure = self.draw(spectra() + spectra('N_XI'), error_flag='CGYRO')
-        self.assertEqual(len(figure.axes), 8)
-        np.testing.assert_allclose(figure.axes[4].lines[0].get_ydata(), .01)
-        np.testing.assert_allclose(figure.axes[6].lines[0].get_ydata(), .02)
-        self.assertIn('omega', figure.axes[4].get_title())
-        self.assertIn('gamma', figure.axes[6].get_title())
+        self.assertEqual(len(self.notebook.figures), 2)
+        for figure in self.notebook.figures:
+            self.assertEqual(len(figure.axes), 4)
+            self.assertEqual(figure.axes[0].get_subplotspec().get_gridspec().get_geometry(), (2, 2))
+            np.testing.assert_allclose(figure.axes[1].lines[0].get_ydata(), .01)
+            np.testing.assert_allclose(figure.axes[3].lines[0].get_ydata(), .02)
+            self.assertIn('omega', figure.axes[1].get_title())
+            self.assertIn('gamma', figure.axes[3].get_title())
 
     def test_signed_ky_scaling_preserves_original_arrays(self):
         items = spectra(values=(32.,))
@@ -138,28 +160,31 @@ class ConvergenceRenderTests(unittest.TestCase):
 
     def test_single_ky_baseline_guide_uses_available_point_only(self):
         figure = self.draw([cloud(), cloud('N_XI', values=(16., 48.))], plot_mode='Plot single ky')
-        self.assertEqual(len(figure.axes), 4)
-        for index in (0, 2):
+        self.assertEqual(len(figure.axes), 2)
+        for index in (0, 1):
             baseline = [line for line in figure.axes[index].lines if '基准' in line.get_label()]
             self.assertEqual(len(baseline), 1)
             np.testing.assert_array_equal(baseline[0].get_xdata(), [32., 32.])
-        self.assertIn('结果缺失', figure.axes[1].get_title())
-        self.assertFalse(any('基准' in line.get_label() for line in figure.axes[1].lines))
+        second = self.notebook.figures[1]
+        self.assertIn('结果缺失', second._suptitle.get_text())
+        self.assertFalse(any('基准' in line.get_label() for line in second.axes[0].lines))
 
-    def test_time_histories_use_all_direction_columns_without_averaging_caption(self):
+    def test_time_histories_have_separate_direction_tabs_without_averaging_caption(self):
         items = spectra(values=(32.,)) + spectra('N_XI', values=(32.,))
         for item in items:
             item.pop('series')
             item['trace'] = dict(ky=.2, time=np.array([0., 1., 2.]), omega=np.array([1., 2., 3.]),
                                  gamma=np.array([.1, .2, .3]))
         figure = self.draw(items, plot_mode='Plot time traces')
-        self.assertEqual(len(figure.axes), 4)
-        self.assertNotIn('统计窗口', figure._suptitle.get_text())
-        for axis in figure.axes:
-            self.assertIn('ky=0.2', axis.lines[0].get_label())
-            self.assertEqual(axis.lines[0].get_color(), 'black')
+        self.assertEqual(len(self.notebook.figures), 2)
+        for figure in self.notebook.figures:
+            self.assertEqual(len(figure.axes), 2)
+            self.assertNotIn('Statistics', figure._suptitle.get_text())
+            for axis in figure.axes:
+                self.assertIn('ky=0.2', axis.lines[0].get_label())
+                self.assertEqual(axis.lines[0].get_color(), 'black')
 
-    def test_eigenmode_fields_share_direction_columns(self):
+    def test_eigenmode_fields_stay_within_their_direction_tab(self):
         items = spectra(values=(32.,)) + spectra('N_XI', values=(32.,))
         for item in items:
             item.pop('series')
@@ -169,11 +194,12 @@ class ConvergenceRenderTests(unittest.TestCase):
                                  epar_b=np.array([.2, 1., .2], dtype=complex), has_epar=True,
                                  has_apar=False, has_bpar=False)
         figure = self.draw(items, plot_mode='Plot eigen ball')
-        self.assertEqual(len(figure.axes), 8)
+        self.assertEqual(len(self.notebook.figures), 2)
+        self.assertEqual(len(figure.axes), 4)
         self.assertEqual(len(figure.axes[0].lines), 1)
-        self.assertEqual(len(figure.axes[2].lines), 1)
-        self.assertEqual(len(figure.axes[4].lines), 0)
-        self.assertIn('No valid saved', figure.axes[4].texts[0].get_text())
+        self.assertEqual(len(figure.axes[1].lines), 1)
+        self.assertEqual(len(figure.axes[2].lines), 0)
+        self.assertIn('No valid saved', figure.axes[2].texts[0].get_text())
         self.assertEqual(figure.axes[0].lines[0].get_color(), 'black')
 
     def test_ratio_page_marks_only_actual_baseline_coordinates(self):
@@ -182,17 +208,19 @@ class ConvergenceRenderTests(unittest.TestCase):
             item.pop('cloud')
             item['ratio'] = np.array([16., 32., 48.]), np.array([.9, 1., 1.01]), 32.
         figure = self.draw(items, plot_gamma_ratio=True)
-        self.assertEqual(len(figure.axes), 2)
-        self.assertTrue(all(any('基准' in line.get_label() for line in axis.lines) for axis in figure.axes))
+        self.assertEqual(len(self.notebook.figures), 2)
+        self.assertEqual(len(figure.axes), 1)
+        self.assertTrue(all(any('基准' in line.get_label() for line in fig.axes[0].lines) for fig in self.notebook.figures))
         self.assertNotEqual(figure.axes[0].lines[-1]._comparison_identity,
-                            figure.axes[1].lines[-1]._comparison_identity)
+                            self.notebook.figures[1].axes[0].lines[-1]._comparison_identity)
 
-    def test_surface_page_has_every_scan_and_actual_baseline_curve(self):
+    def test_surfaces_use_separate_direction_tabs_with_actual_baseline_curves(self):
         figure = self.draw([cloud(), cloud('N_XI')], plot_mode='Plot 3D')
         panels = [axis for axis in figure.axes if axis.name == '3d']
-        self.assertEqual(len(panels), 4)
+        self.assertEqual(len(self.notebook.figures), 2)
+        self.assertEqual(len(panels), 2)
         self.assertIn('N_ENERGY', panels[0].get_title())
-        self.assertIn('N_XI', panels[1].get_title())
+        self.assertIn('N_XI', self.notebook.figures[1].axes[0].get_title())
         for panel in panels:
             baseline, = [line for line in panel.lines if '基准' in line.get_label()]
             self.assertEqual(baseline.get_color(), 'black')
@@ -212,9 +240,22 @@ class ConvergenceRenderTests(unittest.TestCase):
             warnings.simplefilter('ignore', UserWarning)
             figure.canvas.callbacks.process('button_press_event', event)
         self.assertFalse(figure.axes[0].lines[1].get_visible())
-        self.assertFalse(figure.axes[2].lines[1].get_visible())
-        self.assertTrue(figure.axes[1].lines[1].get_visible())
-        self.assertTrue(figure.axes[3].lines[1].get_visible())
+        self.assertFalse(figure.axes[1].lines[1].get_visible())
+        self.assertTrue(self.notebook.figures[1].axes[0].lines[1].get_visible())
+        self.assertTrue(self.notebook.figures[1].axes[1].lines[1].get_visible())
+
+    def test_builtin_convergence_labels_never_fall_back_to_numbered_placeholders(self):
+        from OMFITlib_cgyro_convergence import DIRECTIONS
+        from matplotlib.text import Text
+        for name, caption in DIRECTIONS.items():
+            items = spectra(axis=name)
+            for item in items:
+                item['slice_meta']['label'] = caption
+            figure = self.draw(items, error_flag='CGYRO')
+            apply_english_labels(figure)
+            text = '\n'.join(item.get_text() for item in figure.findobj(match=Text))
+            self.assertNotRegex(text, r'Label \d+')
+            self.assertIn('Statistics: last 10%', text)
 
     def test_prepared_series_render_does_not_read_results(self):
         with patch('OMFITlib_compare_cgyro_data.collect_value_series', side_effect=AssertionError('result read')), \

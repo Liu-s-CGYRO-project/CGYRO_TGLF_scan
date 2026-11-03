@@ -714,6 +714,90 @@ class NativeTabsTests(unittest.TestCase):
         self.assertEqual(self.host.updates, [])
         self.assertEqual(events, [])
 
+    def test_convergence_plot_checkbox_keeps_source_tabs_and_result_readers_untouched(self):
+        from test_compare_convergence import fixture
+        from OMFITlib_compare_cases import CaseSelection
+
+        class UnreadOwner(dict):
+            def __getitem__(self, key):
+                raise AssertionError('Selector opened a result owner')
+            def load(self):
+                raise AssertionError('Selector loaded a result file')
+
+        native.native_definitions(SOURCE / 'omfit_classes/OMFITx.py', {'Separator'}, self.host.api.__dict__)
+        settings = dict(runid='Jet', nr_CGYRO=['nr=1'], cgyro_view='收敛测试',
+                        selected_paras={'ordinary': [1.]}, compare_multiple_runs=False,
+                        force_read_all_nr_items=False)
+        self.host.tree.update(SETTINGS=dict(PHYSICS=dict(CGYRO_vs_CGYRO=settings)), radius=True)
+        case = fixture()
+        for record in case['__SCANS__'].values():
+            for row in record['tasks'].values():
+                branch, value, kind, ky = row['result_path']
+                case[branch][value][kind][ky] = UnreadOwner()
+        case['ordinary'] = {'1': {'lin': {'.5': UnreadOwner()}}, '2': {'lin': {'.5': UnreadOwner()}}}
+        fields, checks = {}, {}
+        prefix = "root['SETTINGS']['PHYSICS']['CGYRO_vs_CGYRO']"
+
+        def render(ui):
+            ui = ui.view_only()  # ComparisonUI uses this same native adapter.
+            self.ui = ui
+            for kind, controls in (('Entry', fields), ('CheckBox', checks)):
+                constructor = getattr(ui, kind)
+                def capture(path, *args, constructor=constructor, controls=controls, **kwargs):
+                    widget = constructor(path, *args, **kwargs)
+                    controls[path] = widget
+                    return widget
+                setattr(ui, kind, capture)
+            self.header = ui.Label('Comparison')
+            app = CaseSelection(self.host.tree, ui)
+            def choose(*args, **kwargs):
+                self.source = ui.ComboBox(prefix + "['runid']", ['Jet'], updateGUI=True)
+                self.radius = ui.CheckBox("root['radius']", 'Radius', default=True, updateGUI=True)[0]
+                return {'nr=1': case}, ['nr=1']
+            app._choose_cgyro = choose
+            def page(key):
+                self.counts[key] += 1
+                if key == 'edit':
+                    app.render_mode_cgyro_vs_cgyro(settings)
+                else:
+                    ui.Label('Plot settings')
+            self.pages = TabPages(ui, dict(edit='Cases', run='Plot settings'), self.state, 'page', page)
+            ui.Tab('')
+            finish_gui_layout(self.header, ui)
+
+        self.host.render(render)
+        source, radius, header, notebook = self.source, self.radius, self.header, self.pages.notebook
+        events = []
+        self.host.root.bind('<<update_treeGUI>>', lambda event: events.append('tree'), add='+')
+        def toggle():
+            control = checks[prefix + "['cgyro_view']"][0]
+            self.assertEqual(control.cget('text'), 'convergence_test')
+            self.host.invoke(lambda: control.event_generate('<ButtonRelease-1>'))
+            self.host.drain(80)
+
+        toggle()
+        self.assertEqual(settings['cgyro_view'], '常规扫描')
+        self.entry = fields[prefix + "['selected_paras']['ordinary']"]
+        self.commit('[2]')
+        toggle()
+        self.assertEqual(settings['cgyro_view'], '收敛测试')
+        token = next(key for key in settings['convergence_flags_by_nr']['nr=1'] if ':N_XI:' in key)
+        control = checks[prefix + "['convergence_flags_by_nr']['nr=1'][" + repr(token) + "]"][0]
+        self.host.invoke(lambda: control.event_generate('<ButtonRelease-1>'))
+        self.host.drain(80)
+        toggle()
+        self.assertEqual(fields[prefix + "['selected_paras']['ordinary']"].get(), '[2]')
+        toggle()
+        self.assertFalse(settings['convergence_flags_by_nr']['nr=1'][token])
+        self.assertIs(self.source, source)
+        self.assertIs(self.radius, radius)
+        self.assertIs(self.header, header)
+        self.assertIs(self.pages.notebook, notebook)
+        self.assertEqual(self.counts, dict(edit=1))
+        self.assertEqual(self.host.updates, [])
+        self.assertEqual(self.host.errors, [])
+        self.assertEqual(events, [])
+
     def test_convergence_content_selection_and_edits_keep_refresh_local(self):
         import test_cgyro_storage
         import test_project as fixture

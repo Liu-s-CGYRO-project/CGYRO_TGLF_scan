@@ -4,14 +4,14 @@ Only the selected case's lightweight indexes are inspected. Shared baselines
 are joined by the complete cached generated input, never by task number, job
 ancestry, a Cartesian axis product, or a reader's science arrays.
 """
-from builtins import (KeyError, TypeError, ValueError, abs, all, any, dict, float, format, len, list,
+from builtins import (KeyError, TypeError, ValueError, abs, all, any, dict, float, format, iter, len, list,
                       max, next, set, sorted, str, tuple)
 from bisect import bisect_left, bisect_right
 from collections import OrderedDict
 import hashlib
 import json
 import math
-from OMFITlib_cgyro_archive import RUN_CONTROL_PARAMETERS, case_scans, point_values, result_identity
+from OMFITlib_cgyro_archive import RUN_CONTROL_PARAMETERS, case_scans, point_values, result_identity, scan_branch
 from OMFITlib_cgyro_convergence import DIRECTIONS, PARAMETER_RTOL, PARAMETER_ATOL, same_parameters, same_value
 from OMFITlib_cgyro_reference import metadata_value, same_result_reference
 from OMFITlib_compare_options import parse_float_list_text
@@ -27,6 +27,51 @@ def _context(info, row):
     if token and info.get('run_token', '') and token != info['run_token']:
         return {}
     return info.get('convergence_group', {})
+
+
+def ordinary_case_view(case):
+    """Exclude indexed convergence points from ordinary scan selectors/readers.
+
+    Most branches are either ordinary or convergence scans. Only a legacy
+    mixed branch needs a shallow path view of its ordinary rows. Owners and
+    immutable row summaries are reused; no reader, file or archive is changed.
+    Untagged legacy scans remain ordinary instead of guessing from their names.
+    """
+    view, records = None, OrderedDict()
+    for name, info, rows in case_scans(case):
+        ordinary = {key: row for key, row in rows.items() if not _context(info, row)}
+        changed = len(ordinary) != len(rows) or (not rows and info.get('convergence_group', {}))
+        if changed:
+            if view is None:
+                view = OrderedDict((key, case[key]) for key in case.keys() if not str(key).startswith('__'))
+            branch = scan_branch(case, info, rows)
+            view.pop(branch, None)
+            if not ordinary:
+                continue
+            # The latest header may belong to a convergence submission. Restore
+            # the ordinary input/axes from its own row, keeping exact file paths.
+            info = dict(info, **dict(next(iter(ordinary.values())).get('result_info', {})))
+            info.pop('convergence_group', None)
+            coordinates = [point_values(info, row) for row in ordinary.values()]
+            info['scan_axes'] = [dict(axis, values=sorted({values[axis['name']] for values in coordinates
+                                                        if axis['name'] in values}))
+                                 for axis in info.get('scan_axes', [])]
+            tree = view[branch] = {}
+            for row in ordinary.values():
+                path = row['result_path'][1:]
+                source, target = case[branch], tree
+                for key in path[:-1]:
+                    source = metadata_value(source)[key]
+                    target = target.setdefault(key, {})
+                target[path[-1]] = metadata_value(source)[path[-1]]
+        records[name] = dict(info=info, tasks=ordinary if changed else rows)
+    if view is None:
+        return case
+    view['__SCANS__'] = records
+    if records:
+        latest = list(records.values())[-1]
+        view['__INFO__'], view['__TASKS__'] = latest['info'], latest['tasks']
+    return view
 
 
 def _parameters(info, row):

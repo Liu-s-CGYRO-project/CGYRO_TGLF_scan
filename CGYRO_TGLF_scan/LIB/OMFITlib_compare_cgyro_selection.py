@@ -12,7 +12,7 @@ from OMFITlib_compare_core import resolve_key as _resolve_mapping_key
 from OMFITlib_compare_options import STAT_DEFAULTS, is_gamma_ratio_plot_mode, parse_float_list_text, validate_options
 from OMFITlib_compare_style import cgyro_case_caption
 from OMFITlib_cgyro_scan_view import comparison_case_view, view_config
-from OMFITlib_compare_convergence import convergence_case_view
+from OMFITlib_compare_convergence import convergence_case_view, ordinary_case_view
 
 
 def _parse_gui_value_text(text):
@@ -148,7 +148,7 @@ def _current_cgyro_parameter_names(root, runid, nr_list, force_read_all):
             nr_key = _resolve_mapping_key(run_node, nr)
             if nr_key is None:
                 continue
-            nr_node = run_node.get(nr_key, {})
+            nr_node = ordinary_case_view(run_node.get(nr_key, {}))
             if hasattr(nr_node, 'keys'):
                 keysets.append(set(nr_node.keys()))
         except Exception:
@@ -207,9 +207,11 @@ def _sanitize_selected_parameters(root, settings):
     selected_map = _filter_selected_map_by_index_flags(
         selected_map,
         settings.get('para_list_flag', {}),
-        ordered_names,
+        settings.get('_selector_keys', {}).get('para_list_flag', ordered_names),
     )
-    return selected_map, {}
+    # A saved list may still include convergence branches until the selector
+    # next renders. Decode its flags against those saved names, then filter.
+    return {name: values for name, values in selected_map.items() if name in ordered_names}, {}
 
 
 def build_context(root, settings=None):
@@ -309,7 +311,9 @@ def build_context(root, settings=None):
             view, choices, metadata, problems = convergence_case_view(run[case_key], selected)
         else:
             selected = dict(_iter_selected_parameter_items(ctx, nr))
-            view, choices, metadata, problems = comparison_case_view(run[case_key], selected, view_config(settings, nr))
+            case = ordinary_case_view(run[case_key])
+            selected = {name: values for name, values in selected.items() if name in case}
+            view, choices, metadata, problems = comparison_case_view(case, selected, view_config(settings, nr))
         ctx['_cgyro_views'][str(nr)] = view
         per_case[str(nr)] = choices
         ctx['_cgyro_slices'].update({(str(nr), key): value for key, value in metadata.items()})

@@ -55,6 +55,52 @@ class ConvergencePlottingTests(unittest.TestCase):
         self.assertEqual([args[0] for kind, args, _ in ui.events if kind == 'Separator'], ['收敛测试'])
         self.assertEqual(len([1 for kind, args, _ in ui.events if kind == 'Entry']), 2)
         self.assertFalse(any(' × ' in str(args) for _, args, _ in ui.events))
+        self.assertFalse(any(kind == 'ComboBox' and 'cgyro_view' in str(args) for kind, args, _ in ui.events))
+        toggles = [kwargs for kind, args, kwargs in ui.events if kind == 'CheckBox' and args[1] == 'convergence_test']
+        self.assertEqual(len(toggles), 1)
+        self.assertEqual(toggles[0]['mapFalseTrue'], ['常规扫描', '收敛测试'])
+
+    def test_ordinary_and_convergence_controls_keep_separate_selections(self):
+        root, settings = fixture()
+        case = indexed_case()
+        case['ordinary'] = {'1': {}, '2': {}}
+        settings.update(cgyro_view='常规扫描', selected_paras={'ordinary': [1]})
+        ui = UI()
+        app = cases.CaseSelection(root, ui)
+        saved = copy.deepcopy(settings['convergence_selected_by_nr'])
+        with patch.object(app, '_choose_cgyro', return_value=({'nr=1': case}, ['nr=1'])), \
+                patch.object(app, '_render_parameter_entries') as parameters:
+            app.render_mode_cgyro_vs_cgyro(settings)
+            self.assertEqual(parameters.call_args.args[3], ['ordinary'])
+            self.assertEqual(settings['convergence_selected_by_nr'], saved)
+            settings['cgyro_view'] = '收敛测试'
+            parameters.reset_mock()
+            app.render_mode_cgyro_vs_cgyro(settings)
+            parameters.assert_not_called()
+            self.assertEqual(settings['selected_paras'], {'ordinary': [1]})
+            settings['cgyro_view'] = '常规扫描'
+            app.render_mode_cgyro_vs_cgyro(settings)
+            self.assertEqual(parameters.call_args.args[3], ['ordinary'])
+
+    def test_convergence_only_run_does_not_leak_into_unchecked_ordinary_list(self):
+        root, settings = fixture()
+        settings['cgyro_view'] = '常规扫描'
+        ui = UI()
+        app = cases.CaseSelection(root, ui)
+        with patch.object(app, '_choose_cgyro', return_value=({'nr=1': indexed_case()}, ['nr=1'])), \
+                patch.object(app, '_render_parameter_entries') as parameters:
+            app.render_mode_cgyro_vs_cgyro(settings)
+        parameters.assert_not_called()
+        self.assertTrue(any('没有常规扫描结果' in str(args) for _, args, _ in ui.events))
+
+    def test_ordinary_plot_does_not_read_stale_selected_convergence_branches(self):
+        root, settings = fixture()
+        settings.update(cgyro_view='常规扫描', selected_paras={'N_ENERGY': [48]})
+        root['CGYRO_scan']['RUN_DB']['Jet_convergence']['nr=1'] = indexed_case()
+        ctx = selection.build_context(root)
+        with patch.object(plotting, 'collect_value_series', side_effect=AssertionError('result read')):
+            self.assertEqual(plotting.collect_plot_items(root, ctx), [])
+        self.assertFalse(ctx['convergence_plot'])
 
     def test_unchecked_direction_and_values_survive_reopen(self):
         root, settings = fixture()
@@ -66,6 +112,18 @@ class ConvergencePlottingTests(unittest.TestCase):
             app._convergence_entries(restored, lambda *k: str(k), {'nr=1': {}}, ['nr=1'], {'nr=1': ('one', '')})
         self.assertEqual(state.convergence_selection(restored, 'nr=1'), {'N_THETA': [48]})
         self.assertFalse(restored['convergence_flags_by_nr']['nr=1']['N_XI'])
+
+    def test_saved_ordinary_flags_follow_names_when_convergence_entries_are_removed(self):
+        root, settings = fixture()
+        case = indexed_case()
+        case['ordinary'] = {'1': {}, '2': {}}
+        root['CGYRO_scan']['RUN_DB']['Jet_convergence']['nr=1'] = case
+        settings.update(cgyro_view='常规扫描', selected_paras={'ordinary': [1], 'N_ENERGY': [48]},
+                        para_list_flag={0: False, 1: True},
+                        _selector_keys={'para_list_flag': ['N_ENERGY', 'ordinary']})
+        self.assertEqual(selection._sanitize_selected_parameters(root, settings), ({'ordinary': [1]}, {}))
+        settings['para_list_flag'] = {0: True, 1: False}
+        self.assertEqual(selection._sanitize_selected_parameters(root, settings), ({}, {}))
 
     def test_settings_validation_ignores_stale_cartesian_filters(self):
         root, settings = fixture()
@@ -113,11 +171,11 @@ class ConvergencePlottingTests(unittest.TestCase):
         self.assertEqual(settings['cgyro_view'], '收敛测试')
         self.assertEqual(list(settings['convergence_selected_by_nr']['nr=1']), list(GROUPS))
 
-    def test_one_case_groups_every_direction_into_one_convergence_page(self):
+    def test_one_case_has_a_top_level_page_for_each_direction(self):
         ctx = dict(convergence_plot=True, plot_3d=False, nr_CGYRO=['nr=1'])
         items = [dict(nr='nr=1', para=key) for key in GROUPS]
         pages = plotting.group_plot_pages(items, ctx)
-        self.assertEqual(pages, [('收敛测试', items)])
+        self.assertEqual(pages, [('N_THETA', [items[0]]), ('N_XI', [items[1]])])
 
     def test_distinct_radius_and_time_ky_never_share_one_convergence_page(self):
         ctx = dict(convergence_plot=True, plot_3d=False, plot_time_traces=True, merge_all_nr_plot=True,
@@ -125,7 +183,7 @@ class ConvergencePlottingTests(unittest.TestCase):
         items = [dict(nr=nr, para='N_XI', trace={'ky': ky}) for nr, ky in [('nr=1', .5), ('nr=2', .5), ('nr=1', -.5)]]
         pages = plotting.group_plot_pages(items, ctx)
         self.assertEqual(len(pages), 3)
-        self.assertTrue(all(label.startswith('收敛测试 / ') for label, _ in pages))
+        self.assertTrue(all(label.startswith('N_XI / ') for label, _ in pages))
         self.assertTrue(all(len(values) == 1 for _, values in pages))
 
     def test_two_runs_with_different_baselines_do_not_mix_same_axis_tokens(self):

@@ -6,6 +6,10 @@ import re
 
 # Extend this table for new built-in labels; do not translate solver keys/data.
 ENGLISH_TERMS = {
+    '收敛测试': 'Convergence test', '能量分辨率': 'Energy resolution',
+    '俯仰角分辨率': 'Pitch-angle resolution', '沿场分辨率': 'Field-line resolution',
+    '能量上限': 'Energy cutoff', '时间步精度': 'Time-step accuracy',
+    '结果缺失': 'Result missing', '参数摘要不可用': 'Input summary unavailable', '区间': ' domain',
     '当前 / 导入的 TGLF 文件': 'Imported TGLF input',
     '局部互转的 TGLF 文件': 'Converted TGLF input',
     '本轮生成剖面': 'Generated profile', '当前输入剖面': 'Input profile',

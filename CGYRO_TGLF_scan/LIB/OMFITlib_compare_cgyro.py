@@ -19,7 +19,7 @@ from OMFITlib_compare_cgyro_eigen import (
 from OMFITlib_compare_cgyro_export import export_selected_linear_spectra
 from OMFITlib_compare_cgyro_render import render_page, render_convergence_page
 from OMFITlib_compare_state import selection_check, selected_cgyro_runs
-from OMFITlib_compare_style import cgyro_case_caption
+from OMFITlib_compare_style import cgyro_case_caption, compact_scan_value
 from OMFITlib_cgyro_scan_view import slice_caption
 
 
@@ -68,7 +68,7 @@ def group_plot_pages(items, ctx):
     pages = {}
     for item in items:
         if ctx.get('convergence_plot', False):
-            key = (str(item['nr']),)
+            key = (str(item['nr']), str(item['para']))
             if item.get('source_label', ''):
                 key += (item['source_label'],)
             if ctx.get('plot_time_traces', False):
@@ -85,8 +85,22 @@ def group_plot_pages(items, ctx):
     labeled = []
     for key, values in pages.items():
         if ctx.get('convergence_plot', False):
-            suffix = ' / '.join((cgyro_case_caption(key[0], include_radius=True),) + key[1:])
-            labeled.append(('收敛测试' + (' / ' + suffix if len(pages) > 1 else ''), values))
+            metadata = values[0].get('slice_meta', {})
+            axis = metadata.get('axis', key[1])
+            # Normally the tab is just N_THETA / N_XI / ... . Different
+            # frozen-input families on the same axis must remain distinguishable.
+            peers = [group for group in pages.values() if group[0]['nr'] == values[0]['nr']
+                     and group[0].get('slice_meta', {}).get('axis', group[0]['para']) == axis]
+            label = axis
+            if len({group[0]['para'] for group in peers}) > 1:
+                label += ' / ' + metadata.get('label', key[1])
+                if 'baseline_value' in metadata:
+                    label += ' / Base=' + compact_scan_value(metadata['baseline_value'])
+            if len(ctx.get('nr_CGYRO', [])) > 1:
+                label += ' / ' + cgyro_case_caption(key[0], include_radius=True)
+            if len(key) > 2:
+                label += ' / ' + ' / '.join(key[2:])
+            labeled.append((label, values))
             continue
         if ctx['plot_3d']:
             key = (key[0], slice_caption(values[0]['slice_meta'], key[1])) + key[2:]

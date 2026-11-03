@@ -6,7 +6,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'CGYRO_TGLF_scan/LIB'))
-from OMFITlib_compare_convergence import convergence_case_view, convergence_groups
+from OMFITlib_compare_convergence import convergence_case_view, convergence_groups, ordinary_case_view
 
 
 BASE = {'N_ENERGY': 32, 'N_XI': 48, 'N_RADIAL': 32, 'N_THETA': 32, 'E_MAX': 8}
@@ -72,6 +72,45 @@ def scaled_fixture():
 
 
 class ConvergenceReferenceTests(unittest.TestCase):
+    def test_ordinary_view_excludes_convergence_directions_and_baseline_without_loading(self):
+        case = fixture()
+        ordinary = {'1': {'lin': {'.5': object()}}}
+        case['ordinary_convergence_name'] = ordinary  # Names never classify data.
+        original = list(case)
+        view = ordinary_case_view(case)
+        self.assertEqual([key for key in view if not key.startswith('__')], ['ordinary_convergence_name'])
+        self.assertIs(view['ordinary_convergence_name'], ordinary)
+        self.assertEqual(view['__SCANS__'], {})
+        self.assertEqual(list(case), original)
+
+    def test_mixed_legacy_branch_filters_rows_values_and_reuses_ordinary_owner(self):
+        case = fixture()
+        record = case['__SCANS__']['N_ENERGY']
+        row = copy.deepcopy(record['tasks']['p000001'])
+        row.update(result_path=['N_ENERGY', '16', 'lin', '-0.5'],
+                   coordinate_path=['N_ENERGY', '16', 'lin', '-0.5'],
+                   values={'N_ENERGY': 16, 'KY': -.5}, run_token='ordinary')
+        row['input_parameters']['N_ENERGY'] = 16
+        row['result_info'].update(run_token='ordinary', convergence_group={})
+        record['tasks']['ordinary'] = row
+        owner = {'__RESULT_REF__': 'ordinary-owner'}
+        case['N_ENERGY']['16'] = {'lin': {'-0.5': owner}}
+        original = copy.deepcopy(case)
+        for source in (case, json.loads(json.dumps(case))):
+            view = ordinary_case_view(source)
+            self.assertEqual(list(view['N_ENERGY']), ['16'])
+            self.assertEqual(list(view['__SCANS__']), ['N_ENERGY'])
+            kept = view['__SCANS__']['N_ENERGY']
+            self.assertEqual(list(kept['tasks']), ['ordinary'])
+            self.assertEqual(kept['info']['scan_axes'], [dict(name='N_ENERGY', values=[16])])
+            self.assertNotIn('convergence_group', kept['info'])
+            self.assertIs(view['N_ENERGY']['16']['lin']['-0.5'], source['N_ENERGY']['16']['lin']['-0.5'])
+            self.assertIs(ordinary_case_view(view), view)
+        self.assertEqual(case, original)
+        # The dedicated convergence view can still join complete baselines;
+        # filtering ordinary controls never mutates its source index.
+        self.assertEqual(convergence_case_view(case)[3], [])
+
     def test_metadata_groups_are_directions_not_cartesian_axes(self):
         case = fixture()
         class NoPayload(dict):

@@ -307,66 +307,57 @@ def _convergence_reference(axes, items, ctx, mode):
 
 
 def render_convergence_page(notebook, ctx, label, items):
-    """One case page, one exact scan direction per column, using prepared data.
+    """One top-level figure tab per direction, using only prepared data.
 
     The caller resolves common baselines from RUN_DB before rendering. Neither
     this function nor its helpers open a result or infer a missing baseline.
-    Different fixed-coordinate groups remain separate even for the same axis.
+    Different fixed-coordinate groups arrive on separate tabs, even when they
+    vary the same parameter. Spectra and fluctuations fit a normal 2x2 page.
     """
-    mode = 'Plot γ/γ_ref' if ctx['plot_gamma_ratio'] else ctx['plot_mode']
-    groups = {}
-    for item in items:
-        groups.setdefault((item['nr'], item['para']), []).append(item)
-    if not groups:
+    if not items:
         return None
-    rows = {'Plot 2D': 4 if ctx['error_flag'] == 'CGYRO' else 2,
-            'Plot single ky': 2, 'Plot time traces': 2, 'Plot γ/γ_ref': 1,
-            'Plot eigen ball': 4, 'Plot 3D': 2}[mode]
+    mode = 'Plot γ/γ_ref' if ctx['plot_gamma_ratio'] else ctx['plot_mode']
+    rows, columns = {'Plot 2D': (2, 2 if ctx['error_flag'] == 'CGYRO' else 1),
+                     'Plot single ky': (1, 2), 'Plot time traces': (1, 2),
+                     'Plot γ/γ_ref': (1, 1), 'Plot eigen ball': (2, 2), 'Plot 3D': (1, 2)}[mode]
     options = {'subplot_kw': {'projection': '3d'}} if mode == 'Plot 3D' else {}
-    fig, axes = notebook.subplots(nrows=rows, ncols=len(groups), label=label, squeeze=False,
-                                  figsize=(max(7., 4.5 * len(groups)), max(4., rows * 3.1)),
-                                  sharex='col' if mode != 'Plot 3D' else False, **options)
-    for column, group in enumerate(groups.values()):
-        panels = axes[:, column:column + 1]
-        metadata = group[0]['slice_meta']
-        annotations = []
-        if mode == 'Plot 2D':
-            spectra_axes = (np.asarray([[panels[0, 0], panels[2, 0]],
-                                       [panels[1, 0], panels[3, 0]]]) if rows == 4 else panels)
-            annotations = _spectra(spectra_axes, group, ctx)
-        elif mode == 'Plot 3D':
-            _surface(fig, panels, group[0], ctx)
-        else:
-            {'Plot single ky': _single_ky, 'Plot time traces': _time_traces,
-             'Plot γ/γ_ref': _ratio, 'Plot eigen ball': _eigen}[mode](panels, group, ctx)
-        _convergence_colors(panels, group, ctx)
-        if mode in ('Plot single ky', 'Plot 3D', 'Plot γ/γ_ref'):
-            has_baseline = _convergence_reference(panels, group, ctx, mode)
-        else:
-            has_baseline = any(item['value'] == metadata['baseline_value'] for item in group)
-        caption = metadata.get('label', metadata['axis'])
-        caption += '\n基准 {}={}'.format(metadata['axis'], compact_scan_value(metadata['baseline_value']))
-        if not has_baseline:
-            caption += '（结果缺失）'
-        panels[0, 0].set_title(caption + '\n' + panels[0, 0].get_title())
-        for axis in panels.ravel():
-            if mode != 'Plot 3D':
-                if ctx.get('plot_log_x', False):
-                    axis.set_xscale('log')
-                if ctx.get('plot_log_y', False):
-                    axis.set_yscale('log')
-                for spine in axis.spines.values():
-                    spine.set_linewidth(ctx['bwith'])
-            if axis.get_legend_handles_labels()[1]:
-                finalize_axis_legend(axis, dict(ctx, _legend_columns=1))
-            axis.title.set_fontsize(ctx['fs1'])
-            axis.xaxis.label.set_size(ctx['fs1'])
-            axis.yaxis.label.set_size(ctx['fs1'])
-        if annotations:
-            _adjust_labels(annotations, panels[1, 0])
-    title = label
+    fig, axes = notebook.subplots(nrows=rows, ncols=columns, label=label, squeeze=False,
+                                  figsize=FIGURE_SIZES[mode], sharex=mode != 'Plot 3D', **options)
+    annotations = []
+    if mode == 'Plot 3D':
+        _surface(fig, axes, items[0], ctx)
+    else:
+        annotations = {'Plot 2D': _spectra, 'Plot single ky': _single_ky,
+                       'Plot time traces': _time_traces, 'Plot γ/γ_ref': _ratio,
+                       'Plot eigen ball': _eigen}[mode](axes, items, ctx) or []
+    _convergence_colors(axes, items, ctx)
+    metadata = items[0]['slice_meta']
+    if mode in ('Plot single ky', 'Plot 3D', 'Plot γ/γ_ref'):
+        has_baseline = _convergence_reference(axes, items, ctx, mode)
+    else:
+        has_baseline = any(item['value'] == metadata['baseline_value'] for item in items)
+    caption = metadata.get('label', metadata['axis'])
+    caption += ' · 基准 {}={}'.format(metadata['axis'], compact_scan_value(metadata['baseline_value']))
+    if not has_baseline:
+        caption += '（结果缺失）'
+    for axis in axes.ravel():
+        if mode != 'Plot 3D':
+            if ctx.get('plot_log_x', False):
+                axis.set_xscale('log')
+            if ctx.get('plot_log_y', False):
+                axis.set_yscale('log')
+            for spine in axis.spines.values():
+                spine.set_linewidth(ctx['bwith'])
+        if axis.get_legend_handles_labels()[1]:
+            finalize_axis_legend(axis, dict(ctx, _legend_columns=1))
+        axis.title.set_fontsize(ctx['fs1'])
+        axis.xaxis.label.set_size(ctx['fs1'])
+        axis.yaxis.label.set_size(ctx['fs1'])
+    title = 'Convergence test / ' + label + '\n' + caption
     if mode not in ('Plot time traces', 'Plot eigen ball'):
-        title += '\n统计窗口：末尾 {:.4g}% 样本（有足够样本时至少取 2 个）'.format(100 * ctx.get('ave_window', .02))
+        title += '\nStatistics: last {:.4g}% of samples (at least 2 when available)'.format(100 * ctx.get('ave_window', .02))
     fig.suptitle(title, fontsize=ctx['fs1'])
     apply_figure_layout(fig, ctx)
+    if annotations:
+        _adjust_labels(annotations, axes[1, 0])
     return fig

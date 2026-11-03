@@ -18,7 +18,8 @@ from collections import Counter, OrderedDict
 from contextlib import contextmanager
 from OMFITlib_cgyro_archive import latest_cases, remap_case_selection, remap_pair_flags
 from OMFITlib_cgyro_scan_view import multiaxis_scans, axis_values
-from OMFITlib_compare_convergence import convergence_groups
+from OMFITlib_compare_convergence import convergence_groups, ordinary_case_view
+from OMFITlib_gui_deferred import deferred_section
 from OMFITlib_compare_widgets import (
     ComparisonWidgets,
 )
@@ -352,16 +353,17 @@ class CaseSelection(ComparisonWidgets):
     def _convergence_entries(self, state, path, run, radii, labels):
         """One convergence case, with independent directional selections."""
         groups_by_nr = {str(nr): convergence_groups(run[nr]) for nr in radii if nr in run}
-        if not any(groups_by_nr.values()):
-            state['cgyro_view'] = '常规扫描'
-            return False
-        state.setdefault('cgyro_view', '收敛测试')
-        self.ui.ComboBox(path('cgyro_view'), ['收敛测试', '常规扫描'], '绘图案例',
-                         default='收敛测试', updateGUI=True)
+        default = '收敛测试' if any(groups_by_nr.values()) else '常规扫描'
+        state.setdefault('cgyro_view', default)
+        # Native CheckBox supports mapped values, preserving old project
+        # selections without a duplicate mode flag or migration on opening.
+        self.ui.CheckBox(path('cgyro_view'), 'convergence_test',
+                         mapFalseTrue=['常规扫描', '收敛测试'], default=default, updateGUI=True,
+                         help='勾选后只选择收敛测试方向；取消勾选后选择常规扫描。两类取值分别记忆。')
         if state['cgyro_view'] != '收敛测试':
             return False
         self.ui.Separator('收敛测试')
-        self.ui.Label('各扫描方向分别成栏；自动加入参数一致的基准曲线。', align='left')
+        self.ui.Label('每个扫描方向单独一个绘图标签页；自动加入参数一致的基准曲线。', align='left')
         selections = state.setdefault('convergence_selected_by_nr', {})
         flags_by_nr = state.setdefault('convergence_flags_by_nr', {})
         for nr in radii:
@@ -406,9 +408,19 @@ class CaseSelection(ComparisonWidgets):
         radii = state.get('nr_CGYRO', [])
         if not radii:
             return
+        render = lambda: self._cgyro_scan_entries(state, path, run, radii, labels)
+        section = deferred_section(self.ui, render, local=True, container=True)
+        return render() if section is None else section.show()
+
+    def _cgyro_scan_entries(self, state, path, run, radii, labels):
+        """The mode and parameter controls share one local refresh boundary."""
         if self._convergence_entries(state, path, run, radii, labels):
             return
-        self.ui.Separator('扫描参数与取值')
+        run = {nr: ordinary_case_view(run[nr]) for nr in radii if nr in run}
+        self.ui.Separator('常规扫描参数与取值')
+        if not any(stable_keys(case) for case in run.values()):
+            self.ui.Label('所选案例没有常规扫描结果；勾选 convergence_test 查看收敛测试。', align='left')
+            return
         self.ui.CheckBox(path('force_read_all_nr_items'), '各输入案例分别选择参数',
                          default=False, updateGUI=True)
         if not state.get('force_read_all_nr_items', None):
