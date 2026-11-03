@@ -91,18 +91,17 @@ class ResultCallbackImportTests(unittest.TestCase):
                 view.progress('CGYRO_WAIT_LEFT|123\n')
                 self.assertIn('等待收集校验', view.status)
 
-    def test_restart_preflight_filters_only_selected_bad_zip_after_native_import_cleanup(self):
-        plan = dict(points=['bad', 'fresh'], sources={
-            'bad': dict(mode='checkpoint_zip', zip=str(self.files.base / 'absent.zip')),
+    def test_optional_restart_log_does_not_filter_points_after_native_import_cleanup(self):
+        plan = dict(points=['checkpoint', 'fresh'], sources={
+            'checkpoint': dict(mode='checkpoint_zip', zip=str(self.files.base / 'not-opened.zip')),
             'fresh': dict(mode='fresh', zip='/not-opened.zip')})
-        with self.callbacks('from OMFITlib_cgyro_restart_preflight import filter_restart_points, requirement_command') as api:
-            api['filter_restart_points'](plan, {}, object(), 'cluster', '/work', '', {})
-            self.assertEqual(plan['points'], ['fresh'])
-            self.assertEqual(set(plan['rejected']), {'bad'})
-            command = api['requirement_command'](dict(environment='export GACODE_ROOT=/selected',
-                executable='cgyro -e . -n 32 -nomp 2'))
-            self.assertIn('command -v', command)
-            self.assertNotIn('cgyro -e .', command)
+        original = copy.deepcopy(plan)
+        with self.callbacks('from OMFITlib_cgyro_restart_preflight import filter_restart_points, check_debug_history') as api:
+            cache = {}
+            self.assertIs(api['filter_restart_points'](plan, {}, object(), 'cluster', '/work', '', cache), plan)
+            api['check_debug_history']('/not-opened', 'checkpoint', {}, object(), 'cluster', '/work', '', cache)
+            self.assertEqual(plan, original)
+            self.assertEqual(cache, {})
 
     def test_result_list_scope_and_completion_survive_native_import_cleanup(self):
         module = {}

@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.61。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.62。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 原生 GUI 验证记录与提示
 
@@ -579,9 +579,11 @@ python -B tools/run_regressions.py --suite test_build_project --suite test_maint
 
 `wait_current` 保留原生远程执行、Kill local 和 Abort。`NativeWaitView` 只匹配当前作业的停止文件与 nonce 标记，将原生 Text 中的长命令折叠为两行状态；原命令仍留在 Text 中供准确的停止绑定识别。活动进度条只表示正在等待，不表示模拟完成百分比。队列轮询输出排队、运行及其他活动状态数量；只有成功查询且该作业已不在队列时才输出离队标记，随后仍须核验调度终态和结果。不得因离队、网络中断或关闭显示而推断求解成功。所有 Tk 操作在原生主线程回调执行，不刷新工程树或读取结果。
 
-续算只核验用户选中的 RUN_DB 文件引用。标准历史必须包含 `out.cgyro.timing`；收集器还保留部分机构 CGYRO 必需的 `out.cgyro.timing.debug`。缺少 debug 文件时，准备阶段至多查询一次当前配置的实际安装：只识别与 `$GACODE_ROOT/cgyro/bin/cgyro` 匹配的启动器，检查对应二进制是否引用该文件，不运行求解器。已存在该文件的点、全新计算及页面切换不触发此查询。无法识别的包装器不凭猜测要求额外文件；查询失败不能记录为验证成功。
+续算只核验用户选中的 RUN_DB 文件引用。标准历史必须包含 `out.cgyro.timing`；`out.cgyro.timing.debug` 是已停用的定制性能日志，缺失或空文件不能阻止续算。1.24.61 的二进制文件名探针将诊断写入误判为检查点需求，现已移除；准备、页面切换均不查询远程二进制。旧 preflight 函数名仅为已加载脚本保留无 I/O 兼容入口。新收集不再额外请求 debug 日志；旧工程中已有文件保持原样，不在更新时遍历或清理。
 
-确认需要 debug 历史而该点缺失时，只拒绝该点并保留原因，其他完整选中点仍可准备；原扫描覆盖范围保持不变。旧归档缺文件需要从该点原始目录补收匹配检查点的历史，不伪造空文件，不通过再次收集已归档任务承诺自动补齐。Fortran runtime error 属于确定性失败，不能当作可自动重试的节点故障。回归覆盖 `test_cgyro_restart_preflight`、`test_cgyro_collection`、`test_cgyro_wait`、`test_cgyro_wait_ui` 和原生库注册清理后的 `test_cgyro_callback_imports`；Tk 测试执行原生 OMFIT 等待面板构造代码，验证进度条和停止按钮可见、停止身份正确及异常清理。
+太原定制求解器已移除 `write_timers_debug`、两处调用及 `runfile_timers_debug` 声明。`tools/remove_cgyro_timing_debug.py timedata_source.f90 timedata_candidate.f90 globals_source.F90 globals_candidate.F90` 只为已识别实现生成两份新候选源码，不覆盖安装、不编译、不修改用户结果。需要在实际构建环境验证、备份后部署；仅更新 OMFIT 不能替换其他机器的旧二进制。标准计时函数除删除诊断调用外保持原样，普通 timing 与检查点输入、格式、SHA 校验保留。移除后的源码及二进制不应再包含这些诊断符号。
+
+Fortran runtime error 属于确定性失败，不能当作可自动重试的节点故障。回归覆盖 `test_cgyro_timing_debug`（实际 Fortran 编译）、`test_cgyro_restart_preflight`、`test_checkpoint_resources`、`test_result_identity`、`test_cgyro_collection`、`test_cgyro_wait`、`test_cgyro_wait_ui` 和原生库注册清理后的 `test_cgyro_callback_imports`；Tk 测试执行原生 OMFIT 等待面板构造代码，验证进度条和停止按钮可见、停止身份正确及异常清理。
 
 绘图选项通过 `available_convergence_groups` 复用实际绘图的参数/文件引用解析规则。只读所选记录、半径、离子和 constant 案例的索引，不跨案例借用结果、不打开结果文件。一个方向至少有一个可解析的非基准取值才显示；只有共享基准或只有计划索引的方向不显示。旧选项记忆必须与当前可用值取交集。完整诊断仍由显式检查入口提供，不能靠隐藏索引错误来修复结果本身。
 

@@ -30,7 +30,7 @@ TK_SUITES = {'test_tk_callbacks', 'test_cgyro_wait_ui', 'test_gui_refresh_native
              'test_workbench_navigation', 'test_refresh_boundaries', 'test_runtime_boundaries',
              'test_transfer_refresh_native', 'test_font_ui_boundaries', 'test_gui_open_native', 'test_omfit_file_menu', 'test_template_manager_entry'}
 BASH_PATH_SUITES = {'test_cgyro_collection', 'test_cgyro_job_recovery'}
-BASH_NATIVE_SUITES = {'test_cgyro_collection', 'test_cgyro_launch', 'test_cgyro_restart_preflight'}
+BASH_NATIVE_SUITES = {'test_cgyro_collection', 'test_cgyro_launch'}
 EXTERNAL_DEPENDENCIES = {'omfit_classes', 'numpy', 'matplotlib', 'scipy', 'tkinter', 'PIL'}
 ENVIRONMENT_EXIT = 3
 

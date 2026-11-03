@@ -264,7 +264,6 @@ def path_join(dirname, filename):
 # Native OMFIT versions omit some newer optional histories and profile inputs.
 # Preserve them for a subsequent restart without modifying OMFIT itself.
 restart_extra_files = ['bin.cgyro.restart', 'bin.cgyro.restart.old', 'run_log', 'cgyro.exit',
-                       'out.cgyro.timing.debug',
                        'input.profiles', 'input.profiles.geo', 'bin.cgyro.kxky_v',
                        'bin.cgyro.lky_flux_n', 'bin.cgyro.lky_flux_e', 'bin.cgyro.lky_flux_v',
                        'bin.cgyro.eparb', 'bin.cgyro.hb']
