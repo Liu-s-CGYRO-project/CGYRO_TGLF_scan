@@ -65,6 +65,14 @@ class ResizeBoundaryTest(unittest.TestCase):
         self.assertEqual(calls, [])
         self.settle()
         self.assertEqual(calls, [600])
+        # A late window-manager event with unchanged size must not redo layout.
+        self.root.event_generate('<Configure>')
+        self.settle()
+        self.assertEqual(calls, [600])
+        self.root.geometry('640x300')
+        self.root.update_idletasks()
+        self.settle()
+        self.assertEqual(calls, [600, 640])
 
     def test_label_destruction_cancels_its_timer_and_preserves_other_bindings(self):
         label = tk.Label(self.root, text='Temporary status')

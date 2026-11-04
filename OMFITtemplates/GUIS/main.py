@@ -1,12 +1,12 @@
 """Open the template library using OMFIT's existing Tk session."""
-from OMFITlib_tk_callbacks import begin_view_open, native_version_notice
+from OMFITlib_tk_callbacks import begin_view_open, native_version_diagnostic
 native_open = begin_view_open(OMFITx)
 from OMFITlib_template_ui import open_manager
 from OMFITlib_template_session import OMFITSession
 
 manager = open_manager(session=OMFITSession(OMFIT, gui_api=OMFITx))
 manager.native_version = str(OMFITx.__dict__.get('repo_str', '') or '未提供版本标识')
-manager.show_startup_notice(native_version_notice(OMFITx))
+manager.native_version_status = native_version_diagnostic(OMFITx)
 if native_open is not None:
     manager.native_open_events = native_open
 

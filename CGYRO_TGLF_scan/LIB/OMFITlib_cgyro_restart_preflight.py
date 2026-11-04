@@ -12,10 +12,10 @@ the server, changes the selected points, nor creates synthetic timer history.
 
 
 def check_debug_history(directory, point, runtime, ui, server, workdir, tunnel, cache):
-    """Accept the optional debug log regardless of whether it is present."""
+    """Deprecated compatibility no-op; the optional log is not validated."""
     return None
 
 
 def filter_restart_points(plan, runtime, ui, server, workdir, tunnel, cache):
-    """Leave point selection to the actual input/checkpoint validators."""
+    """Deprecated compatibility no-op; actual checkpoint validators select points."""
     return plan

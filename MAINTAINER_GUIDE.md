@@ -1,6 +1,6 @@
 # 维护与扩展接口
 
-适用于工程 1.24.63。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.64。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
 
 ## 原生 GUI 验证记录与提示
 
@@ -11,11 +11,19 @@
 | 本地 ASIPP 源码快照 | `omfit_classes/version=3.2024.45`；Git 提交未核实 | `OMFITx.py`: `4970989d29dca9ecc04dbd9fb34c6974eb640960ed683e331d6e633b8e377dec`；`omfit_python.py`: `9e263d6f758de6561b0c05d0d79db3e5635fbb50092fc9a4b9e45d737d35c2eb`；`utils_tk.py`: `1ed4bcd033bb71b1c1a471abe3f72beda0eac420b5382cb01b93b3a3935a1d90` | Windows Python 3.12、本地 Linux Python 3.10 的原生回调宿主；Entry / Text / Button / CheckBox、局部刷新、GUI / Task 入口；不是完整 OMFIT 会话验证 |
 | 2026-10-31 太原 File 菜单快照 | 提交未记录；不能由用户其他会话的标题补推 | `omfit_gui.py`: `37f43884cae720c24fe8cde825e97f73245469c652e81508f52b538b052caa55`；`OMFITx.py`: `a2ba9b86a2d9f51220d40e18d1fd69d7edb990c9f1aa395200cd3cbecc01b857`；`utils_tk.py`: `b1a7de65e8c90b263caf13dedbda029107fb1ca031e03f93a4ee335ac45178a2` | 14 项原生 File 菜单测试曾在太原 Python 3.9.23 / Linux Tk 独立进程通过；不包含当前用户完整工程 |
 
-`OMFITlib_tk_callbacks.VERIFIED_NATIVE_VERSIONS` 目前为空，直到取得与测试快照绑定的真实 Git/version 证据。不能为了消除提示登记一个猜测值。开窗仅读取 OMFIT 已加载的 `repo_str`；不匹配或缺失时，每个 Tk 会话显示一次可见、非阻断提示。总控和管理器共享会话标记，不运行 Git、访问网络、读取源码、计算文件摘要或访问工程数据。匹配版本也不能排除同版本上的本地修改；行为回归继续是发布门槛。
+`OMFITlib_tk_callbacks.VERIFIED_NATIVE_VERSIONS` 目前为空，直到取得与测试快照绑定的真实 Git/version 证据。不能为了消除提示登记一个猜测值。原生版本信息移到管理器“设置与记录 → 开窗诊断”，不再在主页反复提示。只读取 OMFIT 已加载的 `repo_str`，不运行 Git、访问网络、读取源码、计算文件摘要或访问工程数据。旧入口的 `native_version_notice` 保留兼容导出，新入口只使用 `native_version_diagnostic`。匹配版本也不能排除同版本上的本地修改；行为回归继续是发布门槛。
 
 增加版本记录时必须保存实际 Git commit/describe、上述相关源文件摘要、Python/Tk 与平台以及测试日志。每次修改原生适配须通过 `test_gui_refresh_native`、`test_gui_tab_pages`、`test_gui_open_native`、`test_template_manager_entry`。File 菜单源码另需 `test_omfit_file_menu`，必须传可解析且匹配的 `omfit_gui.py`；`test_file_menu_patch` 用受控文本独立验证拒绝契约。原生源码不能解析/不受支持由 runner 提前记为 `environment_error`，不能算通过；补丁生成或其他代码回归失败仍须修复。现有本地 `omfit_gui.py` 的孤立 `%` 换行是环境不支持，不能自动修正外部源码来掩盖。
 
 管理器“设置与记录 → 开窗诊断”显示本次 `active / observed / suppressed` 计数和加载的版本文本；计数 0 不是错误判据。升级入口校验失败继续运行当前目录版本，并在窗口顶部显示一次原因，同时写入设置日志；不依赖用户能看到 stderr，也不绕过独立摘要锚点。
+
+## 更新后读取器与等待窗口（1.24.64 / 管理器 1.10.39）
+
+`cgyro_browser.clear_runtime` 和 `cgyro_payload.clear_runtime` 由各自代码拥有缓存失效规则。LivePlan 在安装、撤销和失败回滚后调用这些钩子；旧版无钩子时只清除既有代码节点属性。payload 钩子仅检查已在内存的弱引用及有界目录缓存，修正仍被调用方持有的旧代理回调，使下一次读取从当前 LIB 定位读取器。保留弱引用登记，以便再次更新/撤销；物化缓存按 module 身份隔离。不能在钩子中遍历 RUN_DB、读取/哈希结果文件、复制 ZIP 或删除用户文件。
+
+等待面板仅收起长命令并更新本次作业状态，沿用控件当前字体；context 退出负责恢复控件和解绑，窗口提前销毁与连接异常也须验证。标准 `out.cgyro.timing` 仍是续算必需历史；缺失或空文件只拒绝该点，并指导补收匹配检查点的原文件。`timing.debug` 的旧预检入口只保留 deprecated no-op 兼容，不再次启用检查。
+
+管理器尺寸排版按控件实际宽高去重。同尺寸的迟到 Configure 和窗口移动不重新排版，尺寸变化仍执行；只影响该控件的局部回调。
 
 ## 输入传递和更新完整性（1.24.49 / 管理器 1.10.35）
 

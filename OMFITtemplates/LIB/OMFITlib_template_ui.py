@@ -35,11 +35,17 @@ def _on_resize(widget, callback, owner=None):
     """Coalesce local layout changes outside Tk's synchronous idle sizing."""
     owner = widget if owner is None else owner
     pending = None
+    applied_size = None
 
     def apply():
-        nonlocal pending
+        nonlocal pending, applied_size
         pending = None
-        callback()
+        size = widget.winfo_width(), widget.winfo_height()
+        # Window managers may deliver another Configure after the first timer
+        # has fired (or just move the window). Layout depends on size only.
+        if size != applied_size:
+            applied_size = size
+            callback()
 
     def queue_resize(event):
         nonlocal pending
@@ -146,6 +152,7 @@ class TemplateManager(ManagerUpdateUI):
         window._project_cjk_defer_load = True
         self.native_open_events = None
         self.native_version = '独立运行（无 OMFIT 原生 GUI）'
+        self.native_version_status = ''
         self.startup_notices = set()
         self.session = session
         self.last_output = None
@@ -704,6 +711,7 @@ class TemplateManager(ManagerUpdateUI):
         detail = ('未启用原生开窗过滤' if events is None else
                   'active={active}，observed={observed}，suppressed={suppressed}'.format(**events))
         self._log('开窗诊断\nOMFIT：' + self.native_version + '\n' + detail +
+                  ('\n' + self.native_version_status if self.native_version_status else '') +
                   '\n计数仅供排障；0 次拦截不表示错误。此操作不读取工程或结果文件。')
 
     def _log(self, message):

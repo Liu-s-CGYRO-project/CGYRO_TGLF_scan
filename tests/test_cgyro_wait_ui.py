@@ -5,6 +5,7 @@ import sys
 from types import ModuleType, SimpleNamespace
 import tkinter as tk
 from tkinter import ttk
+from tkinter.font import Font
 import unittest
 from unittest.mock import patch
 
@@ -126,6 +127,19 @@ class NativeWaitViewTests(unittest.TestCase):
             self.assertIn('已离开队列，等待收集校验', text.get('1.0', '1.end'))
             self.assertNotIn('成功', text.get('1.0', '1.end'))
         self.assertFalse(self.errors)
+
+    def test_compacting_panel_keeps_its_selected_cjk_font_during_and_after_wait(self):
+        _, text, _, _ = self.panel()
+        font = Font(self.root, name='SelectedCjkFont', family='Noto Sans CJK SC', size=13)
+        text.configure(font=font)
+        before = str(text.cget('font'))
+        with NativeWaitView(self.ui, '10061984', self.markers) as view:
+            view.attach(text)
+            view.progress('CGYRO_WAIT|10061984|0|1|0\n')
+            self.assertEqual(str(text.cget('font')), before)
+            self.assertEqual(int(text.cget('height')), 3)
+        self.assertEqual(str(text.cget('font')), before)
+        self.assertEqual(int(text.cget('height')), 10)
 
     def test_native_destruction_and_failed_connection_always_remove_scoped_handler(self):
         with self.assertRaisesRegex(OSError, 'connection'):

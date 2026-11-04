@@ -8,8 +8,46 @@ saved expression values. Source edits and template updates invalidate them.
 from builtins import (AttributeError, TypeError, ValueError, dict, getattr, id, len, object, property, str)
 import os
 import re
+from types import MethodType
 from weakref import WeakValueDictionary, ref
 import omfit_classes.omfit_gacode as native_readers
+
+BROWSER_CACHE = '_cgyro_browser_entry'
+PAYLOAD_CACHE = '_cgyro_payload_api'
+
+
+def clear_runtime(module, task):
+    """Invalidate this code node without inspecting any archived result."""
+    object.__getattribute__(task, '__dict__').pop(BROWSER_CACHE, None)
+
+
+def _current_reader(view):
+    module = object.__getattribute__(view, '_payload_module')
+    key = object.__getattribute__(view, '_payload_key')
+    reader = payload_api(module).materialize_owner(module, key)
+    try:
+        object.__setattr__(view, '_payload_active', ref(reader))
+    except TypeError:
+        pass  # Plain mapping adapters need not support weak references.
+    return reader
+
+
+def _current_file(view, name):
+    module = object.__getattribute__(view, '_payload_module')
+    key = object.__getattribute__(view, '_payload_key')
+    return payload_api(module).browser_file(module, key, name)
+
+
+def refresh_view(view):
+    """Upgrade a retained pre-update proxy's callbacks, without reading it.
+
+    Older proxies captured the old library in their class closures. Removing
+    a weak-cache entry alone cannot repair a proxy still held by a caller.
+    Only our runtime adapter instance is changed; native readers are untouched.
+    """
+    object.__setattr__(view, '_payload_reader', MethodType(_current_reader, view))
+    object.__setattr__(view, '_payload_file', MethodType(_current_file, view))
+    object.__getattribute__(view, '__dict__').pop('_payload_active', None)
 
 
 class RuntimeCache(dict):
@@ -34,9 +72,15 @@ def payload_api(module):
     """Load the reader library on first use of a selected result only."""
     task = module['LIB']['OMFITlib_cgyro_payload']
     stamp = source_stamp(task)
-    cached = getattr(task, '_cgyro_payload_api', None)
+    cached = getattr(task, PAYLOAD_CACHE, None)
     if not cached or cached['stamp'] != stamp:
-        cached = RuntimeCache(stamp=stamp, api=task.importCode(_relLoc={'root': module}))
+        api = task.importCode(_relLoc={'root': module})
+        # A direct source edit can leave process-level views from earlier code.
+        # Older libraries have no hook; live update retains that compatibility.
+        clear = getattr(api, 'clear_runtime', None)
+        if clear is not None:
+            clear(module, task)
+        cached = RuntimeCache(stamp=stamp, api=api)
         task._cgyro_payload_api = cached
     return cached['api']
 

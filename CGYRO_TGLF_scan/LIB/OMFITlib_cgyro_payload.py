@@ -20,7 +20,7 @@ import re
 from weakref import WeakValueDictionary
 import omfit_classes.omfit_gacode as native_readers
 from omfit_classes.omfit_path import OMFITpath
-from OMFITlib_cgyro_browser import deferred_view
+from OMFITlib_cgyro_browser import PAYLOAD_CACHE, deferred_view, refresh_view
 from OMFITlib_cgyro_db import metadata_value, result_pool, rollback_actions, storage_state
 from OMFITlib_cgyro_reference import is_native_file
 from OMFITlib_cgyro_storage_files import FILE_STORE, file_digest, native_kind
@@ -30,6 +30,25 @@ PACKED = '__CGYRO_FILES__'
 FORMAT_VERSION = 1
 VIEW_CACHE_SIZE = 4
 COPY_CHUNK = 4 * 1024 * 1024
+
+
+def clear_runtime(module, task):
+    """Drop this module's runtime readers, not its result data or files.
+
+    Work is bounded by the readers already in memory. Do not traverse RUN_DB,
+    validate manifests, hash files, or materialize results during code update.
+    """
+    object.__getattribute__(task, '__dict__').pop(PAYLOAD_CACHE, None)
+    views = getattr(native_readers, '_cgyro_deferred_views', {})
+    for key, view in list(views.items()):
+        if key[0] == id(module):
+            refresh_view(view)
+    files = getattr(native_readers, '_cgyro_file_views', {})
+    for key in list(files):
+        # Before 1.24.64 file-view keys lacked module identity. Evict those
+        # bounded legacy entries too; OMFIT owns disposable directory cleanup.
+        if len(key) == 3 or key[0] == id(module):
+            files.pop(key, None)
 
 
 def content_key(files):
@@ -114,7 +133,7 @@ def materialize_owner(module, key):
     if cache is None:
         cache = OrderedDict()
         native_readers._cgyro_file_views = cache
-    cache_key = key, stamp, bool(owner['test_mode'])
+    cache_key = id(module), key, stamp, bool(owner['test_mode'])
     previous = cache.pop(cache_key, None)
     if previous is not None:
         reader, paths, expected = previous
@@ -167,7 +186,12 @@ def resolve_owner(module, key, *, defer_native=False):
     cache_key = id(module), key, id(owner)
     reader = cache.get(cache_key, None)
     if reader is None:
-        reader = deferred_view(module, key, lambda module, key: materialize_owner(module, key), browser_file)
+        libraries = metadata_value(module.get('LIB', {}))
+        if libraries.get('OMFITlib_cgyro_payload', None) is not None:
+            reader = deferred_view(module, key)
+        else:
+            # Standalone archive tools have no live project code nodes.
+            reader = deferred_view(module, key, lambda module, key: materialize_owner(module, key), browser_file)
         cache[cache_key] = reader
     return reader
 

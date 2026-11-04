@@ -313,6 +313,65 @@ class BrowserUpdateTests(unittest.TestCase):
             browser.payload_api(self.root)
             self.assertEqual(task.importCode.call_count, 3)
 
+    def test_update_and_undo_route_retained_legacy_proxy_through_current_library_only(self):
+        class OMFITpythonTask(SimpleNamespace):
+            pass
+        for name, task in list(self.root['LIB'].items()):
+            self.root['LIB'][name] = OMFITpythonTask(**vars(task))
+        key = self.keys[0]
+        # A pre-1.24.64 view captured these callbacks in its class closure.
+        stale = Mock(return_value={'implementation': 'stale'})
+        retained = browser.deferred_view(self.root, key, stale, stale)
+        payload.resolve_owner(self.root, key, defer_native=True)
+        cache = payload.native_readers._cgyro_deferred_views
+        cache[(id(self.root), key, id(self.owners[key]))] = retained
+        other = dict(RUN_DB={'__STORE__': self.owners}, LIB=browser_libraries())
+        untouched = payload.resolve_owner(other, key, defer_native=True)
+        task = self.root['LIB']['OMFITlib_cgyro_payload']
+        current = SimpleNamespace(clear_runtime=payload.clear_runtime,
+                                  materialize_owner=Mock(return_value={'implementation': 'new'}),
+                                  browser_file=Mock(return_value='new selected file'))
+        task.importCode = Mock(return_value=current)
+        plan = self.plan()
+        with patch.object(payload, 'sources', side_effect=AssertionError('result inspection')):
+            plan.apply(lambda *args: None)
+        self.assertEqual(self.reads, [])
+        self.assertEqual(retained['implementation'], 'new')
+        self.assertEqual(retained._payload_file('input.cgyro'), 'new selected file')
+        current.materialize_owner.assert_called_once_with(self.root, key)
+        current.browser_file.assert_called_once_with(self.root, key, 'input.cgyro')
+        self.assertNotIn('_payload_reader', object.__getattribute__(untouched, '__dict__'))
+        # Undo may restore a pre-hook release; retained proxies must still use
+        # that restored library, rather than the callback captured before update.
+        restored = SimpleNamespace(materialize_owner=Mock(return_value={'implementation': 'restored'}))
+        task.importCode = Mock(return_value=restored)
+        plan.undo(lambda *args: None)
+        self.assertEqual(retained['implementation'], 'restored')
+        stale.assert_not_called()
+        self.assertEqual(self.reads, [])
+
+    def test_failed_update_rebinds_retained_proxy_again_on_rollback(self):
+        class OMFITpythonTask(SimpleNamespace):
+            pass
+        for name, task in list(self.root['LIB'].items()):
+            self.root['LIB'][name] = OMFITpythonTask(**vars(task))
+        retained = payload.resolve_owner(self.root, self.keys[0], defer_native=True)
+        task = self.root['LIB']['OMFITlib_cgyro_payload']
+        new_api = SimpleNamespace(clear_runtime=payload.clear_runtime,
+                                  materialize_owner=Mock(return_value={'implementation': 'new'}))
+        old_api = SimpleNamespace(clear_runtime=payload.clear_runtime,
+                                  materialize_owner=Mock(return_value={'implementation': 'old'}))
+        task.importCode = Mock(return_value=new_api)
+        def refresh(plan, undo):
+            if not undo:
+                self.assertEqual(retained['implementation'], 'new')
+                task.importCode.return_value = old_api
+                raise RuntimeError('refresh failed')
+        with self.assertRaisesRegex(live.TemplateError, 'refresh failed'):
+            self.plan().apply(refresh)
+        self.assertEqual(retained['implementation'], 'old')
+        self.assertEqual(self.reads, [])
+
     def test_native_save_state_excludes_runtime_functions_readers_and_owners(self):
         source = SOURCE / 'omfit_classes/startup_framework.py'
         cls = next(node for node in ast.parse(source.read_text(encoding='utf-8')).body

@@ -575,14 +575,21 @@ class LivePlan:
             op['parent'][op['path'][-1]] = value
 
     def _clear_browser_runtime(self):
-        # Code updates may change a reader dependency while its entry file is
-        # unchanged. Drop only two runtime caches, without walking result data.
+        # Cache owners also repair retained deferred readers after code changes.
+        # Hooks inspect runtime caches only, never the archived result tree.
         for path in ((GROUP,), (GROUP, 'CGYRO_scan')):
+            module = lookup(self.omfit, path)
             for name, attribute in (('OMFITlib_cgyro_browser', '_cgyro_browser_entry'),
                                     ('OMFITlib_cgyro_payload', '_cgyro_payload_api')):
                 task = lookup(self.omfit, path + ('LIB', name))
                 if task is not MISSING and python_node(task):
-                    object.__getattribute__(task, '__dict__').pop(attribute, None)
+                    api = task.importCode(_relLoc={'root': module})
+                    clear = getattr(api, 'clear_runtime', None)
+                    if clear is not None:
+                        clear(module, task)
+                    else:
+                        # Updating/undoing an older package predates owner hooks.
+                        object.__getattribute__(task, '__dict__').pop(attribute, None)
 
     def apply(self, refresh):
         if self.applied:

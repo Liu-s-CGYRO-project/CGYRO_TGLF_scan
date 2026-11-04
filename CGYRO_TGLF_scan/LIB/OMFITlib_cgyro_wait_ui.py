@@ -44,7 +44,7 @@ class NativeWaitView:
             widget.insert('1.0', self.status + '\n等待期间显示队列状态；结束后收集并校验结果。\n')
             widget.tag_add('cgyro_wait_command', '3.0', 'end-1c')
             widget.tag_configure('cgyro_wait_command', elide=True)
-            widget.configure(height=3, width=64, wrap='word', font='TkDefaultFont', state='disabled')
+            widget.configure(height=3, width=64, wrap='word', state='disabled')
             bars = [child for child in widget.master.winfo_children() if isinstance(child, ttk.Progressbar)]
             for bar in bars:
                 bar.stop()

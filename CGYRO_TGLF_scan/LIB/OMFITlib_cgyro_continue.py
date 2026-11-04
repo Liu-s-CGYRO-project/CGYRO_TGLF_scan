@@ -332,6 +332,10 @@ def restart_files(directory, source, verified=False):
     for name in required:
         path = os.path.join(directory, name)
         if not os.path.isfile(path) or os.path.getsize(path) == 0:
+            if name == 'out.cgyro.timing':
+                raise ValueError('Restart history/input missing: out.cgyro.timing. '
+                                 '此点归档缺少或未写出标准 timing 历史；需从此点原计算目录补收与检查点匹配的文件。'
+                                 '不能用 timing.debug、空文件或其他点的文件代替；现有结果保留，仅此点不提交。')
             raise ValueError('Restart history/input missing: ' + name)
     # The flux and potential histories are rewound by MPI-IO too. Accept
     # earlier ASCII output names, but never silently create an empty stream.

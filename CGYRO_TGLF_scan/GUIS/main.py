@@ -3,11 +3,7 @@ from OMFITlib_gui_api import adapt, begin_view_open, gui_view
 begin_view_open(OMFITx)
 from OMFITlib_gui_layout import prepare_gui_fonts
 prepare_gui_fonts(OMFITx)
-from OMFITlib_tk_callbacks import native_version_notice
-native_notice = native_version_notice(OMFITx)
 OMFITx = adapt(OMFITx)
-if native_notice:
-    OMFITx.Label(native_notice, align='left', wraplength=780)
 from OMFITlib_project import ProjectActions
 from OMFITlib_project_ui import ProjectUI
 from OMFITlib_project_runtime import register_runtime_server

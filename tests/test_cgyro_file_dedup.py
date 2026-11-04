@@ -49,6 +49,28 @@ class FileDedupTests(unittest.TestCase):
         with patch.object(payload, 'ensure_capacity', return_value={}):
             return payload.pack_results(root, storage.directory_inventory)
 
+    def test_code_update_invalidates_only_this_modules_materialized_readers_without_io(self):
+        root, refs = self.pair()
+        self.pack(root)
+        root['LIB'] = browser_libraries()
+        # Share immutable owners, as project copies can do; runtime readers
+        # still belong to distinct live modules and must not cross update scope.
+        other = dict(RUN_DB=root['RUN_DB'], LIB=browser_libraries())
+        key = storage.reference_id(refs[0])
+        with patch.object(payload, 'ensure_capacity', return_value={}):
+            first = payload.materialize_owner(root, key)
+            untouched = payload.materialize_owner(other, key)
+            self.assertIsNot(first, untouched)
+            with patch.object(payload, 'sources', side_effect=AssertionError('result inspection')), \
+                    patch.object(payload, '_copy_verified', side_effect=AssertionError('copy')), \
+                    patch.object(payload, 'file_digest', side_effect=AssertionError('hash')):
+                payload.clear_runtime(root, root['LIB']['OMFITlib_cgyro_payload'])
+            self.assertIs(payload.materialize_owner(other, key), untouched)
+            refreshed = payload.materialize_owner(root, key)
+            self.assertIsNot(refreshed, first)
+            self.assertEqual((Path(refreshed.filename) / 'out.cgyro.freq').read_bytes(), b'1 2 3\n')
+            self.assertIs(payload.materialize_owner(root, key), refreshed)
+
     def test_shared_file_survives_one_owner_pruned_and_last_owner_releases_it(self):
         root, refs = self.pair()
         keys = [storage.reference_id(ref) for ref in refs]

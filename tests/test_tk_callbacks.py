@@ -42,6 +42,9 @@ class TkCallbacksTests(unittest.TestCase):
             self.assertIn('custom-institution-v1', notice)
             self.assertIn('可继续使用', notice)
             self.assertEqual(callbacks.native_version_notice(api), '')
+            diagnostic = callbacks.native_version_diagnostic(api)
+            self.assertIn('custom-institution-v1', diagnostic)
+            self.assertEqual(callbacks.native_version_diagnostic(api), diagnostic)
         self.assertFalse(self.errors)
 
     def test_native_version_allowlist_requires_an_exact_record(self):

@@ -92,8 +92,10 @@ class RestartPreflightTests(unittest.TestCase):
     def test_missing_standard_timing_still_rejects_selected_checkpoint(self):
         (self.directory / 'out.cgyro.timing').unlink()
         self.files.before.pop('out.cgyro.timing')
-        with self.assertRaisesRegex(ValueError, 'out.cgyro.timing'):
+        with self.assertRaisesRegex(ValueError, 'out.cgyro.timing') as error:
             self.prepare()
+        self.assertIn('与检查点匹配', str(error.exception))
+        self.assertIn('仅此点不提交', str(error.exception))
         self.files.unchanged()
 
     def test_submission_and_collection_do_not_require_retired_debug_log(self):
