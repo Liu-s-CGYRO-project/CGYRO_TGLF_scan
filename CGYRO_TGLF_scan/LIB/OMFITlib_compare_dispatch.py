@@ -59,7 +59,7 @@ def collect_comparison_pages(root, ctx):
             yield 'rho={}'.format(rho), [], curves
         return
     pairs, selected_tg, selected_cg, runid = read_settings(root, ctx, mode)
-    runs = catalog_runs(root.get('CGYRO_scan', {}))
+    runs = catalog_runs(root.get('CGYRO_scan', {}), runid=runid)
     for anchor, paired in pairs.items():
         cgyro = []
         ctx['_cgyro_legend_cases'] = [anchor] if mode == 'CGYRO_vs_TGLF' else paired

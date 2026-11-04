@@ -30,7 +30,6 @@ from OMFITlib_compare_core import (
     _flux_species_rank,
     _fmt_curve_value,
     apply_3d_log_ticks,
-    available_numeric_keys,
     build_3d_x_axis,
     build_labeled_mode_curves,
     build_surface_from_curves,
@@ -91,8 +90,6 @@ def plot_tglf_flux_1d(fn, root, ctx):
 
             para_node = rho_data[para_key]
             x_values = to_float_list(values)
-            if len(x_values) == 0:
-                x_values = available_numeric_keys(para_node)
             if len(x_values) == 0:
                 continue
 

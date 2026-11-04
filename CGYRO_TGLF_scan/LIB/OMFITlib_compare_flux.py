@@ -36,6 +36,7 @@ from OMFITlib_compare_core import (
     normalize_flux_species_option,
     resolve_2d_param_node,
     resolve_key,
+    to_float_list,
 )
 
 
@@ -275,10 +276,7 @@ def collect_tglf_flux_spectrum_curves(rho, tglf_selected_paras, root, quantity_n
         if para_key is None:
             continue
 
-        if hasattr(values, '__iter__') and not isinstance(values, str):
-            vals = list(values)
-        else:
-            vals = [values]
+        vals = to_float_list(values)
         if len(vals) == 0:
             continue
 

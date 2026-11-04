@@ -21,24 +21,31 @@ def is_gamma_ratio_plot_mode(plot_mode):
     return mode_txt in ('Plot γ/γ_ref', 'Plot 纬/纬_ref')
 
 
-def parse_float_list_text(text):
-    """Accept GUI text/list/scalar values; never turn invalid input into 'all ky'."""
+def parse_float_list_text(text, unique=True):
+    """Accept numeric GUI text/list/scalars; never ignore malformed selections."""
     if text is None or isinstance(text, str) and not text.strip():
         return []
     if isinstance(text, str):
         try:
             text = ast.literal_eval(text)
         except (ValueError, SyntaxError):
-            text = [item for item in re.split(r'[\s,]+', text.strip()) if item]
+            text = text.strip()
+            # OMFIT can persist NumPy's whitespace-separated array display.
+            if text.startswith('[') and text.endswith(']'):
+                text = text[1:-1]
+            text = [item for item in re.split(r'[\s,]+', text) if item]
+    if hasattr(text, 'keys'):
+        raise ValueError('Values must be a numeric list, not a mapping')
     if not hasattr(text, '__iter__') or isinstance(text, str):
         text = [text]
     try:
-        values = [float(item) for item in text]
+        values = [float(item) for item in text
+                  if item is not None and not (isinstance(item, str) and not item.strip())]
     except (TypeError, ValueError):
-        raise ValueError('ky values must be finite numbers, separated by commas') from None
+        raise ValueError('Values must be finite numbers, separated by commas or spaces') from None
     if not all(math.isfinite(value) for value in values):
-        raise ValueError('ky values must be finite numbers')
-    return list(dict.fromkeys(values))
+        raise ValueError('Values must be finite numbers')
+    return list(dict.fromkeys(values)) if unique else values
 
 
 def validate_options(settings):
@@ -64,5 +71,6 @@ def validate_options(settings):
         elif mode not in ('Plot 2D', 'Plot 3D', 'Plot eigen ball'):
             raise ValueError('Choose a supported CGYRO plot mode')
     except (TypeError, ValueError) as exc:
-        errors.append(str(exc))
+        prefix = 'Invalid ky values: ' if mode in ('Plot single ky', 'Plot time traces', 'Plot eigen ball') else ''
+        errors.append(prefix + str(exc))
     return errors

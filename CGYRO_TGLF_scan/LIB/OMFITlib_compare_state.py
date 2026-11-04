@@ -195,6 +195,14 @@ def _cgyro_selection_errors(root, cg, mode):
         selections = [cg.get('selected_paras_by_nr', {}).get(str(nr), {}) for nr in cg.get('nr_CGYRO', [])]
     if not any(has_values(v) for selected in selections for v in selected.values()):
         errors.append('请选择 CGYRO 扫描参数及取值。')
+    for selected in selections:
+        for name, values in selected.items():
+            if name == 'KY_ONLY':
+                continue  # Checkbox selection; it has no numeric scan value.
+            try:
+                parse_float_list_text(values)
+            except (TypeError, ValueError) as exc:
+                errors.append('CGYRO {}: {}'.format(name, exc))
     if not convergence:
         errors.extend(_cgyro_axis_errors(cg))
     if mode == 'CGYRO_vs_CGYRO' and not cg.get('nr_CGYRO', None):
@@ -248,13 +256,40 @@ def _cgyro_axis_errors(state):
     for selected, configs in groups:
         for name in selected:
             cfg = configs.get(str(name), {})
+            if str(name) == 'KY_ONLY' and not cfg.get('ky_only', False):
+                continue  # Legacy placeholder values are not KY_ONLY filters.
             for axis, values in cfg.get('values', {}).items():
+                if 'active_axes' in cfg and axis not in cfg['active_axes']:
+                    continue
                 try:
                     if not parse_float_list_text(values):
                         raise ValueError('请选择至少一个取值。')
                 except (TypeError, ValueError) as exc:
                     errors.append('{} / {}: {}'.format(name, axis, exc))
     return list(dict.fromkeys(errors))
+
+
+def _tglf_selection_errors(state):
+    """Validate only selected controls, before any flux/spectrum reader runs."""
+    two_axes = state.get('spectra_mode', '1D') == '2D'
+    key = 'selected_paras_2d' if two_axes else 'selected_paras'
+    errors, populated = [], False
+    for name, values in state.get(key, {}).items():
+        if two_axes and not hasattr(values, 'get'):
+            errors.append('TGLF {}: 请分别选择两条参数轴的取值。'.format(name))
+            continue
+        axes = {axis: values.get(axis, []) for axis in ('para1_values', 'para2_values')} if two_axes else {name: values}
+        chosen = []
+        for axis, raw in axes.items():
+            try:
+                chosen.append(bool(parse_float_list_text(raw)))
+            except (TypeError, ValueError) as exc:
+                errors.append('TGLF {} / {}: {}'.format(name, axis, exc))
+                chosen.append(False)
+        populated = populated or all(chosen)
+    if not populated:
+        errors.append('请选择 TGLF 参数及取值；二维扫描需要同时选择两条参数轴。')
+    return errors
 
 
 def selection_check(root, mode=None):
@@ -285,9 +320,7 @@ def selection_check(root, mode=None):
             except (TypeError, ValueError):
                 errors.append('末段平均比例应大于 0 且不超过 1（0.02 表示最后 2%）。')
     if mode != 'CGYRO_vs_CGYRO':
-        key = 'selected_paras_2d' if tg.get('spectra_mode', '1D') == '2D' else 'selected_paras'
-        if not any(has_values(v) for v in tg.get(key, {}).values()):
-            errors.append('请选择 TGLF 参数及取值；二维扫描需要同时选择两条参数轴。')
+        errors.extend(_tglf_selection_errors(tg))
         if mode in ('TGLF_vs_TGLF', 'TGLF_vs_CGYRO') and not tg.get('rho_selected', None):
             errors.append('请选择 TGLF 半径。')
         if mode == 'CGYRO_vs_TGLF':

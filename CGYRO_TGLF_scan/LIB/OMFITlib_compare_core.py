@@ -34,7 +34,7 @@ from builtins import (
 
 import numpy as np
 import re
-from OMFITlib_compare_options import STAT_DEFAULTS, is_gamma_ratio_plot_mode
+from OMFITlib_compare_options import STAT_DEFAULTS, is_gamma_ratio_plot_mode, parse_float_list_text
 from OMFITlib_compare_state import (
     STYLE_DEFAULTS,
 )
@@ -532,20 +532,6 @@ def divide_title(ctx, field):
     return field
 
 
-def parse_float_list_text(text):
-    """Parse comma/space mixed float list text."""
-    if not isinstance(text, str) or len(text.strip()) == 0:
-        return []
-    raw = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", text)
-    out = []
-    for item in raw:
-        try:
-            out.append(float(item))
-        except Exception:
-            continue
-    return out
-
-
 def _gamma_ratio_ky_bounds(ctx):
     """Decode optional ky lower/upper bounds for all-ky gamma_ref mode."""
     ky_min = _to_float_scalar(ctx.get('gamma_ref_ky_min', None))
@@ -569,29 +555,8 @@ def split_2d_param_name(pname):
 
 
 def to_float_list(values):
-    """
-    Convert scalar/list/string inputs into a float list.
-
-    String inputs are parsed with regex, so formats like `'[0.1, 0.2]'`
-    and `'0.1 0.2'` are both supported.
-    """
-    if values is None:
-        return []
-    if isinstance(values, str):
-        # OMFIT Entry may store arrays as strings like "[0.1 0.2]" or "0.1,0.2".
-        raw = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", values)
-    elif hasattr(values, '__iter__'):
-        raw = list(values)
-    else:
-        raw = [values]
-
-    out = []
-    for item in raw:
-        try:
-            out.append(float(item))
-        except Exception:
-            pass
-    return out
+    """Compatibility entry: plot readers and GUI validation share one parser."""
+    return parse_float_list_text(values)
 
 
 def available_numeric_keys(mapping):

@@ -240,6 +240,102 @@ class RefactorTest(unittest.TestCase):
     def test_explicit_empty_2d_axis_is_not_all_values(self):
         self.assertEqual(core.get_2d_scan_values({1.:{2.:{}}},{'para1_values':[], 'para2_values':[2.]}),([], [2.]))
 
+    def test_empty_1d_flux_and_status_selections_never_read_all_points(self):
+        root = fixture('TGLF_vs_TGLF')
+        ctx = core.build_context(root)
+        ctx['tglf_state']['selected_paras'] = {'A': []}
+        with patch.object(modules['tglf'], 'extract_flux_components', side_effect=AssertionError('unselected flux read')):
+            modules['tglf'].plot_tglf_flux_1d(Notebook(), root, ctx)
+        self.assertFalse(Notebook.figures)
+        root = fixture('CGYRO_vs_CGYRO')
+        ctx = core.build_context(root)
+        ctx['mode_state']['selected_paras'] = {'A': []}
+        with patch.object(modules['status'], '_read_cgyro_status_code', side_effect=AssertionError('unselected status read')):
+            modules['status'].plot_cgyro_output_status(root, ctx)
+        self.assertEqual(len(Notebook.figures), 1)  # Explicit no-data diagnostic, no curves.
+        self.assertFalse(Notebook.figures[0].axes[0].lines)
+        self.assertIn('No selected CGYRO scan data', Notebook.figures[0].axes[0].texts[0].get_text())
+
+    def test_numeric_selection_text_is_consistent_and_never_silently_truncated(self):
+        from OMFITlib_compare_options import parse_float_list_text
+        for parse in (parse_float_list_text, core.parse_float_list_text, core.to_float_list):
+            for text in ('[1., 2.]', '[1. 2.]', '1, 2', '1 2', [1, 2]):
+                self.assertEqual(parse(text), [1., 2.])
+            for text in ('1, typo2', '[1,2', '[1, nan]', [1, float('inf')], {1: 2}):
+                with self.assertRaises(ValueError, msg=str(text)):
+                    parse(text)
+        root = fixture('TGLF_vs_TGLF')
+        record = root['SETTINGS']['PHYSICS']['TGLF_vs_TGLF']['TGLF']
+        record['selected_paras']['A'] = '1, typo2'
+        with patch.object(series, 'collect_tglf_series', side_effect=AssertionError('invalid selection read data')):
+            report = state.selection_check(root)
+            self.assertTrue(any('A' in error for error in report['errors']))
+            with self.assertRaises(ValueError):
+                modules['dispatch'].run_plot(root)
+
+    def test_tglf_text_selection_reads_the_same_point_for_spectra_and_flux(self):
+        root = fixture('TGLF_vs_TGLF')
+        ctx = core.build_context(root)
+        selected = {'A': '[2.]'}
+        curves = series.collect_tglf_curves(.3, selected, root, ctx)
+        self.assertEqual([curve['value'] for curve in curves], [2.])
+        ctx['tglf_state']['selected_paras'] = selected
+        with patch.object(modules['tglf'], 'extract_flux_components', wraps=modules['tglf'].extract_flux_components) as read:
+            modules['tglf'].plot_tglf_flux_1d(Notebook(), root, ctx)
+            self.assertEqual(read.call_count, 1)
+            self.assertIs(read.call_args.args[0], root['TGLF_scan']['scanResults'][.3]['A'][2.])
+        parsed = dict(ky=np.array([.1, .2]), values=np.ones((1, 1, 2)), species_labels=['ion'], field_labels=['phi'])
+        with patch.object(modules['flux'], '_extract_flux_spectrum_quantity', return_value=parsed) as read:
+            flux = modules['flux'].collect_tglf_flux_spectrum_curves(.3, selected, root, 'Q', ctx)
+            self.assertEqual(read.call_count, 1)
+            self.assertIs(read.call_args.args[0].result, root['TGLF_scan']['scanResults_spectra'][.3]['A'][2.])
+            self.assertEqual(len(flux['curves'][(0, 0)]), 1)
+
+    def test_cgyro_text_selection_and_invalid_values_match_all_plot_entrypoints(self):
+        root = fixture()
+        selected = {'A': '[2.]'}
+        curves = series.collect_cgyro_curves('nr=2', [.3], 'run', root['CGYRO_scan']['RUN_DB'],
+                                             selected, root, core.build_context(root))
+        self.assertEqual([curve['value'] for curve in curves], [2.])
+        for mode in ('CGYRO_vs_CGYRO', 'CGYRO_vs_TGLF'):
+            root = fixture(mode)
+            record = root['SETTINGS']['PHYSICS'][mode]
+            cg = record if mode == 'CGYRO_vs_CGYRO' else record['CGYRO']
+            cg['selected_paras'] = {'A': '1, typo2'}
+            with patch.object(series, 'collect_cgyro_series', side_effect=AssertionError('invalid selection read data')):
+                self.assertTrue(any('A' in error for error in state.selection_check(root)['errors']))
+                with self.assertRaises(ValueError):
+                    modules['dispatch'].run_plot(root)
+
+    def test_explicit_tglf_pairs_preserve_both_coordinates(self):
+        ctx = core.build_context(self.root)
+        ctx['tglf_state'] = {'spectra_mode': '2D'}
+        pairs = [(1., 2.), (3., 4.)]
+        curves = series.collect_tglf_curves(.3, {'A+B': pairs}, self.root, ctx)
+        self.assertEqual([curve['value'] for curve in curves], pairs)
+        self.assertEqual(series._parse_tglf_2d_value_pair((1., 1.)), (1., 1.))
+        self.assertEqual(series._parse_tglf_2d_value_pair('[1, 1]'), (1., 1.))
+        for value in ([(1.,)], [(1., 2., 3.)], [(1., float('nan'))]):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                series.collect_tglf_curves(.3, {'A+B': value}, self.root, ctx)
+
+    def test_cross_model_and_status_reads_do_not_visit_other_runs(self):
+        class UnselectedRun(dict):
+            def items(self):
+                raise AssertionError('visited another run')
+        for mode in ('CGYRO_vs_TGLF', 'TGLF_vs_CGYRO'):
+            root = fixture(mode)
+            root['CGYRO_scan']['RUN_DB']['other'] = UnselectedRun()
+            ctx = core.build_context(root)
+            pages = list(modules['dispatch'].collect_comparison_pages(root, ctx))
+            self.assertTrue(pages[0][1])
+            with patch.object(series, 'catalog_runs', side_effect=AssertionError('repeated catalog per curve')):
+                self.assertEqual(len(series.collect_cgyro_series(root, ctx, 'run', 'nr=2', 'A', 1.)[0]), 4)
+            with patch.object(modules['status'], '_read_cgyro_status_code', return_value=0) as read:
+                curves = modules['status']._collect_cgyro_output_status_curves(root, {}, 'run', 'nr=2', 'A', [1.])
+                self.assertEqual(len(curves), 1)
+                self.assertEqual(read.call_count, 4)
+
     def test_numeric_key_resolution_is_unambiguous(self):
         self.assertEqual(core.resolve_key({'1.00000':{}},1.),'1.00000')
         self.assertEqual(core.resolve_key({'1.0':{},'1.00':{}},1.), '1.0')
@@ -491,6 +587,61 @@ class RefactorTest(unittest.TestCase):
         modules['cgyro'].run_plot(root)
         self.assertEqual(len(Notebook.figures),1)
         self.assertEqual(len(Notebook.figures[0].axes),4)
+
+    def test_ky_only_checkbox_plots_full_spectrum_without_placeholder_value(self):
+        from test_cgyro_ky_only import ky_case
+        root = fixture('CGYRO_vs_CGYRO')
+        source = root['CGYRO_scan']['RUN_DB']['run']['nr=2']['A'][1.]['lin']['0.1']
+        root['CGYRO_scan']['RUN_DB']['run']['nr=2'] = ky_case(
+            result_factory=lambda ky, grid: dict(source, kyrhos=ky))
+        settings = root['SETTINGS']['PHYSICS']['CGYRO_vs_CGYRO']
+        settings.update(selected_paras={'KY_ONLY': [.00471]},
+                        cgyro_multi={'KY_ONLY': {'axis': 'DELTA_T', 'values': {'DELTA_T': []}}})
+        _, ui = self.render(root)
+        self.assertFalse(any(kind == 'Entry' and args[1] in ('KY_ONLY', 'DELTA_T')
+                             for _, kind, args, _ in ui.events))
+        modules['cgyro'].run_plot(root)
+        self.assertEqual(len(Notebook.figures), 1)
+        lines = Notebook.figures[0].axes[0].lines
+        self.assertEqual(len(lines), 1)
+        np.testing.assert_allclose(lines[0].get_xdata(), [-.2, .2, 1., 3., 23.])
+        self.assertIn('KY_ONLY', lines[0].get_label())
+        self.assertNotIn('KY_ONLY=', lines[0].get_label())
+        self.assertNotIn('.00471', lines[0].get_label())
+
+    def test_ky_only_grid_filter_reads_only_selected_payloads_in_both_plot_paths(self):
+        from test_cgyro_ky_only import ky_case
+        class Unread(dict):
+            def get(self, *args):
+                raise AssertionError('Unselected grid result was read')
+            def __getitem__(self, key):
+                raise AssertionError('Unselected grid result was read')
+        source = self.root['CGYRO_scan']['RUN_DB']['run']['nr=2']['A'][1.]['lin']['0.1']
+        case = ky_case((24, 32), result_factory=lambda ky, grid:
+                       Unread() if grid == 24 else dict(source, kyrhos=ky))
+        for mode in ('CGYRO_vs_CGYRO', 'CGYRO_vs_TGLF'):
+            with self.subTest(mode=mode):
+                root = fixture(mode)
+                root['CGYRO_scan']['RUN_DB']['run']['nr=2'] = case
+                settings = root['SETTINGS']['PHYSICS'][mode]
+                if mode == 'CGYRO_vs_TGLF':
+                    settings = settings['CGYRO']
+                settings.update(selected_paras={'KY_ONLY': [0.]},
+                                cgyro_multi={'KY_ONLY': dict(ky_only=True, values={'N_THETA': [32]})})
+                if mode == 'CGYRO_vs_CGYRO':
+                    ctx = modules['cgyro'].build_context(root)
+                    items = modules['cgyro'].collect_plot_items(root, ctx)
+                    self.assertEqual(len(items), 1)
+                    ky = items[0]['series'][0]
+                else:
+                    ctx = core.build_context(root)
+                    curves = series.collect_cgyro_curves('nr=2', [.3], 'run',
+                        root['CGYRO_scan']['RUN_DB'], settings['selected_paras'], root, ctx)
+                    self.assertEqual(len(curves), 1)
+                    self.assertIn('KY_ONLY · N_THETA=32', curves[0]['label'])
+                    ky = curves[0]['ky']
+                np.testing.assert_allclose(ky, [-.2, .2, 1., 3., 23.])
+                self.assertFalse(ctx['_diagnostics'])
 
     def test_tglf_2d_spectra_and_flux_use_selected_varying_axis(self):
         root=fixture('TGLF_vs_TGLF')

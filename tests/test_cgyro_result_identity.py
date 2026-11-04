@@ -504,6 +504,13 @@ class ResultIdentityTests(unittest.TestCase):
         self.assertEqual({r['values']['Q'] for r in case['__TASKS__'].values()}, {1.234561, 1.234562})
         self.assertEqual(len({tuple(r['result_path']) for r in case['__TASKS__'].values()}), 2)
 
+        from OMFITlib_cgyro_scan_view import comparison_case_view
+        for index, value in enumerate((1.234561, 1.234562)):
+            view, selected, _, errors = comparison_case_view(case, {'Q': [value]})
+            self.assertFalse(errors)
+            spectrum = view[next(iter(selected))][value]['lin']
+            self.assertEqual(list(spectrum.values()), [{'__RESULT_REF__': str(index) * 64}])
+
     def test_fixed_parameter_collisions_remain_distinct_through_merge_plot_and_restart(self):
         from OMFITlib_cgyro_scan_view import comparison_case_view
         module = {}

@@ -1,4 +1,4 @@
-"""Read-only comparison slices for indexed multi-axis CGYRO archives.
+"""Read-only comparison spectra for indexed CGYRO archives.
 
 The saved task table owns coordinates and physical paths. Virtual 1D slices
 contain references to those results, never copies, averages or archive edits.
@@ -38,26 +38,79 @@ def _key(mapping, wanted):
 
 
 def multiaxis_scans(case, selected=None):
-    """Inspect metadata only; linked parameters are not independent axes."""
+    """Describe selected indexed scans using cached input summaries only."""
     scans = OrderedDict()
     wanted = None if selected is None else {str(name) for name in selected}
     for key, info, tasks in case_scans(case):
         if wanted is not None and key not in wanted:
             continue
         axes = [dict(axis) for axis in info.get('scan_axes', []) if not axis.get('fixed', False)]
-        if any(row.get('coordinate_path', None) for row in tasks.values()):
-            # Different linked/fixed values at one primary/ky location are
-            # independent choices in the comparison UI, never averaged curves.
-            values = [point_values(info, row, include_input=True) for row in tasks.values()]
-            names = {axis['name'] for axis in axes} | {'KY'}
-            for name in sorted(set().union(*(set(row) for row in values)) - names):
-                choices = sorted({row[name] for row in values if name in row})
-                if len(choices) > 1:
-                    axes.append(dict(name=name, values=choices))
-        if len(axes) > 1:
-            scans[key] = dict(axes=axes, tasks=tasks, info=info,
-                              path_dimensions=len(info.get('scan_axes', [])), branch=scan_branch(case, info, tasks))
+        if key == 'KY_ONLY' or axes:
+            scans[key] = _indexed_scan(case, info, tasks, [] if key == 'KY_ONLY' else axes, key == 'KY_ONLY')
     return scans
+
+
+def _cached_configurations(info, tasks):
+    """Undo documented ky scaling for grouping, leaving stored inputs intact."""
+    points, choices, errors = {}, OrderedDict(), []
+    for point, row in tasks.items():
+        try:
+            values = dict(point_values(info, row, include_input=True))
+        except (KeyError, TypeError, ValueError) as exc:
+            errors.append('{}: {}'.format(point, exc))
+            continue
+        context = dict(info, **dict(row.get('result_info', {})))
+        ky = values.pop('KY')
+        values.pop('KY_ONLY', None)  # Old archives can use this placeholder axis.
+        if 'DELTA_T' in values:
+            values['scale_time_with_ky'] = float(context.get('scale_time_with_ky', False))
+        if context.get('scale_time_with_ky', False) and ky > 1 and 'DELTA_T' in values:
+            # values without an effective input/time summary already hold the
+            # unscaled requested step; do not multiply those legacy rows twice.
+            if 'DELTA_T' in row.get('input_parameters', {}) or 'DELTA_T' in row.get('effective_time', {}):
+                values['DELTA_T'] *= ky
+                requested = row.get('values', {}).get('DELTA_T', None)
+                if requested is not None and math.isclose(float(requested), values['DELTA_T'], rel_tol=1e-14, abs_tol=0.):
+                    values['DELTA_T'] = float(requested)
+        for name, value in values.items():
+            known = choices.setdefault(name, [])
+            # Only undo roundoff introduced by dt / ky * ky. In particular,
+            # nearby saved physics coordinates must not be merged by isclose.
+            if name == 'DELTA_T' and context.get('scale_time_with_ky', False):
+                matches = [saved for saved in known if math.isclose(saved, value, rel_tol=1e-14, abs_tol=0.)]
+                if matches:
+                    value = values[name] = matches[0]
+            if value not in known:
+                known.append(value)
+        points[point] = values
+    return points, choices, errors
+
+
+def _linked_to_axes(points, name, axes):
+    """A declared linkage is not a choice unless retained inputs disagree."""
+    seen = {}
+    for values in points.values():
+        if name not in values or any(axis not in values for axis in axes):
+            return False
+        coordinate = tuple(values[axis] for axis in axes)
+        if coordinate in seen and seen[coordinate] != values[name]:
+            return False
+        seen[coordinate] = values[name]
+    return True
+
+
+def _indexed_scan(case, info, tasks, axes, ky_only):
+    points, choices, errors = _cached_configurations(info, tasks)
+    declared = [axis['name'] for axis in axes]
+    linked = {link['name'] for axis in axes for link in axis.get('linked', [])}
+    for name in sorted(set(choices) - set(declared)):
+        if name in linked and _linked_to_axes(points, name, declared):
+            continue
+        if len(choices[name]) > 1 or any(name not in values for values in points.values()):
+            axes.append(dict(name=name, values=sorted(choices[name])))
+    return dict(ky_only=ky_only, axes=axes, tasks=tasks, info=info, point_values=points,
+                declared_axes=declared, diagnostics=errors,
+                path_dimensions=len(info.get('scan_axes', [])), branch=scan_branch(case, info, tasks))
 
 
 def axis_values(scan):
@@ -66,7 +119,8 @@ def axis_values(scan):
     for axis in scan['axes']:
         name = str(axis['name'])
         raw = list(axis.get('values', []))
-        raw.extend(row.get('values', {}).get(name, None) for row in scan['tasks'].values())
+        if not scan.get('ky_only', False):
+            raw.extend(row.get(name, None) for row in scan['point_values'].values())
         numbers = set()
         for value in raw:
             try:
@@ -104,6 +158,10 @@ def slice_coordinates(metadata, value):
 
 def coordinate_label(metadata, value, parameter=''):
     coordinates = slice_coordinates(metadata, value)
+    if metadata.get('ky_only', False):
+        details = ', '.join('{}={:.7g}'.format(name, coordinates[name])
+                            for name in metadata['coordinate_names'] if name in coordinates)
+        return 'KY_ONLY' + (' · ' + details if details else '')
     if coordinates:
         return ', '.join('{}={:.7g}'.format(name, coordinates[name])
                          for name in metadata['coordinate_names'] if name in coordinates)
@@ -116,10 +174,10 @@ def slice_caption(metadata, parameter):
 
 
 def comparison_case_view(case, selected, config=None):
-    """Expand selected 2D/3D scans into exact-coordinate, non-averaged slices.
+    """Adapt indexed scans into exact-coordinate, non-averaged slices.
 
-    Only indexed multi-axis branches are adapted. Legacy / ordinary 1D nodes
-    retain their original keys and objects. Empty axis selections mean empty,
+    Unindexed legacy nodes retain their original keys and objects.
+    Empty axis selections mean empty,
     and absent physical results are diagnostics rather than fabricated data.
     """
     config = {} if config is None else config
@@ -132,15 +190,31 @@ def comparison_case_view(case, selected, config=None):
             selections[parameter] = chosen
             continue
         scan = scans[scan_key]
+        diagnostics.extend('{} / {}'.format(scan_key, error) for error in scan['diagnostics'])
+        ky_only = scan.get('ky_only', False)
         available = axis_values(scan)
-        names = list(available)
         cfg = config.get(scan_key, {})
-        axis = str(cfg.get('axis', names[0]))
+        if ky_only and not cfg.get('ky_only', False):
+            cfg = {}  # Discard the former dummy-value/derived-DELTA_T filters.
+        # A common filter may vary in another selected case but be constant
+        # here. Its visible scope is recorded by the selector, so obsolete
+        # hidden filters from an older catalog cannot reappear.
+        shared = cfg.get('active_axes', list(available)) if not ky_only else cfg.get('active_axes', list(cfg.get('values', {})))
+        for name in shared:
+            numbers = {values[name] for values in scan['point_values'].values() if name in values}
+            if numbers and name not in available:
+                available[name] = sorted(numbers)
+        if ky_only and not available:
+            # Runtime adapter only: all ky points form one curve. No numeric
+            # KY_ONLY value is displayed, requested or read from GUI settings.
+            available['KY_ONLY'] = [0.]
+        names = list(available)
+        axis = names[0] if ky_only else str(cfg.get('axis', names[0]))
         if axis not in names:
             raise ValueError('Choose a varying axis from {} for {}'.format(', '.join(names), scan_key))
         filters = {}
         for name in names:
-            default = chosen if name == names[0] else available[name]
+            default = chosen if name == names[0] and not ky_only else available[name]
             try:
                 filters[name] = parse_float_list_text(cfg.get('values', {}).get(name, default))
             except ValueError as exc:
@@ -148,21 +222,28 @@ def comparison_case_view(case, selected, config=None):
         if not all(filters.values()):
             continue
         coordinate_names = [str(item['name']) for item in scan['axes']]
+        coordinate_names.extend(name for name in names if name not in coordinate_names)
         coordinate_names.extend(str(link['name']) for item in scan['axes'] for link in item.get('linked', [])
                                 if str(link['name']) not in coordinate_names)
+        if ky_only:
+            coordinate_names = [name for name in names if name != 'KY_ONLY']
         view.pop(scan['branch'], None)
         count = 0
         for point, row in scan['tasks'].items():
+            if point not in scan['point_values']:
+                continue  # Already reported by the metadata-only check above.
             try:
-                values = point_values(scan['info'], row, include_input=True)
+                values = dict(scan['point_values'][point], KY_ONLY=0.) if ky_only else scan['point_values'][point]
                 coordinates = {name: float(values[name]) for name in coordinate_names}
+                if ky_only and axis == 'KY_ONLY':
+                    coordinates['KY_ONLY'] = 0.
                 if not all(math.isfinite(value) for value in coordinates.values()):
                     raise ValueError('Non-finite archived coordinates')
                 if not all(coordinates[name] in filters[name] for name in names):
                     continue
                 path = list(row['result_path'])
                 coordinate = coordinate_path(row)
-                if len(coordinate) != 2 * scan['path_dimensions'] + 2 or coordinate[-2] != 'lin':
+                if (not ky_only and len(coordinate) != 2 * scan['path_dimensions'] + 2) or coordinate[-2] != 'lin':
                     raise ValueError('Invalid archived multi-axis result path')
                 path[0] = scan['branch']
                 node = case
@@ -181,12 +262,14 @@ def comparison_case_view(case, selected, config=None):
                     raise ValueError('Virtual scan identity collides with an archived branch')
                 metadata[token] = dict(scan_key=scan_key, axis=axis, fixed=fixed,
                                        coordinate_names=coordinate_names, coordinates={}, values=list(filters[axis]))
+                if ky_only:
+                    metadata[token]['ky_only'] = True
                 view[token] = {}
                 selections[token] = list(filters[axis])
             value = coordinates[axis]
             linear = view[token].setdefault(value, {}).setdefault('lin', {})
             ky = coordinate[-1]
-            if ky in linear:
+            if _key(linear, ky) is not None:
                 raise ValueError('Duplicate ky at one complete parameter coordinate: ' + str(path))
             linear[ky] = node
             previous = metadata[token]['coordinates'].get(value, None)

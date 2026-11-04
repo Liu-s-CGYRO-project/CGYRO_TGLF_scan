@@ -2,10 +2,7 @@
 from OMFITlib_cgyro_archive import catalog_runs
 from OMFITlib_plot_style import validated as global_plot_style
 # Explicit builtins protect against the OMFIT pylab execution namespace.
-from builtins import Exception, TypeError, ValueError, abs, all, bool, dict, enumerate, float, hasattr, isinstance, len, list, repr, set, str, tuple
-import ast
-import math
-import re
+from builtins import Exception, ValueError, abs, bool, dict, enumerate, float, hasattr, len, list, set, str
 from numpy import array
 from OMFITlib_compare_state import STYLE_DEFAULTS, stable_keys, convergence_selection
 from OMFITlib_compare_core import resolve_key as _resolve_mapping_key
@@ -13,34 +10,6 @@ from OMFITlib_compare_options import STAT_DEFAULTS, is_gamma_ratio_plot_mode, pa
 from OMFITlib_compare_style import cgyro_case_caption
 from OMFITlib_cgyro_scan_view import comparison_case_view, view_config
 from OMFITlib_compare_convergence import convergence_case_view, ordinary_case_view
-
-
-def _parse_gui_value_text(text):
-    """Parse OMFIT Entry text that may look like comma text or a Python list."""
-    if not isinstance(text, str):
-        return []
-    text = text.strip()
-    if len(text) == 0:
-        return []
-
-    quoted_tokens = re.findall(r"['\"]([^'\"]+)['\"]", text)
-    if len(quoted_tokens) > 1:
-        return quoted_tokens
-
-    try:
-        parsed = ast.literal_eval(text)
-        if isinstance(parsed, (list, tuple, set)):
-            return list(parsed)
-        return [parsed]
-    except Exception:
-        pass
-
-    try:
-        return parse_float_list_text(text)
-    except ValueError:
-        pass
-
-    return [t.strip().strip('"').strip("'") for t in re.split(r'[\s,]+', text) if len(t.strip()) > 0]
 
 
 def parse_single_ky_values(root):
@@ -354,48 +323,6 @@ def iter_selected_parameter_items(ctx, nr=None):
 
     When available, per-nr selections (`selected_paras_by_nr`) take precedence.
     """
-    def _normalize_selected_values(values):
-        """Normalize GUI-stored selected values into a flat non-empty list."""
-        if values is None:
-            return []
-
-        if isinstance(values, str):
-            values = _parse_gui_value_text(values)
-
-        if hasattr(values, '__iter__'):
-            raw = list(values)
-        else:
-            raw = [values]
-
-        out = []
-        for item in raw:
-            if item is None:
-                continue
-            if isinstance(item, str):
-                item_s = item.strip()
-                if len(item_s) == 0:
-                    continue
-                parsed = _parse_gui_value_text(item_s)
-                if len(parsed) > 0 and (
-                    len(parsed) > 1 or item_s.startswith('[') or item_s.startswith('(')
-                ):
-                    for parsed_item in parsed:
-                        try:
-                            out.append(float(parsed_item))
-                        except Exception:
-                            out.append(parsed_item)
-                    continue
-                try:
-                    out.append(float(item_s))
-                except Exception:
-                    out.append(item_s)
-                continue
-            try:
-                out.append(float(item))
-            except Exception:
-                out.append(item)
-        return list({repr(item): item for item in out}.values())
-
     selected_map = ctx.get('selected_paras', {})
     if nr is not None:
         selected_by_nr = ctx.get('selected_paras_by_nr', {})
@@ -410,7 +337,7 @@ def iter_selected_parameter_items(ctx, nr=None):
         return
 
     for para in selected_map:
-        para_values = _normalize_selected_values(selected_map[para])
+        para_values = parse_float_list_text(selected_map[para])
         if len(para_values) == 0:
             continue
         yield para, para_values

@@ -13,6 +13,7 @@ from builtins import (
     len,
     list,
     str,
+    zip,
 )
 from collections import Counter, OrderedDict
 from contextlib import contextmanager
@@ -65,9 +66,15 @@ class CaseSelection(ComparisonWidgets):
         if not scans:
             return False
         choices = [axis_values(scan) for scan in scans]
-        names = list(choices[0])
-        if any(list(values) != names for values in choices):
+        ky_only = str(name) == 'KY_ONLY'
+        declared = scans[0]['declared_axes']
+        if any(scan['declared_axes'] != declared for scan in scans):
             raise ValueError('同名扫描的参数轴不一致，请勾选“各输入案例分别选择参数”。')
+        names = declared + stable_keys(dict.fromkeys(axis for values in choices for axis in values if axis not in declared))
+        # Include a configuration constant in one case but varied in another;
+        # retain planned axis values so missing results remain visible gaps.
+        choices = [{axis: choice.get(axis, []) + [point[axis] for point in scan['point_values'].values() if axis in point]
+                    for axis in names} for choice, scan in zip(choices, scans)]
         if nr is None:
             configs = state.setdefault('cgyro_multi', {})
             cfg_path = lambda *keys: path('cgyro_multi', name, *keys)
@@ -75,15 +82,38 @@ class CaseSelection(ComparisonWidgets):
             configs = state.setdefault('cgyro_multi_by_nr', {}).setdefault(str(nr), {})
             cfg_path = lambda *keys: path('cgyro_multi_by_nr', str(nr), name, *keys)
         cfg = configs.setdefault(str(name), {})
+        if ky_only:
+            if not cfg.get('ky_only', False):
+                cfg.clear()  # Migrate old placeholder and inferred time-step selections.
+                cfg['ky_only'] = True
+            values = cfg.setdefault('values', {})
+            self._prune_mapping_keys(values, names)
+            cfg['active_axes'] = names
+            selected[name] = [0.]  # Checkbox selection; never a visible/filterable parameter value.
+            if names:
+                self.ui.Separator('KY_ONLY 配置')
+                for axis in names:
+                    available = self._normalize_value_list(value for choice in choices for value in choice.get(axis, []))
+                    values.setdefault(axis, available.copy())
+                    self._parameter_entry(cfg_path('values', axis), axis, values[axis], default_values=available)
+            else:
+                self.ui.Label('使用所选案例的全部 ky 结果。', align='left')
+            return True
         if cfg.get('axis', None) not in names:
             cfg['axis'] = names[0]
         values = cfg.setdefault('values', {})
-        self.ui.Separator(' × '.join(names))
+        self._prune_mapping_keys(values, names)
+        cfg['active_axes'] = names
+        if len(names) > 1:
+            self.ui.Separator(' × '.join(names))
         for axis in names:
             available = self._normalize_value_list(value for choice in choices for value in choice[axis])
             if axis not in values:
                 values[axis] = selected[name] if axis == names[0] else available.copy()
             self._parameter_entry(cfg_path('values', axis), axis, values[axis], default_values=available)
+        if len(names) == 1:
+            selected[name] = values[names[0]]
+            return True
         self.ui.ComboBox(cfg_path('axis'), names, '变化参数', default=names[0], updateGUI=True,
                          width=20, kwlabel={'width': 20, 'anchor': 'w'},
                          help='指定 ky、增长率比值和三维图使用此参数作为变化轴，其余参数逐个固定分组。\n'

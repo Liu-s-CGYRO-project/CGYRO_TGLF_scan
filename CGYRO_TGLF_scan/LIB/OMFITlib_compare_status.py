@@ -106,28 +106,24 @@ def _iter_selected_parameter_items_for_nr(mode_state, nr):
     return iter_selected_parameter_items(mode_state, nr)
 
 
-def _collect_cgyro_output_status_curves(root, mode_state, runid, nr, para, values, allow_all_values_fallback=False):
+def _collect_cgyro_output_status_curves(root, mode_state, runid, nr, para, values, diagnostics=None):
     """Collect status-code curves (y=status) vs ky for one (nr, para)."""
     out_curves = []
-    try:
-        run_db = catalog_runs(root['CGYRO_scan'])
-        runid_key = resolve_key(run_db, runid)
-        if runid_key is None:
-            return out_curves
-        nr_map = run_db[runid_key]
-        nr_key = resolve_key(nr_map, nr)
-        if nr_key is None:
-            return out_curves
-        view, selections, metadata, _ = comparison_case_view(
-            nr_map[nr_key], {para: values}, view_config(mode_state, nr))
-    except Exception:
+    run_db = catalog_runs(root['CGYRO_scan'], runid=runid, caseid=nr)
+    runid_key = resolve_key(run_db, runid)
+    if runid_key is None:
         return out_curves
+    nr_map = run_db[runid_key]
+    nr_key = resolve_key(nr_map, nr)
+    if nr_key is None:
+        return out_curves
+    view, selections, metadata, problems = comparison_case_view(
+        nr_map[nr_key], {para: values}, view_config(mode_state, nr))
+    if diagnostics is not None:
+        diagnostics.extend('{} / {}: {}'.format(nr, para, problem) for problem in problems)
 
     for parameter, chosen in selections.items():
-        value_map = view.get(parameter, {})
-        values_iter = list(chosen)
-        if not values_iter and allow_all_values_fallback:
-            values_iter = list(value_map.keys())
+        values_iter = to_float_list(chosen)
         for value in values_iter:
             cgyrodir = result_view(root['CGYRO_scan'], linear_node(view, parameter, value))
             if cgyrodir is None:
@@ -184,7 +180,7 @@ def plot_cgyro_output_status(root, ctx):
             has_any_para_selection = True
             per_nr_has_para = True
             curves = _collect_cgyro_output_status_curves(
-                root, mode_state, runid, nr, para, values, allow_all_values_fallback=True
+                root, mode_state, runid, nr, para, values, diagnostics=diagnostics
             )
             if len(curves) == 0:
                 continue

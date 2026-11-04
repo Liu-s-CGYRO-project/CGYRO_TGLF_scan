@@ -37,13 +37,13 @@ from numpy import (
 from OMFITlib_compare_state import (
     stable_keys,
 )
+from OMFITlib_compare_options import parse_float_list_text
 from OMFITlib_compare_core import (
     checked_spectrum,
 )
 from OMFITlib_compare_core import (
     _maybe_abs_ky,
     cgyro_frequency_stats,
-    _to_float_scalar,
     cgyro_tglf_error,
     normalize_if_needed,
     normalize_tglf_if_needed,
@@ -56,14 +56,15 @@ from OMFITlib_compare_core import (
 
 def collect_cgyro_series(root, ctx, runid, nr, para, value):
     """Read one CGYRO spectrum and report malformed/missing samples explicitly."""
-    node = catalog_runs(root.get('CGYRO_scan', {}))
-    for token in (runid, nr):
-        key = resolve_key(node, token)
-        if key is None:
-            ctx.setdefault('_diagnostics', []).append('Missing CGYRO selection: {}'.format((runid, nr, para, value)))
-            return tuple(array([]) for _ in range(5))
-        node = node[key]
-    node = ctx.get('_cgyro_views', {}).get(str(nr), node)
+    node = ctx.get('_cgyro_views', {}).get(str(nr), None)
+    if node is None:
+        node = catalog_runs(root.get('CGYRO_scan', {}), runid=runid, caseid=nr)
+        for token in (runid, nr):
+            key = resolve_key(node, token)
+            if key is None:
+                ctx.setdefault('_diagnostics', []).append('Missing CGYRO selection: {}'.format((runid, nr, para, value)))
+                return tuple(array([]) for _ in range(5))
+            node = node[key]
     linear = result_view(root.get('CGYRO_scan', {}), linear_node(node, para, value))
     if linear is None:
         ctx.setdefault('_diagnostics', []).append('Missing CGYRO spectrum: {}'.format((runid, nr, para, value)))
@@ -88,20 +89,12 @@ def collect_cgyro_series(root, ctx, runid, nr, para, value):
 
 def _parse_tglf_2d_value_pair(value):
     """Parse one 2D TGLF value token into (para1_value, para2_value)."""
-    if isinstance(value, (list, tuple, ndarray)) and len(value) >= 2:
-        v1 = _to_float_scalar(value[0])
-        v2 = _to_float_scalar(value[1])
-        return v1, v2
-
     if isinstance(value, dict):
-        v1 = _to_float_scalar(value.get('para1', value.get('p1', None)))
-        v2 = _to_float_scalar(value.get('para2', value.get('p2', None)))
-        return v1, v2
-
-    vals = to_float_list(value)
-    if len(vals) >= 2:
-        return float(vals[0]), float(vals[1])
-    return None, None
+        value = [value.get('para1', value.get('p1', None)), value.get('para2', value.get('p2', None))]
+    # Equal coordinates still represent two independent axes, not duplicates.
+    vals = parse_float_list_text(value, unique=False)
+    # Ratio plots also probe ordinary scalar curves through this helper.
+    return tuple(vals) if len(vals) == 2 else (None, None)
 
 
 def collect_tglf_series(root, ctx, rho, para, value, mode_idx=1):
@@ -219,7 +212,7 @@ def read_settings(root, ctx, compare_mode):
     elif compare_mode == 'TGLF_vs_CGYRO':
         rho_selected = tglf_state.get('rho_selected', [])
         nr_pair_cfg = cgyro_state.get('rho_pair_cfg', {})
-        run_db = catalog_runs(root['CGYRO_scan'])
+        run_db = catalog_runs(root['CGYRO_scan'], runid=runid)
         runid_key = resolve_key(run_db, runid)
         for rho in rho_selected:
             rho_key = str(rho)
@@ -281,11 +274,7 @@ def collect_cgyro_curves(k, v, runid, run_db, cgyro_selected_paras, root, ctx):
         if para_key is None:
             continue
 
-        if hasattr(values, '__iter__') and not isinstance(values, str):
-            vals = list(values)
-        else:
-            vals = [values]
-
+        vals = to_float_list(values)
         if not vals:
             continue
 
@@ -353,11 +342,14 @@ def collect_tglf_curves(k, tglf_selected_paras, root, ctx, mode_idx=1, include_r
                 for p1 in p1_vals:
                     for p2 in p2_vals:
                         vals_to_use.append((float(p1), float(p2)))
+            elif isinstance(values, (list, tuple, ndarray)) and len(values) and isinstance(values[0], (list, tuple, ndarray)):
+                for value in values:
+                    pair = _parse_tglf_2d_value_pair(value)
+                    if None in pair:
+                        raise ValueError('A 2D scan point requires exactly two finite coordinates')
+                    vals_to_use.append(pair)
             else:
-                if hasattr(values, '__iter__') and not isinstance(values, str):
-                    vals_to_use = list(values)
-                else:
-                    vals_to_use = [values]
+                vals_to_use = to_float_list(values)
 
             if len(vals_to_use) == 0:
                 continue
