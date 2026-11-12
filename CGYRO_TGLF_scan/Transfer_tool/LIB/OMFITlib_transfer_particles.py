@@ -1,8 +1,8 @@
 """Species presets for OMFITinputgacode; densities in 1e19/m3, temperatures in keV.
 
-Work on a duplicate. Electron density is fixed; automatically identified main
-ions jointly close charge density and its derivative, retaining their ratios.
-No slowing-down distribution is fitted.
+Standard presets close charge density and its derivative on a profile copy.
+The JET 96482 preset passes the original composition to locpargen and audits
+the charge residual on each generated local card.
 """
 from builtins import abs, any, dict, enumerate, float, int, len, list, max, next, range, round, sorted, str, sum
 from collections import OrderedDict
@@ -10,14 +10,19 @@ import math
 import numpy as np
 from OMFITlib_transfer_zeff import zeff_options, zeff_profile
 
+JET_FUEL_MODE = 'jet96482_fast_fuel'
+JET_FUEL_LABEL = '快氢同位素并入主离子＋等效热杂质'
+JET_FUEL_RULE = 'jet96482_local_card_v1'
 PRESETS = OrderedDict([
     ('保留所有粒子', 'all'),
     ('慢化快离子（热化处理）', 'thermalize'),
     ('仅保留主离子和等效杂质', 'equivalent'),
     ('主离子 / 等效杂质 / 等效快粒子', 'separate_fast'),
+    (JET_FUEL_LABEL, JET_FUEL_MODE),
     ('仅保留主离子和 Zeff', 'main_only'),
 ])
 DESCRIPTIONS = {
+    JET_FUEL_MODE: '按 JET 96482 的局部 CGYRO 卡归并。快 D、快 H 的密度并入热 D，温度沿用热 D。热 Be、Ni 合成一个浮点电荷的等效杂质。逐半径记录准中性残差、Zeff、离子压力及压力梯度。TGLF 保留原生全物种卡。',
     'all': '保留全部离子及热 / 快类型，所有主离子按原密度比例共同校正准中性。',
     'thermalize': '同种热杂质合并；对应任一主离子的快离子独立保留，温度、环向及极向流速采用所选热杂质的值。缺少所需热离子时停止。此为热化近似，压力会改变。',
     'equivalent': '主离子限定为平均 ni/ne > 30% 的热 H/D/T；快离子及少量氢同位素与其他非主离子一起合成等效辅助物种。各半径保持辅助组电荷、Zeff 贡献、质量及电荷密度梯度，主离子保留稀释份额。辅助温度可保留原总压力或跟随热主离子；后者会改变总压力。H/D/T 扫描再合并热主离子。',
@@ -75,6 +80,10 @@ def particle_options(options):
         values.pop('equivalent_temperature')
     if values['particle_mode'] == 'separate_fast':
         values['equivalent_rule'] = SEPARATE_FAST_RULE
+    elif values['particle_mode'] == JET_FUEL_MODE:
+        values.pop('main_ion_threshold')
+        values.update(dict(main_ion_rule='source_thermal_D', neutrality_rule='audit_local_card',
+                           equivalent_rule=JET_FUEL_RULE))
     return values
 
 
@@ -99,6 +108,25 @@ def species_label(ion):
     return '{}：{} · Z={:g}，A={:g} · {}'.format(
         ion['index'], ion['name'], ion['charge'], ion['mass'],
         '原快离子（独立热化）' if ion.get('thermalized_fast', False) else ('快离子' if ion['kind'] == 'fast' else '热离子'))
+
+
+def jet_fuel_groups(ions):
+    """Positions in native locpargen ion order, using the original input.gacode identities."""
+    thermal_d, fuel, impurities = [], [], []
+    for index, ion in enumerate(ions):
+        name, kind = ion['name'].strip().upper(), ion['kind']
+        if name == 'D' and kind == 'therm' and ion['charge'] == 1:
+            thermal_d.append(index)
+            fuel.append(index)
+        elif name in ('H', 'D') and kind == 'fast' and ion['charge'] == 1:
+            fuel.append(index)
+        elif name in ('BE', 'NI') and kind == 'therm':
+            impurities.append(index)
+        else:
+            raise ValueError('JET 96482 方案无法归组源离子 ' + species_label(ion))
+    if len(thermal_d) != 1 or not impurities:
+        raise ValueError('JET 96482 方案需要唯一的热 D 和至少一个热 Be 或 Ni。')
+    return thermal_d[0], fuel, impurities
 
 
 def is_thermal_hydrogen(ion):
@@ -192,12 +220,17 @@ def _detect_main_ions(profile, options):
 
 
 def detect_main_ions(source, options):
-    """Preview selection using the same neutral source copy as generation."""
+    """Preview the main ions using the selected generation rule."""
+    if options.get('particle_mode', 'all') == JET_FUEL_MODE:
+        ions = species(source)
+        return [ions[jet_fuel_groups(ions)[0]]]
     profile, _ = prepare_source_profile(source, options)
     return _detect_main_ions(profile, options)
 
 
 def main_ion_label(ion):
+    if 'mean_fraction' not in ion:
+        return species_label(ion)
     return '{} · 平均 ni/ne={:.4g}%'.format(species_label(ion), ion['mean_fraction'] * 100)
 
 
@@ -392,6 +425,12 @@ def prepare_source_profile(source, options):
 def prepare_particles(source, options):
     """Return (processed OMFITinputgacode, compact provenance), preserving source."""
     options = particle_options(options)
+    if options['particle_mode'] == JET_FUEL_MODE:
+        ions = species(source)
+        main, _, _ = jet_fuel_groups(ions)
+        # locpargen must receive the measured densities and original species order.
+        return source.duplicate(), dict(options=options, before=ions, after=ions, main_ions=[ions[main]],
+                                        main_count=1, equivalent_stage='local_cgyro_inputs')
     profile, source_neutrality = prepare_source_profile(source, options)
     ne_before = np.asarray(profile['ne']).copy()
     before = species(profile)

@@ -8,7 +8,7 @@ from builtins import abs, any, dict, enumerate, float, int, len, list, max, rang
 import math
 import numpy as np
 from OMFITlib_transfer_particles import (EQUIVALENT_RULE, SEPARATE_FAST_RULE, EQUIVALENT_TEMPERATURES, TOLERANCE,
-                                        close_local_input, is_thermal_hydrogen)
+                                        JET_FUEL_RULE, close_local_input, is_thermal_hydrogen, jet_fuel_groups)
 
 
 SCHEMAS = {
@@ -109,8 +109,10 @@ def _main_temperature(mains, kind, rhostar):
     return result
 
 
-def _local_rows(value, kind):
-    count_key, fields = SCHEMAS[kind]
+def _local_rows(value, kind, fields=None):
+    count_key, all_fields = SCHEMAS[kind]
+    if fields is None:
+        fields = all_fields
     rows = [{name: float(value[prefix + str(index)]) for name, prefix in fields.items()}
             for index in range(1, int(value[count_key]) + 1)]
     if any(not math.isfinite(number) for row in rows for number in row.values()):
@@ -118,6 +120,73 @@ def _local_rows(value, kind):
     if any(row['mass'] <= 0 or row['t'] <= 0 for row in rows):
         raise ValueError('局部粒子质量和温度必须为正数。')
     return rows
+
+
+def _jet_ion_audit(ions, electron):
+    moments = _moments(ions)
+    return dict(charge_residual=moments['charge'] - electron['n'],
+                zeff=moments['zeff_numerator'] / electron['n'],
+                pressure=moments['pressure'], pressure_gradient=moments['pressure_gradient'])
+
+
+def jet_fuel_local_input(card, source_ions):
+    """Apply JET 96482 command box 14 to one uncorrected, native local CGYRO card."""
+    if float(card.get('GLOBAL_FLAG', 0)) != 0:
+        raise ValueError('JET 96482 方案只适用于 GLOBAL_FLAG=0 的局部 CGYRO 卡。')
+    _, schema = SCHEMAS['cgyro']
+    fields = {name: schema[name] for name in ('z', 'mass', 'n', 't', 'gn', 'gt')}
+    rows = _local_rows(card, 'cgyro', fields)
+    ions = [row for row in rows if row['z'] > 0]
+    electrons = [row for row in rows if row['z'] == -1]
+    if (len(electrons) != 1 or len(ions) != len(source_ions) or len(rows) != len(ions) + 1
+            or electrons[0]['n'] <= 0 or any(row['n'] < 0 for row in ions)):
+        raise ValueError('CGYRO 全物种卡须包含与源剖面一致的离子、唯一的电子和有效密度。')
+    for row, ion in zip(ions, source_ions):
+        # locpargen writes ions in input.gacode order and rounds MASS=A/2 to six significant digits.
+        if (row['z'] != ion['charge']
+                or not math.isclose(row['mass'], ion['mass'] / 2, rel_tol=5e-6)):
+            raise ValueError('局部 CGYRO 卡与源剖面的离子顺序或身份不符：' + ion['name'])
+    main_index, fuel_indices, impurity_indices = jet_fuel_groups(source_ions)
+    fuel = [ions[i] for i in fuel_indices]
+    impurities = [ions[i] for i in impurity_indices]
+    density = math.fsum(row['n'] for row in fuel)
+    s0 = math.fsum(row['n'] for row in impurities)
+    if density <= 0 or s0 <= 0:
+        raise ValueError('快氢并入方案需要正的燃料组总密度和热杂质组总密度。')
+    main = dict(ions[main_index], n=density, gn=math.fsum(row['n'] * row['gn'] for row in fuel) / density)
+    s1 = math.fsum(row['z'] * row['n'] for row in impurities)
+    s2 = math.fsum(row['z']**2 * row['n'] for row in impurities)
+    impurity = {key: math.fsum(row['n'] * row[key] for row in impurities) / s0 for key in ('t', 'gn', 'gt')}
+    impurity['z'] = s2 / s1
+    impurity['n'] = s1 / impurity['z']
+    impurity['mass'] = math.fsum(row['z'] * row['n'] * row['mass'] for row in impurities) / s1
+    electron = dict(electrons[0], z=-1.0, n=1.0, t=1.0)
+    audit = dict(rule=JET_FUEL_RULE, before=_jet_ion_audit(ions, electrons[0]),
+                 after=_jet_ion_audit([main, impurity], electron))
+    species_fields = {prefix[:-1] for prefix in fields.values()} | {'DLNNDR_SCALE', 'DLNTDR_SCALE'}
+    for key in list(card.keys()):
+        prefix, _, suffix = key.rpartition('_')
+        curvature = suffix.isdigit() and prefix in ('SDLNNDR', 'SDLNTDR')
+        stale_slot = suffix.isdigit() and prefix in species_fields and int(suffix) > 3
+        if key == 'SBETA' or curvature or stale_slot:
+            del card[key]
+    card['N_SPECIES'] = 3
+    for index, row in enumerate((main, impurity, electron), 1):
+        for field, prefix in fields.items():
+            card[prefix + str(index)] = row[field]
+    return dict(main_count=1, equivalent=audit)
+
+
+def jet_fuel_audit_lines(local_records):
+    lines = []
+    for entry in local_records.values():
+        record = entry.get('equivalent', {})
+        if record.get('rule', '') == JET_FUEL_RULE:
+            values = ['{} {:.9g} → {:.9g}'.format(label, record['before'][field], record['after'][field])
+                      for field, label in (('charge_residual', 'ΣZn−ne'), ('zeff', 'Zeff'),
+                                           ('pressure', 'ΣnT'), ('pressure_gradient', 'ΣnT(gn+gT)'))]
+            lines.append('ρ={:g}  {}'.format(entry['rho'], '，'.join(values)))
+    return lines
 
 
 def _equivalent_species(rows, before, kind, rhostar, reference=None):

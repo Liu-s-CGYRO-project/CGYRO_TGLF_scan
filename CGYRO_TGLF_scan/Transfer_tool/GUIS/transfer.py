@@ -8,9 +8,9 @@ from builtins import dict, getattr, isinstance, len, list, next, str, tuple
 from OMFITlib_transfer_workflow import generation_issues, initialize_generation, PROFILE_KEYS
 from OMFITlib_gui_layout import finish_gui_layout
 from OMFITlib_gui_deferred import deferred_section
-from OMFITlib_transfer_particles import (PRESETS, DESCRIPTIONS, EQUIVALENT_TEMPERATURES, detect_main_ions,
+from OMFITlib_transfer_particles import (PRESETS, DESCRIPTIONS, JET_FUEL_MODE, EQUIVALENT_TEMPERATURES, detect_main_ions,
                                         main_ion_label, species_label, thermal_reference_choices)
-from OMFITlib_transfer_equivalent import pressure_audit_lines
+from OMFITlib_transfer_equivalent import jet_fuel_audit_lines, pressure_audit_lines
 
 # compoundGUI is reserved by OMFIT and must not be reset through defaultVars.
 defaultVars(show_run_button=True)
@@ -126,21 +126,21 @@ def render():
     try:
         if source_profile is not None:
             main_ions = detect_main_ions(source_profile, physics['generation'])
-            OMFITx.Label('主离子：' + ' · '.join('{}{} {:.2%}'.format(
-                ion['name'], '（快）' if ion['kind'] == 'fast' else '', ion['mean_fraction']) for ion in main_ions),
-                align='left', wraplength=840)
+            names = [ion['name'] if 'mean_fraction' not in ion else '{}{} {:.2%}'.format(
+                ion['name'], '（快）' if ion['kind'] == 'fast' else '', ion['mean_fraction']) for ion in main_ions]
+            OMFITx.Label('主离子：' + ' · '.join(names), align='left', wraplength=840)
         else:
             OMFITx.Label('主离子：待识别', align='left')
     except (KeyError, TypeError, ValueError, OverflowError) as exc:
         particle_issue = str(exc)
         OMFITx.Label('主离子识别：' + particle_issue, align='left', wraplength=840)
-    details = [
+    mode = physics['generation']['particle_mode']
+    details = [] if mode == JET_FUEL_MODE else [
         '先在原始完整剖面副本上固定电子密度、校正准中性，再识别主离子及执行粒子方案。',
         '主离子：准中性校正后，所选半径区间内平均 ni/ne > 30%；等效方案还要求为 therm 类型、Z=1、质量为 H/D/T，分离快粒子方案会将其合为一个。',
         '处理后和局部插值后再次检查密度、密度梯度；CGYRO 同步密度曲率。Zeff 不参与电荷闭合。',
-        DESCRIPTIONS.get(physics['generation']['particle_mode'], '请选择粒子方案。'),
-        '原始剖面保留；处理结果及记录保存到 OUTPUTS/Particle_processing。',
     ]
+    details.extend([DESCRIPTIONS.get(mode, '请选择粒子方案。'), '处理记录保存到 OUTPUTS/Particle_processing。'])
     if main_ions:
         details.append('当前识别：\n' + '\n'.join(main_ion_label(ion) for ion in main_ions))
     if source_profile is None and kind != 'input.gacode':
@@ -162,9 +162,12 @@ def render():
                                    '变化比例为差值/原值绝对值；原值为零时不定义比例。\n' + '\n'.join(audit))
                 else:
                     details.append('旧分组记录尚无总压力梯度检查；更新同温规则后需重新运行 Transfer_tool。')
-        details.append('上次完整剖面阶段：密度残差 {:.2g}，梯度残差 {:.2g}；压力最大相对变化 {:.2%}（不含后续局部等效处理）。'.format(
-            last_report.get('density_residual', 0.0), last_report.get('gradient_residual', 0.0),
-            last_report.get('max_relative_pressure_change', 0.0)))
+        if last_report.get('options', {}).get('particle_mode', '') == JET_FUEL_MODE:
+            details.extend(jet_fuel_audit_lines(last_report.get('local_inputs', {})))
+        else:
+            details.append('上次完整剖面阶段：密度残差 {:.2g}，梯度残差 {:.2g}；压力最大相对变化 {:.2%}（不含后续局部等效处理）。'.format(
+                last_report.get('density_residual', 0.0), last_report.get('gradient_residual', 0.0),
+                last_report.get('max_relative_pressure_change', 0.0)))
     if last_report.get('thermal_reference', None):
         details.append('上次热化参考：' + species_label(last_report['thermal_reference']))
     OMFITx.ComboBox(prefix + "['particle_mode']", PRESETS, '处理方案', updateGUI=True, help='\n\n'.join(details), refresh_tree=False)

@@ -6,8 +6,8 @@ import numpy as np
 from builtins import abs, max
 from OMFITlib_transfer_workflow import (generation_issues, initialize_generation,
                                       prepare_tgyro, selected_profile)
-from OMFITlib_transfer_particles import main_ion_label, prepare_particles, species_label
-from OMFITlib_transfer_equivalent import pressure_audit_lines
+from OMFITlib_transfer_particles import JET_FUEL_MODE, main_ion_label, prepare_particles, species_label
+from OMFITlib_transfer_equivalent import jet_fuel_audit_lines, pressure_audit_lines
 from OMFITlib_gui_layout import fix_console_layout
 
 fix_console_layout()
@@ -39,14 +39,17 @@ try:
     root['INPUTS']['input.gacode'] = profile
     outputs['Profiles_gen']['input.gacode'] = profile.duplicate()
     outputs['Particle_processing'] = report
-    original_closure = report['source_neutrality']
-    print('原始完整剖面先做准中性：密度残差 {:.3g} → {:.3g}，密度梯度残差 {:.3g}；随后执行粒子方案。'.format(
-        original_closure['density_residual_before'], original_closure['density_residual'], original_closure['gradient_residual']))
+    original_closure = report.get('source_neutrality', None)
+    if original_closure:
+        print('原始完整剖面先做准中性：密度残差 {:.3g} → {:.3g}，密度梯度残差 {:.3g}；随后执行粒子方案。'.format(
+            original_closure['density_residual_before'], original_closure['density_residual'], original_closure['gradient_residual']))
     if report.get('prescribed_zeff', None):
         print('主离子归一化为 ne，保留原密度比例；Zeff 由准中性校正后、删除杂质前的全部离子计算（ΣniZi²/ne）。'
               'CGYRO 使用 COLLISION_MODEL={}、Z_EFF_METHOD=1。'.format(report['prescribed_zeff']['collision_model']))
     print('本轮主离子：' + '；'.join(main_ion_label(ion) for ion in report['main_ions']))
-    if report['options']['particle_mode'] == 'separate_fast':
+    if report['options']['particle_mode'] == JET_FUEL_MODE:
+        print('JET 96482：以完整源剖面生成局部卡，逐半径合并 CGYRO 粒子。TGLF 沿用全物种。')
+    elif report['options']['particle_mode'] == 'separate_fast':
         print('各半径生成：电子、一个热主离子、等效热杂质和等效快粒子；无密度的辅助组省略。')
         print('热杂质温度及温度梯度随合并主离子，密度梯度保持自身电荷密度梯度；快粒子独立保留压力及压力梯度。')
         print('同温假设会改变热杂质压力，不调整主离子温度、快粒子压力或电子比压补偿。')
@@ -60,13 +63,17 @@ try:
         print('粒子处理后：' + '；'.join(species_label(ion) for ion in report['after']))
     if report.get('thermal_reference', None):
         print('独立热化的温度 / 流速来源：' + species_label(report['thermal_reference']))
-    print('准中性：密度残差 {:.3g}，密度梯度残差 {:.3g}。'.format(report['density_residual'], report['gradient_residual']))
+    if original_closure:
+        print('准中性：密度残差 {:.3g}，密度梯度残差 {:.3g}。'.format(report['density_residual'], report['gradient_residual']))
     prepare_tgyro(root, profile, options)
     root['Transfer_file']['input.gacode'] = profile.duplicate()
     print('Transfer_tool：运行 TGYRO …')
     task_action(root['SCRIPTS']['tgyro_tglf.py'])
     print('Transfer_tool：生成各半径的 input.cgyro / input.tglf …')
     task_action(root['SCRIPTS']['profiles_gen4input.py'])
+    if report['options']['particle_mode'] == JET_FUEL_MODE:
+        for line in jet_fuel_audit_lines(outputs['Particle_processing']['local_inputs']):
+            print(line)
     if report.get('equivalent_stage', None) == 'local_inputs':
         local_records = outputs['Particle_processing']['local_inputs']
         if report['options']['particle_mode'] == 'separate_fast':

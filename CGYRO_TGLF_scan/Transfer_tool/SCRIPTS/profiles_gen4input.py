@@ -1,9 +1,11 @@
 # -*-Python-*-
 """Generate local parameter files and publish only complete successful output."""
 import os
-from OMFITlib_transfer_particles import (EQUIVALENT_RULE, SEPARATE_FAST_RULE, MAIN_ION_RULE, NEUTRALITY_RULE,
+from OMFITlib_transfer_particles import (EQUIVALENT_RULE, SEPARATE_FAST_RULE, JET_FUEL_MODE, JET_FUEL_RULE,
+                                        MAIN_ION_RULE, NEUTRALITY_RULE,
                                         close_local_input, validate_local_neutrality)
-from OMFITlib_transfer_equivalent import equivalent_local_input, separate_fast_local_input, locpargen_rhostar
+from OMFITlib_transfer_equivalent import (equivalent_local_input, separate_fast_local_input, jet_fuel_local_input,
+                                         locpargen_rhostar)
 from OMFITlib_gacode_installations import program_guard
 from OMFITlib_transfer_workflow import profiles_python_environment
 from OMFITlib_transfer_zeff import prescribe_local_zeff
@@ -13,17 +15,24 @@ if not os.environ.get('SHELL'):
     os.environ['SHELL'] = '/bin/bash'
 
 particle_report = root['OUTPUTS'].get('Particle_processing', {})
-if (particle_report.get('options', {}).get('main_ion_rule', '') != MAIN_ION_RULE
-        or particle_report.get('options', {}).get('neutrality_rule', '') != NEUTRALITY_RULE
-        or particle_report.get('source_neutrality', {}).get('rule', '') != NEUTRALITY_RULE
-        or not particle_report.get('main_count', 0) or not particle_report.get('after', None)):
+particle_options = particle_report.get('options', {})
+particle_mode = particle_options.get('particle_mode', 'all')
+historical = particle_mode == JET_FUEL_MODE
+if not particle_report.get('main_count', 0) or not particle_report.get('after', None):
     raise ValueError('缺少本轮自动主离子识别记录，请从“运行 Transfer_tool”重新生成输入。')
-particle_mode = particle_report['options'].get('particle_mode', 'all')
-equivalent_rule = {'equivalent': EQUIVALENT_RULE, 'separate_fast': SEPARATE_FAST_RULE}.get(particle_mode, None)
-if equivalent_rule is not None and particle_report['options'].get('equivalent_rule', '') != equivalent_rule:
+if not historical and (
+        particle_options.get('main_ion_rule', '') != MAIN_ION_RULE
+        or particle_options.get('neutrality_rule', '') != NEUTRALITY_RULE
+        or particle_report.get('source_neutrality', {}).get('rule', '') != NEUTRALITY_RULE):
+    raise ValueError('缺少本轮完整剖面准中性记录，请从“运行 Transfer_tool”重新生成输入。')
+equivalent_rule = {'equivalent': EQUIVALENT_RULE, 'separate_fast': SEPARATE_FAST_RULE,
+                   JET_FUEL_MODE: JET_FUEL_RULE}.get(particle_mode, None)
+if equivalent_rule is not None and particle_options.get('equivalent_rule', '') != equivalent_rule:
     raise ValueError('等效杂质规则已更新，请从“运行 Transfer_tool”重新生成输入。')
 inputs = [(root['INPUTS']['input.gacode'], 'input.gacode')]
-outputs = ['input.tglf.locpargen', 'input.cgyro.locpargen', 'out.locpargen']
+outputs = ['input.tglf.locpargen', 'input.cgyro.locpargen']
+if not historical:
+    outputs.append('out.locpargen')
 setup = root['SETTINGS']['SETUP']
 workdir = setup['workDir']
 rho_arr = root['OUTPUTS']['TGYRO']['rho'][0][1:]
@@ -46,9 +55,13 @@ for k, rho in enumerate(rho_arr, 1):
         obj = OMFITgacode(path)
         obj.keys()  # Read before the next execution cleans its working directory.
         local[code] = obj
-    rhostar = locpargen_rhostar(os.path.join(workdir, 'out.locpargen'), local['cgyro'])
+    if not historical:
+        rhostar = locpargen_rhostar(os.path.join(workdir, 'out.locpargen'), local['cgyro'])
     for code, obj in local.items():
-        if particle_mode == 'separate_fast':
+        if historical:
+            result = (jet_fuel_local_input(obj, particle_report['before']) if code == 'cgyro'
+                      else dict(stage='native_full_species'))
+        elif particle_mode == 'separate_fast':
             result = separate_fast_local_input(obj, code, particle_report['main_count'], particle_report['after'], rhostar)
         elif particle_mode == 'equivalent':
             # Use the frozen generation choice, never a live GUI selection that
@@ -58,12 +71,11 @@ for k, rho in enumerate(rho_arr, 1):
         else:
             result = close_local_input(obj, code, particle_report['main_count'], particle_report['after'], rhostar)
         result['rho'] = float(rho)
-        result['rhostar'] = rhostar
-        if particle_report['options'].get('particle_mode', 'all') == 'main_only':
+        if particle_mode == 'main_only':
             result['prescribed_zeff'] = prescribe_local_zeff(obj, code, particle_report.get('prescribed_zeff', {}))
-        # Re-read actual final fields after every transform, including Zeff.
-        # A saved correction residual alone is not proof that the card is neutral.
-        result['final_neutrality'] = validate_local_neutrality(obj, code, rhostar)
+        if not historical:
+            result['rhostar'] = rhostar
+            result['final_neutrality'] = validate_local_neutrality(obj, code, rhostar)
         # rho describes the source radius, not a CGYRO/TGLF input parameter.
         # Keep it in the audit record; solver files must contain solver keys only.
         neutrality['input.{}_{}'.format(code, k)] = result

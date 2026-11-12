@@ -7,6 +7,7 @@ from builtins import ValueError, dict, hasattr, int, list, sorted, str
 from collections import OrderedDict
 import copy
 from OMFITlib_project_inputs import input_digest, validate_input
+from OMFITlib_transfer_particles import JET_FUEL_LABEL, JET_FUEL_MODE
 from OMFITlib_transfer_workflow import generation_issues, selected_profile
 
 
@@ -18,6 +19,7 @@ SCHEMES = OrderedDict([
     ('equivalent_main_ion', ('等效杂质 · 温度随热主离子',
                              dict(particle_mode='equivalent', equivalent_temperature='main_ion'))),
     ('separate_fast', ('主离子 / 等效杂质 / 等效快粒子', dict(particle_mode='separate_fast'))),
+    (JET_FUEL_MODE, (JET_FUEL_LABEL, dict(particle_mode=JET_FUEL_MODE))),
     ('main_only', ('仅保留主离子和 Zeff', dict(particle_mode='main_only'))),
 ])
 

@@ -1,6 +1,8 @@
 # 维护与扩展接口
 
-适用于工程 1.24.64。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+适用于工程 1.24.65。这是 OMFIT 数据树工程；`root` 在总控页面指工程，在 CGYRO 子脚本中指 `CGYRO_scan`。普通 Python 包的导入、字典和对象生命周期不能直接套用。先读 [架构](ARCHITECTURE.md) 和 [兼容要求](OMFIT_COMPATIBILITY.md)。
+
+`test_transfer_jet_fuel` 默认使用合成的五半径输入。维护者可将 `OMFIT_JET96482_TEST_CARDS` 指向本地历史对照目录（`local_cards.csv`、`three_species.csv`），用同一套断言复核原工程。
 
 ## 原生 GUI 验证记录与提示
 
