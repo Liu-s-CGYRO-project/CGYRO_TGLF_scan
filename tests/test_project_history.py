@@ -4,9 +4,10 @@ import json
 import unittest
 from unittest.mock import patch
 import test_cgyro_storage  # Isolated native reader stand-ins.
-from test_project import fixture, CgyroInput
+from test_project import fixture, CgyroInput, ProjectUI, UI
 from OMFITlib_project import ProjectActions
 import OMFITlib_project_history as history
+from OMFITlib_result_cleanup import active_jobs, clear_results
 import OMFITlib_workbench_runtime_ui as runtime_ui
 
 
@@ -23,6 +24,58 @@ class ProjectHistoryTests(unittest.TestCase):
         self.root = fixture()
         self.actions = ProjectActions(self.root)
         self.records = self.root['PROJECT_STATE'].setdefault('activity', {})
+
+    def test_saved_running_log_does_not_block_confirmation_for_archived_jobs(self):
+        self.records['old-call'] = dict(title='CGYRO 批量扫描', status='running', combinations=[{}])
+        scan = self.root['CGYRO_scan']
+        scan.update(RUN_MANIFEST=dict(job_id='123', status='published', collection_status='complete'),
+                    RUN_HISTORY={'older': {'manifest': dict(status='cancelled', collection_status='partial')}},
+                    RUN_DB={'archived': {}})
+        view = ProjectUI(self.actions, UI(self.root))
+        with patch('OMFITlib_project_ui.messagebox.askokcancel', return_value=False) as confirm:
+            view.clear_all_results()
+            confirm.assert_called_once()
+        self.assertIn('archived', scan['RUN_DB'])
+        self.assertEqual(self.records['old-call']['status'], 'running')
+        with patch('OMFITlib_project_ui.messagebox.askokcancel', return_value=True):
+            view.clear_all_results()
+        self.assertFalse(scan['RUN_DB'])
+
+    def test_live_batch_and_nested_script_protect_only_their_open_project_until_abort(self):
+        self.root['task'] = object()
+        def during_script(*args):
+            self.assertEqual(history.live_operations(self.root), ['CGYRO 批量扫描', '子任务'])
+            self.assertFalse(active_jobs(fixture()))
+            with self.assertRaisesRegex(ValueError, '本次会话 · 子任务'):
+                clear_results(self.root)
+            raise KeyboardInterrupt()
+        with patch('OMFITlib_project.task_action', side_effect=during_script):
+            with patch.object(self.actions, '_run_cgyro', side_effect=lambda _: self.actions.call('子任务', ('task',))):
+                with self.assertRaises(KeyboardInterrupt):
+                    self.actions.run_cgyro()
+        self.assertFalse(active_jobs(self.root))
+
+    def test_parked_job_arriving_during_confirmation_is_named_before_any_mutation(self):
+        scan = self.root['CGYRO_scan']
+        scan['RUN_DB'] = {'archived': {}}
+        def submit_while_confirming(*args, **kwargs):
+            scan['RUN_HISTORY'] = {'parked': {'manifest': dict(job_id='456', status='submitted')}}
+            return True
+        with patch('OMFITlib_project_ui.messagebox.askokcancel', side_effect=submit_while_confirming):
+            with self.assertRaisesRegex(ValueError, '作业 456 · parked · 已提交'):
+                ProjectUI(self.actions, UI(self.root)).clear_all_results()
+        self.assertIn('archived', scan['RUN_DB'])
+
+    def test_submission_and_collection_evidence_from_legacy_and_current_manifests(self):
+        module = self.root['CGYRO_scan']
+        for status, collection, blocked in (
+            ('submission_unconfirmed', '', True), ('submitted', 'partial', True), ('failed', 'pending', True),
+            ('loaded', 'ready', True), ('failed', 'incomplete', True), ('failed', 'collecting', True),
+            ('submitted_or_finished', 'partial', False), ('cancelled', 'empty', False), ('published', '', False)
+        ):
+            with self.subTest(status=status, collection=collection):
+                module['RUN_MANIFEST'] = dict(job_id='789', status=status, collection_status=collection)
+                self.assertEqual(bool(active_jobs(self.root)), blocked)
 
     def test_logs_are_bounded_but_failures_have_separate_budget(self):
         for i in range(history.LOG_LIMIT + 30):

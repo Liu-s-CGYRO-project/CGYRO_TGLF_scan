@@ -52,7 +52,7 @@ from OMFITlib_cgyro_retry import retry_limit
 from OMFITlib_cgyro_workflow import collect_batch, collect_run
 from OMFITlib_cgyro_continue import continuation_plan
 from OMFITlib_cgyro_storage import consolidate_storage
-from OMFITlib_project_history import trim_logs
+from OMFITlib_project_history import running_operation, trim_logs
 
 # Compatibility exports: saved scripts may still import these here.
 from OMFITlib_workbench_catalog import MODULES, LABELS, PAGES
@@ -390,7 +390,8 @@ class ProjectActions:
             raise ValueError('工程缺少入口：' + '/'.join(path))
         record = self._record(title, status='running')
         try:
-            result = task_action(task, **kwargs)
+            with running_operation(self.root, title):
+                result = task_action(task, **kwargs)
         except BaseException as exc:
             self.report_error(title, exc, record)
             raise
@@ -994,6 +995,10 @@ class ProjectActions:
         return targets
 
     def run_cgyro(self, prepare=False):
+        with running_operation(self.root, '准备 CGYRO 输入' if prepare else 'CGYRO 批量扫描'):
+            return self._run_cgyro(prepare)
+
+    def _run_cgyro(self, prepare):
         node = module(self.root, 'cgyro')
         if node['SETTINGS']['SETUP'].get('icgyro', None) != 1:
             raise ValueError('此页面使用 CGYRO；旧 GYRO 提交后端不可用。')

@@ -607,7 +607,7 @@ CGYRO 的远程执行使用 `cgyro_run_state.native_remote_execute(ui, ...)`，�
 
 空或失效 focus 必须停止，不能回退到遍历全部历史。`collect_batch` 在改变执行设置前捕获并验证范围，汇总完成数与显示计数也使用同一范围。再次恢复已保存作业可以重选范围，无需重下输入；此分支仍检查查询期间的元数据变化并使用原有事务写入。归档结果和冻结输入仍只由 RUN_DB 拥有。
 
-全工程清空检查必须显式读取 `queue_records(include_parked=True)`，不能因当前恢复只关注一个作业而忽略其他已提交记录。
+全工程清空检查通过 `manifest_sources` 覆盖当前、历史和保留作业。操作历史可能保存执行到一半的快照。本地操作是否仍在执行，由当前工程的 `running_operation` 上下文记录。原生 SortedDict 序列化时排除 `_OMFIT` 前缀的运行时属性。
 
 ## 定向删除半径（1.24.14）
 

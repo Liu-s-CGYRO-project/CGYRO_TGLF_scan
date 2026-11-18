@@ -4,13 +4,45 @@ Only known final metadata records are disposable. Legacy/unknown payloads,
 pending operations and backups may be the only retained copy; never traverse
 their values or remove them as part of automatic log retention.
 """
-from builtins import ValueError, dict, len, max, set, str
+from builtins import ValueError, dict, getattr, id, len, list, max, object, set, str
+from contextlib import contextmanager
 
 LOG_LIMIT = 100
 ERROR_LOG_LIMIT = 20
 DISPLAY_LIMIT = 20
 FINAL = {'returned', 'complete', 'failed', 'cancelled', 'ready', 'archived', 'inputs_copied'}
 LOG_FIELDS = {'id', 'title', 'created', 'status', 'error', 'destinations', 'modules', 'removed_run_ids'}
+
+# Native OMFIT can reload library namespaces between nested GUI callbacks.
+# Keep live actions on their project; SortedDict omits _OMFIT* attributes
+# from saved state. Plain mapping adapters share this temporary registry.
+_adapter_operations = {}
+
+
+def _operation_slot(root):
+    attributes = getattr(root, '__dict__', None)
+    if attributes is None:
+        return _adapter_operations, id(root)
+    return attributes, '_OMFIT_workbench_operations'
+
+
+def live_operations(root):
+    storage, key = _operation_slot(root)
+    return list(storage.get(key, {}).values())
+
+
+@contextmanager
+def running_operation(root, title):
+    storage, key = _operation_slot(root)
+    operations = storage.setdefault(key, {})
+    marker = object()
+    operations[marker] = title
+    try:
+        yield
+    finally:
+        del operations[marker]
+        if not operations:
+            del storage[key]
 
 
 def record_kind(record):

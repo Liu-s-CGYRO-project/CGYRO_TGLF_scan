@@ -4,7 +4,7 @@ Keep this class and inherited method names stable for native/saved GUIs.
 New pages enter through workbench_catalog; see
 https://github.com/Liu-s-CGYRO-project/CGYRO_TGLF_scan/blob/main/MAINTAINER_GUIDE.md.
 """
-from OMFITlib_result_cleanup import active_jobs, clear_results
+from OMFITlib_result_cleanup import clear_results, require_clearable_results
 from builtins import dict, isinstance, list, str
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -247,8 +247,7 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
                        help='清空已保存的计算结果与运行记录，保留输入和配置。点击后会确认。')
 
     def clear_all_results(self):
-        if active_jobs(self.root):
-            raise ValueError('还有正在运行或已提交的任务。请先结束任务并收集结果，再清空。')
+        require_clearable_results(self.root)
         parent = getattr(self.ui, '_aux', {}).get('parentGUI', None)
         if messagebox.askokcancel('清空全部结果',
                 '清空本工程的 CGYRO、TGLF、TGYRO 计算结果和运行记录。\n'
