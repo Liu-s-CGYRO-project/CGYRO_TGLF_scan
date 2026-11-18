@@ -7,8 +7,9 @@ import math
 # OMFIT removes its library importer when GUI scripts return. Resolve this
 # dependency while loading the module so button callbacks keep the function.
 from OMFITlib_tglf_multi_data import profile_digest
-from OMFITlib_tglf_parameters import COMMON, INTEGERS as INPUT_INTEGERS, numeric_parameters, parameter_values, scalar
-from OMFITlib_transfer_presets import JET_FUEL_MODE, JET_FUEL_RULE, SCHEMES
+from OMFITlib_tglf_records import radial_input_paths, radial_thermal_ions
+from OMFITlib_tglf_parameters import COMMON, INTEGERS as INPUT_INTEGERS, current_thermal_ions, numeric_parameters, parameter_values, scalar
+from OMFITlib_transfer_presets import JET_FUEL_MODE, JET_FUEL_RULE, SCHEMES, tglf_thermal_ions
 
 PROFILE_PATH = ('TGLF_scan', 'TGYRO', 'PROFILES_GEN', 'OUTPUTS', 'input.gacode')
 SEED_PATH = ('TGLF_scan', 'TGYRO', 'INPUTS', 'input.tglf')
@@ -226,6 +227,7 @@ def _transfer_rows(root):
             label = 'nr={}'.format(nr) + (' · rho={:g}'.format(float(rho)) if rho is not None else '')
             key = 'transfer:' + (scheme + ':' if scheme else '') + str(nr)
             rows.append(dict(key=key, group='transfer', scheme=scheme, scheme_label=caption,
+                             thermal_ions=tglf_thermal_ions(report, info),
                              label=(caption + ' · ' if caption else '') + label, radius_label=label,
                              path=prefix + path + (name,), nr=nr, rho=rho))
     return rows
@@ -237,11 +239,11 @@ def input_rows(root):
     if get(root, path) is not None:
         rows.append(dict(key='current', group='current', label='当前 / 导入的 TGLF 文件', path=path))
     rows.extend(_transfer_rows(root))
-    prefix = ('TGLF_scan', 'input.tglf')
+    paths = radial_input_paths(root.get('TGLF_scan', {}))
     coordinate = get(root, ('TGLF_scan', '_local_input_generation', 'coordinate'), '半径')
-    for radius in sorted(get(root, prefix, {}).keys(), key=float):
+    for radius in sorted(paths, key=float):
         rows.append(dict(key='radial:' + str(radius), group='radial', label=coordinate + '=' + str(radius),
-                         path=prefix + (radius,), rho=radius, coordinate=coordinate))
+                         path=('TGLF_scan',) + paths[radius], rho=radius, coordinate=coordinate))
     path = ('Transfer_tool', 'Transfer_file', 'input.tglf')
     if get(root, path) is not None:
         rows.append(dict(key='local', group='local', label='局部互转的 TGLF 文件', path=path))
@@ -431,6 +433,10 @@ def plan(root, settings):
     sources, axes, uq = [], [], []
     for row in rows:
         source = get(root, row['path'])
+        if row['group'] == 'radial' and settings['single_Ti']:
+            row['thermal_ions'] = radial_thermal_ions(root['TGLF_scan'], source)
+        elif row['group'] == 'current' and settings['single_Ti']:
+            row['thermal_ions'] = current_thermal_ions(root['TGLF_scan']['TGLF'], source)
         parameter_value('NS', source.get('NS', 2), 2)
         values = parameter_values(source)
         parameters = parameter_overrides(settings, source)

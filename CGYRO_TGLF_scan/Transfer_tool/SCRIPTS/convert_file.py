@@ -7,7 +7,7 @@ out-of-domain inputs before a partially converted card can be published.
 """
 # Created by liujy at 09 Apr 2025 16:26
 
-from builtins import abs, bool, float, int, isinstance, len, max, min, range, str
+from builtins import abs, bool, float, int, isinstance, len, max, min, range, str, sum
 import numpy as np
 import scipy.linalg
 from OMFITlib_transfer_workflow import tglf_input_format
@@ -21,7 +21,6 @@ def _build_convert_tglf_to_cgyro(CGYRO,TGLF,inputgacode):
     CGYRO['N_TOROIDAL'] = 1
     CGYRO['NONLINEAR_FLAG'] = 0
     CGYRO['BOX_SIZE'] = 1
-    CGYRO['KY'] = 0.3
     CGYRO['DELTA_T'] = 0.01
     CGYRO['MAX_TIME'] = 100
     CGYRO['PRINT_STEP'] = 100
@@ -159,8 +158,6 @@ def _build_convert_tglf_to_cgyro(CGYRO,TGLF,inputgacode):
     CGYRO['GAMMA_P'] = gamma_p
     CGYRO['MACH'] = mach
     CGYRO['ROTATION_MODEL'] = 2
-    CGYRO['COLLISION_MODEL'] = 4
-    CGYRO['N_FIELD'] = 2
 
 
 
@@ -312,7 +309,6 @@ def _build_convert_outtglf_to_cgyro(CGYRO,TGLF,inputgacode):
     CGYRO['N_TOROIDAL'] = 1
     CGYRO['NONLINEAR_FLAG'] = 0
     CGYRO['BOX_SIZE'] = 1
-    CGYRO['KY'] = 0.3
     CGYRO['DELTA_T'] = 0.01
     CGYRO['MAX_TIME'] = 100
     CGYRO['PRINT_STEP'] = 100
@@ -350,30 +346,6 @@ def _build_convert_outtglf_to_cgyro(CGYRO,TGLF,inputgacode):
     a_meters = rmin_exp[-1]
     rmin_exp = rmin_exp/a_meters
     rmin = CGYRO['RMIN']
-    expro_q = inputgacode['q']
-    temp = bound_deriv(np.log(abs(expro_q)),expro_rmin,expro_n_exp)
-    expro_s = expro_rmin*temp
-    s_loc = cub_spline1(rmin_exp,expro_s,expro_n_exp,rmin)
-    CGYRO['S'] = s_loc
-
-    for i in range(0,7):
-        if i>=3:
-            expro_shape_sin = inputgacode['shape_sin'+str(i)]
-            shape_sin_loc = cub_spline1(rmin_exp,expro_shape_sin,expro_n_exp,rmin)
-            CGYRO['SHAPE_SIN'+str(i)] = shape_sin_loc
-            temp = bound_deriv(expro_shape_sin,expro_rmin,expro_n_exp)
-            expro_shape_ssin = expro_rmin*temp
-            shape_s_sin_loc = cub_spline1(rmin_exp,expro_shape_ssin,expro_n_exp,rmin)
-            CGYRO['SHAPE_S_SIN'+str(i)] = shape_s_sin_loc
-
-        expro_shape_cos = inputgacode['shape_cos'+str(i)]
-        shape_cos_loc = cub_spline1(rmin_exp,expro_shape_cos,expro_n_exp,rmin)
-        CGYRO['SHAPE_COS'+str(i)] = shape_cos_loc
-        temp = bound_deriv(expro_shape_cos,expro_rmin,expro_n_exp)
-        expro_shape_scos = expro_rmin*temp
-        shape_s_cos_loc = cub_spline1(rmin_exp,expro_shape_scos,expro_n_exp,rmin)
-        CGYRO['SHAPE_S_COS'+str(i)] = shape_s_cos_loc
-
     CGYRO['ROTATION_MODEL'] = 2
     if TGLF['Q_LOC']<0:
         CGYRO['GAMMA_E'] = TGLF['VEXB_SHEAR']/TGLF['SIGN_IT']
@@ -381,15 +353,6 @@ def _build_convert_outtglf_to_cgyro(CGYRO,TGLF,inputgacode):
         CGYRO['GAMMA_E'] = TGLF['VEXB_SHEAR']/-TGLF['SIGN_IT']
     CGYRO['GAMMA_P'] = TGLF['VPAR_SHEAR_1']/-TGLF['SIGN_IT']
     CGYRO['MACH'] = TGLF['VPAR_1']/-TGLF['SIGN_IT']
-    CGYRO['COLLISION_MODEL'] = 4
-
-    if TGLF['USE_BPER'] == False:
-        CGYRO['N_FIELD'] = 1
-    elif TGLF['USE_BPAR'] == False:
-        CGYRO['N_FIELD'] = 2
-    else:
-        CGYRO['N_FIELD'] = 3
-
 
     expro_rhos = inputgacode['rhos']
 
@@ -448,6 +411,15 @@ def _build_convert_outtglf_to_cgyro(CGYRO,TGLF,inputgacode):
 
 
 
+def _field_enabled(value):
+    token = str(value).strip().strip('.').lower()
+    if token in ('true', 't', '1'):
+        return True
+    if token in ('false', 'f', '0'):
+        return False
+    raise ValueError('Invalid TGLF electromagnetic flag: ' + str(value))
+
+
 def _commit_cgyro_conversion(target, source, profiles, builder):
     """Build and validate first, so invalid inputs cannot clear the old target."""
     ns = int(source['NS'])
@@ -460,6 +432,34 @@ def _commit_cgyro_conversion(target, source, profiles, builder):
             key = '{}_{}'.format(field, species)
             if key not in pending or not np.isfinite(pending[key]):
                 raise ValueError('Missing or non-finite converted parameter: ' + key)
+    if int(source.get('GEOMETRY_FLAG', 1)) == 1 and 'Q_PRIME_LOC' in source:
+        # Invert TGYRO's Miller mapping q_prime=(|q|/rmin)**2 * shear.
+        if pending['Q'] == 0:
+            raise ValueError('Q_LOC must be nonzero to convert Q_PRIME_LOC')
+        pending['S'] = float(source['Q_PRIME_LOC']) * (pending['RMIN'] / pending['Q']) ** 2
+    pending['KY'] = float(source.get('KY', 0.3))
+    bper, bpar = (_field_enabled(source.get(name, False)) for name in ('USE_BPER', 'USE_BPAR'))
+    if bpar and not bper:
+        raise ValueError('CGYRO 的 N_FIELD 无法表示只启用 USE_BPAR 的 TGLF 卡。')
+    pending['N_FIELD'] = 1 + int(bper) + int(bpar)
+    pending['COLLISION_MODEL'] = 4
+    if 'ZEFF' in source:
+        zeff = float(source['ZEFF'])
+        if not np.isfinite(zeff) or zeff < 1:
+            raise ValueError('ZEFF must be finite and at least 1')
+        if pending['Z_' + str(ns)] != -1 or pending['DENS_' + str(ns)] <= 0:
+            raise ValueError('TGLF species 1 must be the electron with a positive density')
+        ion_moment = sum(pending['DENS_' + str(i)] * pending['Z_' + str(i)] ** 2 for i in range(1, ns))
+        composed = ion_moment / pending['DENS_' + str(ns)]
+        pending['Z_EFF'] = zeff
+        if not np.isclose(zeff, composed, rtol=1e-5, atol=0):
+            # locpargen writes six significant digits. Outside this rounding
+            # tolerance the composition cannot reproduce the requested Zeff.
+            # CGYRO only honors an independent Zeff for collision models 1 and 5.
+            pending['COLLISION_MODEL'] = 1
+            pending['Z_EFF_METHOD'] = 1
+        else:
+            pending['Z_EFF_METHOD'] = 2
     for key, value in pending.items():
         if isinstance(value, (float, np.floating)) and not np.isfinite(value):
             raise ValueError('Non-finite converted parameter: ' + key)
@@ -588,6 +588,8 @@ else:
     print('TGLF format: ' + ('out.tglf.localdump (extended geometry)' if detected == 'localdump' else 'input.tglf'))
     converter = convert_outtglf_to_cgyro if detected == 'localdump' else convert_tglf_to_cgyro
     converter(pending, files['input.tglf'], files['input.gacode'])
+    if pending.get('Z_EFF_METHOD', 2) == 1:
+        print('局部卡指定 Zeff={:g}，与离子组成不同。CGYRO 将使用 COLLISION_MODEL=1、Z_EFF_METHOD=1。'.format(pending['Z_EFF']))
     target_name = 'input.cgyro'
 target = OMFITgacode(target_name, fromString='')
 target.update(pending)

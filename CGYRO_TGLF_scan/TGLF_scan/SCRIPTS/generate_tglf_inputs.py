@@ -7,6 +7,7 @@ import math
 import os
 import uuid
 from OMFITlib_tglf_workbench import clone
+from OMFITlib_tglf_parameters import profile_thermal_ions
 from OMFITlib_tglf_preparation import (PREPARE_LAUNCHER, PREPARE_MPI,
     preparation_batch, preparation_command, preparation_resources)
 
@@ -167,7 +168,7 @@ try:
         # TGYRO fills profile-derived quantities. Explicit user overrides must
         # also be present in the final local inputs, not just the seed file.
         value.update(parameters)
-        for name in ('NS', 'KY', 'RMIN_LOC', 'RMAJ_LOC', 'Q_LOC', 'RLTS_1', 'RLNS_1'):
+        for name in ('NS', 'RMIN_LOC', 'RMAJ_LOC', 'Q_LOC', 'RLTS_1', 'RLNS_1'):
             if name not in value:
                 raise ValueError('TGLF{} local input is missing {}'.format(index, name))
             if not math.isfinite(float(value[name])):
@@ -189,13 +190,14 @@ try:
     replacements = clone(generated)
     tgyro_output = clone(record['tgyro_output']) if 'tgyro_output' in record else None
     metadata = dict(run_id=run_id, profile_digest=profile_digest,
+                    thermal_ions=profile_thermal_ions(profile, include_ions),
                     coordinate=coordinate, include_ions=include_ions, parameters=copy.deepcopy(parameters),
                     source=dict(source or {}))
     old = OMFITtree()
     cache_keys = ('input.tglf', 'tgyro_output', 'scanResults', 'scanResults_spectra',
         'scanResults2D', 'scanResults2D_spectra', 'scanResults3D', 'scanResults3D_spectra', 'UQResults', 'UQResults_spectra',
         'Experimental_fluxes', 'Experimental_spectra', '_scan_cache_provenance', '_workbench_index',
-        '_radial_cache_provenance', '_input_cache_provenance', '_local_input_generation')
+        '_radial_cache_provenance', '_input_cache_provenance', '_local_input_generation', '_legacy_transfer_profile_radii')
     for key in cache_keys:
         if key in root:
             old[key] = clone(root[key])

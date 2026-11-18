@@ -36,8 +36,8 @@ from OMFITlib_transfer_workflow import (generation_issues, initialize_generation
 from OMFITlib_tglf_workbench import (PROFILE_PATH, RADII, initialize as initialize_tglf,
     fully_failed, generation_overrides, input_rows as tglf_rows, plan as tglf_plan)
 from OMFITlib_tglf_multi_data import profile_digest, profile_info, tgyro_input
-from OMFITlib_tglf_records import run_records, restore_native_results
-from OMFITlib_transfer_particles import particle_options
+from OMFITlib_tglf_parameters import species_signature
+from OMFITlib_tglf_records import radial_thermal_ions, run_records, restore_native_results
 from OMFITlib_transfer_schemes import generate_schemes, scheme_runid
 from OMFITlib_cgyro_parameters import (constant_parameters, initialize_parameters,
     numeric_source, parameter_catalog)
@@ -508,9 +508,7 @@ class ProjectActions:
             if source_path[:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
                 if not generated_tglf:
                     raise ValueError('请重新运行 Transfer_tool 生成所选方案的 TGLF 半径输入。')
-                physics = self.root['Transfer_tool']['SETTINGS']['PHYSICS']
-                chosen = particle_options(physics.get('generation', {}))
-                previous_options = read(self.root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'options'))
+                chosen, previous_options = _generated_particle_record(self.root)
                 if previous_options is None or input_digest(chosen) != input_digest(previous_options):
                     raise ValueError('粒子方案或主离子识别半径已变化，或旧结果缺少自动识别记录；请重新运行 Transfer_tool 后再传递。')
             self.propose_tglf(source, 'Transfer tool → TGLF', source_path)
@@ -1374,6 +1372,7 @@ class ProjectActions:
         new_files['input.tglf'] = incoming.duplicate() if hasattr(incoming, 'duplicate') else copy.deepcopy(incoming)
         self._record(title, status='inputs_copied', previous_tglf_files=archived)
         node['FILES'] = new_files
+        node.pop('_input_ion_types', None)
         node.get('_workbench_index', {}).pop(('FILES',), None)
         self._tglf_message(title + '。原 TGLF 输入和对应结果已保存在输入历史中。')
 
@@ -1381,8 +1380,7 @@ class ProjectActions:
         incoming = incoming.duplicate() if hasattr(incoming, 'duplicate') else copy.deepcopy(incoming)
         if 'rho' in incoming:
             del incoming['rho']  # Remove the legacy Transfer metadata from the solver copy.
-        radial = tuple(source_path or ())[:2] in (('Transfer_tool', 'OUTPUTS'), ('TGLF_scan', 'input.tglf'))
-        validate_input(incoming, 'tglf', local_tglf=radial)
+        validate_input(incoming, 'tglf')
         if destination not in ('tglf', 'transfer'):
             raise ValueError('未知 TGLF 输入目标')
         branch = 'FILES' if destination == 'tglf' else 'INPUTS'
@@ -1391,8 +1389,17 @@ class ProjectActions:
             record['status'] = 'superseded'
         if current is not None and not input_difference(current, incoming):
             self._tglf_message('已选用此 TGLF 输入，参数内容未变化。')
-            return
-        self.install_tglf(incoming, title, destination)
+        else:
+            self.install_tglf(incoming, title, destination)
+        if destination == 'tglf':
+            child = module(self.root, 'tglf')
+            child.pop('_input_ion_types', None)
+            if source_path:
+                row = next((r for r in tglf_rows(self.root) if tuple(r['path']) == tuple(source_path)), {})
+                ions = (radial_thermal_ions(self.root['TGLF_scan'], incoming) if row.get('group', '') == 'radial'
+                        else row.get('thermal_ions', []))
+                if ions:
+                    child['_input_ion_types'] = dict(species=species_signature(incoming), thermal_ions=list(ions))
 
     def restore_tglf_native_results(self, run_id):
         node = self.root['TGLF_scan']
@@ -1410,18 +1417,20 @@ class ProjectActions:
         self._tglf_message(text)
         return report
 
+    def checked_tglf_plan(self, settings):
+        prepared = tglf_plan(self.root, settings)
+        if any(source['group'] == 'transfer' and not source.get('scheme', '') for source in prepared['sources']):
+            chosen, previous = _generated_particle_record(self.root)
+            if previous is None or input_digest(chosen) != input_digest(previous):
+                raise ValueError('粒子方案或径向网格已变化，请重新运行 Transfer_tool 生成输入。')
+        return prepared
+
     def run_tglf_plan(self):
         settings, _ = initialize_tglf(self.root, self.factory)
-        prepared = tglf_plan(self.root, settings)
+        prepared = self.checked_tglf_plan(settings)
         issues = runtime_issues(self.root, 'tglf')
         if issues:
             raise ValueError('；'.join(issues))
-        if any(source['group'] == 'transfer' and not source.get('scheme', '') for source in prepared['sources']):
-            physics = self.root['Transfer_tool']['SETTINGS']['PHYSICS']
-            chosen = particle_options(physics.get('generation', {}))
-            previous = read(self.root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'options'))
-            if previous is None or input_digest(chosen) != input_digest(previous):
-                raise ValueError('粒子方案或半径已变化，请重新运行 Transfer_tool 生成输入。')
         try:
             self.call('运行 TGLF 扫描', ('TGLF_scan', 'SCRIPTS', 'run_workbench'),
                       plan=prepared, project_root=self.root)

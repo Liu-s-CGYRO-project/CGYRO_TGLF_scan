@@ -2,6 +2,7 @@
 # Created by meneghini at 2013/03/08 18:01
 """Compute one scan axis and retain completed points if the batch fails."""
 from OMFITlib_gui_api import task_action
+from OMFITlib_tglf_parameters import current_thermal_ions, sync_thermal_scan
 from builtins import enumerate, float, isinstance, len, list, range, repr, sorted, str
 import copy
 
@@ -12,11 +13,17 @@ defaultVars(
     results='scanResults',
     results_spectra='scanResults_spectra',
     include_starting_param=True,
-    cache_records=None,
+    cache_records=None, thermal_ions=None, outer_axes=(), temperature_baseline=None,
 )
 
 if inputTGLF is None:
     raise ValueError('Need an input.tglf file to run a TGLF scan')
+if thermal_ions is None:
+    thermal_ions = current_thermal_ions(root, inputTGLF)
+
+
+if temperature_baseline is None:
+    temperature_baseline = inputTGLF
 
 # Provenance is kept outside numeric result keys used by plotting code.
 cache = root['LIB']['OMFITlib_tglf_cache'].runNoGUI()
@@ -47,7 +54,8 @@ if isinstance(results_spectra, str):
 if param not in results_spectra:
     results_spectra[param] = OMFITtree()
 
-current = cache['provenance'](root, inputTGLF, '1D', {'param': param, 'range': parameterRange})
+current = cache['provenance'](root, inputTGLF, '1D', {'param': param, 'range': parameterRange,
+    'thermal_ions': thermal_ions, 'outer_axes': outer_axes, 'temperature_baseline': temperature_baseline})
 if result_branch and not cache['matches'](cache_records.get(param, None), current):
     cache['forget_workbench'](root, (result_branch, param))
 cache['prepare'](results, results_spectra, param, cache_records, current, OMFITtree)
@@ -62,10 +70,8 @@ for k, value in enumerate(parameterRange):
     valuesToRun.append(value)
     tmpTGLF = copy.deepcopy(inputTGLF)
     tmpTGLF[param] = value
-    if (param.startswith('RLTS_') or param.startswith('TAUS_')) and root['SETTINGS']['PHYSICS']['single_Ti']:
-        for spec in range(1, inputTGLF['NS'] + 1):
-            if tmpTGLF['ZS_%d' % spec] != -1 and inputTGLF['%s%d' % (param[:5], spec)] == inputTGLF[param]:
-                tmpTGLF['%s%d' % (param[:5], spec)] = value
+    if root['SETTINGS']['PHYSICS']['single_Ti']:
+        sync_thermal_scan(tmpTGLF, temperature_baseline, (param,) + tuple(outer_axes), thermal_ions)
     scratch['input.tglf.scan'].append(tmpTGLF)
 
 if len(scratch['input.tglf.scan']) == 0:

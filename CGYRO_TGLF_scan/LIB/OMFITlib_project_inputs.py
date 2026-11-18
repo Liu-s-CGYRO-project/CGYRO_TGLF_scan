@@ -96,9 +96,9 @@ def input_difference(current, incoming):
 
 
 def validate_input(value, kind, local_tglf=False):
-    # locpargen supplies the radial species and geometry. KY can use the
-    # native TGLF default or a subsequent scan override on these cards.
-    required = ('NS',) if local_tglf else ('NS', 'KY')
+    # KY is optional for every native TGLF card. The legacy keyword is kept
+    # for saved OMFIT scripts that call this function.
+    required = ('NS',)
     if kind == 'cgyro':
         required = ('N_SPECIES', 'N_RADIAL', 'N_THETA', 'Q', 'RMIN', 'RMAJ')
     missing = [key for key in required if key not in value.keys()]
@@ -108,6 +108,8 @@ def validate_input(value, kind, local_tglf=False):
         number = float(value[key])
         if not math.isfinite(number) or number < 1 or int(number) != number:
             raise ValueError(key + ' 必须为正整数')
+    if kind == 'tglf' and 'KY' in value and not math.isfinite(float(value['KY'])):
+        raise ValueError('KY 必须为有限数值')
     input_digest(value)
 
 

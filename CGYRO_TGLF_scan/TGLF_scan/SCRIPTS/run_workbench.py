@@ -9,6 +9,7 @@ import numpy as np
 from datetime import datetime, timezone
 from OMFITlib_tglf_workbench import clone, get, parameter_value, validate_width_search
 from OMFITlib_tglf_records import publish_point
+from OMFITlib_tglf_parameters import sync_thermal_scan
 
 defaultVars(plan=None, project_root=None)
 if not plan or not plan.get('sources', None):
@@ -37,23 +38,18 @@ for source in plan['sources']:
     combinations = uq_combinations if plan['mode'] == 'uq' else [
         dict(zip([axis['name'] for axis in axes], values))
         for values in itertools.product(*(axis['values'] for axis in axes))]
+    baseline = clone(original)
+    baseline.pop('rho', None)
+    baseline.update(source['parameters'])
+    baseline.setdefault('NS', 2)
+    baseline['USE_TRANSPORT_MODEL'] = True
+    baselines[tuple(source['path'])] = baseline
     for scan_values in combinations:
-        candidate = clone(original)
-        candidate.pop('rho', None)
-        candidate.update(source['parameters'])
-        candidate.setdefault('NS', 2)  # Native parser default for a partial input.
-        candidate['USE_TRANSPORT_MODEL'] = True
-        baseline = clone(candidate)
-        baselines[tuple(source['path'])] = baseline
+        candidate = clone(baseline)
         for name, value in scan_values.items():
             candidate[name] = parameter_value(name, value, candidate[name])
-            if (plan['single_Ti'] and name.startswith(('RLTS_', 'TAUS_'))
-                    and candidate.get('ZS_' + name[5:], -1) > 0):
-                for species in range(1, int(candidate['NS']) + 1):
-                    field = name[:5] + str(species)
-                    if (field not in scan_values and candidate.get('ZS_' + str(species), -1) > 0
-                            and baseline.get(field, None) == baseline[name]):
-                        candidate[field] = candidate[name]
+        if plan['single_Ti']:
+            sync_thermal_scan(candidate, baseline, scan_values, source.get('thermal_ions', []))
         if int(candidate['NS']) < 1 or float(candidate['NS']) != int(candidate['NS']):
             raise ValueError('NS must be a positive integer')
         validate_width_search(candidate)

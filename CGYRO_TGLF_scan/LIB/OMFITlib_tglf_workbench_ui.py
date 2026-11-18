@@ -14,7 +14,7 @@ from OMFITlib_project import MODULES, location, read, runtime_issues
 from OMFITlib_tglf_preparation import preparation_resources
 from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, SCENARIOS, USER_SCENARIO_PREFIX,
     apply_scenario, fully_failed, generation_overrides, generation_seed, initialize, parameter_value,
-    plan, radial_input_issues, save_preset, scan_parameter_names, scenario_choices, selected_rows, source_rows, uq_parameter_count)
+    radial_input_issues, save_preset, scan_parameter_names, scenario_choices, selected_rows, source_rows, uq_parameter_count)
 from OMFITlib_tglf_parameters import GROUPS, parameter_catalog, parameter_values, scalar
 from OMFITlib_tglf_parameter_help import parameter_help
 from OMFITlib_transfer_presets import JET_FUEL_MODE
@@ -220,13 +220,13 @@ class TGLFWorkbench:
                              '采样方法', state='readonly', updateGUI=False, refresh_tree=False)
             self.label('各参数按独立正态分布采样；均值和标准差是实际数值。')
         if mode != 'single':
-            self.view.cgyro_checkbox(self.prefix + "['single_Ti']", self.settings, 'single_Ti', '温度扫描同步到输入中同温的热离子')
+            self.view.cgyro_checkbox(self.prefix + "['single_Ti']", self.settings, 'single_Ti', '温度扫描同步到已识别的同温热离子（需要物种来源记录）')
 
     def run(self):
         self.ui.Entry(self.prefix + "['parallel']", '并发任务数', width=12, updateGUI=False, refresh_tree=False)
         problems = runtime_issues(self.root, 'tglf')
         try:
-            prepared = plan(self.root, self.settings)
+            prepared = self.actions.checked_tglf_plan(self.settings)
             self.label('本次运行：{} 个输入，{} 个任务'.format(len(prepared['sources']), prepared['total']))
             for source in prepared['sources'][:4]:
                 parameters = {axis['name']: axis['values'][0] for axis in source.get('axes', [])}

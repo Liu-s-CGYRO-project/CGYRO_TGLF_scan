@@ -30,13 +30,13 @@ def _freeze(outputs, options, label, factory):
             continue
         kind = stem.split('.')[1]
         source = generated[key]
-        validate_input(source, kind, local_tglf=(kind == 'tglf'))
+        validate_input(source, kind)
         metadata = report.get('local_inputs', {}).get(key, {})
         if metadata.get('rho', None) is None:
             raise ValueError(label + ' / ' + key + ' 缺少半径记录。')
         cards[kind][key] = _duplicate(source)
         local[key] = {name: copy.deepcopy(metadata[name])
-                      for name in ('rho', 'main_count', 'rhostar', 'equivalent', 'locpargen_qn',
+                      for name in ('rho', 'main_count', 'rhostar', 'equivalent', 'locpargen_qn', 'thermal_ions',
                                    'prescribed_zeff', 'final_neutrality') if name in metadata}
     if not cards['cgyro'] or not cards['tglf']:
         raise ValueError(label + ' 没有生成完整的 CGYRO 和 TGLF 半径输入。')

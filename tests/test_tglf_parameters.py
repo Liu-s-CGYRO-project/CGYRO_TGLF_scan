@@ -113,6 +113,24 @@ class TGLFParametersTest(unittest.TestCase):
         self.assertEqual(inputs[0]['NS'], 2)
         self.assertEqual(self.source, before)
 
+    def test_temperature_scans_use_initial_temperature_source_types_and_explicit_axes(self):
+        self.source.update(NS=5, TAUS_2=1., TAUS_3=1., TAUS_4=8., TAUS_5=1.,
+                           ZS_3=4., ZS_4=7., ZS_5=1., RLTS_2=2., RLTS_3=3., RLTS_4=2., RLTS_5=2.)
+        report = dict(options={'particle_mode': 'all'}, local_inputs={'input.tglf_1':
+                      dict(rho=.5, thermal_ions=[2, 3, 4])})
+        self.root['Transfer_tool'] = {'OUTPUTS': {'Profiles_gen': {'input.tglf_1': self.source},
+                                                  'Particle_processing': report}}
+        initialize(self.root)
+        self.settings.update(source='transfer', mode='1d', parameter1='RLTS_2', values1=[5.], single_Ti=True)
+        actual, = self.execute(plan(self.root, self.settings))
+        self.assertEqual([actual['RLTS_' + str(i)] for i in range(2, 6)], [5., 5., 2., 2.])
+        self.settings.update(mode='2d', parameter2='RLTS_3', value_mode2='list', values2=[7.])
+        actual, = self.execute(plan(self.root, self.settings))
+        self.assertEqual([actual['RLTS_' + str(i)] for i in range(2, 6)], [5., 7., 2., 2.])
+        self.settings.update(source='current', mode='1d')
+        actual, = self.execute(plan(self.root, self.settings))
+        self.assertEqual([actual['RLTS_' + str(i)] for i in range(2, 6)], [5., 3., 2., 2.])
+
     def test_search_crosses_group_boundaries_and_matches_chinese_and_plain_names(self):
         catalog = parameter_catalog(self.source)
         rows = [(name, spec[1], spec[2], name == 'SAT_RULE') for name, spec in catalog.items()]

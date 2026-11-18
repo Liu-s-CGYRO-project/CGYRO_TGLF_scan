@@ -7,6 +7,7 @@ than a GUI-only whitelist, when adding parameters supported by a newer solver.
 """
 from builtins import bool, float, hasattr, int, isinstance, min, range, str
 from collections import OrderedDict
+import math
 import re
 
 GROUPS = OrderedDict([('常用参数', 'common'), ('模型与饱和', 'model'), ('网格与模态', 'grid'),
@@ -181,3 +182,57 @@ def parameter_catalog(source):
 
 def parameter_values(source):
     return OrderedDict((name, spec[0]) for name, spec in parameter_catalog(source).items())
+
+
+def species_signature(card):
+    # OMFIT cards have no therm/fast flag. Bind transferred labels to the
+    # species fields so replacing or reordering a card invalidates the labels.
+    return [[float(card.get(name + '_' + str(i), field_spec(name + '_' + str(i))[0]))
+             for name in ('ZS', 'MASS', 'AS', 'TAUS', 'RLNS', 'RLTS')]
+            for i in range(1, int(card.get('NS', 2)) + 1)]
+
+
+def current_thermal_ions(module, card):
+    saved = module.get('_input_ion_types', {})
+    if saved and saved.get('species', None) == species_signature(card):
+        return saved['thermal_ions']
+    return []
+
+
+def sync_thermal_scan(candidate, baseline, axes, thermal_ions):
+    """Link temperature scans only within an identified, initially isothermal group."""
+    temperatures = {}
+    for i in thermal_ions:
+        if not 1 < i <= int(baseline['NS']):
+            continue
+        charge, temp = 'ZS_' + str(i), 'TAUS_' + str(i)
+        if float(baseline.get(charge, field_spec(charge)[0])) > 0:
+            temperatures[i] = float(baseline.get(temp, field_spec(temp)[0]))
+    updates = {}
+    for name in axes:
+        if not name.startswith(('RLTS_', 'TAUS_')):
+            continue
+        i = int(name[5:])
+        if i not in temperatures or temperatures[i] <= 0:
+            continue
+        for j, temp in temperatures.items():
+            target = name[:5] + str(j)
+            if target in axes or not math.isclose(temp, temperatures[i], rel_tol=1e-12, abs_tol=0):
+                continue
+            if target in updates and updates[target] != candidate[name]:
+                raise ValueError('同温热离子的两个扫描轴给出不同的 ' + target + '，请显式指定该轴或关闭同步。')
+            updates[target] = candidate[name]
+    candidate.update(updates)
+
+
+def profile_thermal_ions(profile, include_ions):
+    indices = []
+    slot = 1  # electron
+    for i in range(1, 10):
+        ion = profile.get('IONS', {}).get(i, None)
+        if ion is None or ('fast' in str(ion[3]).lower() and include_ions == 'thermal'):
+            continue
+        slot += 1
+        if str(ion[3]).strip().lower() == 'therm':
+            indices.append(slot)
+    return indices

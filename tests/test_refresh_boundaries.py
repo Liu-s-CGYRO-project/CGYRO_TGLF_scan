@@ -141,7 +141,8 @@ class RefreshBoundaryTests(unittest.TestCase):
                 return ui.Button(caption, callback, updateGUI=refresh, refresh_tree=refresh_tree)
             view = SimpleNamespace(root=self.host.tree, ui=ui, prefix="root['SETTINGS']['WORKBENCH']",
                 actions=SimpleNamespace(factory=dict, restore_tglf_native_results=Mock()),
-                label=lambda text: ui.Label(text), nav=lambda *args: None, guarded=guarded)
+                label=lambda text: ui.Label(text), nav=lambda *args: None, guarded=guarded,
+                show_message=lambda **kwargs: None)
             tglf_ui.TGLFWorkbench(view).results()
         self.build(render)
         header, action = self.header, self.external_action

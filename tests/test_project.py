@@ -120,6 +120,14 @@ class UI:
 
 
 class ProjectTest(unittest.TestCase):
+    def test_tglf_without_ky_can_be_imported_and_run_through_preflight(self):
+        source = dict(NS=3, ZS_1=-1., ZS_2=1., ZS_3=8.439)
+        self.actions.readers['tglf'] = lambda *args, **kwargs: source.copy()
+        self.actions.settings['tglf_file'] = 'generated.input.tglf'
+        self.actions.import_input('tglf')
+        self.assertEqual(project.tglf_input_issues(self.root), [])
+        self.assertNotIn('KY', self.root['TGLF_scan']['TGLF']['FILES']['input.tglf'])
+
     tree_factory = dict
 
     def setUp(self):

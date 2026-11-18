@@ -1,5 +1,6 @@
 """Lightweight run summaries and references to native TGLF result branches."""
-from builtins import dict, hasattr, len, list, set, str, tuple
+from builtins import any, dict, hasattr, int, len, list, range, set, str, tuple
+from OMFITlib_tglf_parameters import profile_thermal_ions
 from collections import ChainMap
 import copy
 from datetime import datetime, timezone
@@ -81,14 +82,20 @@ def publish_point(module, record, point_id, source, result, factory=dict, baseli
         scope = scope.setdefault(key, factory())
     if 'input.tglf' not in result and 'input' in point:
         result['input.tglf'] = point['input']
+    if not prefix and '_legacy_transfer_profile_radii' not in module:
+        # Capture legacy ownership before the first new radial result can
+        # replace its index entry. Keep the original cards and files intact.
+        module['_legacy_transfer_profile_radii'] = _legacy_transfer_radii(module)
     if flux_path:
         data = result['gbflux'] if record['mode'] == 'single' else result['gbflux']['data']
         _put(scope, flux_path, data, factory)
     _put(scope, result_path, result, factory)
     if source.get('group', None) == 'transfer' and baseline is not None:
-        # Native radial plots also read input.tglf[rho]. Keep this source's
-        # frozen baseline, not the final point's scanned parameter values.
-        module.setdefault('input.tglf', factory())[source['rho']] = baseline
+        # The profile generator owns module['input.tglf']. A Transfer baseline
+        # is a plot reference for this run and may have different species.
+        baselines = record.setdefault('transfer_baselines', factory())
+        if source['rho'] not in baselines:
+            baselines[source['rho']] = baseline
     _forget_native_cache(scope, source, record['mode'], flux_path)
     owner = record['id'] + ':' + point_id
     # Plain metadata mapping: no physical result objects or array copies.
@@ -97,6 +104,68 @@ def publish_point(module, record, point_id, source, result, factory=dict, baseli
                       owner_key=result_path, owner=owner))
     point.pop('input', None)
     point.pop('result', None)
+
+
+def _legacy_transfer_radii(module):
+    saved = module.get('_legacy_transfer_profile_radii', None)
+    if saved is not None:
+        return saved
+    affected = set()
+    sources = {}
+    runs = run_records(module)
+    for path, owner in module.get('_workbench_index', {}).items():
+        if len(path) < 2:
+            continue
+        run_id = owner.rsplit(':', 1)[0]
+        if run_id not in sources:
+            run = runs.get(run_id, {})
+            sources[run_id] = (set() if 'transfer_baselines' in run else
+                               {s['rho'] for s in run.get('plan', {}).get('sources', [])
+                                if s.get('group', '') == 'transfer' and s.get('rho', None) is not None})
+        if path[1] in sources[run_id]:
+            affected.add(path[1])
+    return list(affected)
+
+
+def radial_input_paths(module):
+    """Locate profile cards, recovering only identifiable legacy Transfer writes."""
+    paths = {rho: ('input.tglf', rho) for rho in module.get('input.tglf', {}).keys()}
+    if not paths:
+        return paths
+    generation = module.get('_local_input_generation', {})
+    archive = ('TGYRO', 'RUN_DB', generation.get('run_id', ''), 'inputs')
+    for rho in _legacy_transfer_radii(module):
+        if rho in paths:
+            if rho in at(module, archive, {}):
+                paths[rho] = archive + (rho,)
+            else:
+                del paths[rho]
+    return paths
+
+
+def radial_thermal_ions(module, card):
+    generation = module.get('_local_input_generation', {})
+    if 'thermal_ions' in generation:
+        return generation['thermal_ions']
+    if generation.get('include_ions', '') == 'thermal':
+        return list(range(2, int(card['NS']) + 1))
+    profile = at(module, ('TGYRO', 'RUN_DB', generation.get('run_id', ''), 'input.gacode'))
+    return profile_thermal_ions(profile, 'all') if profile is not None else []
+
+
+def radial_plot_input(module, branch, rho, group):
+    """Use the baseline of the plotted group without reading other results."""
+    prefix = (branch + '_spectra', rho, group)
+    runs = run_records(module)
+    for path, owner in module.get('_workbench_index', {}).items():
+        if path[:3] == prefix:
+            run = runs.get(owner.rsplit(':', 1)[0], {})
+            baseline = run.get('transfer_baselines', {}).get(rho, None)
+            if baseline is not None:
+                return baseline
+            if any(s.get('group', '') == 'transfer' for s in run.get('plan', {}).get('sources', [])):
+                return at(module, path)['input.tglf']
+    return at(module, radial_input_paths(module)[rho])
 
 
 def result_location(point):

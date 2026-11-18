@@ -3,6 +3,7 @@
 # Original script by meneghini
 
 import chaospy as cp
+from OMFITlib_tglf_parameters import current_thermal_ions, sync_thermal_scan
 
 defaultVars(
     param=root['SETTINGS']['PHYSICS']['scanParameters'],
@@ -12,12 +13,15 @@ defaultVars(
     inputTGLF=root.get('FILES', {}).get('input.tglf', None),
     results='UQResults',
     results_spectra='UQResults_spectra',
-    cache_records=None,
+    cache_records=None, thermal_ions=None,
     include_starting_param=True,
 )
 
 if inputTGLF is None:
     raise ValueError('Need an input.tglf file to run a TGLF scan')
+if thermal_ions is None:
+    thermal_ions = current_thermal_ions(root, inputTGLF)
+
 
 result_branch = results + '_spectra' if isinstance(results, str) else None
 
@@ -75,7 +79,7 @@ if result_branch:
 if cache_records is None:
     cache_records = root.setdefault('_scan_cache_provenance', {}) if result_branch else {}
 cache_records['UQResults'] = cache['provenance'](
-    root, inputTGLF, 'UQ', {'parameters': param, 'samples': parameterRange})
+    root, inputTGLF, 'UQ', {'parameters': param, 'samples': parameterRange, 'thermal_ions': thermal_ions})
 
 # generate list of inputs
 scratch['input.tglf.scan'] = []
@@ -85,10 +89,8 @@ for k in range(len(parameterRange[0])):
     tmpTGLF = copy.deepcopy(inputTGLF)
     for i in range(len(param)):
         tmpTGLF[param[i]] = parameterRange[i][k]
-        if (param[i].startswith('RLTS_') or param[i].startswith('TAUS_')) and root['SETTINGS']['PHYSICS']['single_Ti']:
-            for spec in range(1, inputTGLF['NS'] + 1):
-                if tmpTGLF['ZS_%d' % spec] != -1 and inputTGLF['%s%d' % (param[i][:5], spec)] == inputTGLF[param[i]]:
-                    tmpTGLF['%s%d' % (param[i][:5], spec)] = parameterRange[i][k]
+    if root['SETTINGS']['PHYSICS']['single_Ti']:
+        sync_thermal_scan(tmpTGLF, inputTGLF, param, thermal_ions)
     scratch['input.tglf.scan'].append(tmpTGLF)
 
 # parallel run

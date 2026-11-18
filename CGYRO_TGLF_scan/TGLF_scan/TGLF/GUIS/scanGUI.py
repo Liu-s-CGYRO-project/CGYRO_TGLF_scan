@@ -145,9 +145,6 @@ if 'input.tglf' in root['FILES']:
             nc = uniq_charges.count(spec)
             if spec != 'Electron':
                 spec = spec + str(nc)
-                if (param == 'RLTS_' or param == 'TAUS_') and root['SETTINGS']['PHYSICS']['single_Ti'] and nc == 1:
-                    if root['FILES']['input.tglf']['%s%d' % (param, ic)] == root['FILES']['input.tglf']['%s2' % (param)]:
-                        spec = "Thermal ions'"
                 choices['%s %s (%s)' % (spec, desc, param + str(ic))] = param + str(ic)
             elif nc > 2:
                 raise OMFITexception('It does not make sense to have more than one species of electrons')
@@ -171,7 +168,7 @@ if 'input.tglf' in root['FILES']:
     param = root['SETTINGS']['PHYSICS']['scanParameter' + paramN]
     value = root['FILES']['input.tglf'][root['SETTINGS']['PHYSICS']['scanParameter' + paramN]]
     if (param.startswith('RLTS_') or param.startswith('TAUS_')) and not param.endswith('_1'):
-        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['single_Ti']", '全部热离子采用相同温度', refresh_tree=False)
+        OMFITx.CheckBox("root['SETTINGS']['PHYSICS']['single_Ti']", '同步已识别的同温热离子（需要物种来源记录）', refresh_tree=False)
 
     OMFITx.Label("Experimental Value=%g" % value)
     OMFITx.Entry(

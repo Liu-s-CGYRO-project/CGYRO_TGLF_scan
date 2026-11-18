@@ -14,7 +14,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / 'CGYRO_TGLF_scan/LIB'))
 sys.path.insert(0, str(REPO / 'OMFITtemplates/LIB'))
 from OMFITlib_tglf_workbench import initialize, plan, scan_parameter_names
-from OMFITlib_tglf_records import at, point_current, point_result, result_location, restore_native_results, run_records
+from OMFITlib_tglf_records import at, radial_input_paths, radial_plot_input, point_current, point_result, result_location, restore_native_results, run_records
 from OMFITlib_plot_sources import run_choices, source_dimension, tglf_results
 import OMFITlib_tglf_cache as native_cache
 import test_cgyro_storage  # Explicit native reader stand-ins for cleanup dependencies.
@@ -113,6 +113,7 @@ class NativeStorageTests(unittest.TestCase):
         from OMFITlib_transfer_particles import JET_FUEL_MODE, JET_FUEL_RULE
         outputs = self.root.setdefault('Transfer_tool', {}).setdefault('OUTPUTS', {})
         full = dict(self.source, NS=6)
+        self.scan['input.tglf'] = {.5: full}
         reduced = dict(self.source, NS=3, ZS_3=8.439019455302295, AS_2=.9092186)
         options = {'particle_mode': JET_FUEL_MODE}
         old = dict(rho=.5, stage='native_full_species')
@@ -131,7 +132,12 @@ class NativeStorageTests(unittest.TestCase):
         card = point_result(self.scan, point)['input.tglf']
         self.assertEqual((card['NS'], card['ZS_3'], card['AS_2']), (3, reduced['ZS_3'], reduced['AS_2']))
         self.assertEqual(point['source'][-3:], [JET_FUEL_MODE, 'tglf_inputs', 'input.tglf_1'])
-        self.assertEqual(self.scan['input.tglf'][.5]['NS'], 3)
+        self.assertEqual(record['transfer_baselines'][.5]['NS'], 3)
+        self.assertIs(self.scan['input.tglf'][.5], full)
+        self.settings.update(source='radial', radius_mode='single', radius=.5)
+        radial = self.execute()
+        self.assertEqual(point_result(self.scan, radial['points']['p000001'])['input.tglf']['NS'], 6)
+        self.settings['source'] = 'transfer'
         self.assertNotIn('USE_TRANSPORT_MODEL', reduced)
         self.settings['transfer_scheme'] = ''
         with self.assertRaises(ValueError):
@@ -179,8 +185,11 @@ class NativeStorageTests(unittest.TestCase):
                 result = at(self.scan, [branch + '_spectra', radius] + coordinate)
                 self.assertIsNotNone(result)
                 np.testing.assert_array_equal(at(self.scan, [branch, radius] + coordinate), result['gbflux']['data'])
-                self.assertEqual(self.scan['input.tglf'][radius]['SAT_RULE'], 0)
-                self.assertIs(self.scan['input.tglf'][radius]['USE_TRANSPORT_MODEL'], True)
+                baseline = radial_plot_input(self.scan, branch, radius, coordinate[0])
+                self.assertIs(baseline, record['transfer_baselines'][radius])
+                self.assertEqual(baseline['SAT_RULE'], 0)
+                self.assertIs(baseline['USE_TRANSPORT_MODEL'], True)
+            self.assertNotIn('input.tglf', self.scan)
             self.assertNotIn('sourceResults', self.scan)
             self.assertNotIn('RUN_DB', self.scan)
             self.assertTrue(all(p['result_path'][0] == branch + '_spectra' for p in record['points'].values()))
@@ -196,6 +205,25 @@ class NativeStorageTests(unittest.TestCase):
         self.assertFalse(point_current(self.scan, old['points']['p000002']))
         self.assertEqual(set(self.scan['scanResults']), {.3, .5})
 
+    def test_profile_selection_recovers_archived_card_after_legacy_transfer_publish(self):
+        self.transfer_inputs()
+        record = self.execute()
+        self.scan['input.tglf'] = record.pop('transfer_baselines')
+        self.scan.pop('_legacy_transfer_profile_radii')
+        original = dict(self.source, NS=6)
+        self.scan['_local_input_generation'] = dict(run_id='generated', coordinate='rho', include_ions='thermal')
+        self.scan['TGYRO'] = {'RUN_DB': {'generated': {'inputs': {.3: original}}}}
+        paths = radial_input_paths(self.scan)
+        self.assertNotIn(.5, paths)
+        self.assertIs(at(self.scan, paths[.3]), original)
+        manual = dict(self.source, NS=4)
+        self.scan['input.tglf'][.7] = manual
+        self.scan['TGYRO']['RUN_DB']['generated']['inputs'][.7] = dict(self.source)
+        self.assertIs(at(self.scan, radial_input_paths(self.scan)[.7]), manual)
+        self.settings.update(source='radial', radius_mode='single', radius=.3)
+        restored = self.execute()
+        self.assertEqual(point_result(self.scan, restored['points']['p000001'])['input.tglf']['NS'], 6)
+
     def test_restore_only_selected_record_without_recalculation_or_old_copies(self):
         record = self.legacy_transfer_record()
         self.scan['sourceResults']['unrelated'] = Unread()
@@ -207,8 +235,10 @@ class NativeStorageTests(unittest.TestCase):
         point = record['points']['p000001']
         self.assertIn("TGLF_scan['scanResults_spectra'][0.3]['SAT_RULE'][0]", result_location(point))
         self.assertIs(point_result(self.scan, point), self.scan['scanResults_spectra'][.3]['SAT_RULE'][0])
-        self.assertIsNot(self.scan['input.tglf'][.3], point_result(self.scan, point)['input.tglf'])
-        self.assertEqual(self.scan['input.tglf'][.3]['SAT_RULE'], 0)
+        baseline = radial_plot_input(self.scan, 'scanResults', .3, 'SAT_RULE')
+        self.assertIsNot(baseline, point_result(self.scan, point)['input.tglf'])
+        self.assertEqual(baseline['SAT_RULE'], 0)
+        self.assertNotIn('input.tglf', self.scan)
         self.scan.pop('_workbench_runs')
         self.assertIn('legacy:1D', run_choices(self.root).values())
         self.assertEqual(tglf_results(self.root, {'result_source': 'legacy:1D'})[.3]['SAT_RULE'][0]['gbflux']['data'][0]['Q/Q_GB'], 2.)

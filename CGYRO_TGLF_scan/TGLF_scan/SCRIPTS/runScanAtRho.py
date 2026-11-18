@@ -2,6 +2,7 @@
 # Created by lugaimin at 2014/06/12 15:01
 
 from OMFITlib_gui_api import task_action
+from OMFITlib_tglf_records import at, radial_input_paths, radial_thermal_ions
 from builtins import list
 import copy
 
@@ -19,7 +20,7 @@ scanResults_spectra = scanResults + '_spectra'
 # The child module's FILES, result branches and provenance belong to its
 # single-file calculation. Pass this radius's own mappings directly so partial
 # successes are retained even when a later scan point raises an exception.
-radial_input = copy.deepcopy(root['input.tglf'][rho])
+radial_input = copy.deepcopy(at(root, radial_input_paths(root)[rho]))
 results = root.setdefault(scanResults, OMFITtree()).setdefault(rho, OMFITtree())
 spectra = root.setdefault(scanResults_spectra, OMFITtree()).setdefault(rho, OMFITtree())
 radial_provenance = root.setdefault('_scan_cache_provenance', {}).setdefault(rho, {})
@@ -32,7 +33,8 @@ previous = (results.get(group, None), spectra.get(group, None))
 
 try:
     task_action(root['TGLF']['SCRIPTS'][script],
-        inputTGLF=radial_input, results=results, results_spectra=spectra, cache_records=cache_records)
+        inputTGLF=radial_input, thermal_ions=radial_thermal_ions(root, radial_input) if physics.get('single_Ti', False) else (),
+        results=results, results_spectra=spectra, cache_records=cache_records)
 finally:
     if results.get(group, None) is not previous[0] or spectra.get(group, None) is not previous[1]:
         index = root.get('_workbench_index', {})

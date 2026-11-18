@@ -1,5 +1,5 @@
 """Input preparation shared by the Transfer GUI and command box 1."""
-from builtins import any, dict, enumerate, float, int, list, range, set, sorted, str
+from builtins import any, dict, enumerate, float, int, len, list, range, set, sorted, str
 import hashlib
 import math
 import os
@@ -7,7 +7,7 @@ import re
 import shlex
 import sys
 import sysconfig
-from OMFITlib_transfer_particles import PARTICLE_DEFAULTS, particle_options
+from OMFITlib_transfer_particles import JET_FUEL_MODE, PARTICLE_DEFAULTS, jet_fuel_groups, particle_options, species
 from OMFITlib_transfer_zeff import ZEFF_DEFAULTS
 
 PROFILE_KEYS = {'input.gacode': ('input.gacode',), 'statefile': ('statefile', 'statefile.nc'),
@@ -23,11 +23,30 @@ def discard_legacy_outputs(node):
     return []
 
 
+def generation_options_pair(node):
+    generation = node.get('SETTINGS', {}).get('PHYSICS', {}).get('generation', {})
+    outputs = node.get('OUTPUTS', {})
+    report = outputs.get('Particle_processing', {})
+    saved = report.get('options', None)
+    if saved is None:
+        return None, None
+    current = particle_options(generation)
+    if 'points' in current and 'points' not in saved:
+        # Before 1.24.68 the complete paired card grid was saved without its count.
+        cards = outputs.get('Profiles_gen', {})
+        indices = [{int(key[len(stem):]) for key in cards.keys()
+                    if str(key).startswith(stem) and str(key)[len(stem):].isdigit()}
+                   for stem in ('input.cgyro_', 'input.tglf_')]
+        if indices[0] and indices[0] == indices[1] == set(range(1, len(indices[0]) + 1)):
+            saved = dict(saved, points=len(indices[0]))
+    return current, saved
+
+
 def tglf_input_format(value, for_conversion=False):
     """Choose the converter from actual fields, including renamed local dumps."""
     keys = set(value.keys())
-    if not {'NS', 'KY'}.issubset(keys):
-        raise ValueError('无法识别为 TGLF 局部输入：需要 NS、KY。')
+    if 'NS' not in keys:
+        raise ValueError('无法识别为 TGLF 局部输入：缺少 NS。')
     shapes = {'SHAT_SA'}
     for index in range(7):
         shapes.update(('SHAPE_COS' + str(index), 'SHAPE_S_COS' + str(index)))
@@ -305,10 +324,13 @@ def prepare_tgyro(node, profile, options=None):
         prepared['LOC_Z' if index == 1 else 'LOC_Z' + str(index)] = charge
         prepared['TGYRO_CALC_FLAG' + str(index)] = 1
         prepared['TGYRO_THERM_FLAG' + str(index)] = 0 if kind == 'fast' else 1
-    # The profile generator holds ne fixed and closes charge on its first ion.
+    # JET keeps the source order in TGYRO. locpargen later puts the same
+    # thermal D first for -qn, even when the source begins with fast D or Be.
+    generation = options if options is not None else node['SETTINGS'].get('PHYSICS', {}).get('generation', {})
+    balance = jet_fuel_groups(species(profile))[0] + 1 if generation.get('particle_mode', '') == JET_FUEL_MODE else 1
     prepared['TGYRO_DEN_METHOD0'] = 0
     for index in range(1, 10):
-        prepared['TGYRO_DEN_METHOD' + str(index)] = -1 if index == 1 else 0
+        prepared['TGYRO_DEN_METHOD' + str(index)] = -1 if index == balance else 0
         if index > n_ions:
             prepared['TGYRO_CALC_FLAG' + str(index)] = 0
             prepared['TGYRO_THERM_FLAG' + str(index)] = 1

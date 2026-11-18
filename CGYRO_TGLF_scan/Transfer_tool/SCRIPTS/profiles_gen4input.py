@@ -8,6 +8,7 @@ from OMFITlib_transfer_equivalent import (equivalent_local_input, separate_fast_
                                          locpargen_rhostar)
 from OMFITlib_gacode_installations import program_guard
 from OMFITlib_transfer_workflow import profiles_python_environment
+from OMFITlib_transfer_presets import tglf_thermal_ions
 from OMFITlib_transfer_zeff import prescribe_local_zeff
 
 # OMFITx.execute() reads SHELL directly.  Desktop/VNC sessions may omit it.
@@ -83,6 +84,8 @@ for k, rho in enumerate(rho_arr, 1):
             result = close_local_input(obj, code, particle_report['main_count'], particle_report['after'], rhostar)
         result['locpargen_qn'] = True
         result['rho'] = float(rho)
+        if code == 'tglf':
+            result['thermal_ions'] = tglf_thermal_ions(particle_report, result)
         if particle_mode == 'main_only':
             result['prescribed_zeff'] = prescribe_local_zeff(obj, code, particle_report.get('prescribed_zeff', {}))
         if not historical:

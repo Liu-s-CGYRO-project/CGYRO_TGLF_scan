@@ -2,6 +2,7 @@
 # Created by thomek at 15 Jun 2016  09:47
 """Archive each successful radius even if a later radius fails or is stopped."""
 from OMFITlib_gui_api import task_action
+from OMFITlib_tglf_records import at, radial_input_paths
 from builtins import enumerate, len, str
 import copy
 flx = root.setdefault('Experimental_fluxes', OMFITcollection())
@@ -10,7 +11,8 @@ rho_scan = root['SETTINGS']['PHYSICS']['rho_scan']
 recalculate = root['SETTINGS']['PHYSICS'].setdefault('recalculate', False)
 cache = root['TGLF']['LIB']['OMFITlib_tglf_cache'].runNoGUI()
 records = root.setdefault('_radial_cache_provenance', {})
-current = {rho: cache['provenance'](root['TGLF'], root['input.tglf'][rho], 'radial', {'rho': rho}) for rho in rho_scan}
+paths = radial_input_paths(root)
+current = {rho: cache['provenance'](root['TGLF'], at(root, paths[rho]), 'radial', {'rho': rho}) for rho in rho_scan}
 if not recalculate:
     rho_needed = []
     for rho in rho_scan:
@@ -24,7 +26,7 @@ for rho in rho_scan:
     root.get('_workbench_index', {}).pop(('Experimental_spectra', rho), None)
     for collection in (flx, spec, records):
         collection.pop(rho, None)
-input_tglf = [copy.deepcopy(root['input.tglf'][rho]) for rho in rho_scan]
+input_tglf = [copy.deepcopy(at(root, paths[rho])) for rho in rho_scan]
 if len(input_tglf) == 0:
     print('All results already calculated.')
     OMFITx.End()

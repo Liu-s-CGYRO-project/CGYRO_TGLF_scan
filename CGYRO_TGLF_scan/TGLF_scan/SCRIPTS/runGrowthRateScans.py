@@ -13,6 +13,7 @@ for later plotting.
 """
 
 from OMFITlib_gui_api import task_action
+from OMFITlib_tglf_records import at, radial_input_paths
 defaultVars(variables_to_scan=root['TGLF_inputs_to_scan'], NMODES=2, SAT_RULE=1)
 
 import OMFITlib_tglf
@@ -33,7 +34,7 @@ for variable in variables_to_scan.keys():
 if not root.get('input.tglf', None):
     task_action(root['SCRIPTS']['setup_tglf'])
 rho = root['SETTINGS']['PHYSICS']['Var_r']
-radial_input = copy.deepcopy(root['input.tglf'][rho])
+radial_input = copy.deepcopy(at(root, radial_input_paths(root)[rho]))
 previous_files = root.get('TGLF', {}).get('FILES', None)
 root['TGLF']['FILES'] = OMFITtree({'input.tglf': radial_input})
 try:

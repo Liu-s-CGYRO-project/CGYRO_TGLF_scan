@@ -2,6 +2,7 @@
 # Created by meneghini at 2015/03/28 13:56
 """Build a 2D scan from independently archived 1D rows."""
 from OMFITlib_gui_api import task_action
+from OMFITlib_tglf_parameters import current_thermal_ions
 from builtins import enumerate, float, isinstance, len, list, range, set, sorted, str
 import copy
 
@@ -14,11 +15,14 @@ defaultVars(
     results='scanResults2D',
     results_spectra='scanResults2D_spectra',
     include_starting_param=True,
-    cache_records=None,
+    cache_records=None, thermal_ions=None,
 )
 
 if inputTGLF is None:
     raise ValueError('Need an input.tglf file to run a TGLF scan')
+if thermal_ions is None:
+    thermal_ions = current_thermal_ions(root, inputTGLF)
+
 
 if param2 == param:
     printe('Param1 = param2 -> change one of them')
@@ -46,7 +50,7 @@ if include_starting_param:
     if val1 not in parameterRange:
         parameterRange = sorted(list(parameterRange) + [val1])
 cache_key = param2 + '+' + param
-current = cache['provenance'](root, inputTGLF, '2D', {'param': param, 'param2': param2, 'range': parameterRange, 'range2': parameterRange2})
+current = cache['provenance'](root, inputTGLF, '2D', {'param': param, 'param2': param2, 'range': parameterRange, 'range2': parameterRange2, 'thermal_ions': thermal_ions})
 if not cache['matches'](cache_records.get(cache_key, None), current):
     cache_records[cache_key + '_rows'] = {}
     if result_branch:
@@ -64,12 +68,6 @@ for i, value in enumerate(parameterRange2):
     tmpTGLF[param2] = value
 
     print('Scan %d of %d,  %s = %.3g' % (i + 1, len(parameterRange2), param2, value))
-    if (param2.startswith('RLTS_') or param2.startswith('TAUS_')) and root['SETTINGS']['PHYSICS']['single_Ti']:
-        for spec in range(1, inputTGLF['NS'] + 1):
-            key = '%s%d' % (param2[:5], spec)
-            if tmpTGLF['ZS_%d' % spec] != -1 and inputTGLF[key] == inputTGLF[param2] and key != param2:
-                print('Modifying %s to be %g, was %g' % (key, value, tmpTGLF[key]))
-                tmpTGLF[key] = value
     scratch['tmp1Dscan'] = OMFITtree()
     scratch['tmp1Dscan_spectra'] = OMFITtree()
     if value in results['%s+%s' % (param2, param)]:
@@ -77,7 +75,7 @@ for i, value in enumerate(parameterRange2):
         scratch['tmp1Dscan_spectra'][param] = copy.deepcopy(results_spectra[param2 + '+' + param][value])
     try:
         task_action(root['SCRIPTS']['runTGLFscan'],
-            inputTGLF=tmpTGLF,
+            inputTGLF=tmpTGLF, thermal_ions=thermal_ions, temperature_baseline=inputTGLF, outer_axes=(param2,),
             results=scratch['tmp1Dscan'],
             results_spectra=scratch['tmp1Dscan_spectra'],
             include_starting_param=include_starting_param,

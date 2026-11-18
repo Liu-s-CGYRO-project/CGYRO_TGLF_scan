@@ -69,6 +69,11 @@ def particle_options(options):
     values.update(dict(minimum=minimum, maximum=maximum, coordinate=coordinate,
                   main_ion_rule=MAIN_ION_RULE, main_ion_threshold=MAIN_ION_THRESHOLD,
                   neutrality_rule=NEUTRALITY_RULE))
+    if 'points' in options:
+        count = float(options['points'])
+        if not math.isfinite(count) or not count.is_integer() or count < 2:
+            raise ValueError('Transfer_tool 的径向网格至少需要 2 个点，点数必须是整数。')
+        values['points'] = int(count)
     if values['particle_mode'] == 'equivalent':
         values['equivalent_rule'] = EQUIVALENT_RULE
         if values['equivalent_temperature'] not in EQUIVALENT_TEMPERATURES.values():

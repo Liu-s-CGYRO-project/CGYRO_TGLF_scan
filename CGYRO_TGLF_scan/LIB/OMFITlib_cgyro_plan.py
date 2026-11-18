@@ -9,7 +9,8 @@ from collections import OrderedDict
 import copy
 import math
 from OMFITlib_project_inputs import read, text_value, input_digest, pending_inputs, validate_input
-from OMFITlib_transfer_particles import particle_options
+from OMFITlib_transfer_workflow import generation_options_pair
+from OMFITlib_transfer_particles import particle_options  # Public import used by saved planning scripts.
 from OMFITlib_cgyro_parameters import (FIELDS as CGYRO_FIELDS, apply_parameters,
     initialize_parameters, scan_parameter_names, validated_overrides, validate_zeff)
 from OMFITlib_cgyro_archive import canonical_case_key
@@ -177,11 +178,7 @@ def sync_cgyro_choices(root, settings, factory=dict):
 
 
 def _generated_particle_record(root):
-    physics = read(root, ('Transfer_tool', 'SETTINGS', 'PHYSICS'), {})
-    previous = read(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'options'))
-    if previous is None:
-        return None, None
-    return particle_options(physics.get('generation', {})), previous
+    return generation_options_pair(root.get('Transfer_tool', {}))
 
 
 def _cgyro_main_indices(root, source, source_path, particle_record=None):

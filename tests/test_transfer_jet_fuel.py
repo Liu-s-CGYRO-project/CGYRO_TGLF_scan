@@ -14,6 +14,7 @@ from OMFITlib_transfer_equivalent import jet_fuel_audit_lines, jet_fuel_local_in
 from OMFITlib_transfer_particles import (JET_FUEL_LABEL, JET_FUEL_MODE, PRESETS,
                                          NEUTRALITY_RULE, detect_main_ions, particle_options, prepare_particles, species)
 from OMFITlib_transfer_schemes import SCHEMES
+from OMFITlib_transfer_workflow import generation_options_pair, prepare_tgyro
 
 
 FIXTURES = Path(os.environ.get('OMFIT_JET96482_TEST_CARDS') or Path(__file__).with_name('fixtures') / 'jet_fuel_synthetic')
@@ -84,6 +85,40 @@ def audit_from_card(card):
 
 
 class JetFuelTests(unittest.TestCase):
+    def test_both_native_steps_balance_thermal_d_after_source_reordering(self):
+        for first in (1, 3):
+            with self.subTest(first=SOURCE[first]):
+                raw = source_profile([SOURCE[first], *[s for i, s in enumerate(SOURCE) if i != first]])
+                options = dict(OPTIONS, points=5)
+                prepared, report = prepare_particles(raw, options)
+                node = dict(INPUTS={'input.gacode': prepared, 'input.tgyro': Card(DIR={}), 'input.tglf': Card()},
+                            SETTINGS={'SETUP': {'workDir': 'unused'}},
+                            OUTPUTS={'Particle_processing': report, 'TGYRO': {'rho': [[0, .5]]}})
+                prepare_tgyro(node, prepared, options)
+                tgyro = node['INPUTS']['input.tgyro']
+                balance, = [i for i in range(1, 10) if tgyro['TGYRO_DEN_METHOD' + str(i)] == -1]
+                self.assertEqual(raw['IONS'][balance], SOURCE[0])
+                native = Mock(side_effect=RuntimeError('capture'))
+                with self.assertRaisesRegex(RuntimeError, 'capture'):
+                    runpy.run_path(str(SCRIPT), init_globals=dict(root=node, OMFITx=SimpleNamespace(executable=native)))
+                self.assertEqual(native.call_args.kwargs['inputs'][0][0]['IONS'][1], SOURCE[0])
+                self.assertEqual(prepared['IONS'][1], SOURCE[first])
+
+    def test_radial_count_detects_changed_grid_and_recognizes_complete_legacy_pairs(self):
+        original = dict(OPTIONS, points=2)
+        saved = particle_options(original)
+        node = dict(SETTINGS={'PHYSICS': {'generation': dict(original, points=5)}},
+                    OUTPUTS={'Particle_processing': {'options': saved}, 'Profiles_gen': {
+                        f'input.{kind}_{i}': {} for i in (1, 2) for kind in ('cgyro', 'tglf')}})
+        self.assertNotEqual(*generation_options_pair(node))
+        del saved['points']
+        self.assertNotEqual(*generation_options_pair(node))
+        node['SETTINGS']['PHYSICS']['generation']['points'] = 2
+        self.assertEqual(*generation_options_pair(node))
+        del node['OUTPUTS']['Profiles_gen']['input.tglf_1']
+        self.assertNotEqual(*generation_options_pair(node))
+        self.assertNotIn('points', saved)
+
     def test_all_transfer_presets_request_qn_in_local_generation(self):
         profile = source_profile()
         for scheme, (_, overrides) in SCHEMES.items():

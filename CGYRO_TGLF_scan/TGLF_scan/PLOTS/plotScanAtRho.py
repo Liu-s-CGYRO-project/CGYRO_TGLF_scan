@@ -1,6 +1,7 @@
 # -*-Python-*-
 # Created by lugaimin at 2014/06/12 15:14
 from OMFITlib_gui_api import plot_view
+from OMFITlib_tglf_records import radial_plot_input
 
 defaultVars(doSave=False)
 
@@ -11,7 +12,11 @@ else:
     scanResults = 'scanResults2D'
 
 results = root[scanResults][rho]
-inputTGLF = root['input.tglf'][rho]
+physics = root['TGLF']['SETTINGS']['PHYSICS']
+group = physics.get('scanParameter', '')
+if scanResults == 'scanResults2D':
+    group = physics.get('scanParameter2D', '') + '+' + group
+inputTGLF = radial_plot_input(root, scanResults, rho, group)
 
 
 # TGLF experimental values
