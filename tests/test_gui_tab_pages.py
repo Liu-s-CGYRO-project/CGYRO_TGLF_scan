@@ -116,7 +116,7 @@ class NativeTabsTests(unittest.TestCase):
             self.ui = ui
             self.header = ui.Label('Header')
             self.page_controls = {}
-            for kind in ('Entry', 'ComboBox'):
+            for kind in ('Entry', 'ComboBox', 'CheckBox'):
                 constructor = getattr(ui, kind)
                 def capture(path, *args, constructor=constructor, **kwargs):
                     widget = constructor(path, *args, **kwargs)
@@ -175,6 +175,26 @@ class NativeTabsTests(unittest.TestCase):
         self.assertEqual(settings['parameters']['SAT_RULE']['value'], 3)
         self.assertEqual(self.page_controls['run'][prefix + "['scenario']"].get(), '自定义')
         self.assertEqual(self.counts, before)
+        self.select('edit')
+        mode = self.page_controls['edit'][prefix + "['mode']"]
+        mode.set('预设扫描')
+        mode.event_generate('<<ComboboxSelected>>')
+        self.host.drain()
+        flag = prefix + "['scan_presets']['kim_jet']"
+        self.assertNotIn(prefix + "['parameter1']", self.page_controls['edit'])
+        self.page_controls['edit'][flag][0].event_generate('<ButtonRelease-1>')
+        self.host.drain()
+        self.assertFalse(settings['scan_presets']['kim_jet'])
+        self.select('run')
+        self.assertIn(flag, self.page_controls['run'])
+        self.assertNotIn(prefix + "['scenario']", self.page_controls['run'])
+        self.select('edit')
+        mode = self.page_controls['edit'][prefix + "['mode']"]
+        mode.set('一维参数扫描')
+        mode.event_generate('<<ComboboxSelected>>')
+        self.host.drain()
+        self.select('run')
+        self.assertEqual(self.page_controls['run'][prefix + "['scenario']"].get(), '自定义')
         self.assertIs(self.header, header)
         self.assertEqual(self.host.updates, [])
 

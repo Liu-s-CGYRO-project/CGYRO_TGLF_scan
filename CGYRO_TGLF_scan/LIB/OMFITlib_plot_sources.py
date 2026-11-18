@@ -7,7 +7,8 @@ from builtins import any, dict, enumerate, float, int, iter, len, list, next, ra
 from collections import OrderedDict
 from collections.abc import Mapping
 import numpy as np
-from OMFITlib_tglf_records import point_current, point_result, record_summary, run_records
+from OMFITlib_compare_options import PRESET_AXIS
+from OMFITlib_tglf_records import point_current, point_has_spectrum, point_result, record_summary, run_records
 
 
 def native_sources(scan):
@@ -22,13 +23,14 @@ def native_sources(scan):
     return sources
 
 
-def run_choices(root):
+def run_choices(root, target=None):
     choices = OrderedDict()
     scan = root.get('TGLF_scan', {})
     runs = run_records(scan)
     for key in sorted(runs, key=str, reverse=True):
         record = runs[key]
-        if not any(point_current(scan, p) for p in record.get('points', {}).values()):
+        if not any(point_current(scan, p) and (target != 'Spectra' or point_has_spectrum(p))
+                   for p in record.get('points', {}).values()):
             continue
         caption = record_summary(record, key)
         if record.get('mode', None) == '3d':
@@ -38,7 +40,9 @@ def run_choices(root):
             repeat += 1
             label = caption + '（{}）'.format(repeat)
         choices[label] = str(key)
-    for token, (_, radial, _, dimension) in native_sources(scan).items():
+    for token, (node, radial, key, dimension) in native_sources(scan).items():
+        if target and not node.get(key + ('_spectra' if target == 'Spectra' else ''), {}):
+            continue
         caption = ('原生径向' if radial else token.split(':', 1)[1].rsplit(':', 1)[0]) + ' ' + dimension + ' 扫描'
         choices[caption + ('（按第三轴分片）' if dimension == '3D' else '')] = token
     return choices
@@ -196,7 +200,7 @@ def tglf_results(root, state, target='Spectra', dimension=None):
     for index, (point_id, point) in enumerate(record.get('points', {}).items(), 1):
         if not point_current(scan, point):
             continue
-        if target == 'Spectra' and 'result_path' not in point and 'eigenvalue_spectrum' not in point.get('result', {}):
+        if target == 'Spectra' and not point_has_spectrum(point):
             continue
         source_path = tuple(point.get('source', ()))
         item = sources.get(source_path, {})
@@ -208,7 +212,9 @@ def tglf_results(root, state, target='Spectra', dimension=None):
                 radius = str(radius) + ' / ' + '/'.join(str(k) for k in source_path)
         values = point.get('parameters', {})
         mode = record.get('mode', saved.get('mode', None))
-        if mode == 'uq':
+        if mode == 'preset':
+            names, coordinates = [PRESET_AXIS], [point['preset_label']]
+        elif mode == 'uq':
             names, coordinates = ['样本'], [index]
         elif axes:
             names = [axis['name'] for axis in axes]

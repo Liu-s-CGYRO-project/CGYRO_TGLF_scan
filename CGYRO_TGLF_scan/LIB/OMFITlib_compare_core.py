@@ -34,7 +34,7 @@ from builtins import (
 
 import numpy as np
 import re
-from OMFITlib_compare_options import STAT_DEFAULTS, is_gamma_ratio_plot_mode, parse_float_list_text
+from OMFITlib_compare_options import PRESET_AXIS, STAT_DEFAULTS, is_gamma_ratio_plot_mode, parse_float_list_text
 from OMFITlib_compare_state import (
     STYLE_DEFAULTS,
 )
@@ -106,6 +106,8 @@ def build_context(root):
     ctx['ave_window'] = STAT_DEFAULTS['ave_window'] if time_traces else float(plot_state.get('ave_window', STAT_DEFAULTS['ave_window']))
     ctx['effnum'] = plot_state.get('effnum', STAT_DEFAULTS['effnum'])
     ctx['plot_mode'] = plot_state.get('plot_mode', 'Plot 2D')
+    if compare_mode in ('CGYRO_vs_TGLF', 'TGLF_vs_CGYRO') and PRESET_AXIS in ctx['tglf_state'].get('selected_paras', {}):
+        ctx['plot_mode'] = 'Plot 2D'
     ctx['plot_gamma_ratio'] = is_gamma_ratio_plot_mode(ctx['plot_mode'])
     ctx['error_flag'] = plot_state.get('error_flag', 'CGYRO')
     ctx['plot_log_x'] = plot_state.get('plot_log_x', False)

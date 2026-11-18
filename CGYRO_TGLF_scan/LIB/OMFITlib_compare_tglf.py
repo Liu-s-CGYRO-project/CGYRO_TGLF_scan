@@ -3,6 +3,7 @@
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
 from OMFITlib_plot_sources import context_results
+from OMFITlib_compare_options import PRESET_AXIS, tglf_scan_values
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     Exception,
@@ -40,7 +41,6 @@ from OMFITlib_compare_core import (
     resolve_2d_param_node,
     resolve_key,
     split_2d_param_name,
-    to_float_list,
 )
 from OMFITlib_compare_flux import (
     collect_tglf2d_flux_spectrum_curves,
@@ -89,12 +89,13 @@ def plot_tglf_flux_1d(fn, root, ctx):
                 continue
 
             para_node = rho_data[para_key]
-            x_values = to_float_list(values)
+            x_values = tglf_scan_values(para_key, values)
             if len(x_values) == 0:
                 continue
 
             gam_series = {}
             q_series = {}
+            categories = []
             for xv in x_values:
                 x_key = resolve_key(para_node, xv)
                 if x_key is None:
@@ -102,9 +103,10 @@ def plot_tglf_flux_1d(fn, root, ctx):
                 gam_comp, q_comp = extract_flux_components(
                     para_node[x_key], flux_species=flux_species, merge_ions=merge_ions
                 )
-                try:
-                    x_plot = float(x_key)
-                except Exception:
+                if para_key == PRESET_AXIS:
+                    x_plot = len(categories)
+                    categories.append(x_key)
+                else:
                     x_plot = float(xv)
                 for sp, val in gam_comp.items():
                     gam_series.setdefault(sp, []).append((x_plot, val))
@@ -119,21 +121,26 @@ def plot_tglf_flux_1d(fn, root, ctx):
                 label=f'rho={rho}, {para_key}', sharex=False, sharey=False, squeeze=False
             )
             apply_figure_layout(fig, ctx)
+            marker = 'o' if categories else 'o-'
             for sp in sorted(gam_series.keys(), key=_flux_species_rank):
                 pts = gam_series.get(sp, [])
                 pts = sorted(pts, key=lambda t: t[0])
-                ax[0, 0].plot([p[0] for p in pts], [p[1] for p in pts], 'o-', label=sp, linewidth=ctx['lw'])
+                ax[0, 0].plot([p[0] for p in pts], [p[1] for p in pts], marker, label=sp, linewidth=ctx['lw'])
             for sp in sorted(q_series.keys(), key=_flux_species_rank):
                 pts = q_series.get(sp, [])
                 pts = sorted(pts, key=lambda t: t[0])
-                ax[0, 1].plot([p[0] for p in pts], [p[1] for p in pts], 'o-', label=sp, linewidth=ctx['lw'])
+                ax[0, 1].plot([p[0] for p in pts], [p[1] for p in pts], marker, label=sp, linewidth=ctx['lw'])
 
             style_two_panel_xy_axes(
-                ax, ctx,
+                ax, dict(ctx, plot_log_x=False) if categories else ctx,
                 title_left='Gam/Gam_GB',
                 title_right='Q/Q_GB',
                 xlabel_left=str(para_key),
             )
+            if categories:
+                for axis in ax[0]:
+                    axis.set_xticks(range(len(categories)))
+                    axis.set_xticklabels(categories, rotation=20, ha='right')
 
 
 def plot_tglf_flux_2d(fn, root, ctx):

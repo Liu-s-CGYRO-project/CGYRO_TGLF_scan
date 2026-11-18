@@ -31,6 +31,24 @@ class FakeUI:
 
 
 class CaseSelectionTest(unittest.TestCase):
+    def test_tglf_preset_choices_follow_actual_points_and_names(self):
+        from OMFITlib_compare_options import PRESET_AXIS
+        tg = {}
+        root = {'TGLF': tg}
+        ui = FakeUI(root)
+        view = cases_module.CaseSelection(root, ui)
+        path = lambda *keys: view._dict_path('root', *keys)
+        name = "我的预设 · A/B, 'v2'"
+        saved = {.3: {PRESET_AXIS: {'Kim（JET）': {}, name: {}}},
+                 .5: {PRESET_AXIS: {name: {}, 'Di Siena（ITER）': {}}}}
+        view._tglf_parameters(tg, path, saved, [.3, .5])
+        self.assertEqual(tg['selected_paras'][PRESET_AXIS], ['Kim（JET）', name, 'Di Siena（ITER）'])
+        self.assertFalse(any(kind == 'Entry' for _, kind, _, _ in ui.events))
+        tg['preset_flags'][1] = False
+        view._tglf_parameters(tg, path, saved, [.5])
+        self.assertEqual(tg['selected_paras'][PRESET_AXIS], ['Di Siena（ITER）'])
+        self.assertEqual(state._tglf_selection_errors(tg), [])
+
     def test_sibling_selectors_share_one_catalog_only_during_render(self):
         class Tasks(dict):
             visits = 0

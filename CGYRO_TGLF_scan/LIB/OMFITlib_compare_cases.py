@@ -21,7 +21,7 @@ from OMFITlib_cgyro_archive import latest_cases, remap_case_selection, remap_pai
 from OMFITlib_cgyro_scan_view import multiaxis_scans, axis_values
 from OMFITlib_cgyro_convergence import same_value
 from OMFITlib_compare_convergence import available_convergence_groups as convergence_groups, ordinary_case_view
-from OMFITlib_compare_options import parse_float_list_text
+from OMFITlib_compare_options import PRESET_AXIS, parse_float_list_text
 from OMFITlib_gui_deferred import deferred_section
 from OMFITlib_compare_widgets import (
     ComparisonWidgets,
@@ -251,9 +251,11 @@ class CaseSelection(ComparisonWidgets):
 
     def _choose_tglf(self, state, path, target='Spectra', select_radii=True):
         self.ui.Separator('TGLF 数据来源')
-        choices = run_choices(self.root)
+        choices = run_choices(self.root, target)
         if not choices:
-            self.ui.Label('尚无已完成的 TGLF 计算。', align='left')
+            if '_selection_source' in state:
+                activate_source(state, ':' + target)
+            self.ui.Label('尚无已保存的 TGLF {}。'.format('频率 / 增长率谱' if target == 'Spectra' else '通量'), align='left')
             return {}, []
         source = selected_tglf_source(self.root, state, choices=choices)
         state['result_source'] = source if source in choices.values() else next(iter(choices.values()))
@@ -287,6 +289,16 @@ class CaseSelection(ComparisonWidgets):
 
     def _tglf_parameters(self, state, path, results, radii):
         if not radii:
+            return
+        if any(PRESET_AXIS in results.get(rho, {}) for rho in radii):
+            labels = list(dict.fromkeys(name for rho in radii for name in results.get(rho, {}).get(PRESET_AXIS, {})))
+            if 'preset_flags' not in state:
+                chosen = state.get('selected_paras', {}).get(PRESET_AXIS, labels)
+                state['preset_flags'] = {i: label in chosen for i, label in enumerate(labels)}
+            flags = sync_flags(state, 'preset_flags', labels)
+            self.ui.Separator('TGLF 参数预设')
+            self._render_index_checkbox_grid(path('TGLF', 'preset_flags') + '[{idx}]', labels)
+            state['selected_paras'] = {PRESET_AXIS: selected_items(flags, labels)}
             return
         self.ui.Separator('TGLF 扫描参数与取值')
         parameters = self._intersection_of_keysets({rho: results[rho].keys() for rho in radii if rho in results})

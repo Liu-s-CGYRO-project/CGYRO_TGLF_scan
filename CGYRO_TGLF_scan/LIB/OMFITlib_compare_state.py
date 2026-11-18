@@ -24,7 +24,7 @@ from copy import (
 )
 import math
 import re
-from OMFITlib_compare_options import STAT_DEFAULTS, parse_float_list_text, validate_options
+from OMFITlib_compare_options import STAT_DEFAULTS, parse_float_list_text, tglf_scan_values, validate_options
 
 MODES = ['CGYRO_vs_TGLF', 'CGYRO_vs_CGYRO', 'TGLF_vs_TGLF', 'TGLF_vs_CGYRO']
 MODE_LABELS = {
@@ -41,7 +41,7 @@ STYLE_DEFAULTS = {
 SELECTION_KEYS = (
     'nr_flag', 'nr_selected', 'nr_CGYRO', 'rho_flag', 'rho_selected',
     'cgyro_radius_flag', 'cgyro_radius_selected',
-    'para_flag', 'para_list_flag', 'selected_paras', 'selected_paras_2d',
+    'para_flag', 'para_list_flag', 'preset_flags', 'selected_paras', 'selected_paras_2d',
     'rho_pair_flags', 'rho_pair_cfg', 'para_list_flag_by_nr',
     'selected_paras_by_nr', '_selector_keys', '_pairing_run',
     'cgyro_multi', 'cgyro_multi_by_nr', 'force_read_all_nr_items',
@@ -282,7 +282,7 @@ def _tglf_selection_errors(state):
         chosen = []
         for axis, raw in axes.items():
             try:
-                chosen.append(bool(parse_float_list_text(raw)))
+                chosen.append(bool(tglf_scan_values(axis, raw)))
             except (TypeError, ValueError) as exc:
                 errors.append('TGLF {} / {}: {}'.format(name, axis, exc))
                 chosen.append(False)

@@ -11,8 +11,10 @@ import re
 # These are scientific/statistical defaults, shared by initialization, reset
 # widgets and legacy missing-key reads. Changing one must not change only a UI.
 STAT_DEFAULTS = {'ave_window': 0.02, 'effnum': 5, 'error_tolerance': 0.01}
+PRESET_AXIS = '参数预设'
 
-__all__ = ['STAT_DEFAULTS', 'is_gamma_ratio_plot_mode', 'parse_float_list_text', 'validate_options']
+__all__ = ['STAT_DEFAULTS', 'PRESET_AXIS', 'is_gamma_ratio_plot_mode', 'parse_float_list_text',
+           'tglf_scan_values', 'validate_options']
 
 
 def is_gamma_ratio_plot_mode(plot_mode):
@@ -46,6 +48,21 @@ def parse_float_list_text(text, unique=True):
     if not all(math.isfinite(value) for value in values):
         raise ValueError('Values must be finite numbers')
     return list(dict.fromkeys(values)) if unique else values
+
+
+def tglf_scan_values(axis, raw):
+    """Preserve complete preset names, including spaces and punctuation."""
+    if axis != PRESET_AXIS:
+        return parse_float_list_text(raw)
+    if raw is None:
+        return []
+    names = [raw] if isinstance(raw, str) else raw
+    if hasattr(names, 'keys') or not hasattr(names, '__iter__'):
+        raise ValueError('请选择已保存的 TGLF 预设名称')
+    names = list(names)
+    if not all(isinstance(name, str) and name.strip() for name in names):
+        raise ValueError('请选择已保存的 TGLF 预设名称')
+    return list(dict.fromkeys(names))
 
 
 def validate_options(settings):

@@ -8,6 +8,7 @@ TGLF 使用原生扫描结构；CGYRO 的结果仍保存在 `CGYRO_scan/RUN_DB`�
 | 二维 | `scanResults2D` | `scanResults2D_spectra` |
 | 三维 | `scanResults3D` | `scanResults3D_spectra` |
 | 不确定度 | `UQResults` | `UQResults_spectra` |
+| 预设扫描 | 各点结果中的 `gbflux` | `presetResults` |
 | 径向原值计算 | `Experimental_fluxes` | `Experimental_spectra` |
 | 单文件原值计算 | — | `TGLF/FILES` |
 
@@ -16,6 +17,8 @@ TGLF 使用原生扫描结构；CGYRO 的结果仍保存在 `CGYRO_scan/RUN_DB`�
 当前单文件及局部互转输入使用原生单文件模块 `TGLF_scan/TGLF` 下的对应分支，不额外套半径。二维沿用原生的 `参数2+参数1 / 值2 / 值1`；三维按同样规则扩展为 `参数3+参数2+参数1 / 值3 / 值2 / 值1`，不写入二维分支。
 
 Transfer_tool 的每次 TGLF 扫描使用一个处理方案。运行记录包含该方案的输入路径与半径。原生结果按半径及扫描坐标定位，后续运行成功写入同一位置时会更新该位置的结果。一次提交中若出现重复半径，程序会在运行前提示。半径取自输入生成时保存的元数据。`TGLF_scan/TGYRO/RUN_DB` 保存 TGYRO 的生成与计算记录。
+
+预设扫描按半径、运行编号、任务编号归档。例如径向点保存在 `TGLF_scan['presetResults'][0.5][运行编号][任务编号]`。单文件结果位于 `TGLF_scan/TGLF/presetResults`。各运行保留提交时的预设名称、设置及实际输入。重跑或修改同名预设后，可通过原运行记录查看之前的结果。
 
 自 1.24.68 起，Transfer 的绘图基准按运行和半径保存在 `_workbench_runs/<运行记录>/transfer_baselines`。切回“剖面文件 input.gacode”会使用该剖面生成的局部输入。旧工程若保留了对应的 TGYRO 生成记录，可以从其中的 `inputs` 读取原卡。若只有旧 Transfer 写入的卡，请重新生成剖面输入。
 

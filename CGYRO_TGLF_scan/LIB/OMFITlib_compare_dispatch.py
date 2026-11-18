@@ -82,7 +82,8 @@ def export_comparison(root, ctx, pages):
     parent = Path(ctx['mode_state'].get('linear_export_dir', '')).expanduser()
     if not str(ctx['mode_state'].get('linear_export_dir', '')).strip() or not parent.is_dir():
         raise ValueError('Choose an existing export folder.')
-    if not any(cg or tg for _, cg, tg in pages):
+    pages = [(title, cg, tg) for title, cg, tg in pages if cg or tg]
+    if not pages:
         raise ValueError('No valid selected spectra to export.')
     directory = Path(tempfile.mkdtemp(prefix='comparison_spectra_', dir=str(parent)))
     with (directory/'spectra.csv').open('x', newline='', encoding='utf-8-sig') as stream:

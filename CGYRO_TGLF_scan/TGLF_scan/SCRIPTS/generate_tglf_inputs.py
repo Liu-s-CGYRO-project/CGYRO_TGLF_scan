@@ -195,7 +195,7 @@ try:
                     source=dict(source or {}))
     old = OMFITtree()
     cache_keys = ('input.tglf', 'tgyro_output', 'scanResults', 'scanResults_spectra',
-        'scanResults2D', 'scanResults2D_spectra', 'scanResults3D', 'scanResults3D_spectra', 'UQResults', 'UQResults_spectra',
+        'scanResults2D', 'scanResults2D_spectra', 'scanResults3D', 'scanResults3D_spectra', 'UQResults', 'UQResults_spectra', 'presetResults',
         'Experimental_fluxes', 'Experimental_spectra', '_scan_cache_provenance', '_workbench_index',
         '_radial_cache_provenance', '_input_cache_provenance', '_local_input_generation', '_legacy_transfer_profile_radii')
     for key in cache_keys:

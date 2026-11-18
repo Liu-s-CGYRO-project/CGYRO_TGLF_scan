@@ -3,6 +3,7 @@
 Extracted from the reviewed project; data is read from the supplied OMFIT tree.
 """
 from OMFITlib_plot_sources import context_results
+from OMFITlib_compare_options import PRESET_AXIS, tglf_scan_values
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
     Exception,
@@ -36,7 +37,6 @@ from OMFITlib_compare_core import (
     normalize_flux_species_option,
     resolve_2d_param_node,
     resolve_key,
-    to_float_list,
 )
 
 
@@ -276,7 +276,7 @@ def collect_tglf_flux_spectrum_curves(rho, tglf_selected_paras, root, quantity_n
         if para_key is None:
             continue
 
-        vals = to_float_list(values)
+        vals = tglf_scan_values(para, values)
         if len(vals) == 0:
             continue
 
@@ -305,7 +305,7 @@ def collect_tglf_flux_spectrum_curves(rho, tglf_selected_paras, root, quantity_n
 
             n_sp = min(data_3d.shape[0], len(sp_labels))
             n_fd = min(data_3d.shape[1], len(fd_labels))
-            curve_label = f'{para}={value}'
+            curve_label = str(value) if para == PRESET_AXIS else f'{para}={value}'
 
             for i_sp in range(n_sp):
                 for i_fd in range(n_fd):

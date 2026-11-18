@@ -77,6 +77,54 @@ class TGLFParametersTest(unittest.TestCase):
         self.assertIs(values['USE_BPER'], True)
         self.assertEqual(self.source, before)
 
+    def test_scan_submits_each_literature_preset_on_each_original_card(self):
+        self.root['TGLF_scan']['input.tglf'] = {
+            .3: dict(self.source, NS=3, ZS_3=8.4, WIDTH_MIN=.6, UNITS='GYRO', TAUS_2=1.3),
+            .5: dict(self.source, NS=6, ZS_6=1., WIDTH_MIN=.7, UNITS='CGYRO', TAUS_2=1.6)}
+        cards = self.root['TGLF_scan']['input.tglf']
+        self.root['TGLF_scan']['TGYRO'] = {'INPUTS': {'input.tglf': dict(self.source)}}
+        before = copy.deepcopy(cards)
+        self.settings.update(source='radial', mode='preset', radius_mode='all', single_Ti=True)
+        self.settings['parameters']['BETAE'] = dict(enabled=True, value=.9)
+        self.assertEqual(generation_overrides(self.root, self.settings), {})
+        prepared = plan(self.root, self.settings)
+        self.assertEqual((prepared['points_per_input'], prepared['total']), (3, 6))
+        self.assertFalse(prepared['single_Ti'])
+        self.assertEqual([p['label'] for p in prepared['presets']], ['Kim（JET）', 'Di Siena（ITER）', 'Najlaoui（JET）'])
+        actual = self.execute(prepared)
+        for index, source in enumerate(prepared['sources']):
+            original = cards[source['rho']]
+            kim, siena, najlaoui = actual[3*index:3*index+3]
+            self.assertEqual([(c['FILTER'], c['KYGRID_MODEL']) for c in (kim, siena, najlaoui)],
+                             [(2., 4), (-.1, 4), (-1.5, 1)])
+            self.assertEqual([c['WIDTH_MIN'] for c in (kim, siena, najlaoui)], [original['WIDTH_MIN'], -.3, -.3])
+            self.assertEqual([c['UNITS'] for c in (kim, siena, najlaoui)], [original['UNITS'], 'CGYRO', 'CGYRO'])
+            for card in (kim, siena, najlaoui):
+                self.assertNotIn('BETAE', card)
+                for field in ('NS', 'TAUS_2', 'RLTS_1', 'ZS_' + str(original['NS'])):
+                    self.assertEqual(card[field], original[field])
+        self.assertEqual(cards, before)
+        self.settings['mode'] = 'single'
+        self.assertEqual(plan(self.root, self.settings)['sources'][0]['parameters']['BETAE'], .9)
+
+    def test_saved_preset_snapshot_empty_selection_and_per_input_validation(self):
+        self.settings.update(mode='preset', scan_presets={})
+        initialize(self.root)
+        with self.assertRaisesRegex(ValueError, '至少一个'):
+            plan(self.root, self.settings)
+        name = "A/B, 'v2'"
+        self.settings['presets'][name] = dict(FILTER=-.5, UNITS='GYRO')
+        self.settings['scan_presets']['user:' + name] = True
+        prepared = plan(self.root, self.settings)
+        self.settings['presets'][name]['FILTER'] = 11.
+        del self.settings['presets'][name]
+        card, = self.execute(prepared)
+        self.assertEqual((card['FILTER'], card['UNITS']), (-.5, 'GYRO'))
+        self.assertEqual(prepared['presets'][0]['label'], '我的预设 · ' + name)
+        self.settings['presets'][name] = dict(NS=4)
+        with self.assertRaisesRegex(ValueError, '我的预设.*NS'):
+            plan(self.root, self.settings)
+
     def test_catalog_excludes_managed_non_scalars_and_inactive_species(self):
         self.source.update(dict(RLTS_3=9., rho=.4, __metadata=4, array=np.array([1., 2.]),
                                 UNITS='CGYRO', USE_TRANSPORT_MODEL=True))

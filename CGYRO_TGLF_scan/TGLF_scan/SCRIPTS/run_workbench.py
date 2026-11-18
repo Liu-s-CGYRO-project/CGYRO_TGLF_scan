@@ -44,8 +44,12 @@ for source in plan['sources']:
     baseline.setdefault('NS', 2)
     baseline['USE_TRANSPORT_MODEL'] = True
     baselines[tuple(source['path'])] = baseline
-    for scan_values in combinations:
+    variants = (((preset, {}) for preset in plan['presets']) if plan['mode'] == 'preset'
+                else ((None, scan_values) for scan_values in combinations))
+    for preset, scan_values in variants:
         candidate = clone(baseline)
+        if preset is not None:
+            candidate.update(source['preset_parameters'][preset['key']])
         for name, value in scan_values.items():
             candidate[name] = parameter_value(name, value, candidate[name])
         if plan['single_Ti']:
@@ -53,17 +57,19 @@ for source in plan['sources']:
         if int(candidate['NS']) < 1 or float(candidate['NS']) != int(candidate['NS']):
             raise ValueError('NS must be a positive integer')
         validate_width_search(candidate)
-        prepared.append((source, dict(scan_values), candidate))
+        prepared.append((source, dict(scan_values), candidate, preset))
 
 run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '_' + uuid.uuid4().hex[:8]
 record = OMFITtree()
 record.update(dict(id=run_id, created=datetime.now(timezone.utc).isoformat(), status='running',
                    mode=plan['mode'], plan=copy.deepcopy(plan), points=OMFITtree(),
                    runtime=copy.deepcopy(root['TGLF']['SETTINGS']['REMOTE_SETUP'])))
-for index, (source, values, candidate) in enumerate(prepared, 1):
+for index, (source, values, candidate, preset) in enumerate(prepared, 1):
     point = OMFITtree()
     point.update(dict(label=source['label'], source=list(source['path']), parameters=values,
                       status='prepared', input=candidate))
+    if preset is not None:
+        point.update(dict(preset_key=preset['key'], preset_label=preset['label']))
     record['points']['p{:06d}'.format(index)] = point
 root.setdefault('_workbench_runs', OMFITtree())[run_id] = record
 project['SETTINGS']['WORKBENCH']['tglf']['result_run'] = run_id

@@ -20,7 +20,7 @@ def at(module, path, default=None):
     return module
 
 
-def native_destination(source, mode, parameters):
+def native_destination(source, mode, parameters, point_path=()):
     """Match native single-file/radial shapes, including outer-to-inner axes.
 
     Transfer inputs carry explicit radii and use the outer radial branches.
@@ -32,6 +32,10 @@ def native_destination(source, mode, parameters):
         raise ValueError('输入缺少已确认半径，无法写入原生 TGLF 扫描：' + source.get('label', source.get('key', '输入')))
     prefix = [] if radial_source else ['TGLF']
     radial = [source['rho']] if radial_source else []
+    if mode == 'preset':
+        # Keep each named comparison reproducible across reruns and preset edits.
+        # Only generated run/point IDs, never user-provided names, form archive paths.
+        return prefix, [], ['presetResults'] + radial + list(point_path)
     if mode == 'single':
         return prefix, (['Experimental_fluxes'] + radial if radial else []), (
             ['Experimental_spectra'] + radial if radial else ['FILES'])
@@ -55,6 +59,8 @@ def _put(module, path, value, factory):
 def _forget_native_cache(scope, source, mode, flux_path):
     # Native provenance describes a complete scan group, not individual points.
     # Replacing a point through the workbench makes that group's digest stale.
+    if mode == 'preset':
+        return
     radial = source.get('group', 'current') in ('radial', 'transfer')
     if mode == 'single':
         if radial:
@@ -76,7 +82,7 @@ def _forget_native_cache(scope, source, mode, flux_path):
 def publish_point(module, record, point_id, source, result, factory=dict, baseline=None):
     """Publish an already validated point; the run retains only its summary."""
     point = record['points'][point_id]
-    prefix, flux_path, result_path = native_destination(source, record['mode'], point['parameters'])
+    prefix, flux_path, result_path = native_destination(source, record['mode'], point['parameters'], (record['id'], point_id))
     scope = module
     for key in prefix:
         scope = scope.setdefault(key, factory())
@@ -100,7 +106,8 @@ def publish_point(module, record, point_id, source, result, factory=dict, baseli
     owner = record['id'] + ':' + point_id
     # Plain metadata mapping: no physical result objects or array copies.
     scope.setdefault('_workbench_index', {})[tuple(result_path)] = owner
-    point.update(dict(result_path=prefix + result_path, owner_path=prefix + ['_workbench_index'],
+    point.update(dict(has_spectrum='eigenvalue_spectrum' in result,
+                      result_path=prefix + result_path, owner_path=prefix + ['_workbench_index'],
                       owner_key=result_path, owner=owner))
     point.pop('input', None)
     point.pop('result', None)
@@ -176,6 +183,12 @@ def result_location(point):
     return 'TGLF_scan' + ''.join('[{!r}]'.format(key) for key in path)
 
 
+def point_scan_label(point):
+    if 'preset_label' in point:
+        return point['preset_label']
+    return ', '.join('{}={:g}'.format(name, value) for name, value in point['parameters'].items()) or '原值'
+
+
 def restore_native_results(module, record, factory=dict):
     """Move this record's retained custom-scope points into native empty slots.
 
@@ -234,6 +247,13 @@ def point_current(module, point):
     return at(module, point['owner_path'], {}).get(tuple(point['owner_key']), None) == point['owner']
 
 
+def point_has_spectrum(point):
+    if 'has_spectrum' in point:
+        return point['has_spectrum']
+    # Older native records have no file inventory. Keep their lazy lookup.
+    return 'result_path' in point or 'eigenvalue_spectrum' in point.get('result', {})
+
+
 def point_result(module, point):
     """Resolve only the explicitly selected point, never another run's payload."""
     if not point_current(module, point):
@@ -265,6 +285,8 @@ def record_summary(record, run_id):
         when = moment.strftime('%m-%d %H:%M:%S' if moment.year == datetime.now().year else '%Y-%m-%d %H:%M:%S')
     saved_plan = record.get('plan', {})
     mode = record.get('mode', saved_plan.get('mode', ''))
+    if mode == 'preset':
+        return '{} · 预设扫描 · {}'.format(when, '、'.join(p['label'] for p in saved_plan['presets']))
     axes = saved_plan.get('uq', []) if mode == 'uq' else saved_plan.get('axes', [])
     captions = []
     for axis in axes:

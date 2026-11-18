@@ -37,7 +37,7 @@ from numpy import (
 from OMFITlib_compare_state import (
     stable_keys,
 )
-from OMFITlib_compare_options import parse_float_list_text
+from OMFITlib_compare_options import PRESET_AXIS, parse_float_list_text, tglf_scan_values
 from OMFITlib_compare_core import (
     checked_spectrum,
 )
@@ -349,7 +349,7 @@ def collect_tglf_curves(k, tglf_selected_paras, root, ctx, mode_idx=1, include_r
                         raise ValueError('A 2D scan point requires exactly two finite coordinates')
                     vals_to_use.append(pair)
             else:
-                vals_to_use = to_float_list(values)
+                vals_to_use = tglf_scan_values(para, values)
 
             if len(vals_to_use) == 0:
                 continue
@@ -374,10 +374,11 @@ def collect_tglf_curves(k, tglf_selected_paras, root, ctx, mode_idx=1, include_r
                         p2_txt = str(value[1])
                     value_display = f'{p1_name}={p1_txt},{p2_name}={p2_txt}'
 
+                caption = str(value_display) if para == PRESET_AXIS else f'{para}={value_display}'
                 if include_rho_in_label:
-                    label_tg = f'TGLF(rho={rho_tglf}, {para}={value_display}, mode={mode_idx})'
+                    label_tg = f'TGLF(rho={rho_tglf}, {caption}, mode={mode_idx})'
                 else:
-                    label_tg = f'{para}={value_display}, mode={mode_idx}'
+                    label_tg = f'{caption}, mode={mode_idx}'
                 curves.append({
                     'kind': 'TGLF',
                     'label': label_tg,

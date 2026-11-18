@@ -15,7 +15,7 @@ PROFILE_PATH = ('TGLF_scan', 'TGYRO', 'PROFILES_GEN', 'OUTPUTS', 'input.gacode')
 SEED_PATH = ('TGLF_scan', 'TGYRO', 'INPUTS', 'input.tglf')
 RADII = [index / 100.0 for index in range(1, 100)]
 
-MODES = OrderedDict([('原始参数', 'single'), ('一维参数扫描', '1d'),
+MODES = OrderedDict([('原始参数', 'single'), ('预设扫描', 'preset'), ('一维参数扫描', '1d'),
                      ('二维参数扫描', '2d'), ('三维参数扫描', '3d'), ('不确定度扫描（UQ）', 'uq')])
 # Model switches from the bundled OMFIT TGYRO/TGLFinputGUI.
 _sat0 = dict(ALPHA_QUENCH=0., SAT_RULE=0, ALPHA_ZF=0., NKY=12, KYGRID_MODEL=1,
@@ -46,6 +46,7 @@ SCENARIOS = OrderedDict([
     ('najlaoui_jet', ('Najlaoui（JET）', dict(_paper_cards, KYGRID_MODEL=1, FILTER=-1.5))),
 ])
 USER_SCENARIO_PREFIX = 'user:'
+DEFAULT_SCAN_PRESETS = ('kim_jet', 'di_siena_iter', 'najlaoui_jet')
 INTEGERS = INPUT_INTEGERS | {'并发任务数', 'UQ 参数数', '样本数', '扫描点数'}
 POSITIVE = {'NS', 'NKY', 'NMODES', 'NBASIS_MAX', 'NXGRID', 'NWIDTH', 'WIDTH'}
 
@@ -166,24 +167,32 @@ def scenario_choices(settings):
     return choices
 
 
+def scan_preset_choices(settings):
+    choices = OrderedDict((SCENARIOS[key][0], key) for key in DEFAULT_SCAN_PRESETS)
+    choices.update((label, key) for label, key in scenario_choices(settings).items()
+                   if key not in ('input', 'custom'))
+    return choices
+
+
+def preset_overrides(settings, chosen, source):
+    values = (settings['presets'][chosen[len(USER_SCENARIO_PREFIX):]]
+              if chosen.startswith(USER_SCENARIO_PREFIX) else SCENARIOS[chosen][1])
+    draft = dict(parameters={name: dict(enabled=True, value=value) for name, value in values.items()
+                             if name != 'UNITS'}, units_override=values.get('UNITS', ''))
+    return parameter_overrides(draft, source)
+
+
 def apply_scenario(settings, source, factory=dict):
     chosen = settings['scenario']
     if chosen == 'custom':
         return
-    saved = chosen.startswith(USER_SCENARIO_PREFIX)
-    values = (settings['presets'][chosen[len(USER_SCENARIO_PREFIX):]] if saved
-              else SCENARIOS[chosen][1])
-    # Validate the whole small patch before changing settings. A preset from
-    # another species set must not be half-applied to this input.
-    draft = dict(parameters={name: dict(enabled=True, value=value) for name, value in values.items()
-                             if name != 'UNITS'}, units_override=values.get('UNITS', ''))
-    checked = parameter_overrides(draft, source)
+    checked = preset_overrides(settings, chosen, source)
     # Release switches from the previous preset. An explicit edit made since
     # selecting it belongs to the user until a new preset sets that field.
     release = set(settings['preset_fields'])
     if chosen == 'input':
         release.update(SCENARIO_FIELDS)
-    if saved:
+    if chosen.startswith(USER_SCENARIO_PREFIX):
         release.update(settings['parameters'])
         release.add('UNITS')
     for name in release.intersection(settings['parameters']):
@@ -214,6 +223,9 @@ def generation_overrides(root, settings):
     seed = generation_seed(root)
     if seed is None:
         raise ValueError('缺少 TGLF 种子输入')
+    if settings.get('mode', 'single') == 'preset':
+        # Prepare a common physical input. Each preset is applied at submission.
+        return {}
     reference = dict(seed)
     # Existing local inputs supply the type of profile-derived parameters the
     # user may have edited on the full parameter page.
@@ -307,6 +319,10 @@ def initialize(root, factory=dict):
         settings.setdefault(key, value)
     for key in ('selected', 'parameters', 'uq', 'presets'):
         settings.setdefault(key, factory())
+    if 'scan_presets' not in settings:
+        flags = factory()
+        flags.update({key: True for key in DEFAULT_SCAN_PRESETS})
+        settings['scan_presets'] = flags
     if 'preset_fields' not in settings:
         # Restore field ownership when opening a project saved by an older release.
         scenario = settings['scenario']
@@ -457,13 +473,30 @@ def plan(root, settings):
     if parallel < 1:
         raise ValueError('并发任务数必须大于 0')
     sources, axes, uq = [], [], []
+    presets = []
+    if mode == 'preset':
+        presets = [dict(key=key, label=label) for label, key in scan_preset_choices(settings).items()
+                   if settings['scan_presets'].get(key, False)]
+        if not presets:
+            raise ValueError('请在扫描设置中勾选至少一个 TGLF 预设')
     for row in rows:
         source = get(root, row['path'])
+        parameter_value('NS', source.get('NS', 2), 2)
+        if mode == 'preset':
+            overrides = {}
+            for preset in presets:
+                try:
+                    fixed = preset_overrides(settings, preset['key'], source)
+                    validate_width_search(dict(source, **fixed))
+                except ValueError as exc:
+                    raise ValueError('{} · {}：{}'.format(row['label'], preset['label'], exc)) from exc
+                overrides[preset['key']] = fixed
+            sources.append(dict(row, parameters={}, axes=[], preset_parameters=overrides))
+            continue
         if row['group'] == 'radial' and settings['single_Ti']:
             row['thermal_ions'] = radial_thermal_ions(root['TGLF_scan'], source)
         elif row['group'] == 'current' and settings['single_Ti']:
             row['thermal_ions'] = current_thermal_ions(root['TGLF_scan']['TGLF'], source)
-        parameter_value('NS', source.get('NS', 2), 2)
         values = parameter_values(source)
         parameters = parameter_overrides(settings, source)
         values.update(parameters)
@@ -503,6 +536,11 @@ def plan(root, settings):
     if mode == 'uq' and settings['sampling'] not in ('L', 'M'):
         raise ValueError('请选择采样方法')
     points = samples if mode == 'uq' else math.prod(len(axis['values']) for axis in axes)
-    return dict(mode=mode, sources=sources, axes=axes, uq=uq, samples=samples,
-                sampling=settings['sampling'], parallel=parallel, single_Ti=bool(settings['single_Ti']),
-                points_per_input=points, total=points * len(sources))
+    if mode == 'preset':
+        points = len(presets)
+    prepared = dict(mode=mode, sources=sources, axes=axes, uq=uq, samples=samples,
+                    sampling=settings['sampling'], parallel=parallel, single_Ti=mode != 'preset' and bool(settings['single_Ti']),
+                    points_per_input=points, total=points * len(sources))
+    if mode == 'preset':
+        prepared['presets'] = presets
+    return prepared

@@ -12,9 +12,10 @@ from OMFITlib_gui_deferred import TabPages
 from OMFITlib_gui_controls import ParameterList, checkbox
 from OMFITlib_project import MODULES, location, read, runtime_issues
 from OMFITlib_tglf_preparation import preparation_resources
-from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, SCENARIOS, USER_SCENARIO_PREFIX,
+from OMFITlib_tglf_workbench import (COMMON, DEFAULT_SCAN_PRESETS, INTEGERS, MODES, PROFILE_PATH, SCENARIOS, USER_SCENARIO_PREFIX,
     apply_scenario, fully_failed, generation_overrides, generation_seed, initialize, parameter_value,
-    radial_input_issues, save_preset, scan_parameter_names, scenario_choices, selected_rows, source_rows, uq_parameter_count)
+    radial_input_issues, save_preset, scan_parameter_names, scan_preset_choices, scenario_choices,
+    selected_rows, source_rows, uq_parameter_count)
 from OMFITlib_tglf_parameters import GROUPS, parameter_catalog, parameter_values, scalar
 from OMFITlib_tglf_parameter_help import parameter_help
 from OMFITlib_transfer_presets import JET_FUEL_MODE
@@ -24,7 +25,7 @@ TABS = OrderedDict([('scan', '输入与扫描'), ('parameters', '计算参数'),
 from OMFITlib_workbench_catalog import SCAN_TABS  # Shared with CGYRO; retained public alias.
 
 
-from OMFITlib_tglf_records import native_destination, point_current, record_summary, result_location, run_records
+from OMFITlib_tglf_records import native_destination, point_current, point_has_spectrum, point_scan_label, record_summary, result_location, run_records
 
 
 class TGLFWorkbench:
@@ -168,6 +169,9 @@ class TGLFWorkbench:
                            show_input, refresh_tree=False)
         self.ui.ComboBox(self.prefix + "['mode']", MODES, '计算方式', state='readonly', updateGUI=True, refresh_tree=False)
         mode = self.settings['mode']
+        if mode == 'preset':
+            self.preset_scan_controls()
+            return
         values = parameter_values(self.source)
         scanned = scan_parameter_names(self.settings)
         values.update((name, item['value']) for name, item in self.settings['parameters'].items()
@@ -227,7 +231,12 @@ class TGLFWorkbench:
         problems = runtime_issues(self.root, 'tglf')
         try:
             prepared = self.actions.checked_tglf_plan(self.settings)
-            self.label('本次运行：{} 个输入，{} 个任务'.format(len(prepared['sources']), prepared['total']))
+            if prepared['mode'] == 'preset':
+                self.label('{} 个输入 × {} 个预设 = {} 个任务'.format(
+                    len(prepared['sources']), len(prepared['presets']), prepared['total']))
+                self.label('、'.join(preset['label'] for preset in prepared['presets']))
+            else:
+                self.label('本次运行：{} 个输入，{} 个任务'.format(len(prepared['sources']), prepared['total']))
             for source in prepared['sources'][:4]:
                 parameters = {axis['name']: axis['values'][0] for axis in source.get('axes', [])}
                 prefix, flux_path, result_path = native_destination(source, prepared['mode'], parameters)
@@ -310,6 +319,9 @@ class TGLFWorkbench:
         if seed is None:
             return
         with section_group(self.ui, 'TGLF 参数'):
+            if self.settings['mode'] == 'preset':
+                self.label('当前采用预设扫描。此步生成共用的半径输入，运行时分别应用所选预设。')
+                return
             self.preset_controls(seed)
             for fields in ((('SAT_RULE', '饱和规则'), ('NKY', 'ky 点数')),
                            (('KYGRID_MODEL', 'ky 网格'), ('NMODES', '模态数')),
@@ -367,6 +379,17 @@ class TGLFWorkbench:
                 self.ui.Button('删除预设“{}”'.format(name), lambda: self.delete_preset(name, parent),
                                updateGUI=True, refresh_scope='section')
 
+    def preset_scan_controls(self):
+        self.label('每个输入分别应用勾选的预设，未指定的字段沿用该输入。')
+        choices = list(scan_preset_choices(self.settings).items())
+        flags = self.settings['scan_presets']
+        for start in range(0, len(choices), 2):
+            with self.ui.same_row():
+                for label, key in choices[start:start + 2]:
+                    flags.setdefault(key, False)
+                    checkbox(self.ui, self.prefix + "['scan_presets'][{!r}]".format(key),
+                             flags, key, label, default=key in DEFAULT_SCAN_PRESETS, refresh_tree=False)
+
     def save_current_preset(self, source, parent):
         name = simpledialog.askstring('保存 TGLF 参数预设', '预设名称：', parent=parent)
         if name is None or not name.strip():
@@ -380,6 +403,7 @@ class TGLFWorkbench:
     def delete_preset(self, name, parent):
         if messagebox.askyesno('删除 TGLF 参数预设', '删除“{}”？当前参数保持不变。'.format(name), parent=parent):
             del self.settings['presets'][name]
+            self.settings['scan_presets'].pop(USER_SCENARIO_PREFIX + name, None)
             self.mark_custom()
 
     def mark_custom(self, combo=None, field=None):
@@ -393,6 +417,9 @@ class TGLFWorkbench:
         self.settings['selected'].update({row['key']: selected for row in self.available})
 
     def parameters(self):
+        if self.settings['mode'] == 'preset':
+            self.preset_scan_controls()
+            return
         self.label('数值修改后回车；扫描中的参数在“输入与扫描”设置。')
         if self.reference:
             self.label('参考：' + self.reference['label'])
@@ -499,9 +526,9 @@ class TGLFWorkbench:
             problems = [] if read(self.root, path) is not None else ['工程缺少此绘图入口']
             self.view.guarded('查看通量趋势', lambda: plot_view(read(self.root, path), record=record),
                               problems, refresh=False, refresh_tree=False)
-            choices = OrderedDict((key + ' · ' + point['label'] + ' · ' + (', '.join(
-                '{}={:g}'.format(name, value) for name, value in point['parameters'].items()) or '原值'), key)
-                for key, point in current_points.items())
+        choices = OrderedDict((key + ' · ' + point['label'] + ' · ' + point_scan_label(point), key)
+                              for key, point in current_points.items() if point_has_spectrum(point))
+        if choices:
             if self.settings.get('result_point', None) not in choices.values():
                 self.settings['result_point'] = next(iter(choices.values()))
             def update_location(location=None):
@@ -548,8 +575,7 @@ class TGLFWorkbench:
             status = {'complete': '完成', 'failed': '失败', 'prepared': '待运行', 'cancelled': '已中止'}.get(point.get('status', None), point.get('status', ''))
             if point.get('status', None) == 'complete' and not current:
                 status = '已替换 / 重置'
-            table.insert('', 'end', iid=key, values=(key, point['label'],
-                ', '.join('{}={:g}'.format(name, value) for name, value in point['parameters'].items()) or '原值',
+            table.insert('', 'end', iid=key, values=(key, point['label'], point_scan_label(point),
                 status, '{:.6g}'.format(qe) if fluxes else '—', '{:.6g}'.format(qi) if fluxes else '—'))
         y = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=table.yview)
         x = ttk.Scrollbar(frame, orient=tk.HORIZONTAL, command=table.xview)
@@ -604,6 +630,11 @@ class TGLFWorkbench:
                 return
             point = record['points'][selected[0]]
             lines = [point['label'], '输入：' + location(point['source']), '结果：' + result_location(point)]
+            if 'preset_key' in point:
+                source = next(s for s in record['plan']['sources'] if list(s['path']) == list(point['source']))
+                fields = source['preset_parameters'][point['preset_key']]
+                lines.append('预设：' + point['preset_label'])
+                lines.extend('{} = {}'.format(name, value) for name, value in fields.items())
             for row in point.get('fluxes', []):
                 lines.append('{species}: Γ/ΓGB={particle:.6g}, Q/QGB={heat:.6g}, Π/ΠGB={momentum:.6g}'.format(**row))
             if point.get('error', None):

@@ -150,6 +150,103 @@ class NativeStorageTests(unittest.TestCase):
         initialize(self.root)
         self.settings.update(source='transfer', selected={'transfer:1': True, 'transfer:2': True})
 
+    def test_preset_runs_keep_named_spectra_fluxes_and_partial_results_after_reopen(self):
+        from OMFITlib_compare_options import PRESET_AXIS
+        from OMFITlib_compare_series import collect_tglf_curves
+        from OMFITlib_compare_state import _tglf_selection_errors
+        from OMFITlib_compare_core import build_context
+        from OMFITlib_compare_tglf import plot_tglf_flux_1d
+        from matplotlib.figure import Figure
+        self.transfer_inputs()
+        self.settings['mode'] = 'preset'
+        first = self.execute(fail=1)
+        second = self.execute()
+        self.assertEqual((first['status'], second['status']), ('partial', 'complete'))
+        self.scan['TGLF']['SCRIPTS'].pop('runTGLFbatch')
+        project = pickle.loads(pickle.dumps(self.root))
+        scan = project['TGLF_scan']
+        names = [p['label'] for p in first['plan']['presets']]
+        first, second = [run_records(scan)[run['id']] for run in (first, second)]
+        for run in (first, second):
+            for point in run['points'].values():
+                if point['status'] == 'complete':
+                    self.assertIn(run['id'], point['result_path'])
+                    self.assertEqual(point_result(scan, point)['input.tglf']['FILTER'],
+                                     dict(zip(names, [2., -.1, -1.5]))[point['preset_label']])
+        state = dict(result_source=first['id'], rho_selected=[.3], spectra_mode='1D',
+                     selected_paras={PRESET_AXIS: names})
+        partial = tglf_results(project, state)
+        self.assertEqual(list(partial[.3][PRESET_AXIS]), [names[0], names[2]])
+        self.assertEqual(list(partial[.5][PRESET_AXIS]), names)
+        self.assertEqual(_tglf_selection_errors(state), [])
+        # Make two genuinely different wave-number grids in one radius.
+        tglf_point = first['points']['p000003']
+        point_result(scan, tglf_point)['eigenvalue_spectrum']['ky'] = np.array([.05, .45])
+        project['SETTINGS']['PHYSICS'] = dict(compare_mode='TGLF_vs_TGLF',
+            TGLF_vs_TGLF=dict(TGLF=state, plot=dict(plot_log_x=True)))
+        ctx = build_context(project)
+        curves = collect_tglf_curves(.3, state['selected_paras'], project, ctx)
+        self.assertEqual([c['value'] for c in curves], [names[0], names[2]])
+        np.testing.assert_array_equal(curves[0]['ky'], [.1, .2])
+        np.testing.assert_array_equal(curves[1]['ky'], [.05, .45])
+        import csv
+        import tempfile
+        from OMFITlib_compare_dispatch import collect_comparison_pages, export_comparison
+        with tempfile.TemporaryDirectory() as folder:
+            ctx['mode_state']['linear_export_dir'] = folder
+            directory = export_comparison(project, ctx, collect_comparison_pages(project, ctx))
+            with (Path(directory) / 'spectra.csv').open(encoding='utf-8-sig', newline='') as stream:
+                self.assertEqual([(row['scan_value'], float(row['ky'])) for row in csv.DictReader(stream)],
+                                 [(names[0], .1), (names[0], .2), (names[2], .05), (names[2], .45)])
+        class Figures:
+            def subplots(self, nrows, ncols, figsize, label, **kwargs):
+                self.fig = Figure(figsize=figsize)
+                return self.fig, self.fig.subplots(nrows, ncols, **kwargs)
+        figures = Figures()
+        plot_tglf_flux_1d(figures, project, ctx)
+        axis = figures.fig.axes[1]
+        self.assertEqual(axis.get_xscale(), 'linear')
+        self.assertEqual([item.get_text() for item in axis.get_xticklabels()], [names[0], names[2]])
+        np.testing.assert_equal(axis.lines[0].get_ydata(), [2., 4.])
+        clear_results(project)
+        self.assertFalse(scan['presetResults'])
+        self.assertFalse(run_records(scan))
+
+    def test_workbench_preset_heat_plot_uses_names_and_breaks_at_missing_radial_points(self):
+        from contextlib import nullcontext
+        from matplotlib.figure import Figure
+        self.settings['mode'] = 'preset'
+        self.transfer_inputs()
+        record = self.execute(fail=1)
+        script = REPO / 'CGYRO_TGLF_scan/TGLF_scan/PLOTS/workbench_result.py'
+        def draw(run):
+            fig = Figure()
+            ns = dict(root=self.scan, record=run, point_id=None, defaultVars=lambda **kwargs: None,
+                      subplots=lambda rows, cols, figsize, **kwargs: (fig, fig.subplots(rows, cols, **kwargs)))
+            with patch('OMFITlib_plot_style.plot_context', return_value=nullcontext()), patch.object(fig, 'tight_layout'):
+                exec(compile(script.read_text(encoding='utf-8'), str(script), 'exec'), ns)
+            return fig.axes
+        radial = draw(record)[0]
+        names = [p['label'] for p in record['plan']['presets']]
+        self.assertEqual({line.get_label() for line in radial.lines}, set(names))
+        line = next(line for line in radial.lines if line.get_label() == names[1])
+        np.testing.assert_equal(line.get_xdata(), [.3, .5])
+        np.testing.assert_equal(line.get_ydata(), [np.nan, 6.])
+        self.settings.update(selected={'transfer:1': True})
+        single = draw(self.execute())[1]
+        self.assertEqual([label.get_text() for label in single.get_xticklabels()], names)
+
+    def test_flux_only_preset_is_visible_for_flux_and_hidden_from_spectra(self):
+        self.settings['mode'] = 'preset'
+        make_payload = payload
+        with patch(__name__ + '.payload', side_effect=lambda i: {'gbflux': make_payload(i)['gbflux']}):
+            record = self.execute()
+        state = dict(result_source=record['id'])
+        self.assertNotIn(record['id'], run_choices(self.root, 'Spectra').values())
+        self.assertIn(record['id'], run_choices(self.root, 'Flux').values())
+        self.assertEqual(tglf_results(self.root, state, 'Spectra'), {})
+        self.assertTrue(tglf_results(self.root, state, 'Flux'))
+
     def legacy_transfer_record(self):
         self.transfer_inputs()
         record = self.execute()

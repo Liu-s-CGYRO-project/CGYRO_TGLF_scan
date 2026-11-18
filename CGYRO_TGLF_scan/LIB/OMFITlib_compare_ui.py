@@ -1,5 +1,5 @@
 """Native OMFIT comparison tabs with a shared check/plot action area."""
-from OMFITlib_compare_options import STAT_DEFAULTS
+from OMFITlib_compare_options import PRESET_AXIS, STAT_DEFAULTS
 from OMFITlib_plot_style_ui import render_style
 # OMFIT libraries inherit a pylab namespace; keep Python scalar/iterator semantics.
 from builtins import (
@@ -242,10 +242,12 @@ class ComparisonUI(CaseSelection):
                           ('指定 ky 的参数扫描', 'Plot single ky'),
                           ('增长率比值 γ / γ_ref', 'Plot γ/γ_ref'),
                           ('三维扫描图', 'Plot 3D'), ('Ballooning 本征函数', 'Plot eigen ball')])
-        else:
+        elif PRESET_AXIS not in self.state.get('TGLF', {}).get('selected_paras', {}):
             modes['增长率比值 γ / γ_ref'] = 'Plot γ/γ_ref'
-        self._combo('plot_mode', modes, '绘图类型', 'Plot 2D', refresh=True)
-        mode = settings.get('plot_mode', 'Plot 2D')
+        mode = 'Plot 2D'
+        if len(modes) > 1:
+            self._combo('plot_mode', modes, '绘图类型', mode, refresh=True)
+            mode = settings.get('plot_mode', mode)
         time_traces = self_mode and mode == 'Plot time traces'
         ratio, eigen = mode == 'Plot γ/γ_ref', mode == 'Plot eigen ball'
         if self_mode:
@@ -300,8 +302,11 @@ class ComparisonUI(CaseSelection):
 
     def _render_view_options(self):
         self.ui.Separator('坐标轴与图例顺序')
+        categorical_flux = (self.mode == 'TGLF_vs_TGLF' and self.plot_settings.get('tglf_vs_tglf_mode', '') == 'Flux'
+                            and PRESET_AXIS in self.state.get('TGLF', {}).get('selected_paras', {}))
         with self.ui.same_row():
-            self._check('plot_log_x', 'X 对数轴')
+            if not categorical_flux:
+                self._check('plot_log_x', 'X 对数轴')
             self._check('plot_log_y', 'Y 对数轴', help='对数坐标会隐藏零值和负值。')
             if self.mode == 'CGYRO_vs_CGYRO' and self.plot_settings.get('plot_mode', None) == 'Plot 3D':
                 self._check('plot_log_z', 'Z 对数轴')
