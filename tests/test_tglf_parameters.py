@@ -3,13 +3,14 @@ import copy
 import json
 from pathlib import Path
 import sys
+import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
 import numpy as np
 from omfit_mapping import OMFITMapping, treeify
-from test_project import UI
+from test_project import CgyroInput, UI
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / 'CGYRO_TGLF_scan/LIB'))
@@ -414,6 +415,123 @@ class TGLFParametersTest(unittest.TestCase):
         self.assertEqual([row['SAT_RULE'] for row in inputs], [0, 1])
         self.assertTrue(all(row['NKY'] == 17 and row['UNITS'] == 'CGYRO' for row in inputs))
         self.assertEqual(self.source, dict(NS=2, RLTS_1=4., ZS_1=-1., ZS_2=1.))
+
+    def test_paper_presets_write_exact_model_switches_and_keep_each_species_card(self):
+        common = dict(NMODES=6, NKY=19, NBASIS_MIN=2, NBASIS_MAX=6, SAT_RULE=2,
+                      USE_BPER=True, USE_BPAR=False, USE_AVE_ION_GRID=True,
+                      ALPHA_E=1., ALPHA_QUENCH=0., ALPHA_MACH=0.)
+        cards = dict(common, UNITS='CGYRO', XNU_MODEL=3, WIDTH_MIN=-.3, WIDTH=3.,
+                     WDIA_TRAPPED=1., USE_MHD_RULE=True, ALPHA_ZF=-1.)
+        cases = [('Di Siena（ITER）', dict(cards, KYGRID_MODEL=4, FILTER=-.1)),
+                 ('Kim（JET）', dict(common, GEOMETRY_FLAG=1, KYGRID_MODEL=4, FILTER=2.)),
+                 ('Najlaoui（JET）', dict(cards, KYGRID_MODEL=1, FILTER=-1.5))]
+        # Real input sources can disagree on both the species and unlisted switches.
+        profiles = {}
+        for index, ns in enumerate((2, 3, 4, 6), 1):
+            card = dict(NS=ns, UNITS='GYRO', WIDTH_MIN=.02 * index, ALPHA_ZF=.7,
+                        GEOMETRY_FLAG=2, XNU_MODEL=1, USE_MHD_RULE=False, RMAJ_LOC=3. + index)
+            for i in range(1, ns + 1):
+                for key, value in dict(ZS=-1. if i == 1 else float(i - 1), MASS=.01 * i,
+                                       AS=.5 / i, TAUS=.2 * i, RLNS=2. + i, RLTS=5. - i).items():
+                    card[key + '_' + str(i)] = value
+            profiles['input.tglf_' + str(index)] = card
+        original = copy.deepcopy(profiles)
+        report = dict(local_inputs={name: dict(rho=index / 10.) for index, name in enumerate(profiles, 1)})
+        self.root['Transfer_tool'] = {'OUTPUTS': {'Profiles_gen': profiles, 'Particle_processing': report},
+                                      'TEMPLATES': {'input.tglf': self.source}}
+        settings, rows = initialize(self.root)
+        settings.update(source='transfer', mode='single')
+        settings['selected'].update({row['key']: True for row in rows if row['group'] == 'transfer'})
+        choices = scenario_choices(settings)
+        for label, expected in cases:
+            with self.subTest(preset=label):
+                settings['scenario'] = choices[label]
+                apply_scenario(settings, self.source)
+                self.assertEqual(generation_overrides(self.root, settings), expected)
+                submitted = self.execute(plan(self.root, settings))
+                self.assertEqual(len(submitted), len(original))
+                for candidate, source in zip(submitted, original.values()):
+                    self.assertEqual(candidate, dict(source, USE_TRANSPORT_MODEL=True, **expected))
+                    for key, value in expected.items():
+                        self.assertIs(type(candidate[key]), type(value), key)
+                self.assertEqual(profiles, original)
+        settings['scenario'] = 'input'
+        apply_scenario(settings, self.source)
+        self.assertEqual(generation_overrides(self.root, settings), {})
+
+    def test_paper_presets_reach_generation_seed_and_all_radial_cards(self):
+        script = REPO / 'CGYRO_TGLF_scan/TGLF_scan/SCRIPTS/generate_tglf_inputs.py'
+        code = compile(script.read_text(encoding='utf-8'), str(script), 'exec')
+        seed = dict(self.source, UNITS='GYRO', WIDTH_MIN=.12)
+        radii = [index / 100. for index in range(1, 100)]
+        def localdump(path):
+            index = int(Path(path).parent.name[4:])
+            return CgyroInput(NS=3, RMIN_LOC=index / 100., RMAJ_LOC=3., Q_LOC=1.5,
+                              RLTS_1=3., RLNS_1=1., AS_3=index / 1000., FILTER=99., WIDTH_MIN=.45)
+        with tempfile.TemporaryDirectory() as base, patch.dict('os.environ', SHELL='/bin/bash'):
+            for scenario in ('di_siena_iter', 'kim_jet', 'najlaoui_jet'):
+                with self.subTest(scenario=scenario):
+                    remote = dict(serverPicker='localhost', server='localhost', scheduler='local')
+                    module = dict(INPUTS={'input.tglf': seed}, SETTINGS={'REMOTE_SETUP': remote})
+                    self.root['TGLF_scan']['TGYRO'] = module
+                    self.settings.update(scenario=scenario, mode='single')
+                    apply_scenario(self.settings, seed)
+                    expected = generation_overrides(self.root, self.settings)
+                    def prepare(root, inputs, workdir, **kwargs):
+                        sent = next(card for card, name in inputs if name == 'input.tglf')
+                        self.assertEqual(sent, dict(seed, USE_TRANSPORT_MODEL=True, **expected))
+                        Path(workdir).mkdir(parents=True)
+                        (Path(workdir) / 'input_generation.exit').write_text('0')
+                        return 0
+                    env = dict(root=self.root['TGLF_scan'], profile={}, seed=seed, input_text='', radii=radii,
+                               coordinate='rho', include_ions='all', profile_digest='fixture', source={},
+                               environment='', command='tgyro -t . -n 99', parameters=expected,
+                               OMFITworkDir=lambda root: base, OMFITx=SimpleNamespace(executable=prepare),
+                               OMFITgacode=localdump, OMFITascii=Mock(), OMFITtree=dict,
+                               defaultVars=lambda **kwargs: None, print=lambda *args: None)
+                    exec(code, env)
+                    generated = self.root['TGLF_scan']['input.tglf']
+                    self.assertEqual(set(generated), set(radii))
+                    for i, rho in enumerate(radii, 1):
+                        raw = localdump('TGLF' + str(i) + '/out.tglf.localdump')
+                        self.assertEqual(generated[rho], dict(raw, USE_TRANSPORT_MODEL=True, **expected))
+
+    def test_switch_paper_preset_after_reopening_preserves_edits_and_scan_values(self):
+        self.settings.update(scenario='di_siena_iter', mode='single')
+        apply_scenario(self.settings, self.source)
+        workbench, _ = self.workbench()
+        self.settings['parameters']['WIDTH_MIN']['value'] = .125
+        workbench.edit_parameter('WIDTH_MIN', .3)
+        self.settings['units_override'] = 'GYRO'
+        workbench.mark_custom(field='UNITS')
+        reopened = treeify(json.loads(json.dumps(self.root)), OMFITMapping)
+        settings, _ = initialize(reopened, OMFITMapping)
+        settings.update(dict(scenario='kim_jet', mode='1d', parameter1='FILTER', values1=[.5, 1.5]))
+        apply_scenario(settings, self.source, OMFITMapping)
+        inputs = self.execute(plan(reopened, settings))
+        self.assertEqual([row['FILTER'] for row in inputs], [.5, 1.5])
+        for row in inputs:
+            self.assertEqual((row['WIDTH_MIN'], row['UNITS']), (.125, 'GYRO'))
+            self.assertNotIn('XNU_MODEL', row)
+        save_preset(settings, self.source, '扫描中的预设', OMFITMapping)
+        self.assertNotIn('FILTER', settings['presets']['扫描中的预设'])
+        settings['scenario'] = 'sat1'
+        apply_scenario(settings, self.source, OMFITMapping)
+        settings['mode'] = 'single'
+        self.assertNotIn('FILTER', parameter_overrides(settings, self.source))
+
+    def test_switch_from_old_project_preset_to_kim_recovers_input_units_and_collision_model(self):
+        self.settings.update(mode='single', scenario='sat2')
+        apply_scenario(self.settings, self.source)
+        self.settings['parameters']['Q_LOC'] = dict(enabled=True, value=1.75)
+        del self.settings['preset_fields']  # Previous releases stored the scenario and override flags.
+        self.source.update(UNITS='GYRO', XNU_MODEL=2, NS=3, ZS_3=6.)
+        settings, _ = initialize(self.root)
+        settings['scenario'] = 'kim_jet'
+        apply_scenario(settings, self.source)
+        candidate, = self.execute(plan(self.root, settings))
+        self.assertEqual([candidate[k] for k in ('UNITS', 'XNU_MODEL', 'Q_LOC', 'NS', 'ZS_3')],
+                         ['GYRO', 2, 1.75, 3, 6.])
 
     def test_saved_preset_is_small_independent_patch_not_an_input_snapshot(self):
         self.root['TGLF_scan']['RUN_DB'] = UnreadResults(old=UnreadResults())

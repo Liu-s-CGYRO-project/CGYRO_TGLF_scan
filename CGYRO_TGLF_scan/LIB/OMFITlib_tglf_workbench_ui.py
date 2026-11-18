@@ -326,7 +326,7 @@ class TGLFWorkbench:
         self.ui.ComboBox(self.prefix + "['units_override']", {'沿用输入': '', 'GYRO': 'GYRO', 'CGYRO': 'CGYRO'},
                          '归一化', width=12, state='readonly', updateGUI=False, refresh_tree=False,
                          help=parameter_help('UNITS', source),
-                         postcommand=lambda location=None: self.mark_custom(combo))
+                         postcommand=lambda location=None: self.mark_custom(combo, 'UNITS'))
 
     def parameter_field(self, name, source, label):
         if name in scan_parameter_names(self.settings):
@@ -354,8 +354,9 @@ class TGLFWorkbench:
         self.preset_combo = self.ui.ComboBox(self.prefix + "['scenario']", scenario_choices(self.settings),
             '参数预设', state='readonly', updateGUI=True, refresh_tree=False,
             postcommand=lambda location=None: apply_scenario(self.settings, source, self.actions.factory),
-            help='内置方案复用 OMFIT 的 SAT0、SAT1、SAT2、JET、ST、ITER 设置。\n'
-                 '选择后可继续修改。扫描参数始终由扫描设置控制。\n'
+            help='Kim（JET）应用 Kim 等 2023 年表 5 的模型开关，物种组成沿用实际输入。\n'
+                 'Di Siena（ITER）和 Najlaoui（JET）分别应用对应 input.tglf 的模型开关。\n'
+                 '所有预设均可继续修改，扫描轴取值由扫描设置控制。\n'
                  '另存预设仅保存已修改的固定值和归一化设置，随工程保存；沿用输入的值仍随各输入变化。')
         parent = self.preset_combo.winfo_toplevel() if isinstance(self.preset_combo, tk.Misc) else None
         with self.ui.same_row():
@@ -381,7 +382,9 @@ class TGLFWorkbench:
             del self.settings['presets'][name]
             self.mark_custom()
 
-    def mark_custom(self, combo=None):
+    def mark_custom(self, combo=None, field=None):
+        if field in self.settings['preset_fields']:
+            self.settings['preset_fields'] = [name for name in self.settings['preset_fields'] if name != field]
         self.settings['scenario'] = 'custom'
         if isinstance(combo, tk.Misc):
             combo.set(SCENARIOS['custom'][0])
@@ -434,17 +437,18 @@ class TGLFWorkbench:
         item = self.settings['parameters'][name]
         item['value'] = parameter_value(name, item['value'], reference)
         item['enabled'] = True
-        self.mark_custom(combo)
+        self.mark_custom(combo, name)
 
     def reset_parameters(self):
         for item in self.settings['parameters'].values():
             item['enabled'] = False
         self.settings['units_override'] = ''
         self.settings['scenario'] = 'input'
+        self.settings['preset_fields'] = []
 
     def reset_parameter(self, name, combo=None):
         self.settings['parameters'][name]['enabled'] = False
-        self.mark_custom(combo)
+        self.mark_custom(combo, name)
 
     def results(self):
         self.view.show_message(local=self.settings)

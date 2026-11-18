@@ -150,13 +150,23 @@ class NativeTabsTests(unittest.TestCase):
         self.assertIn(prefix + "['parameters']['SAT_RULE']['value']", self.page_controls['run'])
         self.assertNotIn(prefix + "['parameters']['KYGRID_MODEL']['value']", self.page_controls['run'])
         combo = self.page_controls['run'][prefix + "['scenario']"]
-        combo.set('常规 · SAT2')
+        for name in ('Kim（JET）', 'Di Siena（ITER）', 'Najlaoui（JET）'):
+            self.assertIn(name, combo.cget('values'))
+        combo.set('Kim（JET）')
         combo.event_generate('<<ComboboxSelected>>')
         self.host.drain()
+        self.assertEqual(settings['parameters']['FILTER']['value'], 2.)
+        self.select('compact')
+        combo = self.page_controls['compact'][prefix + "['scenario']"]
+        self.assertEqual(combo.get(), 'Kim（JET）')
+        combo.set('Najlaoui（JET）')
+        combo.event_generate('<<ComboboxSelected>>')
+        self.host.drain()
+        self.assertEqual(settings['parameters']['FILTER']['value'], -1.5)
+        self.select('run')  # Reuse the mounted editor after building the other preset menu.
+        self.assertEqual(self.page_controls['run'][prefix + "['scenario']"].get(), 'Najlaoui（JET）')
         entry = self.page_controls['run'][prefix + "['parameters']['SAT_RULE']['value']"]
         self.assertEqual(entry.get(), '2')
-        self.select('compact')
-        self.select('run')  # Reuse the mounted editor after building the other preset menu.
         before = self.counts.copy()
         entry.delete(0, 'end')
         entry.insert(0, '3')

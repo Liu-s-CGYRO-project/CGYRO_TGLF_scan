@@ -103,7 +103,7 @@ N_RADIAL 的短标题只用于扫描设置 GUI，完整 `DIRECTIONS` 名称及�
 
 `OMFITlib_tglf_workbench.scan_parameter_names` 仅根据 mode、轴名称和 UQ 数量计算控制范围。完整参数页、输入准备页和 `parameter_overrides` 共用这一判断：被扫描字段不显示固定值编辑器，也不参与生成输入或计划的固定值覆盖。倍数扫描继续按各输入自身原值计算。不要仅禁用控件而让旧覆盖值继续影响执行。
 
-`SCENARIOS` 是内置方案的唯一数据表；两个页面复用 `preset_controls`。用户预设位于 `SETTINGS/WORKBENCH/tglf/presets/名称`，只保存 `parameter_overrides` 返回的标量及可选 UNITS，选择键为 `user:名称`，不复制输入或结果，也不保存扫描列表。内置方案只合并其定义字段；用户预设先完整验证再替换固定值覆盖集合，避免前一个预设的残留覆盖。初始化只补充空 presets 容器；模板更新 keep 设置策略保留它。
+`SCENARIOS` 定义每个内置方案的名称与模型字段，两个页面复用 `preset_controls`。用户预设位于 `SETTINGS/WORKBENCH/tglf/presets/名称`，保存 `parameter_overrides` 返回的标量及可选 UNITS，选择键为 `user:名称`。`preset_fields` 记录仍由上次预设设置的字段。切换时释放这些覆盖，手动编辑或重置某项时移出该项。用户预设先完整验证再替换固定值集合。旧工程从已选预设恢复字段名，模板更新沿用 keep 设置策略。
 
 `parameter_editor` 只为布尔值使用选择框，其余数值一律 Entry；默认值来自当前输入或参数目录，不再维护单独的数值选项表。普通编辑 updateGUI=False，并就地标记“自定义”；切换轴、预设或删除预设只使当前 section 重绘，其他标签在下次打开时失效重建。`test_tglf_parameters` 验证计划、预设隔离与保存元数据往返；`test_gui_tab_pages` 使用原生 OMFIT/Tk 控件验证切轴、应用预设、回车提交及无整窗刷新。后者的业务库 reader 使用隔离夹具，未将其等同于真实服务器工程保存重开测试。
 

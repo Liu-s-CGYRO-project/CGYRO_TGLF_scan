@@ -15,7 +15,9 @@ Long Description
 上层页签和子页签分别记住选择，切换页签不会自动生成文件或提交计算。
 工程总控的“TGLF 扫描”默认从 input.gacode 开始。选择剖面，点击“生成输入文件”，
 在 0.01–0.99、间隔 0.01 的网格上生成 input.tglf。径向坐标可选 rho 或 r/a。
-生成前可选择 OMFIT 原生 TGLF 场景，并直接设置 SAT_RULE、KYGRID_MODEL、NKY、NMODES、
+在“计算参数 → 参数预设”或剖面文件的“输入准备”页，可选择 Kim（JET）、Di Siena（ITER）、
+Najlaoui（JET）及原有 OMFIT 方案。Kim 只应用表 5 的模型开关，各半径沿用实际输入的粒子组成。
+生成前也可直接设置 SAT_RULE、KYGRID_MODEL、NKY、NMODES、
 USE_BPER、USE_BPAR 和 UNITS。“更多 TGLF 参数”提供常用及输入中全部数值参数，修改后回车。
 显式设置会写入生成种子和每个生成输入，生成记录保存实际参数；成功后沿用这份种子。
 生成使用 TGYRO 预处理命令、环境页选择的程序版本及共用队列。

@@ -8,7 +8,19 @@
 
 ## 参数预设与数值编辑
 
-“计算参数”页顶部的“参数预设”下拉框与输入准备页共用同一套方案：Quench/SAT0、常规 SAT0/SAT1/SAT2、JET、ST、ITER。选择后应用对应模型参数，再按需要修改。内置方案只修改其定义的模型字段，其他手动设置保留。
+“计算参数”和剖面文件的“输入准备”页共用“参数预设”。除原有 OMFIT 方案外，还可选择以下三个 TGLF 预设。它们沿用各张 `input.tglf` 的物种数、顺序和剖面。
+
+| 参数预设 | `KYGRID_MODEL` | `FILTER` | 参数来源 |
+| --- | ---: | ---: | --- |
+| Kim（JET） | 4 | 2.0 | [Kim 等，Nucl. Fusion 63 (2023) 112004，表 5](https://doi.org/10.1088/1741-4326/ace26d) |
+| Di Siena（ITER） | 4 | −0.1 | 提供的 ITER 输入卡。[Di Siena 等，Nucl. Fusion 66 (2026) 046001](https://doi.org/10.1088/1741-4326/ae46af) |
+| Najlaoui（JET） | 1 | −1.5 | 提供的 JET 输入卡。[Najlaoui 等，Plasma Phys. Control. Fusion 67 (2025) 045016](https://doi.org/10.1088/1361-6587/adbc1d) |
+
+三个预设都设置 `SAT_RULE=2`、`NMODES=6`、`NKY=19`、`NBASIS_MIN=2`、`NBASIS_MAX=6`、`ALPHA_MACH=0`、`ALPHA_E=1`、`ALPHA_QUENCH=0`，开启 `USE_BPER` 和 `USE_AVE_ION_GRID`，关闭 `USE_BPAR`。
+
+Kim（JET）还设置 Miller 几何 `GEOMETRY_FLAG=1`。表 5 中的 `NS=4` 描述论文算例，应用到三物种卡时仍使用原有三个物种。Di Siena（ITER）与 Najlaoui（JET）还设置 `XNU_MODEL=3`、`WIDTH_MIN=-0.3`、`WIDTH=3.0`、`WDIA_TRAPPED=1.0`、`USE_MHD_RULE=.true.`、`UNITS='CGYRO'`、`ALPHA_ZF=-1`。
+
+切换内置预设时，上一套独有的开关恢复沿用当前输入。手动编辑的字段继续生效，直到新预设为该字段指定值。已生成的卡按卡内实际值作为输入。
 
 单个数值参数均用输入框，包括 `SAT_RULE`、`KYGRID_MODEL` 等整数模型编号；修改后回车提交。逻辑开关、参数名称、归一化和预设方案仍使用选择控件。问号帮助保留各编号含义。普通数值提交不重建整页，也不触发 OMFIT 主数据树重绘；运行预览在下次查看时更新。选择预设只更新当前参数区域，搜索与翻页只替换列表。
 

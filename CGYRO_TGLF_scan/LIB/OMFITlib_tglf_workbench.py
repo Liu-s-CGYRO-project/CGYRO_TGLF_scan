@@ -17,19 +17,33 @@ RADII = [index / 100.0 for index in range(1, 100)]
 
 MODES = OrderedDict([('原始参数', 'single'), ('一维参数扫描', '1d'),
                      ('二维参数扫描', '2d'), ('三维参数扫描', '3d'), ('不确定度扫描（UQ）', 'uq')])
-# These scenarios are the bundled OMFIT TGYRO/TGLFinputGUI definitions.
-SCENARIO_FIELDS = ('ALPHA_QUENCH', 'SAT_RULE', 'ALPHA_ZF', 'NKY', 'KYGRID_MODEL',
-                   'NBASIS_MAX', 'NMODES', 'UNITS', 'XNU_MODEL', 'WDIA_TRAPPED', 'USE_AVE_ION_GRID')
+# Model switches from the bundled OMFIT TGYRO/TGLFinputGUI.
+_sat0 = dict(ALPHA_QUENCH=0., SAT_RULE=0, ALPHA_ZF=0., NKY=12, KYGRID_MODEL=1,
+             NBASIS_MAX=4, NMODES=4, UNITS='GYRO', XNU_MODEL=2, WDIA_TRAPPED=0., USE_AVE_ION_GRID=False)
+_sat1 = dict(_sat0, SAT_RULE=1, ALPHA_ZF=1.)
+_sat2 = dict(_sat1, SAT_RULE=2, KYGRID_MODEL=4, NBASIS_MAX=6, UNITS='CGYRO',
+             XNU_MODEL=3, WDIA_TRAPPED=1., USE_AVE_ION_GRID=True)
+SCENARIO_FIELDS = tuple(_sat0)
+# Only switches listed in the table or supplied input cards are overrides.
+# In particular the four species in Kim's JET case describe its input plasma.
+_paper_common = dict(SAT_RULE=2, NMODES=6, NKY=19, NBASIS_MIN=2, NBASIS_MAX=6,
+                     USE_BPER=True, USE_BPAR=False, USE_AVE_ION_GRID=True,
+                     ALPHA_MACH=0.0, ALPHA_E=1.0, ALPHA_QUENCH=0.0)
+_paper_cards = dict(_paper_common, XNU_MODEL=3, WIDTH_MIN=-0.3, WIDTH=3.0, WDIA_TRAPPED=1.0,
+                    USE_MHD_RULE=True, UNITS='CGYRO', ALPHA_ZF=-1.0)
 SCENARIOS = OrderedDict([
-    ('input', ('沿用当前设置', None)),
-    ('custom', ('自定义', None)),
-    ('quench', ('Quench · SAT0', (1.0, 0, 0.0, 12, 1, 4, 4, 'GYRO', 2, 0.0, False))),
-    ('sat0', ('常规 · SAT0', (0.0, 0, 0.0, 12, 1, 4, 4, 'GYRO', 2, 0.0, False))),
-    ('sat1', ('常规 · SAT1', (0.0, 1, 1.0, 12, 1, 4, 4, 'GYRO', 2, 0.0, False))),
-    ('sat2', ('常规 · SAT2', (0.0, 2, 1.0, 12, 4, 6, 4, 'CGYRO', 3, 1.0, True))),
-    ('jet', ('JET · SAT2', (0.0, 2, 1.0, 17, 4, 6, 5, 'CGYRO', 3, 1.0, True))),
-    ('st', ('ST', (0.0, 1, 1.0, 12, 4, 4, 4, 'GYRO', 2, 0.0, False))),
-    ('iter', ('ITER', (0.0, 1, 1.0, 20, 4, 4, 4, 'GYRO', 2, 0.0, False))),
+    ('input', ('沿用当前设置', {})),
+    ('custom', ('自定义', {})),
+    ('quench', ('Quench · SAT0', dict(_sat0, ALPHA_QUENCH=1.))),
+    ('sat0', ('常规 · SAT0', _sat0)),
+    ('sat1', ('常规 · SAT1', _sat1)),
+    ('sat2', ('常规 · SAT2', _sat2)),
+    ('jet', ('JET · SAT2', dict(_sat2, NKY=17, NMODES=5))),
+    ('st', ('ST', dict(_sat1, KYGRID_MODEL=4))),
+    ('iter', ('ITER', dict(_sat1, NKY=20, KYGRID_MODEL=4))),
+    ('kim_jet', ('Kim（JET）', dict(_paper_common, GEOMETRY_FLAG=1, KYGRID_MODEL=4, FILTER=2.0))),
+    ('di_siena_iter', ('Di Siena（ITER）', dict(_paper_cards, KYGRID_MODEL=4, FILTER=-0.1))),
+    ('najlaoui_jet', ('Najlaoui（JET）', dict(_paper_cards, KYGRID_MODEL=1, FILTER=-1.5))),
 ])
 USER_SCENARIO_PREFIX = 'user:'
 INTEGERS = INPUT_INTEGERS | {'并发任务数', 'UQ 参数数', '样本数', '扫描点数'}
@@ -154,26 +168,29 @@ def scenario_choices(settings):
 
 def apply_scenario(settings, source, factory=dict):
     chosen = settings['scenario']
-    if chosen in ('input', 'custom'):
-        if chosen == 'input':
-            for name in SCENARIO_FIELDS:
-                item = settings['parameters'].get(name, None)
-                if item is not None:
-                    item['enabled'] = False
-            settings['units_override'] = ''
+    if chosen == 'custom':
         return
     saved = chosen.startswith(USER_SCENARIO_PREFIX)
     values = (settings['presets'][chosen[len(USER_SCENARIO_PREFIX):]] if saved
-              else dict(zip(SCENARIO_FIELDS, SCENARIOS[chosen][1])))
+              else SCENARIOS[chosen][1])
     # Validate the whole small patch before changing settings. A preset from
     # another species set must not be half-applied to this input.
     draft = dict(parameters={name: dict(enabled=True, value=value) for name, value in values.items()
                              if name != 'UNITS'}, units_override=values.get('UNITS', ''))
     checked = parameter_overrides(draft, source)
+    # Release switches from the previous preset. An explicit edit made since
+    # selecting it belongs to the user until a new preset sets that field.
+    release = set(settings['preset_fields'])
+    if chosen == 'input':
+        release.update(SCENARIO_FIELDS)
     if saved:
-        for item in settings['parameters'].values():
-            item['enabled'] = False
-    settings['units_override'] = checked.pop('UNITS', '')
+        release.update(settings['parameters'])
+        release.add('UNITS')
+    for name in release.intersection(settings['parameters']):
+        settings['parameters'][name]['enabled'] = False
+    settings['preset_fields'] = list(checked)
+    if 'UNITS' in checked or 'UNITS' in release:
+        settings['units_override'] = checked.pop('UNITS', '')
     for name, value in checked.items():
         settings['parameters'].setdefault(name, factory()).update(dict(enabled=True, value=value))
 
@@ -188,6 +205,9 @@ def save_preset(settings, source, name, factory=dict):
     values.update(parameter_overrides(settings, source))
     settings['presets'][name] = values
     settings['scenario'] = USER_SCENARIO_PREFIX + name
+    # Saving takes a snapshot. A dormant scan-axis override still belongs to
+    # the previous preset and must be released on the next selection.
+    settings['preset_fields'] = sorted(set(settings['preset_fields']).union(values))
 
 
 def generation_overrides(root, settings):
@@ -287,6 +307,12 @@ def initialize(root, factory=dict):
         settings.setdefault(key, value)
     for key in ('selected', 'parameters', 'uq', 'presets'):
         settings.setdefault(key, factory())
+    if 'preset_fields' not in settings:
+        # Restore field ownership when opening a project saved by an older release.
+        scenario = settings['scenario']
+        prior = (settings['presets'].get(scenario[len(USER_SCENARIO_PREFIX):], {})
+                 if scenario.startswith(USER_SCENARIO_PREFIX) else SCENARIOS.get(scenario, ('', {}))[1])
+        settings['preset_fields'] = list(prior)
     rows = input_rows(root)
     settings.setdefault('source', 'radial')
     # An unavailable saved choice stays visible as a missing input, never switches silently.
