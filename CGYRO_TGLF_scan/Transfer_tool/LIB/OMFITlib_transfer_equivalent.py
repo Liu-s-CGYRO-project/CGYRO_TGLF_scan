@@ -17,6 +17,7 @@ SCHEMAS = {
     'tglf': ('NS', dict(z='ZS_', mass='MASS_', n='AS_', t='TAUS_',
                        gn='RLNS_', gt='RLTS_', v='VPAR_', dv='VPAR_SHEAR_')),
 }
+TGLF_FLOW_FIELDS = {'v': 'VPAR_', 'dv': 'VPAR_SHEAR_', 'vn': 'VNS_SHEAR_', 'vt': 'VTS_SHEAR_'}
 
 
 def locpargen_rhostar(path, cgyro):
@@ -129,23 +130,33 @@ def _jet_ion_audit(ions, electron):
                 pressure=moments['pressure'], pressure_gradient=moments['pressure_gradient'])
 
 
-def jet_fuel_local_input(card, source_ions):
-    """Apply JET 96482 command box 14 to one uncorrected, native local CGYRO card."""
-    if float(card.get('GLOBAL_FLAG', 0)) != 0:
+def jet_fuel_local_input(card, source_ions, kind='cgyro'):
+    """Apply the six JET moments in the native card's own normalization."""
+    count_key, schema = SCHEMAS[kind]
+    if kind == 'cgyro' and float(card.get('GLOBAL_FLAG', 0)) != 0:
         raise ValueError('JET 96482 方案只适用于 GLOBAL_FLAG=0 的局部 CGYRO 卡。')
-    _, schema = SCHEMAS['cgyro']
     fields = {name: schema[name] for name in ('z', 'mass', 'n', 't', 'gn', 'gt')}
-    rows = _local_rows(card, 'cgyro', fields)
+    rows = _local_rows(card, kind, fields)
+    if kind == 'tglf':
+        # All four native flow/shear arrays default to zero in absent slots.
+        # locpargen writes common VPAR and VPAR_SHEAR for all species.
+        for name, prefix in TGLF_FLOW_FIELDS.items():
+            if any(prefix + str(i) in card for i in range(1, len(rows) + 1)):
+                fields[name] = prefix
+                for i, row in enumerate(rows, 1):
+                    row[name] = float(card.get(prefix + str(i), 0.0))
+                    if not math.isfinite(row[name]):
+                        raise ValueError('TGLF 粒子参数包含非有限数值：' + prefix + str(i))
     ions = [row for row in rows if row['z'] > 0]
     electrons = [row for row in rows if row['z'] == -1]
     if (len(electrons) != 1 or len(ions) != len(source_ions) or len(rows) != len(ions) + 1
             or electrons[0]['n'] <= 0 or any(row['n'] < 0 for row in ions)):
-        raise ValueError('CGYRO 全物种卡须包含与源剖面一致的离子、唯一的电子和有效密度。')
+        raise ValueError(kind.upper() + ' 全物种卡须包含与源剖面一致的离子、唯一的电子和有效密度。')
     for row, ion in zip(ions, source_ions):
         # locpargen writes ions in input.gacode order and rounds MASS=A/2 to six significant digits.
         if (row['z'] != ion['charge']
                 or not math.isclose(row['mass'], ion['mass'] / 2, rel_tol=5e-6)):
-            raise ValueError('局部 CGYRO 卡与源剖面的离子顺序或身份不符：' + ion['name'])
+            raise ValueError('局部 ' + kind.upper() + ' 卡与源剖面的离子顺序或身份不符：' + ion['name'])
     main_index, fuel_indices, impurity_indices = jet_fuel_groups(source_ions)
     fuel = [ions[i] for i in fuel_indices]
     impurities = [ions[i] for i in impurity_indices]
@@ -156,22 +167,28 @@ def jet_fuel_local_input(card, source_ions):
     main = dict(ions[main_index], n=density, gn=math.fsum(row['n'] * row['gn'] for row in fuel) / density)
     s1 = math.fsum(row['z'] * row['n'] for row in impurities)
     s2 = math.fsum(row['z']**2 * row['n'] for row in impurities)
-    impurity = {key: math.fsum(row['n'] * row[key] for row in impurities) / s0 for key in ('t', 'gn', 'gt')}
+    impurity = {key: math.fsum(row['n'] * row[key] for row in impurities) / s0
+                for key in fields if key not in ('z', 'n', 'mass')}
     impurity['z'] = s2 / s1
     impurity['n'] = s1 / impurity['z']
     impurity['mass'] = math.fsum(row['z'] * row['n'] * row['mass'] for row in impurities) / s1
     electron = dict(electrons[0], z=-1.0, n=1.0, t=1.0)
     audit = dict(rule=JET_FUEL_RULE, before=_jet_ion_audit(ions, electrons[0]),
                  after=_jet_ion_audit([main, impurity], electron))
-    species_fields = {prefix[:-1] for prefix in fields.values()} | {'DLNNDR_SCALE', 'DLNTDR_SCALE'}
+    species_fields = {prefix[:-1] for prefix in fields.values()}
+    if kind == 'cgyro':
+        species_fields.update(('DLNNDR_SCALE', 'DLNTDR_SCALE'))
+    else:
+        species_fields.update(prefix[:-1] for prefix in TGLF_FLOW_FIELDS.values())
     for key in list(card.keys()):
         prefix, _, suffix = key.rpartition('_')
-        curvature = suffix.isdigit() and prefix in ('SDLNNDR', 'SDLNTDR')
+        curvature = kind == 'cgyro' and (key == 'SBETA' or (suffix.isdigit() and prefix in ('SDLNNDR', 'SDLNTDR')))
         stale_slot = suffix.isdigit() and prefix in species_fields and int(suffix) > 3
-        if key == 'SBETA' or curvature or stale_slot:
+        if curvature or stale_slot:
             del card[key]
-    card['N_SPECIES'] = 3
-    for index, row in enumerate((main, impurity, electron), 1):
+    card[count_key] = 3
+    ordered = (electron, main, impurity) if kind == 'tglf' else (main, impurity, electron)
+    for index, row in enumerate(ordered, 1):
         for field, prefix in fields.items():
             card[prefix + str(index)] = row[field]
     return dict(main_count=1, equivalent=audit)
@@ -179,13 +196,13 @@ def jet_fuel_local_input(card, source_ions):
 
 def jet_fuel_audit_lines(local_records):
     lines = []
-    for entry in local_records.values():
+    for card_name, entry in local_records.items():
         record = entry.get('equivalent', {})
         if record.get('rule', '') == JET_FUEL_RULE:
             values = ['{} {:.9g} → {:.9g}'.format(label, record['before'][field], record['after'][field])
                       for field, label in (('charge_residual', 'ΣZn−ne'), ('zeff', 'Zeff'),
                                            ('pressure', 'ΣnT'), ('pressure_gradient', 'ΣnT(gn+gT)'))]
-            lines.append('ρ={:g}  {}'.format(entry['rho'], '，'.join(values)))
+            lines.append('{}  ρ={:g}  {}'.format(card_name, entry['rho'], '，'.join(values)))
     return lines
 
 

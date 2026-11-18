@@ -4,7 +4,7 @@ Public methods remain inherited by ProjectUI for saved GUIs and callbacks.
 Keep OMFITlib imports at module scope: native GUI execution clears its import hook.
 """
 from OMFITlib_gui_fonts import configure_window_fonts, gui_font, style_widget
-from builtins import dict, isinstance, len, min, next, str, sum
+from builtins import any, dict, isinstance, len, min, next, str, sum
 from collections import OrderedDict
 import tkinter as tk
 from tkinter import ttk
@@ -35,6 +35,12 @@ class TransferPage:
         ready = next((row for row in files if 'cgyro' in row['paths']), None)
         if ready is not None:
             self.nav('设置 CGYRO 扫描', 'cgyro', cgyro_source_mode=ready['mode'])
+        if any(row['mode'] == 'generated' and 'tglf' in row['paths'] for row in files):
+            self.ui.Button('设置 TGLF 扫描', lambda: self.open_transfer_tglf(''), refresh_tree=False)
+
+    def open_transfer_tglf(self, scheme):
+        self.actions.select_tglf_transfer(scheme)
+        self.select_page('tglf')
 
     def transfer_advanced(self):
         self.label('已有种子输入继续使用；缺少时，运行按钮自动使用内置种子。这里只在需要调整模型参数或换用其他种子时操作。')
@@ -59,13 +65,19 @@ class TransferPage:
             self.ui.CheckBox(self.prefix + "['transfer_scheme_flags'][{!r}]".format(key),
                              caption, default=False, updateGUI=False, refresh_tree=False)
         self.ui.Button('生成所选方案输入', self.actions.generate_transfer_schemes, updateGUI=True,
-                       help='依次运行转换流程；全部成功后保存各方案局部输入。不会提交 CGYRO 扫描。')
+                       help='各方案全部生成成功后，保存每个半径的 CGYRO 和 TGLF 输入卡。')
         groups = module(self.root, 'transfer').get('OUTPUTS', {}).get('CGYRO_schemes', {})
         for key, group in groups.items():
             self.label('{}：{} 个半径输入'.format(group['label'], len(group['inputs'])))
         if groups:
             self.nav('设置方案 CGYRO 扫描', 'cgyro', cgyro_source_mode='schemes')
-        self.label('修改转换设置后，重新生成所选方案；已保存的 CGYRO 结果继续保留。')
+            available = [key for key, group in groups.items() if group.get('tglf_inputs', {})]
+            if available:
+                selected = self.settings.get('tglf', {}).get('transfer_scheme', '')
+                scheme = selected if selected in available else available[0]
+                self.ui.Button('设置方案 TGLF 扫描', lambda: self.open_transfer_tglf(scheme), refresh_tree=False)
+            else:
+                self.label('已存方案只有 CGYRO 卡。重新生成所选方案即可用于 TGLF。')
 
     def transfer_files(self, rows):
         if not rows:

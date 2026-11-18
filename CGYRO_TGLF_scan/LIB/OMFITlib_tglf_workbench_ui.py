@@ -1,6 +1,6 @@
 """A single, narrow TGLF workbench for local inputs and radial scans."""
 from OMFITlib_gui_fonts import configure_window_fonts, gui_font, style_widget
-from OMFITlib_gui_api import plot_view
+from OMFITlib_gui_api import plot_view, show_help
 from builtins import abs, any, bool, dict, enumerate, float, getattr, int, isinstance, iter, len, list, max, min, next, range, set, sorted, str, sum, zip
 from collections import OrderedDict
 from datetime import datetime, timezone
@@ -14,9 +14,10 @@ from OMFITlib_project import MODULES, location, read, runtime_issues
 from OMFITlib_tglf_preparation import preparation_resources
 from OMFITlib_tglf_workbench import (COMMON, INTEGERS, MODES, PROFILE_PATH, SCENARIOS, USER_SCENARIO_PREFIX,
     apply_scenario, fully_failed, generation_overrides, generation_seed, initialize, parameter_value,
-    plan, radial_input_issues, save_preset, scan_parameter_names, scenario_choices, selected_rows, uq_parameter_count)
+    plan, radial_input_issues, save_preset, scan_parameter_names, scenario_choices, selected_rows, source_rows, uq_parameter_count)
 from OMFITlib_tglf_parameters import GROUPS, parameter_catalog, parameter_values, scalar
 from OMFITlib_tglf_parameter_help import parameter_help
+from OMFITlib_transfer_presets import JET_FUEL_MODE
 
 TABS = OrderedDict([('scan', '输入与扫描'), ('parameters', '计算参数'),
                     ('results', '结果与记录'), ('multi', '多个剖面对比')])
@@ -35,9 +36,9 @@ class TGLFWorkbench:
     def load_selection(self):
         """Refresh input references when a changed tab is next rendered."""
         self.settings, self.rows = initialize(self.root, self.actions.factory)
-        self.available = [row for row in self.rows if row['group'] == self.settings['source']]
+        self.available = source_rows(self.rows, self.settings)
         try:
-            self.selected = selected_rows(self.root, self.settings)
+            self.selected = selected_rows(self.root, self.settings, self.rows)
         except (TypeError, ValueError, KeyError):
             self.selected = []
         self.reference = (self.selected or self.available or [None])[0]
@@ -70,7 +71,7 @@ class TGLFWorkbench:
     def scan(self):
         # CompoundGUI gives the sub-tabs their own native Notebook context.
         self.view.compound(('GUIS', 'TGLF_controls'), workbench=self)
-        self.view.show_message(first_line=True)
+        self.view.show_message(first_line=True, local=self.settings)
 
     def render_scan_tabs(self):
         def render(page):
@@ -95,11 +96,13 @@ class TGLFWorkbench:
         for caption, name in [('剖面文件（input.gacode）', 'radial'),
                               ('Transfer_tool 生成的半径输入', 'transfer'),
                               ('当前 / 导入 TGLF 文件', 'current'), ('局部互转文件', 'local')]:
-            if name in ('radial', 'current') or any(row['group'] == name for row in self.rows) or self.settings['source'] == name:
+            if name in ('radial', 'current', 'transfer') or any(row['group'] == name for row in self.rows) or self.settings['source'] == name:
                 groups[caption] = name
         self.ui.ComboBox(self.prefix + "['source']", groups, '输入来源', state='readonly', updateGUI=True, refresh_tree=False)
         if self.settings['source'] == 'radial':
             self.profile()
+        elif self.settings['source'] == 'transfer':
+            self.transfer_input()
         elif self.settings['source'] == 'current':
             self.ui.FilePicker(self.view.prefix + "['tglf_file']", 'TGLF 文件', default='', transferRemoteFile=None,
                 postcommand=lambda location=None: self.actions.import_input('tglf'), updateGUI=True,
@@ -107,6 +110,37 @@ class TGLFWorkbench:
             source = self.view.settings.get('tglf_import_source', {})
             if source.get('path', None):
                 self.label('已载入：' + source['path'])
+
+    def transfer_input(self):
+        choices = OrderedDict()
+        for row in self.rows:
+            if row['group'] != 'transfer':
+                continue
+            caption = row['scheme_label']
+            if not row['scheme']:
+                caption = '本次单方案' + (' · ' + caption if caption else '')
+            choices[caption] = row['scheme']
+        scheme = self.settings['transfer_scheme']
+        if choices:
+            if scheme not in choices.values():
+                choices[(scheme or '本次单方案') + '（需重新生成）'] = scheme
+            self.ui.ComboBox(self.prefix + "['transfer_scheme']", choices, '处理方案',
+                             state='readonly', updateGUI=True, refresh_tree=False)
+        if self.available:
+            self.label('可用半径：{} 个。'.format(len(self.available)))
+            self.ui.Button('选择计算半径', lambda: self.select_scan_page('settings'), refresh_tree=False)
+        else:
+            outputs = read(self.root, ('Transfer_tool', 'OUTPUTS'), {})
+            single = outputs.get('Particle_processing', {}).get('options', {})
+            tab = 'run'
+            if not scheme and single.get('particle_mode', '') == JET_FUEL_MODE:
+                self.label('请重新运行 JET 96482 方案，生成三物种 TGLF 输入。')
+            elif scheme or (not choices and outputs.get('CGYRO_schemes', {})):
+                self.label('请在“转换方案批量选择”重新生成所需方案的 TGLF 输入。')
+                tab = 'schemes'
+            else:
+                self.label('请先运行 Transfer_tool，生成各半径的 TGLF 输入。')
+            self.view.nav('打开 Transfer_tool', 'transfer', transfer_tab=tab)
 
     def scan_settings(self):
         if not self.available:
@@ -123,8 +157,15 @@ class TGLFWorkbench:
             self.ui.ComboBox(self.prefix + "['preview']", choices, '查看输入', state='readonly', updateGUI=False, refresh_tree=False)
             def show_input():
                 row = next(row for row in preview_rows if row['key'] == self.settings['preview'])
-                self.view.show_transfer_input(anchor, row['path'], row['label'])
-            self.ui.Button('查看 / 编辑输入', show_input, refresh_tree=False)
+                if row.get('scheme', ''):
+                    card = read(self.root, row['path'])
+                    if card is None:
+                        raise ValueError('方案输入已更新，请刷新页面。')
+                    show_help(anchor, [row['label']] + ['{} = {}'.format(k, v) for k, v in card.items()])
+                else:
+                    self.view.show_transfer_input(anchor, row['path'], row['label'])
+            self.ui.Button('查看方案输入' if self.reference.get('scheme', '') else '查看 / 编辑输入',
+                           show_input, refresh_tree=False)
         self.ui.ComboBox(self.prefix + "['mode']", MODES, '计算方式', state='readonly', updateGUI=True, refresh_tree=False)
         mode = self.settings['mode']
         values = parameter_values(self.source)
@@ -262,7 +303,7 @@ class TGLFWorkbench:
                 with self.ui.same_row():
                     for row in self.available[start:start + 2]:
                         self.view.cgyro_checkbox(self.prefix + "['selected'][{!r}]".format(row['key']),
-                            self.settings['selected'], row['key'], row['label'])
+                            self.settings['selected'], row['key'], row['radius_label'])
 
     def generation_parameters(self):
         seed = generation_seed(self.root)
@@ -406,9 +447,7 @@ class TGLFWorkbench:
         self.mark_custom(combo)
 
     def results(self):
-        message = self.root['SETTINGS']['WORKBENCH'].get('message', '')
-        if message:
-            self.label(message)
+        self.view.show_message(local=self.settings)
         module = self.root.get('TGLF_scan', {})
         runs = run_records(module)
         if not runs:

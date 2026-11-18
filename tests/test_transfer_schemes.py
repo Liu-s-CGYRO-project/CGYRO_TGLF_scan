@@ -10,6 +10,8 @@ from omfit_mapping import OMFITMapping
 import test_project as project_tests
 import test_compare as compare_tests
 import OMFITlib_transfer_schemes as schemes
+from OMFITlib_tglf_workbench import initialize as initialize_tglf
+from OMFITlib_tglf_workbench_ui import TGLFWorkbench
 from OMFITlib_compare_state import activate_source, selected_cgyro_runs, selection_check
 from OMFITlib_compare_cases import CaseSelection
 from OMFITlib_project_ui import ProjectUI
@@ -43,9 +45,11 @@ class SchemeTests(unittest.TestCase):
         self.node['INPUTS']['input.gacode']['raw_profile'] = 9
         self.node['SETTINGS']['SETUP']['num_nodes'] = 999
         q = 2. if options['particle_mode'] == 'all' else 3.
-        self.node['OUTPUTS'].update(dict(Profiles_gen={'input.cgyro_1': project_tests.cgyro()},
+        self.node['OUTPUTS'].update(dict(Profiles_gen={'input.cgyro_1': project_tests.cgyro(),
+                    'input.tglf_1': dict(NS=6 if q == 2. else 3, ZS_1=-1, BETAE=q/100)},
             Particle_processing=dict(options=options, main_count=1, plot_profile=Untouched(),
-                local_inputs={'input.cgyro_1': dict(rho=.33, main_count=1, rhostar=.002)})))
+                local_inputs={'input.cgyro_1': dict(rho=.33, main_count=1, rhostar=.002, locpargen_qn=True),
+                              'input.tglf_1': dict(rho=.33, main_count=1, locpargen_qn=True)})))
         self.node['OUTPUTS']['Profiles_gen']['input.cgyro_1']['Q'] = q
 
     def prepare(self, factory=dict):
@@ -64,12 +68,18 @@ class SchemeTests(unittest.TestCase):
         self.assertEqual(list(frozen), ['all', 'separate_fast'])
         self.assertIsInstance(frozen['all'], OMFITMapping)
         self.assertIsInstance(frozen['all']['inputs'], OMFITMapping)
+        self.assertIsInstance(frozen['all']['tglf_inputs'], OMFITMapping)
+        self.assertEqual(frozen['all']['tglf_inputs']['input.tglf_1']['NS'], 6)
+        self.assertNotIn('KY', frozen['all']['tglf_inputs']['input.tglf_1'])
         self.assertIs(self.node['OUTPUTS'], previous)
         self.assertIs(self.node['INPUTS'], original)
         self.assertEqual(original['input.gacode'], {'raw_profile': 7})
         self.assertEqual(self.node['SETTINGS']['SETUP'], setup)
         self.assertNotIn('plot_profile', frozen['all']['particle_record'])
         self.assertEqual(frozen['all']['source_digest'], frozen['separate_fast']['source_digest'])
+        for group in frozen.values():
+            for record in group['particle_record']['local_inputs'].values():
+                self.assertTrue(record['locpargen_qn'])
         self.assertEqual(frozen['separate_fast']['inputs']['input.cgyro_1']['Q'], 3.)
 
     def test_failure_or_interrupt_leaves_previous_set_and_results(self):
@@ -90,6 +100,53 @@ class SchemeTests(unittest.TestCase):
     def test_empty_selection_does_not_generate(self):
         with self.assertRaisesRegex(ValueError, '勾选'):
             schemes.generate_schemes(self.node, {}, self.options, lambda *a: self.fail('generated'))
+
+    def test_missing_or_mismatched_tglf_radius_preserves_both_previous_input_sets(self):
+        previous = self.prepare()
+        for missing in (True, False):
+            def incomplete(*args):
+                self.generate(*args)
+                outputs = self.node['OUTPUTS']
+                if missing:
+                    del outputs['Profiles_gen']['input.tglf_1']
+                else:
+                    outputs['Particle_processing']['local_inputs']['input.tglf_1']['rho'] = .5
+            with patch.object(schemes, 'generation_issues', return_value=[]), self.assertRaises(ValueError):
+                schemes.generate_schemes(self.node, dict(all=True), self.options, incomplete)
+            self.assertIs(self.node['OUTPUTS']['CGYRO_schemes'], previous)
+
+    def test_tglf_scheme_picker_and_action_use_frozen_cards_without_live_generation_settings(self):
+        self.prepare()
+        self.host.configure('tglf')
+        self.node['SETTINGS']['PHYSICS']['generation'] = {'particle_mode': 'new-draft'}
+        ui = project_tests.UI(self.root)
+        view = ProjectUI(self.actions, ui)
+        for scheme in ('all', 'separate_fast'):
+            self.actions.select_tglf_transfer(scheme)
+            workbench = TGLFWorkbench(view)
+            workbench.input()
+            choices = next(args[1] for name, args, _ in ui.events if name == 'ComboBox' and args[2] == '处理方案')
+            self.assertEqual(set(choices.values()), {'all', 'separate_fast'})
+            self.assertEqual([row['scheme'] for row in workbench.selected], [scheme])
+            self.actions.run_tglf_plan()
+            sent = self.root['TGLF_scan']['SCRIPTS']['run_workbench'].run.call_args.kwargs['plan']['sources']
+            self.assertEqual([row['path'] for row in sent],
+                [('Transfer_tool', 'OUTPUTS', 'CGYRO_schemes', scheme, 'tglf_inputs', 'input.tglf_1')])
+        self.actions.settings['generated_tglf_source'] = json.dumps(sent[0]['path'])
+        self.actions.use_generated_tglf()
+        self.assertEqual(self.host.tg['FILES']['input.tglf']['BETAE'], .03)
+        self.actions.settings['message'] = '已完成 4 个输入组合，结果已保存到 RUN_DB。'
+        ui.events.clear()
+        view.show_message(local=workbench.settings)
+        self.assertFalse(ui.events)
+
+    def test_legacy_cgyro_only_groups_still_list_cgyro_and_offer_no_tglf_card(self):
+        groups = self.prepare()
+        for group in groups.values():
+            del group['tglf_inputs']
+        self.assertEqual(len(schemes.scheme_sources(self.root)), 2)
+        _, rows = initialize_tglf(self.root)
+        self.assertFalse(any(row['group'] == 'transfer' for row in rows))
 
     def test_all_preflights_finish_before_generation(self):
         with patch.object(schemes, 'generation_issues', side_effect=[[], ['bad preset']]):

@@ -48,7 +48,7 @@ try:
               'CGYRO 使用 COLLISION_MODEL={}、Z_EFF_METHOD=1。'.format(report['prescribed_zeff']['collision_model']))
     print('本轮主离子：' + '；'.join(main_ion_label(ion) for ion in report['main_ions']))
     if report['options']['particle_mode'] == JET_FUEL_MODE:
-        print('JET 96482：以完整源剖面生成局部卡，逐半径合并 CGYRO 粒子。TGLF 沿用全物种。')
+        print('JET 96482：全物种局部卡归并为三物种。CGYRO 顺序为热 D、等效热杂质、电子，TGLF 顺序为电子、热 D、等效热杂质。')
     elif report['options']['particle_mode'] == 'separate_fast':
         print('各半径生成：电子、一个热主离子、等效热杂质和等效快粒子；无密度的辅助组省略。')
         print('热杂质温度及温度梯度随合并主离子，密度梯度保持自身电荷密度梯度；快粒子独立保留压力及压力梯度。')
@@ -69,7 +69,7 @@ try:
     root['Transfer_file']['input.gacode'] = profile.duplicate()
     print('Transfer_tool：运行 TGYRO …')
     task_action(root['SCRIPTS']['tgyro_tglf.py'])
-    print('Transfer_tool：生成各半径的 input.cgyro / input.tglf …')
+    print('Transfer_tool：使用 profiles_gen -qn 生成各半径的 input.cgyro / input.tglf …')
     task_action(root['SCRIPTS']['profiles_gen4input.py'])
     if report['options']['particle_mode'] == JET_FUEL_MODE:
         for line in jet_fuel_audit_lines(outputs['Particle_processing']['local_inputs']):
@@ -111,4 +111,4 @@ except BaseException:
         else:
             branch['input.gacode'] = value
     raise
-print('Transfer_tool 完成。已生成各半径输入，可直接进入 CGYRO 扫描；“生成文件”可查看参数。')
+print('Transfer_tool 完成。各半径输入可在“生成文件”查看，并在 CGYRO 或 TGLF 扫描页使用。')

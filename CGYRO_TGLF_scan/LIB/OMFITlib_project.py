@@ -265,11 +265,17 @@ def transfer_generated_rows(root):
 
 
 def generated_tglf_sources(root):
-    sources = {str(radius): json.dumps(['TGLF_scan', 'input.tglf', radius])
-               for radius in read(root, ('TGLF_scan', 'input.tglf'), {}).keys()}
-    for row in transfer_generated_rows(root):
-        if 'tglf' in row['paths']:
-            sources['Transfer_tool / ' + row['label']] = json.dumps(row['paths']['tglf'])
+    sources = {}
+    for row in tglf_rows(root):
+        if row['group'] == 'radial':
+            label = str(row['rho'])
+        elif row['group'] == 'local':
+            label = 'Transfer_tool / 局部互转文件'
+        elif row['group'] == 'transfer':
+            label = 'Transfer_tool / ' + (row['label'] if row['scheme'] else row['radius_label'])
+        else:
+            continue
+        sources[label] = json.dumps(row['path'])
     return sources
 
 
@@ -433,7 +439,7 @@ class ProjectActions:
     def save_transfer_input(self, path, edits, expected_digest):
         path = tuple(path)
         available = [source for row in transfer_generated_rows(self.root) for source in row['paths'].values()]
-        available.extend(row['path'] for row in tglf_rows(self.root))
+        available.extend(row['path'] for row in tglf_rows(self.root) if not row.get('scheme', ''))
         current = read(self.root, path)
         if path not in available or current is None or input_digest(current) != expected_digest:
             raise ValueError('输入已更新，请点击“重载 / 撤销”后重新编辑。')
@@ -449,7 +455,7 @@ class ProjectActions:
             return current
         candidate = current.duplicate() if hasattr(current, 'duplicate') else copy.deepcopy(current)
         candidate.update(changes)
-        validate_input(candidate, code)
+        validate_input(candidate, code, local_tglf=(code == 'tglf' and path[:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen')))
         if hasattr(candidate, 'save'):
             candidate.save()
         if input_digest(read(self.root, path)) != expected_digest:
@@ -490,7 +496,8 @@ class ProjectActions:
         if target == 'cgyro':
             return self.prepare_cgyro_batch()
         selected = self.settings['transfer_source'] if source is None else source
-        if selected not in transfer_sources(self.root).values():
+        generated_tglf = target == 'tglf' and selected in generated_tglf_sources(self.root).values()
+        if not generated_tglf and selected not in transfer_sources(self.root).values():
             raise ValueError('请先选择 Transfer tool 中的输入或生成结果。')
         source_path = tuple(json.loads(selected))
         source = read(self.root, source_path)
@@ -498,8 +505,9 @@ class ProjectActions:
         if target == 'tglf':
             if kind != 'input.' + target:
                 raise ValueError('此目标需要 input.' + target + '，请先转换或选择对应文件。')
-            validate_input(source, target)
             if source_path[:3] == ('Transfer_tool', 'OUTPUTS', 'Profiles_gen'):
+                if not generated_tglf:
+                    raise ValueError('请重新运行 Transfer_tool 生成所选方案的 TGLF 半径输入。')
                 physics = self.root['Transfer_tool']['SETTINGS']['PHYSICS']
                 chosen = particle_options(physics.get('generation', {}))
                 previous_options = read(self.root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'options'))
@@ -1201,7 +1209,16 @@ class ProjectActions:
                   profile_source=source, radial_settings=options)
         self.settings['cgyro_source_mode'] = 'generated'
         rows = sync_cgyro_choices(self.root, self.settings, self.factory)
-        self.settings['message'] = 'Transfer_tool 已完成：已生成 {} 个 CGYRO 半径输入。'.format(len(rows))
+        self.select_tglf_transfer('')
+        self.settings['message'] = 'Transfer_tool 已为 {} 个半径生成 CGYRO 和 TGLF 输入。'.format(len(rows))
+
+    def select_tglf_transfer(self, scheme):
+        self.settings.setdefault('tglf', self.factory()).update(
+            dict(source='transfer', transfer_scheme=scheme, page='scan', scan_page='input'))
+
+    def _tglf_message(self, text):
+        self.settings.setdefault('tglf', self.factory())['message'] = text
+        self.settings['message'] = text
 
     def generate_transfer_schemes(self):
         node = module(self.root, 'transfer')
@@ -1218,7 +1235,9 @@ class ProjectActions:
                                 generate, self.factory)
         self.settings['cgyro_source_mode'] = 'schemes'
         sync_cgyro_choices(self.root, self.settings, self.factory)
-        self.settings['message'] = '已生成 {} 个转换方案的独立输入；到 CGYRO 扫描页选择半径并提交。'.format(len(keys))
+        previous = self.settings.get('tglf', {}).get('transfer_scheme', '')
+        self.select_tglf_transfer(previous if previous in keys else keys[0])
+        self.settings['message'] = '已为 {} 个处理方案生成 CGYRO 和 TGLF 输入。'.format(len(keys))
 
     def check(self):
         problems = []
@@ -1356,13 +1375,14 @@ class ProjectActions:
         self._record(title, status='inputs_copied', previous_tglf_files=archived)
         node['FILES'] = new_files
         node.get('_workbench_index', {}).pop(('FILES',), None)
-        self.settings['message'] = title + '。原 TGLF 输入和对应结果已保存在输入历史中。'
+        self._tglf_message(title + '。原 TGLF 输入和对应结果已保存在输入历史中。')
 
     def propose_tglf(self, incoming, title, source_path=None, destination='tglf'):
         incoming = incoming.duplicate() if hasattr(incoming, 'duplicate') else copy.deepcopy(incoming)
         if 'rho' in incoming:
             del incoming['rho']  # Remove the legacy Transfer metadata from the solver copy.
-        validate_input(incoming, 'tglf')
+        radial = tuple(source_path or ())[:2] in (('Transfer_tool', 'OUTPUTS'), ('TGLF_scan', 'input.tglf'))
+        validate_input(incoming, 'tglf', local_tglf=radial)
         if destination not in ('tglf', 'transfer'):
             raise ValueError('未知 TGLF 输入目标')
         branch = 'FILES' if destination == 'tglf' else 'INPUTS'
@@ -1370,7 +1390,7 @@ class ProjectActions:
         for record in pending_inputs(self.root, destination).values():
             record['status'] = 'superseded'
         if current is not None and not input_difference(current, incoming):
-            self.settings['message'] = '已选用此 TGLF 输入，参数内容未变化。'
+            self._tglf_message('已选用此 TGLF 输入，参数内容未变化。')
             return
         self.install_tglf(incoming, title, destination)
 
@@ -1381,12 +1401,13 @@ class ProjectActions:
             raise ValueError('所选 TGLF 记录已不存在')
         report = restore_native_results(node, record, self.factory)
         self._record('归位 TGLF 原生结果', status='complete', run_id=run_id, **report)
-        self.settings['message'] = '已将 {} 个点归位到原生扫描分支。'.format(report['moved'])
+        text = '已将 {} 个点归位到原生扫描分支。'.format(report['moved'])
         issues = report['conflicts'] + report['unavailable']
         if issues:
-            self.settings['message'] += ' {} 个点保持原位置：{}'.format(len(issues), '；'.join(issues[:3]))
+            text += ' {} 个点保持原位置：{}'.format(len(issues), '；'.join(issues[:3]))
             if len(issues) > 3:
-                self.settings['message'] += '；其余见操作历史。'
+                text += '；其余见操作历史。'
+        self._tglf_message(text)
         return report
 
     def run_tglf_plan(self):
@@ -1395,7 +1416,7 @@ class ProjectActions:
         issues = runtime_issues(self.root, 'tglf')
         if issues:
             raise ValueError('；'.join(issues))
-        if any(source['group'] == 'transfer' for source in prepared['sources']):
+        if any(source['group'] == 'transfer' and not source.get('scheme', '') for source in prepared['sources']):
             physics = self.root['Transfer_tool']['SETTINGS']['PHYSICS']
             chosen = particle_options(physics.get('generation', {}))
             previous = read(self.root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'options'))
@@ -1506,7 +1527,7 @@ class ProjectActions:
             profile_digest=profile_digest(profile), source=dict(settings.get('profile_source', {})),
             environment=environment, command=command, parameters=parameters)
         settings.update(dict(source='radial', page='scan', scan_page='settings', profile_changed=False))
-        self.settings['message'] = '输入文件已生成。'
+        self._tglf_message('输入文件已生成。')
 
     def resolve_input(self, record_id, use_incoming):
         record = pending_inputs(self.root).get(record_id, None)
@@ -1528,7 +1549,7 @@ class ProjectActions:
             record['status'] = 'accepted'
         else:
             record['status'] = 'kept_current'
-            self.settings['message'] = '已保留当前 TGLF 输入；Transfer / 导入候选保存在输入历史中。'
+            self._tglf_message('已保留当前 TGLF 输入；Transfer / 导入候选保存在输入历史中。')
 
     def import_transfer_seed(self, kind):
         key = 'transfer_' + kind + '_file'

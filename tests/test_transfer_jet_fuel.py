@@ -8,16 +8,18 @@ import runpy
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock
 
 from OMFITlib_transfer_equivalent import jet_fuel_audit_lines, jet_fuel_local_input
 from OMFITlib_transfer_particles import (JET_FUEL_LABEL, JET_FUEL_MODE, PRESETS,
-                                         detect_main_ions, prepare_particles, species)
+                                         NEUTRALITY_RULE, detect_main_ions, particle_options, prepare_particles, species)
 from OMFITlib_transfer_schemes import SCHEMES
 
 
 FIXTURES = Path(os.environ.get('OMFIT_JET96482_TEST_CARDS') or Path(__file__).with_name('fixtures') / 'jet_fuel_synthetic')
 SCRIPT = Path(__file__).resolve().parents[1] / 'CGYRO_TGLF_scan/Transfer_tool/SCRIPTS/profiles_gen4input.py'
 FIELDS = ('Z', 'MASS', 'DENS', 'TEMP', 'DLNNDR', 'DLNTDR')
+TGLF_FIELDS = ('ZS', 'MASS', 'AS', 'TAUS', 'RLNS', 'RLTS')
 CURVATURE = ('SDLNNDR', 'SDLNTDR')
 SOURCE = [('D', 1, 2.0005209, 'therm'), ('Be', 4, 8.9514317, 'therm'),
           ('Ni', 28, 58.304192, 'therm'), ('D', 1, 2.0005209, 'fast'), ('H', 1, 1.0004845, 'fast')]
@@ -29,8 +31,13 @@ class Card(dict):
         return copy.deepcopy(self)
 
 
+class Profile(Card):
+    def reorder_ions(self, order, verbose=False):
+        self['IONS'] = {i: self['IONS'][old] for i, old in enumerate(order, 1)}
+
+
 def source_profile(ions=SOURCE):
-    return Card(N_ION=len(ions), IONS=dict(enumerate(ions, 1)))
+    return Profile(N_ION=len(ions), IONS=dict(enumerate(ions, 1)))
 
 
 def original_cards():
@@ -53,6 +60,17 @@ def expected_results():
     return expected
 
 
+def native_tglf_fields(cgyro):
+    # locpargen_tglf writes the same six native scalars with electron in slot 1.
+    card = Card(NS=6, BETAE=.027, P_PRIME_LOC=-.031, ZEFF=1.8)
+    for j, i in enumerate((6, 1, 2, 3, 4, 5), 1):
+        for tglf, cfield in zip(TGLF_FIELDS, FIELDS):
+            card[f'{tglf}_{j}'] = cgyro[f'{cfield}_{i}']
+        card[f'VPAR_{j}'] = float(j)
+        card[f'VPAR_SHEAR_{j}'] = -float(j)
+    return card
+
+
 def audit_from_card(card):
     indices = range(1, int(card['N_SPECIES']) + 1)
     ions = [str(i) for i in indices if card['Z_' + str(i)] > 0]
@@ -66,6 +84,26 @@ def audit_from_card(card):
 
 
 class JetFuelTests(unittest.TestCase):
+    def test_all_transfer_presets_request_qn_in_local_generation(self):
+        profile = source_profile()
+        for scheme, (_, overrides) in SCHEMES.items():
+            with self.subTest(scheme=scheme):
+                options = particle_options(dict(minimum=.5, maximum=.85, coordinate='rho', **overrides))
+                report = dict(options=options, main_count=1, after=species(profile),
+                              source_neutrality=dict(rule=NEUTRALITY_RULE))
+                outputs = dict(Particle_processing=report, TGYRO=dict(rho=[[0, .5]]))
+                root = dict(INPUTS={'input.gacode': profile}, OUTPUTS=outputs,
+                            SETTINGS={'SETUP': {'workDir': 'unused'}})
+                execute = Mock(side_effect=RuntimeError('captured local generation'))
+                # Stop at the native executable boundary and inspect its actual command.
+                with self.assertRaisesRegex(RuntimeError, 'captured local generation'):
+                    runpy.run_path(str(SCRIPT), init_globals=dict(root=root, OMFITx=SimpleNamespace(executable=execute)))
+                execute.assert_called_once()
+                command = execute.call_args.kwargs['executable'].splitlines()[-1]
+                self.assertEqual(command, 'profiles_gen -i input.gacode -qn -loc_rho 0.5')
+                self.assertEqual(execute.call_args.kwargs['outputs'][:2],
+                                 ['input.tglf.locpargen', 'input.cgyro.locpargen'])
+
     def test_gui_scheme_uses_original_species_without_altering_the_source_composition(self):
         self.assertEqual(PRESETS[JET_FUEL_LABEL], JET_FUEL_MODE)
         self.assertEqual(SCHEMES[JET_FUEL_MODE], (JET_FUEL_LABEL, dict(particle_mode=JET_FUEL_MODE)))
@@ -89,10 +127,11 @@ class JetFuelTests(unittest.TestCase):
                     'OUTPUTS': outputs}
 
             def locpargen(module, inputs, outputs, workdir, executable, **kwargs):
-                self.assertIs(inputs[0][0], profile)
+                self.assertEqual(species(inputs[0][0]), species(profile))
+                self.assertIn('profiles_gen -i input.gacode -qn -loc_rho ', executable)
                 rho = float(executable.split()[-1])
                 for name in outputs:
-                    values = native[rho] if name == 'input.cgyro.locpargen' else {'NS': 6, 'TAUS_4': 31}
+                    values = native[rho] if name == 'input.cgyro.locpargen' else native_tglf_fields(native[rho])
                     Path(workdir, name).write_text('\n'.join(f'{k}={v}' for k, v in values.items()))
                 return 0
 
@@ -105,12 +144,29 @@ class JetFuelTests(unittest.TestCase):
             runpy.run_path(str(SCRIPT), init_globals=environment)
             result = outputs['Profiles_gen']
             records = outputs['Particle_processing']['local_inputs']
-            self.assertEqual(len(jet_fuel_audit_lines(records)), len(native))
+            self.assertEqual(len(jet_fuel_audit_lines(records)), 2 * len(native))
             for index, (rho, original) in enumerate(native.items(), 1):
                 with self.subTest(rho=rho):
                     key = 'input.cgyro_' + str(index)
                     card = result[key]
-                    self.assertEqual(result['input.tglf_' + str(index)], {'NS': 6, 'TAUS_4': 31})
+                    tkey = 'input.tglf_' + str(index)
+                    tglf = result[tkey]
+                    self.assertTrue(records[key]['locpargen_qn'])
+                    self.assertTrue(records[tkey]['locpargen_qn'])
+                    self.assertEqual(tglf['NS'], 3)
+                    for j, i in enumerate((3, 1, 2), 1):
+                        for tfield, field in zip(TGLF_FIELDS, FIELDS):
+                            self.assertAlmostEqual(tglf[f'{tfield}_{j}'], expected[rho][f'{field}_{i}'], delta=1e-14)
+                    for field in TGLF_FIELDS + ('VPAR', 'VPAR_SHEAR'):
+                        for j in (4, 5, 6):
+                            self.assertNotIn(f'{field}_{j}', tglf)
+                    self.assertEqual((tglf['BETAE'], tglf['P_PRIME_LOC'], tglf['ZEFF']), (.027, -.031, 1.8))
+                    self.assertEqual(tglf['VPAR_1'], 1.)
+                    self.assertEqual(tglf['VPAR_2'], 2.)
+                    nbe, nni = original['DENS_2'], original['DENS_3']
+                    self.assertAlmostEqual(tglf['VPAR_3'], (3*nbe + 4*nni) / (nbe + nni))
+                    self.assertAlmostEqual(tglf['VPAR_SHEAR_3'], -tglf['VPAR_3'])
+                    self.assertEqual(records[tkey]['equivalent'], records[key]['equivalent'])
                     self.assertEqual(card['N_SPECIES'], 3)
                     self.assertEqual(len(expected[rho]), 18)
                     for field, value in expected[rho].items():
@@ -130,6 +186,16 @@ class JetFuelTests(unittest.TestCase):
                 self.assertAlmostEqual(audit['before'][field], audit['after'][field], delta=2e-15)
             self.assertGreater(audit['before']['pressure'], audit['after']['pressure'])
             self.assertGreater(audit['before']['pressure_gradient'], audit['after']['pressure_gradient'])
+
+            # -qn always balances slot 1. Source Be and fast D precede thermal D.
+            # The generation copy must put thermal D in that slot for both cards.
+            permuted = source_profile(SOURCE[1:] + SOURCE[:1])
+            root['INPUTS']['input.gacode'] = permuted
+            runpy.run_path(str(SCRIPT), init_globals=environment)
+            self.assertEqual(species(permuted)[0]['name'], 'Be')
+            self.assertEqual(outputs['Profiles_gen'], result)
+            result = outputs['Profiles_gen']
+            records = outputs['Particle_processing']['local_inputs']
 
             # A failure at the final radius may not publish four new cards over the completed set.
             native[0.85]['DENS_2'] = native[0.85]['DENS_3'] = 0
@@ -164,6 +230,21 @@ class JetFuelTests(unittest.TestCase):
         self.assertEqual((card['DENS_3'], card['TEMP_3']), (1.0, 1.0))
         self.assertEqual(card['SHAPE_SIN3'], 0.02)
         self.assertNotIn('DLNNDR_SCALE_6', card)
+
+    def test_tglf_uses_its_own_native_values_and_permuted_thermal_identity(self):
+        card = native_tglf_fields(original_cards()[.5])
+        source = species(source_profile())
+        order = (3, 2, 0, 4, 1)  # Fast D before thermal D.
+        original = card.copy()
+        for j, i in enumerate(order, 2):
+            for field in TGLF_FIELDS + ('VPAR', 'VPAR_SHEAR'):
+                card[f'{field}_{j}'] = original[f'{field}_{i+2}']
+        card.update(TAUS_4=2.75, RLTS_4=-1.5, VNS_SHEAR_4=.75, VTS_SHEAR_7=.5)
+        jet_fuel_local_input(card, [source[i] for i in order], 'tglf')
+        self.assertEqual((card['TAUS_2'], card['RLTS_2'], card['VNS_SHEAR_2']), (2.75, -1.5, .75))
+        self.assertEqual((card['VNS_SHEAR_1'], card['VNS_SHEAR_3']), (0., 0.))
+        self.assertNotIn('VNS_SHEAR_4', card)
+        self.assertNotIn('VTS_SHEAR_7', card)
 
     def test_unknown_species_mismatched_card_or_global_geometry_fail_before_writing(self):
         ions = species(source_profile())

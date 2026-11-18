@@ -8,6 +8,7 @@ import math
 # dependency while loading the module so button callbacks keep the function.
 from OMFITlib_tglf_multi_data import profile_digest
 from OMFITlib_tglf_parameters import COMMON, INTEGERS as INPUT_INTEGERS, numeric_parameters, parameter_values, scalar
+from OMFITlib_transfer_presets import JET_FUEL_MODE, JET_FUEL_RULE, SCHEMES
 
 PROFILE_PATH = ('TGLF_scan', 'TGYRO', 'PROFILES_GEN', 'OUTPUTS', 'input.gacode')
 SEED_PATH = ('TGLF_scan', 'TGYRO', 'INPUTS', 'input.tglf')
@@ -201,21 +202,41 @@ def generation_overrides(root, settings):
     return parameter_overrides(settings, reference)
 
 
+def _transfer_rows(root):
+    prefix = ('Transfer_tool', 'OUTPUTS')
+    outputs = get(root, prefix, {})
+    report = outputs.get('Particle_processing', {})
+    options = report.get('options', {})
+    label = next((label for label, preset in SCHEMES.values()
+                  if all(options.get(k, None) == v for k, v in preset.items())), '')
+    sets = [('', label, ('Profiles_gen',), outputs.get('Profiles_gen', {}), report)]
+    for scheme, group in outputs.get('CGYRO_schemes', {}).items():
+        sets.append((scheme, group.get('label', scheme), ('CGYRO_schemes', scheme, 'tglf_inputs'),
+                     group.get('tglf_inputs', {}), group.get('particle_record', {})))
+    rows = []
+    for scheme, caption, path, cards, report in sets:
+        metadata = report.get('local_inputs', {})
+        historical = report.get('options', {}).get('particle_mode', '') == JET_FUEL_MODE
+        names = [name for name in cards.keys() if str(name).startswith('input.tglf_') and str(name)[11:].isdigit()]
+        for name in sorted(names, key=lambda n: int(str(n)[11:])):
+            info = metadata.get(name, {})
+            if historical and info.get('equivalent', {}).get('rule', '') != JET_FUEL_RULE:
+                continue  # Older JET runs stored the unmodified full-species TGLF card.
+            nr, rho = int(str(name)[11:]), info.get('rho', None)
+            label = 'nr={}'.format(nr) + (' · rho={:g}'.format(float(rho)) if rho is not None else '')
+            key = 'transfer:' + (scheme + ':' if scheme else '') + str(nr)
+            rows.append(dict(key=key, group='transfer', scheme=scheme, scheme_label=caption,
+                             label=(caption + ' · ' if caption else '') + label, radius_label=label,
+                             path=prefix + path + (name,), nr=nr, rho=rho))
+    return rows
+
+
 def input_rows(root):
     rows = []
     path = ('TGLF_scan', 'TGLF', 'FILES', 'input.tglf')
     if get(root, path) is not None:
         rows.append(dict(key='current', group='current', label='当前 / 导入的 TGLF 文件', path=path))
-    prefix = ('Transfer_tool', 'OUTPUTS', 'Profiles_gen')
-    metadata = get(root, ('Transfer_tool', 'OUTPUTS', 'Particle_processing', 'local_inputs'), {})
-    for name in sorted(get(root, prefix, {}).keys(), key=str):
-        if str(name).startswith('input.tglf_') and str(name)[11:].isdigit():
-            nr = int(str(name)[11:])
-            rho = metadata.get(name, {}).get('rho', None)
-            label = 'nr={}'.format(nr) + (' · rho={:g}'.format(float(rho)) if rho is not None else '')
-            rows.append(dict(key='transfer:' + str(nr), group='transfer', label=label, path=prefix + (name,), nr=nr, rho=rho))
-    rows[1 if rows and rows[0]['key'] == 'current' else 0:] = sorted(
-        rows[1 if rows and rows[0]['key'] == 'current' else 0:], key=lambda row: row['nr'])
+    rows.extend(_transfer_rows(root))
     prefix = ('TGLF_scan', 'input.tglf')
     coordinate = get(root, ('TGLF_scan', '_local_input_generation', 'coordinate'), '半径')
     for radius in sorted(get(root, prefix, {}).keys(), key=float):
@@ -267,9 +288,13 @@ def initialize(root, factory=dict):
     rows = input_rows(root)
     settings.setdefault('source', 'radial')
     # An unavailable saved choice stays visible as a missing input, never switches silently.
-    transfer = [row for row in rows if row['group'] == 'transfer']
+    settings.setdefault('transfer_scheme', next((row['scheme'] for row in rows if row['group'] == 'transfer'), ''))
+    seen_schemes = set()
     for row in rows:
-        default_selected = row['group'] != 'transfer' or row['key'] == transfer[0]['key']
+        default_selected = True
+        if row['group'] == 'transfer':
+            default_selected = row['scheme'] not in seen_schemes
+            seen_schemes.add(row['scheme'])
         settings['selected'].setdefault(row['key'], default_selected)
     if settings.get('radius_choice_version', 0) < 2:
         radial = [row for row in rows if row['group'] == 'radial']
@@ -286,8 +311,13 @@ def initialize(root, factory=dict):
     return settings, rows
 
 
-def selected_rows(root, settings):
-    rows = [row for row in input_rows(root) if row['group'] == settings['source']]
+def source_rows(rows, settings):
+    return [row for row in rows if row['group'] == settings['source']
+            and (row['group'] != 'transfer' or row['scheme'] == settings.get('transfer_scheme', ''))]
+
+
+def selected_rows(root, settings, rows=None):
+    rows = source_rows(input_rows(root) if rows is None else rows, settings)
     if settings['source'] == 'radial':
         return select_radii(rows, settings)
     return [row for row in rows if settings['selected'].get(row['key'], False)]

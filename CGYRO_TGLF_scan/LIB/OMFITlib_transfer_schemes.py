@@ -1,27 +1,13 @@
-"""Small frozen Transfer input sets; solver results remain exclusively in RUN_DB.
+"""Frozen per-scheme input cards for CGYRO and TGLF.
 
 Generation is an explicit action. Selectors read only the saved radius/option
-metadata; they never regenerate inputs or inspect CGYRO output files.
+metadata; they never regenerate inputs or inspect solver output files.
 """
 from builtins import ValueError, dict, hasattr, int, list, sorted, str
-from collections import OrderedDict
 import copy
 from OMFITlib_project_inputs import input_digest, validate_input
-from OMFITlib_transfer_particles import JET_FUEL_LABEL, JET_FUEL_MODE
+from OMFITlib_transfer_presets import SCHEMES
 from OMFITlib_transfer_workflow import generation_issues, selected_profile
-
-
-SCHEMES = OrderedDict([
-    ('all', ('保留所有粒子', dict(particle_mode='all'))),
-    ('thermalize', ('慢化快离子（热化处理）', dict(particle_mode='thermalize'))),
-    ('equivalent_pressure', ('等效杂质 · 保留原总压力',
-                             dict(particle_mode='equivalent', equivalent_temperature='pressure'))),
-    ('equivalent_main_ion', ('等效杂质 · 温度随热主离子',
-                             dict(particle_mode='equivalent', equivalent_temperature='main_ion'))),
-    ('separate_fast', ('主离子 / 等效杂质 / 等效快粒子', dict(particle_mode='separate_fast'))),
-    (JET_FUEL_MODE, (JET_FUEL_LABEL, dict(particle_mode=JET_FUEL_MODE))),
-    ('main_only', ('仅保留主离子和 Zeff', dict(particle_mode='main_only'))),
-])
 
 
 def scheme_runid(base, scheme):
@@ -36,27 +22,32 @@ def _duplicate(value):
 def _freeze(outputs, options, label, factory):
     generated = outputs.get('Profiles_gen', {})
     report = outputs.get('Particle_processing', {})
-    inputs, local = factory(), {}
+    cards = {'cgyro': factory(), 'tglf': factory()}
+    local = {}
     for key in generated.keys():
-        if not str(key).startswith('input.cgyro_'):
+        stem, sep, index = str(key).rpartition('_')
+        if not sep or not index.isdigit() or stem not in ('input.cgyro', 'input.tglf'):
             continue
+        kind = stem.split('.')[1]
         source = generated[key]
-        validate_input(source, 'cgyro')
+        validate_input(source, kind, local_tglf=(kind == 'tglf'))
         metadata = report.get('local_inputs', {}).get(key, {})
         if metadata.get('rho', None) is None:
             raise ValueError(label + ' / ' + key + ' 缺少半径记录。')
-        inputs[key] = _duplicate(source)
-        # The generation report also contains full profile arrays. Retain only
-        # the local provenance required by isotope preparation and inspection.
+        cards[kind][key] = _duplicate(source)
         local[key] = {name: copy.deepcopy(metadata[name])
-                      for name in ('rho', 'main_count', 'rhostar', 'equivalent',
+                      for name in ('rho', 'main_count', 'rhostar', 'equivalent', 'locpargen_qn',
                                    'prescribed_zeff', 'final_neutrality') if name in metadata}
-    if not inputs:
-        raise ValueError(label + ' 没有生成 CGYRO 输入。')
+    if not cards['cgyro'] or not cards['tglf']:
+        raise ValueError(label + ' 没有生成完整的 CGYRO 和 TGLF 半径输入。')
+    radii = {kind: {name.rsplit('_', 1)[1]: local[name]['rho'] for name in files}
+             for kind, files in cards.items()}
+    if radii['cgyro'] != radii['tglf']:
+        raise ValueError(label + ' 的 CGYRO 和 TGLF 半径输入不配对。')
     frozen = factory()
     # File-bearing containers must be OMFITtree in a real session so project
     # save/update follows the file references instead of pickling the readers.
-    frozen.update(dict(label=label, options=dict(options), inputs=inputs,
+    frozen.update(dict(label=label, options=dict(options), inputs=cards['cgyro'], tglf_inputs=cards['tglf'],
                        particle_record=dict(options=copy.deepcopy(report.get('options', options)),
                                             main_count=report.get('main_count', None), local_inputs=local)))
     return frozen

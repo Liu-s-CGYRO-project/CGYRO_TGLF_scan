@@ -3,7 +3,7 @@
 import os
 from OMFITlib_transfer_particles import (EQUIVALENT_RULE, SEPARATE_FAST_RULE, JET_FUEL_MODE, JET_FUEL_RULE,
                                         MAIN_ION_RULE, NEUTRALITY_RULE,
-                                        close_local_input, validate_local_neutrality)
+                                        close_local_input, jet_fuel_groups, species, validate_local_neutrality)
 from OMFITlib_transfer_equivalent import (equivalent_local_input, separate_fast_local_input, jet_fuel_local_input,
                                          locpargen_rhostar)
 from OMFITlib_gacode_installations import program_guard
@@ -29,7 +29,18 @@ equivalent_rule = {'equivalent': EQUIVALENT_RULE, 'separate_fast': SEPARATE_FAST
                    JET_FUEL_MODE: JET_FUEL_RULE}.get(particle_mode, None)
 if equivalent_rule is not None and particle_options.get('equivalent_rule', '') != equivalent_rule:
     raise ValueError('等效杂质规则已更新，请从“运行 Transfer_tool”重新生成输入。')
-inputs = [(root['INPUTS']['input.gacode'], 'input.gacode')]
+profile = root['INPUTS']['input.gacode']
+if historical:
+    local_ions = species(profile)
+    main, _, _ = jet_fuel_groups(local_ions)
+    if main != 0:
+        # Native -qn balances ion 1. Move thermal D first only on the copy
+        # passed to locpargen, leaving the original profile in its saved order.
+        profile = profile.duplicate()
+        order = [local_ions[main]['index']] + [ion['index'] for i, ion in enumerate(local_ions) if i != main]
+        profile.reorder_ions(order, verbose=False)
+        local_ions = species(profile)
+inputs = [(profile, 'input.gacode')]
 outputs = ['input.tglf.locpargen', 'input.cgyro.locpargen']
 if not historical:
     outputs.append('out.locpargen')
@@ -38,11 +49,12 @@ workdir = setup['workDir']
 rho_arr = root['OUTPUTS']['TGYRO']['rho'][0][1:]
 pending = {}
 neutrality = {}
+profile_command = 'profiles_gen -i input.gacode -qn'
 for k, rho in enumerate(rho_arr, 1):
     environment = setup.get('profiles_environment', None) or setup.get('executable', '')
     executable = ('#!/bin/bash\nset -e\n' + environment + '\n' + program_guard('profiles')
                   + profiles_python_environment()
-                  + 'profiles_gen -i input.gacode -loc_rho ' + str(float(rho)))
+                  + profile_command + ' -loc_rho ' + str(float(rho)))
     ret_code = OMFITx.executable(root, inputs=inputs, outputs=outputs, workdir=workdir,
                                 executable=executable, clean=True, ignoreReturnCode=False)
     if ret_code != 0:
@@ -59,8 +71,7 @@ for k, rho in enumerate(rho_arr, 1):
         rhostar = locpargen_rhostar(os.path.join(workdir, 'out.locpargen'), local['cgyro'])
     for code, obj in local.items():
         if historical:
-            result = (jet_fuel_local_input(obj, particle_report['before']) if code == 'cgyro'
-                      else dict(stage='native_full_species'))
+            result = jet_fuel_local_input(obj, local_ions, code)
         elif particle_mode == 'separate_fast':
             result = separate_fast_local_input(obj, code, particle_report['main_count'], particle_report['after'], rhostar)
         elif particle_mode == 'equivalent':
@@ -70,6 +81,7 @@ for k, rho in enumerate(rho_arr, 1):
                                             temperature_mode=particle_report['options']['equivalent_temperature'])
         else:
             result = close_local_input(obj, code, particle_report['main_count'], particle_report['after'], rhostar)
+        result['locpargen_qn'] = True
         result['rho'] = float(rho)
         if particle_mode == 'main_only':
             result['prescribed_zeff'] = prescribe_local_zeff(obj, code, particle_report.get('prescribed_zeff', {}))

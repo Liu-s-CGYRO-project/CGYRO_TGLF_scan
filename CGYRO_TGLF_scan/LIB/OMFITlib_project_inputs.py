@@ -95,8 +95,12 @@ def input_difference(current, incoming):
     return rows
 
 
-def validate_input(value, kind):
-    required = ('N_SPECIES', 'N_RADIAL', 'N_THETA', 'Q', 'RMIN', 'RMAJ') if kind == 'cgyro' else ('NS', 'KY')
+def validate_input(value, kind, local_tglf=False):
+    # locpargen supplies the radial species and geometry. KY can use the
+    # native TGLF default or a subsequent scan override on these cards.
+    required = ('NS',) if local_tglf else ('NS', 'KY')
+    if kind == 'cgyro':
+        required = ('N_SPECIES', 'N_RADIAL', 'N_THETA', 'Q', 'RMIN', 'RMAJ')
     missing = [key for key in required if key not in value.keys()]
     if missing:
         raise ValueError('input.{} 缺少：{}'.format(kind, ', '.join(missing)))

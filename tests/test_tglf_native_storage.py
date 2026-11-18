@@ -109,6 +109,34 @@ class NativeStorageTests(unittest.TestCase):
             plan(self.root, self.settings)
         self.assertNotIn('_workbench_runs', self.scan)
 
+    def test_only_selected_scheme_reaches_batch_and_its_native_result(self):
+        from OMFITlib_transfer_particles import JET_FUEL_MODE, JET_FUEL_RULE
+        outputs = self.root.setdefault('Transfer_tool', {}).setdefault('OUTPUTS', {})
+        full = dict(self.source, NS=6)
+        reduced = dict(self.source, NS=3, ZS_3=8.439019455302295, AS_2=.9092186)
+        options = {'particle_mode': JET_FUEL_MODE}
+        old = dict(rho=.5, stage='native_full_species')
+        outputs.update(Profiles_gen={'input.tglf_1': full},
+                       Particle_processing={'options': options, 'local_inputs': {'input.tglf_1': old}})
+        outputs['CGYRO_schemes'] = {
+            'all': dict(label='全物种', tglf_inputs={'input.tglf_1': full},
+                        particle_record=dict(options={'particle_mode': 'all'}, local_inputs={'input.tglf_1': {'rho': .5}})),
+            JET_FUEL_MODE: dict(label='JET', tglf_inputs={'input.tglf_1': reduced}, particle_record=dict(options=options,
+                        local_inputs={'input.tglf_1': dict(rho=.5, equivalent={'rule': JET_FUEL_RULE})}))}
+        _, rows = initialize(self.root)
+        self.assertNotIn('transfer:1', [row['key'] for row in rows])
+        self.settings.update(source='transfer', transfer_scheme=JET_FUEL_MODE, mode='single')
+        record = self.execute()
+        point, = record['points'].values()
+        card = point_result(self.scan, point)['input.tglf']
+        self.assertEqual((card['NS'], card['ZS_3'], card['AS_2']), (3, reduced['ZS_3'], reduced['AS_2']))
+        self.assertEqual(point['source'][-3:], [JET_FUEL_MODE, 'tglf_inputs', 'input.tglf_1'])
+        self.assertEqual(self.scan['input.tglf'][.5]['NS'], 3)
+        self.assertNotIn('USE_TRANSPORT_MODEL', reduced)
+        self.settings['transfer_scheme'] = ''
+        with self.assertRaises(ValueError):
+            plan(self.root, self.settings)
+
     def transfer_inputs(self):
         self.root['Transfer_tool'] = {'OUTPUTS': {'Profiles_gen': {
             'input.tglf_1': dict(self.source), 'input.tglf_2': dict(self.source, BETAE=.3)},

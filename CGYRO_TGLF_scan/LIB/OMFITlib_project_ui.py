@@ -38,12 +38,15 @@ class ProjectUI(CgyroPage, RuntimePage, TransferPage, ScanControls):
     def label(self, value):
         return self.ui.Label(value, align='left', wraplength=600 if self.compact else 840)
 
-    def show_message(self, first_line=False):
+    def show_message(self, first_line=False, local=None):
         value = str(self.settings['message'] or '')
-        record_id = self.settings.pop('message_record_id', '')
         if not value:
             return
         error = value.endswith(ERROR_NOTICE_SUFFIX)
+        if (local is not None and local.get('message', '') != value and not error
+                and value != '配置检查通过' and not value.startswith('需要修改：')):
+            return
+        record_id = self.settings.pop('message_record_id', '')
         label = self.label(value.splitlines()[0][:200] if first_line or error else value)
         if value != '配置检查通过' and not error:
             return

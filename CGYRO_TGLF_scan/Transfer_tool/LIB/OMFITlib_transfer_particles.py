@@ -9,10 +9,8 @@ from collections import OrderedDict
 import math
 import numpy as np
 from OMFITlib_transfer_zeff import zeff_options, zeff_profile
+from OMFITlib_transfer_presets import JET_FUEL_LABEL, JET_FUEL_MODE, JET_FUEL_RULE
 
-JET_FUEL_MODE = 'jet96482_fast_fuel'
-JET_FUEL_LABEL = '快氢同位素并入主离子＋等效热杂质'
-JET_FUEL_RULE = 'jet96482_local_card_v1'
 PRESETS = OrderedDict([
     ('保留所有粒子', 'all'),
     ('慢化快离子（热化处理）', 'thermalize'),
@@ -22,7 +20,7 @@ PRESETS = OrderedDict([
     ('仅保留主离子和 Zeff', 'main_only'),
 ])
 DESCRIPTIONS = {
-    JET_FUEL_MODE: '按 JET 96482 的局部 CGYRO 卡归并。快 D、快 H 的密度并入热 D，温度沿用热 D。热 Be、Ni 合成一个浮点电荷的等效杂质。逐半径记录准中性残差、Zeff、离子压力及压力梯度。TGLF 保留原生全物种卡。',
+    JET_FUEL_MODE: '按 JET 96482 的公式分别归并 CGYRO 和 TGLF 局部卡。快 D、快 H 的密度并入热 D，温度沿用热 D。热 Be、Ni 合成一个浮点电荷的等效杂质。每张三物种卡均记录准中性残差、Zeff、离子压力及压力梯度。',
     'all': '保留全部离子及热 / 快类型，所有主离子按原密度比例共同校正准中性。',
     'thermalize': '同种热杂质合并；对应任一主离子的快离子独立保留，温度、环向及极向流速采用所选热杂质的值。缺少所需热离子时停止。此为热化近似，压力会改变。',
     'equivalent': '主离子限定为平均 ni/ne > 30% 的热 H/D/T；快离子及少量氢同位素与其他非主离子一起合成等效辅助物种。各半径保持辅助组电荷、Zeff 贡献、质量及电荷密度梯度，主离子保留稀释份额。辅助温度可保留原总压力或跟随热主离子；后者会改变总压力。H/D/T 扫描再合并热主离子。',
@@ -428,9 +426,8 @@ def prepare_particles(source, options):
     if options['particle_mode'] == JET_FUEL_MODE:
         ions = species(source)
         main, _, _ = jet_fuel_groups(ions)
-        # locpargen must receive the measured densities and original species order.
         return source.duplicate(), dict(options=options, before=ions, after=ions, main_ions=[ions[main]],
-                                        main_count=1, equivalent_stage='local_cgyro_inputs')
+                                        main_count=1, equivalent_stage='jet_fuel_local_inputs')
     profile, source_neutrality = prepare_source_profile(source, options)
     ne_before = np.asarray(profile['ne']).copy()
     before = species(profile)
