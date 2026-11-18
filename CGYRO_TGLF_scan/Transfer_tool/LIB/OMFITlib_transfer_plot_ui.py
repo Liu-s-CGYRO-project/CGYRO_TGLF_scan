@@ -20,7 +20,7 @@ class TransferPlotsUI:
     def render(self):
         ui = self.ui
         ui.TitleGUI('Transfer_tool · 剖面绘图')
-        anchor = ui.Label('选择数据与绘图内容', align='left')
+        anchor = ui.Label('剖面绘图', align='left')
         choices = profile_choices(self.root)
         if choices:
             ui.ComboBox(self.prefix + "['profile']", choices, '剖面', state='readonly', updateGUI=True, refresh_tree=False)

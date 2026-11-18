@@ -604,6 +604,6 @@ if target_name in files:
         previous.duplicate() if hasattr(previous, 'duplicate') else copy.deepcopy(previous))
 files[target_name] = target
 root['SETTINGS']['PHYSICS'].setdefault('conversion_sources', OMFITtree()).pop(target_name, None)
-print('已生成 ' + target_name + '；“生成文件”可查看参数。')
+print('已生成 ' + target_name + '。可在“文件与绘图”查看参数。')
 print('在 CGYRO 页选择“导入 input.cgyro”。' if target_name == 'input.cgyro' else
       '在 TGLF 页选择“局部互转文件”即可运行。')

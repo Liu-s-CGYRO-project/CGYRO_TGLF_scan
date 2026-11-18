@@ -8,7 +8,7 @@ from collections import Counter
 import sys
 from types import ModuleType, SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import test_gui_tab_pages as tabs
 import test_gui_refresh_native as native
@@ -187,6 +187,68 @@ class NativeOpenTests(unittest.TestCase):
                 self.assertIs(view.page_picker, header)
                 self.assertTrue(header.winfo_viewable())
                 self.assertEqual(self.host.errors, [])
+        self.assertEqual(self.host.updates, [])
+
+    def test_saved_transfer_files_open_beside_plots_and_radius_changes_only_the_file_row(self):
+        from OMFITlib_transfer_plot_ui import TransferPlotsUI
+        node = self.host.tree['Transfer_tool']
+        node['OUTPUTS']['Profiles_gen']['input.tglf_2'] = NoResults()
+        self.actions.settings.update(page='transfer', transfer_tab='files', transfer_preview='1')
+
+        def build_plots(**kwargs):
+            plots = TransferPlotsUI(node, adapt(self.host.api))
+            plots.prefix = "root['Transfer_tool']['SETTINGS']['PLOT_OPTIONS']"
+            plots.render()
+        node['GUIS']['plots'].__run__ = build_plots
+        view = self.open()
+        pages = view.transfer_pages
+        notebook = pages.notebook
+        self.assertEqual([notebook.tab(i, 'text') for i in notebook.tabs()],
+                         ['输入与方案', '文件与绘图', '局部互转'])
+        self.assertEqual(view.settings['transfer_tab'], 'plots')
+        self.assertFalse(pages.sections['run'].built)
+        self.assertFalse(pages.sections['convert'].built)
+        view.page_picker.winfo_toplevel().geometry('660x760')
+        self.settle_layout(view)
+        self.assert_selected_panes_fit(view)
+        body = pages.sections['plots'].frame
+        plot = self.host.button(body, '绘制剖面与梯度')
+        self.assertTrue(self.host.button(body, '查看 / 编辑 input.tglf').instate(['disabled']))
+        combo = next(w for w in self.host.descendants(body)
+                     if isinstance(w, native.ttk.Combobox) and 'nr=2' in w.cget('values'))
+        combo.set('nr=2')
+        combo.event_generate('<<ComboboxSelected>>')
+        self.host.drain(100)
+        self.assertEqual(view.settings['transfer_preview'], '2')
+        self.assertIs(self.host.button(body, '绘制剖面与梯度'), plot)
+        with patch.object(view, 'show_transfer_input') as edit:
+            self.host.button(body, '查看 / 编辑 input.tglf').invoke()
+            self.assertEqual(edit.call_args.args[1], ('Transfer_tool', 'OUTPUTS', 'Profiles_gen', 'input.tglf_2'))
+        self.assertEqual(self.host.updates, [])
+
+    def test_old_scheme_and_seed_tabs_reopen_their_controls_on_the_generation_page(self):
+        self.actions.settings.update(page='transfer', transfer_tab='schemes', transfer_scheme_flags={'all': True})
+        self.host.api.FilePicker = lambda path, label, **kwargs: self.host.api.Label(label)
+        self.host.api.EditASCIIobject = lambda path, label, **kwargs: self.host.api.Label(label)
+        self.actions.generate_transfer_schemes = Mock()
+        view = self.open()
+        body = view.transfer_pages.sections['run'].frame
+        run = self.host.button(body, '运行 Transfer_tool')
+        self.assertEqual((view.settings['transfer_tab'], view.settings['transfer_details']), ('run', 'schemes'))
+        batch = self.host.button(body, '生成所选方案输入')
+        self.host.button(body, '收起批量方案').invoke()
+        self.host.drain(100)
+        self.assertFalse(batch.winfo_exists())
+        self.assertIs(self.host.button(body, '运行 Transfer_tool'), run)
+        self.assertTrue(view.settings['transfer_scheme_flags']['all'])
+        view.select_page('transfer', transfer_tab='advanced')
+        self.host.drain(100)
+        self.assertEqual((view.settings['transfer_tab'], view.settings['transfer_details']), ('run', 'advanced'))
+        self.host.button(view.transfer_pages.sections['run'].frame, '收起种子输入')
+        view.transfer_pages.select('convert')
+        self.host.drain(30)
+        self.assertEqual(view.settings['transfer_tab'], 'convert')
+        self.actions.generate_transfer_schemes.assert_not_called()
         self.assertEqual(self.host.updates, [])
 
     def test_nested_tabs_fit_selected_body_after_local_switches(self):

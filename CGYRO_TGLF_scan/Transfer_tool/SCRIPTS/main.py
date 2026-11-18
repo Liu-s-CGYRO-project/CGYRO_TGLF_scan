@@ -111,4 +111,4 @@ except BaseException:
         else:
             branch['input.gacode'] = value
     raise
-print('Transfer_tool 完成。各半径输入可在“生成文件”查看，并在 CGYRO 或 TGLF 扫描页使用。')
+print('Transfer_tool 完成。各半径输入可在“文件与绘图”查看，并在 CGYRO 或 TGLF 扫描页使用。')

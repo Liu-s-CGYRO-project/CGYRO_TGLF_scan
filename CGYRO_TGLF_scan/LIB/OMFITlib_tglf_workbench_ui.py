@@ -132,15 +132,15 @@ class TGLFWorkbench:
         else:
             outputs = read(self.root, ('Transfer_tool', 'OUTPUTS'), {})
             single = outputs.get('Particle_processing', {}).get('options', {})
-            tab = 'run'
+            details = ''
             if not scheme and single.get('particle_mode', '') == JET_FUEL_MODE:
                 self.label('请重新运行 JET 96482 方案，生成三物种 TGLF 输入。')
             elif scheme or (not choices and outputs.get('CGYRO_schemes', {})):
-                self.label('请在“转换方案批量选择”重新生成所需方案的 TGLF 输入。')
-                tab = 'schemes'
+                self.label('请在“输入与方案”展开批量方案，重新生成所需的 TGLF 输入。')
+                details = 'schemes'
             else:
                 self.label('请先运行 Transfer_tool，生成各半径的 TGLF 输入。')
-            self.view.nav('打开 Transfer_tool', 'transfer', transfer_tab=tab)
+            self.view.nav('打开 Transfer_tool', 'transfer', transfer_tab='run', transfer_details=details)
 
     def scan_settings(self):
         if not self.available:

@@ -25,7 +25,7 @@ Transfer_tool 的 TGLF 扫描直接写入 TGLF_scan 的 scanResults / scanResult
 
 输入与扫描
 ~~~~~~~~~~
-Transfer_tool 生成或转换 input.gacode、input.cgyro、input.tglf；在“生成文件”中双击数值编辑，点击“保存修改”后生效。
+Transfer_tool 生成或转换 input.gacode、input.cgyro、input.tglf；在“文件与绘图”打开对应文件后双击数值编辑，点击“保存修改”后生效。
 CGYRO 可选择生成的半径输入、导入 input.cgyro 或使用当前输入，再选择半径与原始/H/D/T 离子方案。
 每组输入可只扫描 ky，或同时扫描一至三个物理参数。物理轴支持实际列表、范围和基准倍数。
 更改剖面、粒子方案或半径配置后需重新生成输入；“检查配置”可检查交接和参数问题。

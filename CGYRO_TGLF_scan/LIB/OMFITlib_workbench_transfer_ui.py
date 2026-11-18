@@ -9,7 +9,7 @@ from collections import OrderedDict
 import tkinter as tk
 from tkinter import ttk
 from OMFITlib_transfer_workflow import loaded_file
-from OMFITlib_gui_deferred import TabPages
+from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_transfer_schemes import SCHEMES
 from OMFITlib_project import MODULES, location, module, input_digest, read, transfer_generated_rows, transfer_parameter_value
 
@@ -17,16 +17,46 @@ from OMFITlib_project import MODULES, location, module, input_digest, read, tran
 class TransferPage:
     """Page mixin; state belongs to the host, never to a module singleton."""
     def render_transfer(self):
-        renderers = dict(run=self.transfer_run,
-            schemes=self.transfer_schemes,
-            files=lambda: self.transfer_files(transfer_generated_rows(self.root)),
-            plots=lambda: self.compound(('Transfer_tool', 'GUIS', 'plots')),
-            convert=lambda: self.compound(('Transfer_tool', 'GUIS', 'convert')),
-            advanced=self.transfer_advanced)
-        self.transfer_pages = TabPages(self.ui, OrderedDict([
-            ('run', 'Transfer_tool 运行'), ('files', '生成文件'), ('plots', '剖面绘图'),
-            ('schemes', '转换方案批量选择'), ('convert', '局部输入互转'), ('advanced', '高级设置')]),
-            self.settings, 'transfer_tab', lambda page: renderers[page](), action=True)
+        # Older projects and saved navigation callbacks can still request these tabs.
+        previous = self.settings.get('transfer_tab', 'run')
+        if previous in ('schemes', 'advanced'):
+            self.settings['transfer_details'] = previous
+            self.settings['transfer_tab'] = 'run'
+        elif previous == 'files':
+            self.settings['transfer_tab'] = 'plots'
+        captions = OrderedDict([('run', '输入与方案'), ('plots', '文件与绘图'), ('convert', '局部互转')])
+        renderers = dict(run=self.transfer_generation, plots=self.transfer_results,
+                         convert=lambda: self.compound(('Transfer_tool', 'GUIS', 'convert')))
+        self.transfer_pages = TabPages(self.ui, captions, self.settings, 'transfer_tab',
+                                      lambda page: renderers[page](), action=True)
+
+    def _transfer_section(self, render):
+        section = deferred_section(self.ui, render, local=True, container=True)
+        if section is None:
+            return render()
+        section.show()
+
+    def transfer_generation(self):
+        self.transfer_run()
+        self._transfer_section(self.transfer_details)
+
+    def transfer_details(self):
+        opened = self.settings.get('transfer_details', '')
+        with self.ui.same_row():
+            for key, caption in (('schemes', '批量方案'), ('advanced', '种子输入')):
+                target = '' if opened == key else key
+                self.ui.Button(('收起' if opened == key else '展开') + caption,
+                               lambda target=target: self.settings.__setitem__('transfer_details', target),
+                               updateGUI=True, refresh_scope='section', refresh_tree=False)
+        if opened == 'schemes':
+            self.transfer_schemes()
+        elif opened == 'advanced':
+            self.transfer_advanced()
+
+    def transfer_results(self):
+        # Selecting a file refreshes its editor buttons without remounting the plot controls.
+        self._transfer_section(lambda: self.transfer_files(transfer_generated_rows(self.root)))
+        self.compound(('Transfer_tool', 'GUIS', 'plots'))
 
     def transfer_run(self):
         self.compound(('Transfer_tool', 'GUIS', 'transfer'), show_run_button=False)
@@ -43,7 +73,7 @@ class TransferPage:
         self.select_page('tglf')
 
     def transfer_advanced(self):
-        self.label('已有种子输入继续使用；缺少时，运行按钮自动使用内置种子。这里只在需要调整模型参数或换用其他种子时操作。')
+        self.label('可编辑或替换 input.tglf 和 input.tgyro。缺少种子输入时，运行会使用内置文件。')
         node = module(self.root, 'transfer')
         for kind in ('tglf', 'tgyro'):
             branch = 'INPUTS' if 'input.' + kind in node['INPUTS'] else 'TEMPLATES'
@@ -53,12 +83,12 @@ class TransferPage:
                 self.ui.EditASCIIobject(location(MODULES['transfer'] + (branch, 'input.' + kind)),
                     '编辑 input.' + kind + ' 参数', updateGUI=False)
             self.ui.FilePicker(self.prefix + "['transfer_" + kind + "_file']", '转换工具 input.' + kind, default='',
-                postcommand=lambda location=None, kind=kind: self.actions.import_transfer_seed(kind), updateGUI=True)
-        self.label('起止半径、坐标和点数以“Transfer_tool 运行”页为准；离子数量、质量和电荷每次运行时从当前剖面同步。')
+                postcommand=lambda location=None, kind=kind: self.actions.import_transfer_seed(kind),
+                updateGUI=True, refresh_scope='page')
         self.nav('统一 GACODE 环境配置', 'run')
 
     def transfer_schemes(self):
-        self.label('沿用“Transfer_tool 运行”页的原始剖面、半径网格、热化参考和碰撞设置。每个方案独立生成输入。')
+        self.label('勾选要生成的方案。每个方案分别使用上面的剖面和半径网格。')
         flags = self.settings.setdefault('transfer_scheme_flags', {})
         for key, (caption, _) in SCHEMES.items():
             flags.setdefault(key, False)
@@ -97,7 +127,6 @@ class TransferPage:
                 self.ui.Button('查看 / 编辑 input.' + code,
                     lambda path=path, caption=caption: self.show_transfer_input(anchor, path, caption),
                     state='normal' if path is not None else 'disabled', refresh_tree=False)
-        self.label('双击数值可编辑；计算半径在 CGYRO 扫描页选择。')
 
     def show_transfer_input(self, anchor, path, caption):
         value = read(self.root, path)

@@ -227,9 +227,9 @@ class CgyroPage:
             if source.get('path', ''):
                 self.label('已载入：' + str(source['path']))
         elif mode == 'generated':
-            self.nav('生成 / 更换半径输入', 'transfer')
+            self.nav('生成 / 更换半径输入', 'transfer', transfer_tab='run', transfer_details='')
         elif mode == 'schemes':
-            self.nav('生成 / 更换转换方案', 'transfer', transfer_tab='schemes')
+            self.nav('生成 / 更换转换方案', 'transfer', transfer_tab='run', transfer_details='schemes')
         rows = sync_cgyro_choices(self.root, self.settings, self.actions.factory)
         self.ui.Separator('半径与主离子')
         if rows:

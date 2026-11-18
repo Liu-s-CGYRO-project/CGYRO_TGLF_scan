@@ -87,7 +87,7 @@ def render():
                      align='left', wraplength=600)
     OMFITx.Button('生成 input.' + ('tglf' if mode == 'cgyro_to_tglf' else 'cgyro'), convert_inputs,
         updateGUI=True, state='disabled' if problems else 'normal', help='；'.join(problems))
-    OMFITx.Label('完成后可在“生成文件”查看、编辑；计算页面直接选择生成的文件。', align='left', wraplength=600)
+    OMFITx.Label('生成后可在工程总控的“文件与绘图”页查看和编辑。', align='left', wraplength=600)
     finish_gui_layout(anchor, OMFITx)
 
 
