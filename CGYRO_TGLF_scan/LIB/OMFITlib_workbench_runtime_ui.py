@@ -10,7 +10,7 @@ from tkinter import messagebox, ttk
 from OMFITlib_workbench_catalog import STATUS
 from OMFITlib_gui_deferred import TabPages, deferred_section
 from OMFITlib_project_runtime import initialize_runtime, applied_runtime, shared_issues, validate_runtime
-from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choices, installation_issues
+from OMFITlib_gacode_installations import PROGRAMS, choices as installation_choices
 from OMFITlib_project import MODULES, collect_issues, location, read, text_value, sync_run_issues
 from OMFITlib_cgyro_present import run_caption, collection_caption, record_details
 from OMFITlib_server_capabilities import matching_profile, resource_issues, summary as capability_summary
@@ -206,7 +206,7 @@ class RuntimePage:
         draft = self.settings.get('server_draft', None)
         pending = applied_runtime(self.root) is None or bool(shared_issues(self.root))
         detection = self.root.get('PROJECT_STATE', {}).get('gacode_detection', {})
-        issues = (validate_runtime(config) + installation_issues(config, detection)
+        issues = (validate_runtime(config, detection)
                   + resource_issues(config, matching_profile(config, detection))
                   + self.actions.runtime_server_issues(match_connection=True))
         if draft is not None:
@@ -252,12 +252,11 @@ class RuntimePage:
                 refreshed()
 
     def shared_gacode_install(self, config):
-        installs = config['gacode_installs']
+        detection = self.root.get('PROJECT_STATE', {}).get('gacode_detection', {})
+        options = installation_choices(config, detection, 'shared')
         selected = [str(config.get(program + '_install', '') or '') for program in PROGRAMS]
         name = selected[0] if selected and all(value == selected[0] for value in selected) else ''
-        self.settings['gacode_selected'] = name if name in installs else ''
-        options = OrderedDict([('各程序分别选择', '')])
-        options.update(OrderedDict((str(key), key) for key in installs))
+        self.settings['gacode_selected'] = name if name in options.values() else ''
         editing = (self.settings.get('gacode_draft', None) is not None
                    or self.settings.get('server_draft', None) is not None)
         self.runtime_choice(self.prefix + "['gacode_selected']", options, '共用安装',
@@ -277,7 +276,7 @@ class RuntimePage:
                          ['请先保存或取消编辑'] if draft is not None or server_draft else [])
             self.guarded('新增路径', self.actions.begin_gacode_install,
                          ['请先保存或取消编辑'] if draft is not None else [])
-        self.runtime_note('同时检测程序权限、队列资源和进程限制；不启动计算。')
+        self.runtime_note('检查搜索目录本身和直接子目录。检测成功后，安装列表只保留本次找到的路径。')
         self.runtime_section('服务器能力')
         for line in capability_summary(config, matching_profile(config, detection)):
             self.runtime_note(line)

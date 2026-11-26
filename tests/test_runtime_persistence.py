@@ -172,6 +172,21 @@ class RuntimePersistenceTests(unittest.TestCase):
         self.assertEqual(current['capabilities'], expected)
         self.assertEqual(shared_issues(self.root), [])
 
+    def test_replaced_path_still_requires_explicit_selection_after_save_and_reopen(self):
+        self.config['gacode_installs'] = {'gacode': '/former/gacode'}
+        self.config['cgyro_install'] = 'gacode'
+        self.detection = self.actions.detect_gacode()
+        self.reopen()
+        options = choices(self.config, self.detection, 'cgyro')
+        self.assertIsNone(self.config['cgyro_install'])
+        self.assertIsNone(options['请选择安装'])
+        self.assertEqual(dict(self.config['gacode_installs']), {'gacode': '/shared/gacode'})
+        with self.assertRaisesRegex(ValueError, 'CGYRO 请重新选择安装'):
+            apply_runtime(self.root, self.tree_factory)
+        self.config['cgyro_install'] = 'gacode'
+        apply_runtime(self.root, self.tree_factory)
+        self.assertNotIn('must-not-read-results', self.loaded)
+
     def test_repeated_save_reopen_and_apply_do_not_require_configuration_again(self):
         for _ in range(2):
             self.reopen()

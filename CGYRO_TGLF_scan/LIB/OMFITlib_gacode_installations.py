@@ -24,7 +24,7 @@ INSTALL_DEFAULTS = dict(gacode_scan_dir='', gacode_installs={},
 def valid_path(value):
     value = str(value or '').strip()
     path = PurePosixPath(value)
-    return (path.is_absolute() and str(path) != '/' and '..' not in path.parts
+    return (path.is_absolute() and path != path.parent and '..' not in path.parts
             and not any(ord(char) < 32 for char in value))
 
 
@@ -158,7 +158,10 @@ def installation_issues(config, detection=None):
                       for key in ('server', 'tunnel'))
     entries = (detection or {}).get('entries', {}) if same_server else {}
     for program, (label, _) in PROGRAMS.items():
-        name = str(config.get(program + '_install', '') or '')
+        name = config.get(program + '_install', '')
+        if name is None:
+            issues.append(label + ' 请重新选择安装，或选择“沿用环境脚本”')
+            continue
         if not name:
             continue
         if name not in installs:
@@ -199,9 +202,6 @@ def detection_is_current(config, detection, max_age=300):
 
 def probe_script(config, scan=True):
     """Bounded Bash inventory, with quoted paths and machine-readable markers."""
-    installs = config.get('gacode_installs', {})
-    if any(not valid_path(path) for path in installs.values()):
-        raise ValueError('请先填写有效的 GACODE 绝对路径')
     lines = ['set -e', 'probe_install() {', '  local root="$1"',
              '  printf "OMFIT_GACODE\\t%s" "$root"',
              '  if [ -d "$root" ]; then printf "\\t1"; else printf "\\t0"; fi',
@@ -215,14 +215,18 @@ def probe_script(config, scan=True):
         parent = str(config.get('gacode_scan_dir', '') or '').strip()
         if not valid_path(parent):
             raise ValueError('请填写 GACODE 搜索目录的绝对路径')
-        lines.extend(['parent=' + shlex.quote(parent),
-                      '[ -d "$parent" ] || { echo "GACODE search directory does not exist." >&2; exit 1; }',
-                      'shopt -s nullglob nocaseglob', 'count=0',
-                      'for root in "$parent"/gacode*; do',
-                      '  [ -d "$root" ] || continue', '  count=$((count+1))',
+        lines.extend(['parent=' + shlex.quote(str(PurePosixPath(parent))),
+                      '[ -d "$parent" ] && [ -r "$parent" ] && [ -x "$parent" ] || { echo "Cannot read GACODE search directory: $parent" >&2; exit 1; }',
+                      'shopt -s nullglob dotglob', 'count=0',
+                      'for setup in "$parent/shared/bin/gacode_setup" "$parent"/*/shared/bin/gacode_setup; do',
+                      '  [ -f "$setup" ] || continue', '  count=$((count+1))',
                       '  [ "$count" -le 128 ] || { echo "Too many GACODE directories; narrow the search." >&2; exit 1; }',
-                      '  probe_install "$root"', 'done'])
-    lines.extend('probe_install ' + shlex.quote(str(path)) for path in installs.values())
+                      '  probe_install "${setup%/shared/bin/gacode_setup}"', 'done'])
+    else:
+        for path in config.get('gacode_installs', {}).values():
+            if not valid_path(path):
+                raise ValueError('请先填写有效的 GACODE 绝对路径')
+            lines.append('probe_install ' + shlex.quote(str(path)))
     lines.append('printf "OMFIT_GACODE_END\\n"')
     return '\n'.join(lines) + '\n'
 
@@ -255,20 +259,37 @@ def parse_probe(output):
     return records
 
 
-def merge_probe(config, records, factory=dict):
-    installs = config['gacode_installs']
-    known = set(str(path) for path in installs.values())
+def merge_probe(config, records, factory=dict, scan=True):
+    previous = config['gacode_installs']
     added = 0
-    for root, record in records.items():
-        if root in known or not record['exists']:
-            continue
-        name = PurePosixPath(root).name
-        key, index = name, 2
-        while key in installs:
-            key, index = name + '_' + str(index), index + 1
-        installs[key] = root
-        known.add(root)
-        added += 1
+    if scan:
+        # Preserve aliases and selections only when the same root was found.
+        # A new root can reuse a removed root's basename.
+        records = {path: record for path, record in records.items() if record['exists']}
+        current = factory()
+        for name, path in previous.items():
+            root = str(PurePosixPath(str(path)))
+            if root in records:
+                current[name] = root
+        known = set(current.values())
+        for root in records:
+            if root not in known:
+                name = PurePosixPath(root).name
+                key, index = name, 2
+                while key in current:
+                    key, index = name + '_' + str(index), index + 1
+                current[key] = root
+                added += 1
+        for program in PROGRAMS:
+            key = program + '_install'
+            name = config.get(key, '')
+            if name:
+                path = str(PurePosixPath(str(previous.get(name, ''))))
+                if current.get(name, None) != path or not records[path].get(program, False):
+                    config[key] = None
+        config['gacode_installs'] = current
+    elif set(str(path) for path in previous.values()) != set(records):
+        raise ValueError('服务器未完整返回待校验的 GACODE 安装路径，请重新检测')
     detection = factory()
     detection.update(dict(probe_version=2, endpoint={key: str(config.get(key, '') or '') for key in ('server', 'tunnel')},
                           checked=datetime.now(timezone.utc).isoformat(), entries=records))
@@ -276,16 +297,29 @@ def merge_probe(config, records, factory=dict):
 
 
 def choices(config, detection=None, program=None):
-    result = OrderedDict() if program is None else OrderedDict([('沿用环境脚本', '')])
+    result = OrderedDict()
+    if program == 'shared':
+        result['各程序分别选择'] = ''
+    elif program:
+        result['沿用环境脚本'] = ''
+        selected = config.get(program + '_install', '')
+        if selected is None:
+            result['请选择安装'] = None
     entries = (detection or {}).get('entries', {})
     if not same_endpoint((detection or {}).get('endpoint', {}),
                          {key: str(config.get(key, '') or '') for key in ('server', 'tunnel')}):
         entries = {}
     for name, root in config.get('gacode_installs', {}).items():
         record = entries.get(str(root), {})
+        if program == 'shared':
+            if not record or all(record.get(key, False) for key in PROGRAMS):
+                result[str(name)] = name
+            continue
         if not record:
             status = '未检测'
         elif program:
+            if not record.get(program, False) and name != selected:
+                continue
             status = '可用' if record.get(program, False) else '缺少程序'
         else:
             status = ' / '.join(label for key, (label, _) in PROGRAMS.items() if record.get(key, False)) or '无可用程序'

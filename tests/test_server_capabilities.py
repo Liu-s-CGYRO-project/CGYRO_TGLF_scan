@@ -9,7 +9,8 @@ sys.path[:0] = [str(path) for path in (REPO / 'CGYRO_TGLF_scan').rglob('LIB')]
 from OMFITlib_server_capabilities import (TOOLS, VERSION, adapt_draft, matching_profile, parse_probe,
     probe_script, resource_issues, summary, time_seconds)
 from OMFITlib_cgyro_launch import launch_spec, validate_checkpoint_runtime
-from OMFITlib_gacode_installations import PROGRAMS, program_environment, program_guard
+from OMFITlib_gacode_installations import (PROGRAMS, choices, parse_probe as parse_installs,
+    probe_script as install_probe, program_environment, program_guard)
 import test_cgyro_launch as launch_tests
 
 
@@ -259,6 +260,34 @@ export PATH="$TaskGuardDir/bin:$PATH"
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Missing CGYRO executable', result.stdout)
 
+    def test_discovery_recognizes_layout_under_parent_and_at_exact_root(self):
+        from shlex import quote
+        install = 'CGYRO-Triad-FullT-Compressed-260922'
+        config = dict(gacode_scan_dir='/test scope', gacode_installs={'former': '/outside/former'})
+        fixture = '''set -e
+scan_dir=$(mktemp -d /tmp/omfit-install-scan.XXXXXX)
+trap 'case "$scan_dir" in /tmp/omfit-install-scan.*) rm -rf -- "$scan_dir";; esac' EXIT
+mkdir -p "$scan_dir/search dir/gacode-unrelated"
+'''
+        files = ('shared/bin/gacode_setup',) + PROGRAMS['cgyro'][1]
+        fixture += 'root="$scan_dir/search dir/' + install + '"\n'
+        for file in files:
+            fixture += ('mkdir -p "$root/' + file.rsplit('/', 1)[0] + '"\n'
+                        'printf "echo UNEXPECTED_EXECUTION\\nexit 77\\n" > "$root/' + file + '"\n'
+                        'chmod u+x "$root/' + file + '"\n')
+        for directory in ('"$scan_dir/search dir"', '"$root"'):
+            with self.subTest(directory=directory):
+                script = install_probe(config).replace(quote('/test scope'), directory)
+                result = launch_tests.LaunchTests().bash(fixture + script)
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertNotIn('UNEXPECTED_EXECUTION', result.stdout)
+                records = parse_installs(result.stdout.splitlines())
+                self.assertEqual(len(records), 1)
+                root, record = next(iter(records.items()))
+                self.assertTrue(root.endswith('/search dir/' + install))
+                self.assertTrue(record['cgyro'])
+                self.assertFalse(record['tglf'])
+
     def test_execution_guard_rejects_missing_direct_mpi_launcher(self):
         # Isolate PATH so an MPI installed on the test host cannot mask failure.
         fixture = '''set -e
@@ -357,6 +386,86 @@ class DetectionActionTests(unittest.TestCase):
             self.actions.detect_gacode()
         self.assertEqual(self.config, previous)
         self.assertEqual(self.root['PROJECT_STATE']['gacode_detection'], {'old': 'kept'})
+
+    def test_scan_replaces_inventory_and_retires_selection_even_when_basename_is_reused(self):
+        self.config['gacode_installs'] = {'gacode': '/formerly/gacode', 'obsolete': '/absent'}
+        self.config['cgyro_install'] = 'gacode'
+        self.root['PROJECT_STATE']['gacode_detection'] = dict(
+            endpoint=dict(server='user@cluster', tunnel=''), entries={'/absent': {'exists': False}})
+        self.actions.remote_execute = self.remote
+        detection = self.actions.detect_gacode()
+        self.assertEqual(dict(self.config['gacode_installs']), {'gacode': '/shared/gacode'})
+        self.assertEqual(set(detection['entries']), {'/shared/gacode'})
+        self.assertNotIn('/formerly/gacode', self.calls[-1])
+        self.assertNotIn('/absent', self.calls[-1])
+        self.assertIsNone(self.config['cgyro_install'])
+        self.assertEqual(self.config['tglf_install'], '')
+        with self.assertRaisesRegex(ValueError, 'CGYRO 请重新选择安装'):
+            self.actions.apply_runtime()
+        self.config['cgyro_install'] = 'gacode'
+        self.assertTrue(self.actions.apply_runtime())
+
+    def test_partial_install_keeps_alias_and_only_its_available_program_selection(self):
+        self.config['gacode_installs'] = {'custom': '/shared/gacode/'}
+        self.config['cgyro_install'] = self.config['tglf_install'] = 'custom'
+        def partial(*args, **kwargs):
+            self.remote(*args, **kwargs)
+            lines = kwargs['std_out']
+            fields = lines[0].split('\t')
+            files = list(dict.fromkeys(file for _, paths in PROGRAMS.values() for file in paths))
+            fields[4 + files.index('tglf/src/tglf')] = '0'
+            lines[0] = '\t'.join(fields)
+            return 0
+        self.actions.remote_execute = partial
+        detection = self.actions.detect_gacode()
+        self.assertEqual(dict(self.config['gacode_installs']), {'custom': '/shared/gacode'})
+        self.assertEqual(self.config['cgyro_install'], 'custom')
+        self.assertIsNone(self.config['tglf_install'])
+        self.assertIn('custom', choices(self.config, detection, 'cgyro').values())
+        self.assertNotIn('custom', choices(self.config, detection, 'tglf').values())
+        self.assertNotIn('custom', choices(self.config, detection, 'shared').values())
+
+    def test_empty_scan_clears_inventory_but_failed_or_superseded_scan_preserves_it(self):
+        self.actions.remote_execute = self.remote
+        previous = self.actions.detect_gacode()
+        self.config['cgyro_install'] = 'gacode'
+        self.config['gacode_scan_dir'] = '/new'
+        self.actions.remote_execute = lambda *args, **kwargs: 1
+        with self.assertRaisesRegex(RuntimeError, '检测失败'):
+            self.actions.detect_gacode()
+        def empty(*args, **kwargs):
+            kwargs['std_out'].extend(['OMFIT_GACODE_END'] + output())
+            return 0
+        def moved(*args, **kwargs):
+            self.config['gacode_scan_dir'] = '/another'
+            return empty(*args, **kwargs)
+        self.actions.remote_execute = moved
+        with self.assertRaisesRegex(ValueError, '配置已改变'):
+            self.actions.detect_gacode()
+        self.assertEqual(self.config['cgyro_install'], 'gacode')
+        self.assertEqual(self.root['PROJECT_STATE']['gacode_detection'], previous)
+        self.actions.remote_execute = empty
+        detection = self.actions.detect_gacode()
+        self.assertEqual(self.config['gacode_installs'], {})
+        self.assertEqual(detection['entries'], {})
+        with self.assertRaisesRegex(ValueError, 'CGYRO 请重新选择安装'):
+            self.actions.apply_runtime()
+
+    def test_apply_validates_missing_registered_path_without_rediscovering_or_forgetting_it(self):
+        self.config['gacode_installs'] = {'manual': '/absent'}
+        self.config['cgyro_install'] = 'manual'
+        def missing(*args, **kwargs):
+            self.remote(*args, **kwargs)
+            fields = kwargs['std_out'][0].split('\t')
+            kwargs['std_out'][0] = '\t'.join(['OMFIT_GACODE', '/absent'] + ['0'] * (len(fields) - 2))
+            return 0
+        self.actions.remote_execute = missing
+        with self.assertRaisesRegex(ValueError, 'CGYRO 在 manual 中不可用'):
+            self.actions.apply_runtime()
+        self.assertIn('probe_install /absent', self.calls[-1])
+        self.assertNotIn('for setup in', self.calls[-1])
+        self.assertEqual(self.config['gacode_installs'], {'manual': '/absent'})
+        self.assertEqual(self.config['cgyro_install'], 'manual')
 
     def test_detect_apply_and_launch_preserve_64_cpu_request_on_mixed_partition(self):
         from OMFITlib_project_runtime import apply_runtime, shared_issues

@@ -27,7 +27,7 @@ import shlex
 import uuid
 from collections import OrderedDict
 from OMFITlib_project_runtime import initialize_runtime, apply_runtime, applied_runtime, runtime_values, shared_issues
-from OMFITlib_gacode_installations import (PROGRAMS, detection_is_current, installation_issues, merge_probe,
+from OMFITlib_gacode_installations import (PROGRAMS, choices as installation_choices, detection_is_current, installation_issues, merge_probe,
     parse_probe, probe_script, same_endpoint, sync_environment, valid_path)
 from OMFITlib_server_capabilities import (adapt_draft, matching_profile, parse_probe as parse_capabilities,
     probe_script as capability_probe, resource_issues)
@@ -856,6 +856,9 @@ class ProjectActions:
         path = str(config['gacode_installs'].get(name, '') or '')
         if not valid_path(path):
             raise ValueError('请先保存有效的安装路径：' + name)
+        detection = self.root.get('PROJECT_STATE', {}).get('gacode_detection', {})
+        if name not in installation_choices(config, detection, 'shared').values():
+            raise ValueError('此安装仅支持部分程序，请在“常用配置”分别选择')
         for program in PROGRAMS:
             config[program + '_install'] = name
         sync_environment(config)
@@ -916,7 +919,8 @@ class ProjectActions:
             raise ValueError('；'.join(issues))
         stdout, stderr = [], []
         os.environ.setdefault('SHELL', '/bin/bash')
-        script = probe_script(config, scan) + (capability_probe() if scan else '')
+        request = runtime_values(config)
+        script = probe_script(request, scan) + (capability_probe() if scan else '')
         code = self.remote_execute(str(config['server']), 'bash -c ' + shlex.quote(script),
                                    '.', tunnel=str(config.get('tunnel', '') or ''), std_out=stdout, std_err=stderr,
                                    quiet=True, ignoreReturnCode=True, use_bang_command=False)
@@ -925,21 +929,22 @@ class ProjectActions:
         records = parse_probe(stdout)
         # Parse everything before mutating settings; an interrupted capability
         # scan must not replace a previously valid installation inventory.
-        profile = parse_capabilities(stdout, config) if scan else None
-        added, detection = merge_probe(config, records, self.factory)
+        profile = parse_capabilities(stdout, request) if scan else None
+        if runtime_values(config) != request:
+            raise ValueError('检测期间配置已改变，请重新检测')
+        added, detection = merge_probe(config, records, self.factory, scan=scan)
         state = self.root.setdefault('PROJECT_STATE', self.factory())
         previous = state.get('gacode_detection', {})
-        if same_endpoint(previous.get('endpoint', {}), detection['endpoint']):
-            entries = dict(previous.get('entries', {}))
-            entries.update(records)
-            detection['entries'] = entries
-            if profile is None and previous.get('capabilities', {}):
-                detection['capabilities'] = copy.deepcopy(previous['capabilities'])
         if profile is not None:
             detection['capabilities'] = profile
+        elif same_endpoint(previous.get('endpoint', {}), detection['endpoint']) and previous.get('capabilities', {}):
+            detection['capabilities'] = copy.deepcopy(previous['capabilities'])
         state['gacode_detection'] = detection
         if self.settings.get('gacode_entry', '') not in config['gacode_installs']:
             self.settings['gacode_entry'] = next(iter(config['gacode_installs']), '')
+        shared = self.settings.get('gacode_selected', '')
+        if shared and any(config.get(program + '_install', '') != shared for program in PROGRAMS):
+            self.settings['gacode_selected'] = ''
         return added, detection
 
     def detect_gacode(self):

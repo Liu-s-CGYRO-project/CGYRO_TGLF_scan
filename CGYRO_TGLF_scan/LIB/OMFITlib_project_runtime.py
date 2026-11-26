@@ -125,7 +125,7 @@ def register_runtime_server(registry, config, factory):
     return picker
 
 
-def validate_runtime(config):
+def validate_runtime(config, detection=None):
     issues = []
     for key, label in [('serverPicker', 'OMFIT 服务器'), ('server', '服务器地址'), ('workDir', '工作根目录')]:
         if not text(config, key):
@@ -159,7 +159,7 @@ def validate_runtime(config):
         command_template(config.get('cgyro_command', ''))
     except ValueError as error:
         issues.append(str(error))
-    return issues + installation_issues(config)
+    return issues + installation_issues(config, detection)
 
 
 def applied_runtime(root):
